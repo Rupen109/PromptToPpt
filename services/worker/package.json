@@ -1,0 +1,26 @@
+{
+  "name": "@prompttoppt/worker",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Async generation worker — processes presentation generation jobs from SQS",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@prompttoppt/types": "workspace:*",
+    "@prompttoppt/ai": "workspace:*",
+    "@prompttoppt/analytics": "workspace:*",
+    "@aws-sdk/client-sqs": "^3.600.0",
+    "zod": "^3.23.0",
+    "pino": "^9.3.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "tsx": "^4.16.0",
+    "@types/node": "^20.0.0",
+    "rimraf": "^5.0.0"
+  }
+}

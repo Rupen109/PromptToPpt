@@ -1,0 +1,22 @@
+=== STYLES ===
+{}
+
+PAGE: Page 1 | id: 0:1
+  FRAME: image 1 | type: RECTANGLE
+  FRAME: Html → Body | type: FRAME
+    CHILD: TOP PROMO BANNER | type: FRAME
+      ELEMENT: Container | type: FRAME
+      ELEMENT: Container | type: FRAME
+      ELEMENT: Background | type: FRAME
+    CHILD: Main | type: FRAME
+      ELEMENT: Section - SECTION 2: 4 INGESTION MODALITIES (Vibrant Cards with Custom Mini-Mockups) | type: FRAME
+      ELEMENT: Section - SECTION 1: PLAYFUL HERO WITH DYNAMIC PROMPT BUILDER & BEFORE/AFTER SPLIT | type: FRAME
+      ELEMENT: Section - SECTION 3: "AI BUILT IT, YOU PERFECT IT" INTERACTIVE STUDIO EXPERIMENT | type: FRAME
+      ELEMENT: Section - SECTION 4: 3-STEP WORKFLOW IN BOLD BLOCKS | type: FRAME
+      ELEMENT: Section - SECTION 5: BENTO MATRIX & CURATED TEMPLATES | type: FRAME
+      ELEMENT: Section - SECTION 6: TRANSPARENT PRICING WITH ANNUAL SAVINGS TOGGLE | type: FRAME
+      ELEMENT: Section - SECTION 7: FAQ & HIGH-ENERGY CTA BANNER | type: FRAME
+    CHILD: Footer - FOOTER | type: FRAME
+      ELEMENT: Container | type: FRAME
+    CHILD: Header - STICKY NAVBAR | type: FRAME
+      ELEMENT: Container | type: FRAME

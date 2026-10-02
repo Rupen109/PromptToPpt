@@ -1,0 +1,930 @@
+DOCUMENT: 'Document'
+  CANVAS: 'Page 1'
+    RECTANGLE: 'image 1'
+    FRAME: 'Html → Body' | FILLS: ['#ffffff', '#f6f7fc']
+      FRAME: 'TOP PROMO BANNER' | FILLS: ['#ffdf00']
+        FRAME: 'Container'
+          TEXT: 'Text' | FILLS: ['#181b25'] | FONT: FreeSans 14.0px (w:800) | TEXT: "⚡"
+        FRAME: 'Container'
+          TEXT: 'Strong → Solguruz Edition 3.0 Live:' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 14.0px (w:800) | TEXT: "Solguruz Edition 3.0 Live: Ingest Raw PDFs, Sketch Photos, &..."
+        FRAME: 'Background' | FILLS: ['#181b25']
+          TEXT: 'Text' | FILLS: ['#ffffff'] | FONT: Plus Jakarta Sans 12.0px (w:700) | TEXT: "TRY FREE"
+      FRAME: 'Main'
+        FRAME: 'Section - SECTION 2: 4 INGESTION MODALITIES (Vibrant Cards with Custom Mini-Mockups)' | FILLS: ['#ffffff']
+          FRAME: 'Container'
+            FRAME: 'Container'
+              FRAME: 'Container'
+                FRAME: 'Background+Border+Shadow' | FILLS: ['#ffdf00']
+                  TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "MULTI-MODAL INGESTION MATRIX"
+                FRAME: 'Heading 2'
+                  TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 36.0px (w:800) | TEXT: "Give It Anything. Get Boardroom Slides."
+                FRAME: 'Container'
+                  TEXT: 'Text' | FILLS: ['#475569'] | FONT: Inter 18.0px (w:400) | TEXT: "We don't limit you to typing prompts into a basic textbox. I..."
+              FRAME: 'Container'
+                FRAME: 'Container'
+                  VECTOR: 'Icon' | FILLS: ['#ff5722']
+                TEXT: 'Text' | FILLS: ['#ff5722'] | FONT: Caveat 20.0px (w:700) | TEXT: "Supported file types & live bridges"
+            FRAME: '4 Column Cards Grid'
+              FRAME: 'Card 1: Prompt to PPT' | FILLS: ['#fffbe6']
+                FRAME: 'Margin'
+                  FRAME: 'Container'
+                    FRAME: 'Container'
+                      FRAME: 'Background+Border+Shadow' | FILLS: ['#ffdf00']
+                        FRAME: 'Container'
+                          VECTOR: 'Icon' | FILLS: ['#181b25']
+                      FRAME: 'Background+Border' | FILLS: ['#ffffff']
+                        TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "MODALITY 01"
+                    FRAME: 'Heading 3'
+                      TEXT: 'Prompt to Complete Deck' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 20.0px (w:800) | TEXT: "Prompt to Complete Deck"
+                    FRAME: 'Container'
+                      TEXT: 'Dual-agent storyline synthesis creates problem-solution arcs, TAM calculations, and competitor moats.' | FILLS: ['#475569'] | FONT: Inter 14.0px (w:400) | TEXT: "Dual-agent storyline synthesis creates problem-solution arcs..."
+                    FRAME: 'Mini Mockup' | FILLS: ['#ffffff']
+                      FRAME: 'Container'
+                        FRAME: 'Container'
+                          TEXT: 'Text' | FILLS: ['#0b3dd0'] | FONT: Plus Jakarta Sans 11.0px (w:800) | TEXT: "Prompt Pipeline"
+                        FRAME: 'Background' | FILLS: ['#d4f933']
+                          TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 11.0px (w:800) | TEXT: "12 Slides"
+                      FRAME: 'Container'
+                        FRAME: 'Background' | FILLS: ['#edf0f7']
+                          TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Inter 10.0px (w:700) | TEXT: "01. Problem & Macro Shift"
+                        FRAME: 'Background' | FILLS: ['#edf0f7']
+                          TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Inter 10.0px (w:700) | TEXT: "02. Proprietary Solution"
+                        FRAME: 'Overlay' | FILLS: ['#ffdf00']
+                          TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Inter 10.0px (w:700) | TEXT: "03. $14B Addressable Market"
+                FRAME: 'HorizontalBorder'
+                  FRAME: 'Container'
+                    TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "Dual-Agent Story"
+                  FRAME: 'Container'
+                    TEXT: 'Text' | FILLS: ['#0b3dd0'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "Instant"
+                    FRAME: 'Container'
+                      VECTOR: 'Icon' | FILLS: ['#0b3dd0']
+              FRAME: 'Card 2: PDF & Document Ingestion' | FILLS: ['#fff2ee']
+                FRAME: 'Margin'
+                  FRAME: 'Container'
+                    FRAME: 'Container'
+                      FRAME: 'Background+Border+Shadow' | FILLS: ['#ff5722']
+                        FRAME: 'Container'
+                          VECTOR: 'Icon' | FILLS: ['#ffffff']
+                      FRAME: 'Background+Border' | FILLS: ['#ffffff']
+                        TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "MODALITY 02"
+                    FRAME: 'Heading 3'
+                      TEXT: 'PDF & Docx Ingestion' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 20.0px (w:800) | TEXT: "PDF & Docx Ingestion"
+                    FRAME: 'Container'
+                      TEXT: 'Extract complex financial statements, SEC filings, and 50+ page PDFs into structured charts and executive bullets.' | FILLS: ['#475569'] | FONT: Inter 14.0px (w:400) | TEXT: "Extract complex financial statements, SEC filings, and 50+ p..."
+                    FRAME: 'Mini Mockup' | FILLS: ['#ffffff']
+                      FRAME: 'Container'
+                        FRAME: 'Container'
+                          TEXT: 'Text' | FILLS: ['#ff5722'] | FONT: Plus Jakarta Sans 11.0px (w:800) | TEXT: "Document OCR"
+                        FRAME: 'Background' | FILLS: ['#fee2e2']
+                          TEXT: 'Text' | FILLS: ['#b91c1c'] | FONT: Plus Jakarta Sans 11.0px (w:800) | TEXT: "84 Pgs Analyzed"
+                      FRAME: 'Background' | FILLS: ['#edf0f7']
+                        FRAME: 'Container'
+                          TEXT: 'Text' | FILLS: ['#0f172a'] | FONT: Inter 11.0px (w:700) | TEXT: "Q3 Financial Model"
+                        FRAME: 'Container'
+                          TEXT: 'Text' | FILLS: ['#ff5722'] | FONT: Inter 11.0px (w:700) | TEXT: "24 Tables"
+                      FRAME: 'Background' | FILLS: ['#e2e8f0']
+                        RECTANGLE: 'Background' | FILLS: ['#ff5722']
+                FRAME: 'HorizontalBorder'
+                  FRAME: 'Container'
+                    TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "Smart OCR Engine"
+                  FRAME: 'Container'
+                    TEXT: 'Text' | FILLS: ['#ff5722'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "Up to 250 Pgs"
+              FRAME: 'Card 3: Napkin & Wireframe Vectorizer' | FILLS: ['#f5f3ff']
+                FRAME: 'Margin'
+                  FRAME: 'Container'
+                    FRAME: 'Container'
+                      FRAME: 'Background+Border+Shadow' | FILLS: ['#0b3dd0']
+                        FRAME: 'Container'
+                          VECTOR: 'Icon' | FILLS: ['#ffffff']
+                      FRAME: 'Background+Border' | FILLS: ['#ffffff']
+                        TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "MODALITY 03"
+                    FRAME: 'Heading 3'
+                      TEXT: 'Napkin & Wireframe' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 20.0px (w:800) | TEXT: "Napkin & Wireframe"
+                    FRAME: 'Container'
+                      TEXT: 'Snap a phone photo of a whiteboard flowchart or app wireframe. Vision AI reconstructs editable vector shapes.' | FILLS: ['#475569'] | FONT: Inter 14.0px (w:400) | TEXT: "Snap a phone photo of a whiteboard flowchart or app wirefram..."
+                    FRAME: 'Mini Mockup' | FILLS: ['#ffffff']
+                      FRAME: 'Container'
+                        FRAME: 'Container'
+                          TEXT: 'Text' | FILLS: ['#0b3dd0'] | FONT: Plus Jakarta Sans 11.0px (w:800) | TEXT: "Vision Vectorizer"
+                        FRAME: 'Overlay' | FILLS: ['#0b3dd0']
+                          TEXT: 'Text' | FILLS: ['#0b3dd0'] | FONT: Plus Jakarta Sans 11.0px (w:800) | TEXT: "Raster ➔ Vector"
+                      FRAME: 'Background' | FILLS: ['#edf0f7']
+                        FRAME: 'Container'
+                          TEXT: 'Text' | FILLS: ['#0f172a'] | FONT: Inter 10.0px (w:700) | TEXT: "Hand Sketch"
+                        FRAME: 'Container'
+                          VECTOR: 'Icon' | FILLS: ['#0b3dd0']
+                        FRAME: 'Background+Border' | FILLS: ['#ffffff']
+                          TEXT: 'Text' | FILLS: ['#0f172a'] | FONT: Inter 10.0px (w:700) | TEXT: "Editable SVG"
+                FRAME: 'HorizontalBorder'
+                  FRAME: 'Container'
+                    TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "Shape Recognition"
+                  FRAME: 'Container'
+                    TEXT: 'Text' | FILLS: ['#0b3dd0'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "100% Vector"
+              FRAME: 'Card 4: URL & Live Web Scraper' | FILLS: ['#fffbe6']
+                FRAME: 'Margin'
+                  FRAME: 'Container'
+                    FRAME: 'Container'
+                      FRAME: 'Background+Border+Shadow' | FILLS: ['#d4f933']
+                        FRAME: 'Container'
+                          VECTOR: 'Icon' | FILLS: ['#181b25']
+                      FRAME: 'Background+Border' | FILLS: ['#ffffff']
+                        TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "MODALITY 04"
+                    FRAME: 'Heading 3'
+                      TEXT: 'URL & Web Scraper' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 20.0px (w:800) | TEXT: "URL & Web Scraper"
+                    FRAME: 'Container'
+                      TEXT: 'Paste Crunchbase, Notion, or pitch articles. Pulls verified market stats, citations, and competitor logos automatically.' | FILLS: ['#475569'] | FONT: Inter 14.0px (w:400) | TEXT: "Paste Crunchbase, Notion, or pitch articles. Pulls verified ..."
+                    FRAME: 'Mini Mockup' | FILLS: ['#ffffff']
+                      FRAME: 'Container'
+                        FRAME: 'Container'
+                          TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 11.0px (w:800) | TEXT: "Live Citation Bridge"
+                        FRAME: 'Background' | FILLS: ['#d4f933']
+                          TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 11.0px (w:800) | TEXT: "Verified"
+                      FRAME: 'Background' | FILLS: ['#edf0f7']
+                        FRAME: 'Container'
+                          VECTOR: 'Icon' | FILLS: ['#0b3dd0']
+                        TEXT: 'Text' | FILLS: ['#0f172a'] | FONT: Inter 10.0px (w:700) | TEXT: "crunchbase.com/co/zenith"
+                      FRAME: 'Container'
+                        FRAME: 'Container'
+                          TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Inter 10.0px (w:700) | TEXT: "Verified Round: $12M"
+                        FRAME: 'Container'
+                          VECTOR: 'Icon' | FILLS: ['#059669']
+                FRAME: 'HorizontalBorder'
+                  FRAME: 'Container'
+                    TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "Live Grounding"
+                  FRAME: 'Container'
+                    TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "Zero Hallucinations"
+        FRAME: 'Section - SECTION 1: PLAYFUL HERO WITH DYNAMIC PROMPT BUILDER & BEFORE/AFTER SPLIT' | FILLS: ['#f3f4f9']
+          RECTANGLE: 'Background Graphic Doodles' | FILLS: ['#ffdf00']
+          RECTANGLE: 'Overlay+Blur' | FILLS: ['#ff5722']
+          FRAME: 'Container'
+            FRAME: 'Container'
+              FRAME: 'Floating Playful Badge:css-transform'
+                FRAME: 'Floating Playful Badge' | FILLS: ['#ffffff']
+                  RECTANGLE: 'Background+Border' | FILLS: ['#d4f933']
+                  FRAME: 'Container'
+                    TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "🔥 THE AGENCY-GRADE PITCH DECK ENGINE"
+                  FRAME: 'Container'
+                    TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Inter 16.0px (w:700) | TEXT: "•"
+                  FRAME: 'Container'
+                    TEXT: 'Text' | FILLS: ['#475569'] | FONT: Plus Jakarta Sans 12.0px (w:700) | TEXT: "Over 140,000 Decks Synthesized"
+              FRAME: 'Heading 1:margin'
+                FRAME: 'Heading 1'
+                  TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 60.0px (w:800) | TEXT: "Turn Messy Documents into"
+                  FRAME: 'Background+Border+Shadow' | FILLS: ['#ffdf00']
+                    TEXT: 'Boardroom-Ready' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 60.0px (w:800) | TEXT: "Boardroom-Ready"
+                  TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 60.0px (w:800) | TEXT: "Presentations in 45 Seconds."
+              FRAME: 'Margin'
+                FRAME: 'Container'
+                  TEXT: 'Text' | FILLS: ['#475569'] | FONT: Inter 20.0px (w:400) | TEXT: "Stop agonizing over PowerPoint formatting. Type a prompt, dr..."
+            FRAME: 'DYNAMIC CONVERSATIONAL BUILDER BOX' | FILLS: ['#ffffff']
+              FRAME: 'Background+Border+Shadow' | FILLS: ['#ff5722']
+                FRAME: 'Container'
+                  VECTOR: 'Icon' | FILLS: ['#ffffff']
+                TEXT: 'Text' | FILLS: ['#ffffff'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "45S RENDER"
+              FRAME: 'Top Sticker Badges' | FILLS: ['#d4f933']
+                FRAME: 'Container'
+                  VECTOR: 'Icon' | FILLS: ['#181b25']
+                TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "ZERO FLUFF ENGINE"
+              FRAME: 'Mode Switcher Tabs'
+                FRAME: 'Button' | FILLS: ['#0b3dd0']
+                  FRAME: 'Container'
+                    VECTOR: 'Icon' | FILLS: ['#ffffff']
+                  TEXT: 'Text' | FILLS: ['#ffffff'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "PROMPT TO DECK"
+                FRAME: 'Button' | FILLS: ['#edf0f7']
+                  FRAME: 'Container'
+                    VECTOR: 'Icon' | FILLS: ['#475569']
+                  TEXT: 'Text' | FILLS: ['#475569'] | FONT: Plus Jakarta Sans 12.0px (w:700) | TEXT: "PDF & FINANCIAL MODEL"
+                FRAME: 'Button' | FILLS: ['#edf0f7']
+                  FRAME: 'Container'
+                    VECTOR: 'Icon' | FILLS: ['#475569']
+                  TEXT: 'Text' | FILLS: ['#475569'] | FONT: Plus Jakarta Sans 12.0px (w:700) | TEXT: "NAPKIN / WIREFRAME"
+                FRAME: 'Button' | FILLS: ['#edf0f7']
+                  FRAME: 'Container'
+                    VECTOR: 'Icon' | FILLS: ['#475569']
+                  TEXT: 'Text' | FILLS: ['#475569'] | FONT: Plus Jakarta Sans 12.0px (w:700) | TEXT: "LIVE WEB SCRAPE"
+              FRAME: 'Interactive Text Box with Dynamic Cycling Scenario' | FILLS: ['#f3f4f9']
+                FRAME: 'Container'
+                  FRAME: 'Margin'
+                    VECTOR: 'Icon' | FILLS: ['#0b3dd0']
+                  FRAME: 'Container'
+                    FRAME: 'Label'
+                      TEXT: 'CONVERSATIONAL SYNTHESIS PROMPT' | FILLS: ['#475569'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "CONVERSATIONAL SYNTHESIS PROMPT"
+                    FRAME: 'Textarea'
+                      FRAME: 'Container'
+                        TEXT: 'Series A pitch deck for B2B AI Operations raising $8.5M. Include 142% net dollar retention, enterprise customer quotes, TAM breakdown ($14B), and competitive moat wedge against legacy incumbent tools.' | FILLS: ['#181b25'] | FONT: Inter 16.0px (w:600) | TEXT: "Series A pitch deck for B2B AI Operations raising $8.5M. Inc..."
+                FRAME: 'Pill Toolbar inside Input'
+                  FRAME: 'Container'
+                    FRAME: 'Background+Border' | FILLS: ['#ffffff']
+                      RECTANGLE: 'Background' | FILLS: ['#d4f933']
+                      TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:700) | TEXT: "12 Slides (Recommended)"
+                    FRAME: 'Background+Border' | FILLS: ['#ffffff']
+                      FRAME: 'Container'
+                        VECTOR: 'Icon' | FILLS: ['#0b3dd0']
+                      TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:700) | TEXT: "Vibe: Bold Minimal Cobalt"
+                    FRAME: 'Background+Border' | FILLS: ['#ffffff']
+                      FRAME: 'Container'
+                        VECTOR: 'Icon' | FILLS: ['#ff5722']
+                      TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:700) | TEXT: "Tone: Institutional VC"
+                  FRAME: 'Container'
+                    FRAME: 'Container'
+                      VECTOR: 'Icon' | FILLS: ['#0b3dd0']
+                    TEXT: 'Text' | FILLS: ['#0b3dd0'] | FONT: Caveat 16.0px (w:700) | TEXT: "Click chip to load blueprint ➔"
+              FRAME: 'Multi-format upload dropzone + Main CTA'
+                FRAME: 'Container'
+                  FRAME: 'Container'
+                    TEXT: 'Text' | FILLS: ['#475569'] | FONT: Plus Jakarta Sans 12.0px (w:700) | TEXT: "OR DROP SOURCE FILES:"
+                  FRAME: 'Container'
+                    FRAME: 'Background+Border' | FILLS: ['#fee2e2']
+                      FRAME: 'Container'
+                        VECTOR: 'Icon' | FILLS: ['#b91c1c']
+                      TEXT: 'Text' | FILLS: ['#b91c1c'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: ".PDF"
+                    FRAME: 'Background+Border' | FILLS: ['#dbeafe']
+                      FRAME: 'Container'
+                        VECTOR: 'Icon' | FILLS: ['#1d4ed8']
+                      TEXT: 'Text' | FILLS: ['#1d4ed8'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: ".PNG"
+                    FRAME: 'Background+Border' | FILLS: ['#f3e8ff']
+                      FRAME: 'Container'
+                        VECTOR: 'Icon' | FILLS: ['#7e22ce']
+                      TEXT: 'Text' | FILLS: ['#7e22ce'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: ".FIGMA"
+                    FRAME: 'Background+Border' | FILLS: ['#d1fae5']
+                      FRAME: 'Container'
+                        VECTOR: 'Icon' | FILLS: ['#047857']
+                      TEXT: 'Text' | FILLS: ['#047857'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: ".XLSX"
+                FRAME: 'Button' | FILLS: ['#ff5722']
+                  FRAME: 'Container'
+                    TEXT: 'Text' | FILLS: ['#ffffff'] | FONT: Plus Jakarta Sans 16.0px (w:800) | TEXT: "Generate 12 PPTX Slides"
+                  FRAME: 'Container'
+                    VECTOR: 'Icon' | FILLS: ['#ffffff']
+              FRAME: 'Quick Scenarios Pill Bar'
+                FRAME: 'Container'
+                  TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "QUICK TEMPLATES:"
+                FRAME: 'Button' | FILLS: ['#ffffff']
+                  TEXT: 'Text' | FILLS: ['#475569'] | FONT: Inter 12.0px (w:700) | TEXT: "🚀 $8.5M Series A Pitch"
+                FRAME: 'Button' | FILLS: ['#ffffff']
+                  TEXT: 'Text' | FILLS: ['#475569'] | FONT: Inter 12.0px (w:700) | TEXT: "📊 Q3 Board Governance"
+                FRAME: 'Button' | FILLS: ['#ffffff']
+                  TEXT: 'Text' | FILLS: ['#475569'] | FONT: Inter 12.0px (w:700) | TEXT: "🛠️ GTM Product Launch"
+            FRAME: 'LIVE SPLIT-SCREEN PRESENTATION SIMULATOR (Before -> After)'
+              FRAME: 'Container'
+                FRAME: 'Background+Border' | FILLS: ['#fffbe6']
+                  FRAME: 'Container'
+                    VECTOR: 'Icon' | FILLS: ['#ff5722']
+                  TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "LIVE INGESTION SIMULATOR"
+                FRAME: 'Heading 2'
+                  TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 30.0px (w:800) | TEXT: "See Raw Chaos Transform into High-Conviction Slides"
+              FRAME: 'Background+Shadow' | FILLS: ['#ffffff']
+                FRAME: 'Container'
+                  FRAME: 'Center Connector Arrow'
+                    FRAME: 'Background+Border+Shadow' | FILLS: ['#ffdf00']
+                      FRAME: 'Container'
+                        VECTOR: 'Icon' | FILLS: ['#181b25']
+                    FRAME: 'Margin'
+                      TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Caveat 18.0px (w:700) | TEXT: "Synthesized in 28s"
+                  FRAME: 'Left: Raw Messy Source Input Mockup' | FILLS: ['#f3f4f9']
+                    FRAME: 'Container'
+                      FRAME: 'Container'
+                        RECTANGLE: 'Background' | FILLS: ['#ef4444']
+                        FRAME: 'Container'
+                          TEXT: 'Text' | FILLS: ['#475569'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "INPUT: CONFIDENTIAL_MODEL_V3.PDF"
+                      FRAME: 'Background+Border' | FILLS: ['#fee2e2']
+                        TEXT: 'Text' | FILLS: ['#b91c1c'] | FONT: Inter 11.0px (w:700) | TEXT: "42 Pages Unstructured"
+                    FRAME: 'Container'
+                      RECTANGLE: 'Background' | FILLS: ['#cbd5e1']
+                      RECTANGLE: 'Background' | FILLS: ['#e2e8f0']
+                      RECTANGLE: 'Background' | FILLS: ['#e2e8f0']
+                      FRAME: 'Container'
+                        FRAME: 'Background+Border' | FILLS: ['#ffffff']
+                          RECTANGLE: 'Background' | FILLS: ['#cbd5e1']
+                          RECTANGLE: 'Overlay' | FILLS: ['#0b3dd0']
+                        FRAME: 'Background+Border' | FILLS: ['#ffffff']
+                          RECTANGLE: 'Background' | FILLS: ['#cbd5e1']
+                          RECTANGLE: 'Overlay' | FILLS: ['#ff5722']
+                        FRAME: 'Background+Border' | FILLS: ['#ffffff']
+                          RECTANGLE: 'Background' | FILLS: ['#cbd5e1']
+                          RECTANGLE: 'Overlay' | FILLS: ['#d4f933']
+                      RECTANGLE: 'Background' | FILLS: ['#e2e8f0']
+                      RECTANGLE: 'Background' | FILLS: ['#e2e8f0']
+                    FRAME: 'HorizontalBorder'
+                      FRAME: 'Container'
+                        TEXT: 'Text' | FILLS: ['#475569'] | FONT: Inter 12.0px (w:700) | TEXT: "OCR Table Extraction: Active"
+                      FRAME: 'Container'
+                        FRAME: 'Container'
+                          VECTOR: 'Icon' | FILLS: ['#0b3dd0']
+                        TEXT: 'Text' | FILLS: ['#0b3dd0'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "Parsing 24 Tables"
+                  FRAME: 'Right: Rendered Crisp Editable Presentation Slide' | FILLS: ['#181b25']
+                    RECTANGLE: 'Right: Rendered Crisp Editable Presentation Slide:shadow' | FILLS: ['#ffffff']
+                    FRAME: 'Container'
+                      FRAME: 'Container'
+                        FRAME: 'Background' | FILLS: ['#d4f933']
+                          TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Inter 11.0px (w:700) | TEXT: "SLIDE 04: TRACTION"
+                        FRAME: 'Container'
+                          TEXT: 'Text' | FILLS: ['#cbd5e1'] | FONT: Plus Jakarta Sans 12.0px (w:700) | TEXT: "Project_Zenith.pptx"
+                      FRAME: 'Container'
+                        FRAME: 'Container'
+                          VECTOR: 'Icon' | FILLS: ['#ffdf00']
+                        TEXT: 'Text' | FILLS: ['#ffdf00'] | FONT: Plus Jakarta Sans 12.0px (w:700) | TEXT: "100% Vector PPTX"
+                    FRAME: 'Overlay+Border+OverlayBlur' | FILLS: ['#ffffff']
+                      FRAME: 'Container'
+                        FRAME: 'Heading 4'
+                          TEXT: 'Text' | FILLS: ['#ffffff'] | FONT: Plus Jakarta Sans 16.0px (w:700) | TEXT: "Net Dollar Retention (142%)"
+                        FRAME: 'Container'
+                          TEXT: 'Text' | FILLS: ['#d4f933'] | FONT: Plus Jakarta Sans 20.0px (w:800) | TEXT: "$8.5M ARR"
+                      FRAME: 'Container'
+                        TEXT: 'Enterprise expansion driven by self-serve adoption across Fortune 500 security teams.' | FILLS: ['#cbd5e1'] | FONT: Inter 12.0px (w:400) | TEXT: "Enterprise expansion driven by self-serve adoption across Fo..."
+                      FRAME: 'Container'
+                        FRAME: 'Overlay' | FILLS: ['#ffffff']
+                          FRAME: 'Container'
+                            TEXT: 'Text' | FILLS: ['#ffffff'] | FONT: Plus Jakarta Sans 14.0px (w:800) | TEXT: "11 Mo"
+                          TEXT: 'Text' | FILLS: ['#cbd5e1'] | FONT: Inter 10.0px (w:400) | TEXT: "CAC PAYBACK"
+                        FRAME: 'Overlay' | FILLS: ['#ffffff']
+                          FRAME: 'Container'
+                            TEXT: 'Text' | FILLS: ['#ffdf00'] | FONT: Plus Jakarta Sans 14.0px (w:800) | TEXT: "81%"
+                          TEXT: 'Text' | FILLS: ['#cbd5e1'] | FONT: Inter 10.0px (w:400) | TEXT: "GROSS MARGIN"
+                        FRAME: 'Overlay' | FILLS: ['#ffffff']
+                          FRAME: 'Container'
+                            TEXT: 'Text' | FILLS: ['#d4f933'] | FONT: Plus Jakarta Sans 14.0px (w:800) | TEXT: "0.7x"
+                          TEXT: 'Text' | FILLS: ['#cbd5e1'] | FONT: Inter 10.0px (w:400) | TEXT: "BURN MULTIPLE"
+                    FRAME: 'Container'
+                      FRAME: 'Container'
+                        TEXT: 'Text' | FILLS: ['#94a3b8'] | FONT: Inter 11.0px (w:400) | TEXT: "Editable in Microsoft PowerPoint & Keynote"
+                      FRAME: 'Container'
+                        FRAME: 'Container'
+                          VECTOR: 'Icon' | FILLS: ['#d4f933']
+                        TEXT: 'Text' | FILLS: ['#ffffff'] | FONT: Plus Jakarta Sans 11.0px (w:700) | TEXT: "Exported"
+            FRAME: 'Logos Social Proof Strip'
+              FRAME: 'Container'
+                TEXT: 'Text' | FILLS: ['#475569'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "PROVEN IN 140,000+ PITCH DECKS, SEED ROUNDS & EXECUTIVE BOAR..."
+              FRAME: 'Container'
+                FRAME: 'Container'
+                  TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 18.0px (w:800) | TEXT: "Y COMBINATOR"
+                FRAME: 'Container'
+                  TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 18.0px (w:800) | TEXT: "TECHSTARS"
+                FRAME: 'Container'
+                  TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 18.0px (w:800) | TEXT: "SEQUOIA FELLOWS"
+                FRAME: 'Container'
+                  TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 18.0px (w:800) | TEXT: "STANFORD STARTX"
+                FRAME: 'Container'
+                  TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 18.0px (w:800) | TEXT: "FORBES 30U30"
+        FRAME: 'Section - SECTION 3: "AI BUILT IT, YOU PERFECT IT" INTERACTIVE STUDIO EXPERIMENT' | FILLS: ['#f3f4f9']
+          FRAME: 'Container'
+            FRAME: 'Container'
+              FRAME: 'Background+Border+Shadow' | FILLS: ['#ffffff']
+                RECTANGLE: 'Background' | FILLS: ['#ff5722']
+                TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "UNCOMPROMISED GRANULAR CONTROL"
+              FRAME: 'Heading 2'
+                TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 48.0px (w:800) | TEXT: "AI Built It, You Perfect It."
+              FRAME: 'Container'
+                TEXT: 'Text' | FILLS: ['#475569'] | FONT: Inter 18.0px (w:400) | TEXT: "Unlike static AI screenshot generators, PromptToPpt gives yo..."
+            FRAME: 'STUDIO CANVAS MOCKUP CONTAINER' | FILLS: ['#ffffff']
+              FRAME: 'Top Studio App Bar' | FILLS: ['#181b25']
+                FRAME: 'Container'
+                  FRAME: 'Container'
+                    RECTANGLE: 'Background' | FILLS: ['#ef4444']
+                    RECTANGLE: 'Background' | FILLS: ['#ffdf00']
+                    RECTANGLE: 'Background' | FILLS: ['#d4f933']
+                  FRAME: 'Margin'
+                    TEXT: 'Text' | FILLS: ['#ffdf00'] | FONT: Plus Jakarta Sans 14.0px (w:800) | TEXT: "Zenith_AI_Pitch_Deck_v4.pptx"
+                  FRAME: 'Overlay' | FILLS: ['#ffffff']
+                    TEXT: 'Text' | FILLS: ['#ffffff'] | FONT: Plus Jakarta Sans 11.0px (w:700) | TEXT: "12 Slides Loaded"
+                FRAME: 'Interactive Mode Bar'
+                  FRAME: 'Container'
+                    TEXT: 'Text' | FILLS: ['#cbd5e1'] | FONT: Plus Jakarta Sans 12.0px (w:700) | TEXT: "Theme Mode:"
+                  FRAME: 'Button' | FILLS: ['#0b3dd0']
+                    TEXT: 'Text' | FILLS: ['#ffffff'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "Cobalt Pro"
+                  FRAME: 'Button' | FILLS: ['#ffffff']
+                    TEXT: 'Text' | FILLS: ['#e2e8f0'] | FONT: Plus Jakarta Sans 12.0px (w:700) | TEXT: "Solar Coral"
+                  FRAME: 'Button' | FILLS: ['#ffffff']
+                    TEXT: 'Text' | FILLS: ['#e2e8f0'] | FONT: Plus Jakarta Sans 12.0px (w:700) | TEXT: "Dark Stealth"
+                FRAME: 'Container'
+                  FRAME: 'Container'
+                    RECTANGLE: 'Background' | FILLS: ['#d4f933']
+                    TEXT: 'Text' | FILLS: ['#d4f933'] | FONT: Plus Jakarta Sans 12.0px (w:700) | TEXT: "Cloud Synced"
+                  FRAME: 'Button' | FILLS: ['#ffdf00']
+                    FRAME: 'Container'
+                      VECTOR: 'Icon' | FILLS: ['#181b25']
+                    TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "EXPORT PPTX"
+              FRAME: 'Studio Toolbar' | FILLS: ['#edf0f7']
+                FRAME: 'Container'
+                  FRAME: 'Button' | FILLS: ['#ffffff']
+                    FRAME: 'Container'
+                      VECTOR: 'Icon' | FILLS: ['#0b3dd0']
+                    TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:700) | TEXT: "Layout Grid"
+                  FRAME: 'Button' | FILLS: ['#ffffff']
+                    FRAME: 'Container'
+                      VECTOR: 'Icon' | FILLS: ['#ff5722']
+                    TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:700) | TEXT: "Toggle Chart Style"
+                  FRAME: 'Button' | FILLS: ['#ffffff']
+                    FRAME: 'Container'
+                      VECTOR: 'Icon' | FILLS: ['#059669']
+                    TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:700) | TEXT: "Rewrite with AI"
+                  FRAME: 'Button' | FILLS: ['#ffffff']
+                    FRAME: 'Container'
+                      VECTOR: 'Icon' | FILLS: ['#9333ea']
+                    TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:700) | TEXT: "Typography"
+                FRAME: 'Container'
+                  TEXT: 'Text' | FILLS: ['#0b3dd0'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "Slide 03: Unit Economics & Moats"
+              FRAME: 'Studio Workspace: Slide Sorter (Left) + Active Canvas (Center)'
+                FRAME: 'Left Slide Sorter (Simulated Drag and Drop)' | FILLS: ['#edf0f7']
+                  FRAME: 'Margin'
+                    FRAME: 'Container'
+                      TEXT: 'SLIDE SORTER (REORDERABLE)' | FILLS: ['#475569'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "SLIDE SORTER (REORDERABLE)"
+                  FRAME: 'Background+Border+Shadow' | FILLS: ['#ffffff']
+                    FRAME: 'Container'
+                      FRAME: 'Container'
+                        TEXT: 'Text' | FILLS: ['#0b3dd0'] | FONT: Plus Jakarta Sans 11.0px (w:700) | TEXT: "01. Title Thesis"
+                      FRAME: 'Container'
+                        VECTOR: 'Icon' | FILLS: ['#0b3dd0']
+                    FRAME: 'Background+Border' | FILLS: ['#eef1fe']
+                      FRAME: 'Container'
+                        TEXT: 'Text' | FILLS: ['#0b3dd0'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "Project Zenith"
+                      FRAME: 'Container'
+                        TEXT: 'Text' | FILLS: ['#475569'] | FONT: Inter 9.0px (w:400) | TEXT: "Series A Overview"
+                  FRAME: 'Background+Border+Shadow' | FILLS: ['#ffffff']
+                    FRAME: 'Container'
+                      FRAME: 'Container'
+                        TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 11.0px (w:700) | TEXT: "02. TAM & Tailwinds"
+                      FRAME: 'Container'
+                        VECTOR: 'Icon' | FILLS: ['#181b25']
+                    FRAME: 'Background+Border' | FILLS: ['#fffbe6']
+                      FRAME: 'Container'
+                        TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "$14B Market Opportunity"
+                      FRAME: 'Container'
+                        TEXT: 'Text' | FILLS: ['#475569'] | FONT: Inter 9.0px (w:400) | TEXT: "38% YoY CAGR"
+                  FRAME: 'Background+Border+Shadow' | FILLS: ['#ffffff']
+                    FRAME: 'Container'
+                      FRAME: 'Container'
+                        TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 11.0px (w:700) | TEXT: "03. Traction Metrics"
+                      FRAME: 'Container'
+                        VECTOR: 'Icon' | FILLS: ['#181b25']
+                    FRAME: 'Background+Border' | FILLS: ['#fff2ee']
+                      FRAME: 'Container'
+                        TEXT: 'Text' | FILLS: ['#b02f00'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "142% Retention"
+                      FRAME: 'Container'
+                        TEXT: 'Text' | FILLS: ['#475569'] | FONT: Inter 9.0px (w:400) | TEXT: "$8.5M ARR"
+                  FRAME: 'Background+Border+Shadow' | FILLS: ['#ffffff']
+                    FRAME: 'Container'
+                      FRAME: 'Container'
+                        TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 11.0px (w:700) | TEXT: "04. Use of Capital"
+                      FRAME: 'Container'
+                        VECTOR: 'Icon' | FILLS: ['#181b25']
+                    FRAME: 'Background+Border' | FILLS: ['#edf0f7']
+                      FRAME: 'Container'
+                        TEXT: 'Text' | FILLS: ['#0f172a'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "$8.5M Allocation"
+                      FRAME: 'Container'
+                        TEXT: 'Text' | FILLS: ['#475569'] | FONT: Inter 9.0px (w:400) | TEXT: "GTM & Core Model R&D"
+                FRAME: 'Center Canvas Area' | FILLS: ['#f3f4f9']
+                  FRAME: 'The 16:9 Slide Canvas' | FILLS: ['#ffffff']
+                    FRAME: 'Margin'
+                      FRAME: 'Container'
+                        FRAME: 'Container'
+                          FRAME: 'Background+Shadow' | FILLS: ['#ff5722']
+                            FRAME: 'Container'
+                              VECTOR: 'Icon' | FILLS: ['#ffffff']
+                            TEXT: 'Text' | FILLS: ['#ffffff'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "SECTION 03 • COHORT RETENTION"
+                          FRAME: 'Heading 3'
+                            TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 30.0px (w:800) | TEXT: "Accelerating Net Revenue Retention (142% NRR)"
+                          FRAME: 'Container'
+                            TEXT: 'Text' | FILLS: ['#475569'] | FONT: Inter 14.0px (w:400) | TEXT: "Growth fueled by automatic enterprise seat expansion and hig..."
+                        FRAME: 'Background+Border' | FILLS: ['#fffbe6']
+                          FRAME: 'Container'
+                            TEXT: 'Text' | FILLS: ['#0b3dd0'] | FONT: Plus Jakarta Sans 36.0px (w:800) | TEXT: "$8.5M"
+                          TEXT: 'Text' | FILLS: ['#475569'] | FONT: Plus Jakarta Sans 12.0px (w:700) | TEXT: "CURRENT ARR (Q3 RUN-RATE)"
+                    FRAME: 'Live Swappable Chart Canvas Component:margin'
+                      FRAME: 'Live Swappable Chart Canvas Component'
+                        FRAME: 'Chart Col 1' | FILLS: ['#f3f4f9']
+                          FRAME: 'Container'
+                            TEXT: 'ARR BRIDGE (QUARTERLY)' | FILLS: ['#475569'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "ARR BRIDGE (QUARTERLY)"
+                          FRAME: 'Container'
+                            FRAME: 'Overlay' | FILLS: ['#0b3dd0']
+                              TEXT: 'Text' | FILLS: ['#0f172a'] | FONT: Inter 10.0px (w:700) | TEXT: "Q1"
+                            FRAME: 'Overlay' | FILLS: ['#0b3dd0']
+                              TEXT: 'Text' | FILLS: ['#0f172a'] | FONT: Inter 10.0px (w:700) | TEXT: "Q2"
+                            FRAME: 'Overlay' | FILLS: ['#0b3dd0']
+                              TEXT: 'Text' | FILLS: ['#ffffff'] | FONT: Inter 10.0px (w:700) | TEXT: "Q3"
+                            FRAME: 'Background' | FILLS: ['#0b3dd0']
+                              TEXT: 'Text' | FILLS: ['#ffffff'] | FONT: Inter 10.0px (w:700) | TEXT: "Q4"
+                          FRAME: 'Container'
+                            TEXT: 'Text' | FILLS: ['#0b3dd0'] | FONT: Inter 11.0px (w:700) | TEXT: "+105% YoY Growth"
+                        FRAME: 'Chart Col 2' | FILLS: ['#f3f4f9']
+                          FRAME: 'Container'
+                            TEXT: 'Text' | FILLS: ['#475569'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "ENTERPRISE LOGO PENETRATION"
+                          FRAME: 'Container'
+                            TEXT: 'Text' | FILLS: ['#475569'] | FONT: Inter 11.0px (w:700) | TEXT: "42 Fortune 500 Pilots"
+                          FRAME: 'Margin'
+                            FRAME: 'Container'
+                              FRAME: 'SVG'
+                                VECTOR: 'Vector'
+                                VECTOR: 'Vector'
+                              FRAME: 'Container'
+                                TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 14.0px (w:800) | TEXT: "78%"
+                        FRAME: 'Chart Col 3' | FILLS: ['#f3f4f9']
+                          FRAME: 'Container'
+                            TEXT: 'CAPITAL EFFICIENCY' | FILLS: ['#475569'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "CAPITAL EFFICIENCY"
+                          FRAME: 'Margin'
+                            FRAME: 'Container'
+                              FRAME: 'Container'
+                                TEXT: '11 Months' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 24.0px (w:800) | TEXT: "11 Months"
+                              TEXT: 'Text' | FILLS: ['#475569'] | FONT: Inter 12.0px (w:400) | TEXT: "Gross margin adjusted CAC payback"
+                          FRAME: 'Margin'
+                            FRAME: 'Container'
+                              FRAME: 'Background+Border' | FILLS: ['#d4f933']
+                                TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 10.0px (w:800) | TEXT: "★ TOP DECILE PERFORMANCE"
+                    FRAME: 'Slide Meta Footer'
+                      FRAME: 'Container'
+                        TEXT: 'Text' | FILLS: ['#475569'] | FONT: Inter 12.0px (w:700) | TEXT: "Project Zenith • Confidential Investor Series A Deck"
+                      FRAME: 'Container'
+                        TEXT: 'Text' | FILLS: ['#475569'] | FONT: Inter 12.0px (w:700) | TEXT: "PromptToPpt Precision Canvas"
+                  FRAME: 'Bottom Floating AI Copilot Prompt Bar:margin'
+                    FRAME: 'Bottom Floating AI Copilot Prompt Bar' | FILLS: ['#ffffff']
+                      FRAME: 'Container'
+                        FRAME: 'Background' | FILLS: ['#0b3dd0']
+                          FRAME: 'Container'
+                            VECTOR: 'Icon' | FILLS: ['#ffffff']
+                        FRAME: 'Input'
+                          FRAME: 'Container'
+                            TEXT: 'Adjust Q4 projected ARR to $10.2M and highlight Fortune 100 customer retention rate' | FILLS: ['#181b25'] | FONT: Inter 14.0px (w:600) | TEXT: "Adjust Q4 projected ARR to $10.2M and highlight Fortune 100 ..."
+                      FRAME: 'Button' | FILLS: ['#0b3dd0']
+                        TEXT: 'Text' | FILLS: ['#ffffff'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "APPLY EDIT"
+        FRAME: 'Section - SECTION 4: 3-STEP WORKFLOW IN BOLD BLOCKS' | FILLS: ['#ffffff']
+          FRAME: 'Container'
+            FRAME: 'Container'
+              FRAME: 'Background+Border+Shadow' | FILLS: ['#d4f933']
+                TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "INSTANT VELOCITY"
+              FRAME: 'Heading 2'
+                TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 36.0px (w:800) | TEXT: "From Chaos to Pitch Deck in 3 Steps"
+              FRAME: 'Container'
+                TEXT: 'Text' | FILLS: ['#475569'] | FONT: Inter 18.0px (w:400) | TEXT: "Never open a blank PowerPoint slide again. Let intelligent a..."
+            FRAME: 'Container'
+              FRAME: 'Step 1' | FILLS: ['#fffbe6']
+                FRAME: 'Container'
+                  FRAME: 'Container'
+                    FRAME: 'Background+Border+Shadow' | FILLS: ['#ffdf00']
+                      TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 24.0px (w:800) | TEXT: "01"
+                    FRAME: 'Background+Border' | FILLS: ['#ffffff']
+                      TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "INPUT STAGE"
+                  FRAME: 'Heading 3'
+                    TEXT: 'Feed Any Raw Source' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 24.0px (w:800) | TEXT: "Feed Any Raw Source"
+                  FRAME: 'Container'
+                    TEXT: 'Drop investment memos, napkin wireframes, messy spreadsheets, or simply type your vision. Context parsers instantly isolate thesis points.' | FILLS: ['#475569'] | FONT: Inter 16.0px (w:400) | TEXT: "Drop investment memos, napkin wireframes, messy spreadsheets..."
+                FRAME: 'Background+Border' | FILLS: ['#ffffff']
+                  FRAME: 'Container'
+                    VECTOR: 'Icon' | FILLS: ['#ff5722']
+                  TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:700) | TEXT: "Accepts PDF, Figma, JPG, Notion & XLSX"
+              FRAME: 'Step 2' | FILLS: ['#fff2ee']
+                FRAME: 'Container'
+                  FRAME: 'Container'
+                    FRAME: 'Background+Border+Shadow' | FILLS: ['#ff5722']
+                      TEXT: 'Text' | FILLS: ['#ffffff'] | FONT: Plus Jakarta Sans 24.0px (w:800) | TEXT: "02"
+                    FRAME: 'Background+Border' | FILLS: ['#ffffff']
+                      TEXT: 'Text' | FILLS: ['#b02f00'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "AGENT SYNTHESIS"
+                  FRAME: 'Heading 3'
+                    TEXT: 'AI Builds High-Impact Story' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 24.0px (w:800) | TEXT: "AI Builds High-Impact Story"
+                  FRAME: 'Container'
+                    TEXT: 'In 30 seconds, dual AI engines map narrative density, construct charts from tables, and write punchy executive bullet points.' | FILLS: ['#475569'] | FONT: Inter 16.0px (w:400) | TEXT: "In 30 seconds, dual AI engines map narrative density, constr..."
+                FRAME: 'Background+Border' | FILLS: ['#ffffff']
+                  FRAME: 'Container'
+                    VECTOR: 'Icon' | FILLS: ['#ff5722']
+                  TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:700) | TEXT: "Auto-calculates TAM, Moat & Financials"
+              FRAME: 'Step 3' | FILLS: ['#f5f3ff']
+                FRAME: 'Container'
+                  FRAME: 'Container'
+                    FRAME: 'Background+Border+Shadow' | FILLS: ['#0b3dd0']
+                      TEXT: 'Text' | FILLS: ['#ffffff'] | FONT: Plus Jakarta Sans 24.0px (w:800) | TEXT: "03"
+                    FRAME: 'Background+Border' | FILLS: ['#ffffff']
+                      TEXT: 'Text' | FILLS: ['#0b3dd0'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "DELIVERY"
+                  FRAME: 'Heading 3'
+                    TEXT: 'Export Native .PPTX' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 24.0px (w:800) | TEXT: "Export Native .PPTX"
+                  FRAME: 'Container'
+                    TEXT: 'Tweak slides in our live canvas or export directly to Microsoft PowerPoint, Keynote, or Google Slides. 100% vector and typography editable.' | FILLS: ['#475569'] | FONT: Inter 16.0px (w:400) | TEXT: "Tweak slides in our live canvas or export directly to Micros..."
+                FRAME: 'Background+Border' | FILLS: ['#ffffff']
+                  FRAME: 'Container'
+                    VECTOR: 'Icon' | FILLS: ['#ff5722']
+                  TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:700) | TEXT: "100% Vector Shapes & Native Fonts"
+        FRAME: 'Section - SECTION 5: BENTO MATRIX & CURATED TEMPLATES' | FILLS: ['#f3f4f9']
+          FRAME: 'Container'
+            FRAME: 'Container'
+              FRAME: 'Container'
+                FRAME: 'Background+Border+Shadow' | FILLS: ['#ffdf00']
+                  TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "PRE-ENGINEERED BLUEPRINTS"
+                FRAME: 'Heading 2'
+                  TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 36.0px (w:800) | TEXT: "Curated Decks Crafted with Tier-1 Partners"
+                FRAME: 'Container'
+                  TEXT: 'Text' | FILLS: ['#475569'] | FONT: Inter 16.0px (w:400) | TEXT: "Built with former partners from Sequoia, YC alumni, and Sili..."
+              FRAME: 'Filter Buttons'
+                FRAME: 'Button' | FILLS: ['#181b25']
+                  TEXT: 'Text' | FILLS: ['#ffffff'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "ALL DECKS"
+                FRAME: 'Button' | FILLS: ['#ffffff']
+                  TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:700) | TEXT: "VC PITCH"
+                FRAME: 'Button' | FILLS: ['#ffffff']
+                  TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:700) | TEXT: "BOARD UPDATES"
+                FRAME: 'Button' | FILLS: ['#ffffff']
+                  TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:700) | TEXT: "PRODUCT ROADMAPS"
+            FRAME: '3 Curated Templates Cards'
+              FRAME: 'Template 1' | FILLS: ['#ffffff']
+                FRAME: 'Container'
+                  FRAME: 'Background+Border' | FILLS: ['#eef1fe']
+                    FRAME: 'B2B SaaS pitch deck template'
+                    FRAME: 'Background+Border' | FILLS: ['#181b25']
+                      TEXT: 'Text' | FILLS: ['#ffffff'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "14 SLIDES"
+                  TEXT: 'Text' | FILLS: ['#0b3dd0'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "INSTITUTIONAL VENTURE"
+                  FRAME: 'Heading 3'
+                    TEXT: 'HyperScale B2B SaaS Pitch' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 20.0px (w:800) | TEXT: "HyperScale B2B SaaS Pitch"
+                  FRAME: 'Container'
+                    TEXT: 'Designed for $3M - $15M rounds. Focuses on cohort graphs, unit economics, and pipeline expansion.' | FILLS: ['#475569'] | FONT: Inter 14.0px (w:400) | TEXT: "Designed for $3M - $15M rounds. Focuses on cohort graphs, un..."
+                FRAME: 'Container'
+                  FRAME: 'Button' | FILLS: ['#0b3dd0']
+                    FRAME: 'Container'
+                      TEXT: 'Text' | FILLS: ['#ffffff'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "USE THIS BLUEPRINT"
+                    FRAME: 'Container'
+                      VECTOR: 'Icon' | FILLS: ['#ffffff']
+              FRAME: 'Template 2' | FILLS: ['#ffffff']
+                FRAME: 'Container'
+                  FRAME: 'Background+Border' | FILLS: ['#fff2ee']
+                    FRAME: 'AI DeepTech pitch deck template'
+                    FRAME: 'Background+Border' | FILLS: ['#ff5722']
+                      TEXT: 'Text' | FILLS: ['#ffffff'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "10 SLIDES"
+                  TEXT: 'Text' | FILLS: ['#ff5722'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "SEED & PRE-SEED"
+                  FRAME: 'Heading 3'
+                    TEXT: 'Series Seed AI & DeepTech' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 20.0px (w:800) | TEXT: "Series Seed AI & DeepTech"
+                  FRAME: 'Container'
+                    TEXT: 'Emphasizes proprietary model evaluations, team pedigree, compute moat, and early design partners.' | FILLS: ['#475569'] | FONT: Inter 14.0px (w:400) | TEXT: "Emphasizes proprietary model evaluations, team pedigree, com..."
+                FRAME: 'Container'
+                  FRAME: 'Button' | FILLS: ['#ff5722']
+                    FRAME: 'Container'
+                      TEXT: 'Text' | FILLS: ['#ffffff'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "USE THIS BLUEPRINT"
+                    FRAME: 'Container'
+                      VECTOR: 'Icon' | FILLS: ['#ffffff']
+              FRAME: 'Template 3' | FILLS: ['#ffffff']
+                FRAME: 'Container'
+                  FRAME: 'Background+Border' | FILLS: ['#fffbe6']
+                    FRAME: 'Quarterly board update template'
+                    FRAME: 'Background+Border' | FILLS: ['#181b25']
+                      TEXT: 'Text' | FILLS: ['#ffffff'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "18 SLIDES"
+                  TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "GOVERNANCE & OPS"
+                  FRAME: 'Heading 3'
+                    TEXT: 'Quarterly Executive Review' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 20.0px (w:800) | TEXT: "Quarterly Executive Review"
+                  FRAME: 'Container'
+                    TEXT: 'Dense, authoritative structure for board members and executive reviews with built-in waterfall charts.' | FILLS: ['#475569'] | FONT: Inter 14.0px (w:400) | TEXT: "Dense, authoritative structure for board members and executi..."
+                FRAME: 'Container'
+                  FRAME: 'Button' | FILLS: ['#181b25']
+                    FRAME: 'Container'
+                      TEXT: 'Text' | FILLS: ['#ffffff'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "USE THIS BLUEPRINT"
+                    FRAME: 'Container'
+                      VECTOR: 'Icon' | FILLS: ['#ffffff']
+        FRAME: 'Section - SECTION 6: TRANSPARENT PRICING WITH ANNUAL SAVINGS TOGGLE' | FILLS: ['#ffffff']
+          FRAME: 'Container'
+            FRAME: 'Container'
+              FRAME: 'Background+Border+Shadow' | FILLS: ['#fffbe6']
+                TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "HONEST SAAS PRICING"
+              FRAME: 'Heading 2'
+                TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 48.0px (w:800) | TEXT: "Invest in Closed Deals, Not Slide Fatigue"
+              FRAME: 'Container'
+                TEXT: 'Text' | FILLS: ['#475569'] | FONT: Inter 18.0px (w:400) | TEXT: "Start generating for free. Upgrade when you need unlimited d..."
+              FRAME: 'Toggle' | FILLS: ['#f3f4f9']
+                FRAME: 'Button'
+                  TEXT: 'Text' | FILLS: ['#475569'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "MONTHLY"
+                FRAME: 'Button' | FILLS: ['#ffdf00']
+                  TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "ANNUAL (SAVE 25% 🔥)"
+            FRAME: '3 Pricing Cards'
+              FRAME: 'Free Tier' | FILLS: ['#fffbe6']
+                FRAME: 'Container'
+                  TEXT: 'Text' | FILLS: ['#475569'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "FREE EXPLORER"
+                  FRAME: 'Heading 3'
+                    TEXT: 'Starter' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 24.0px (w:800) | TEXT: "Starter"
+                  FRAME: 'Container'
+                    TEXT: 'For individual founders testing the AI presentation engine.' | FILLS: ['#475569'] | FONT: Inter 14.0px (w:400) | TEXT: "For individual founders testing the AI presentation engine."
+                  FRAME: 'Paragraph'
+                    TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 48.0px (w:800) | TEXT: "$0"
+                    TEXT: 'Text' | FILLS: ['#475569'] | FONT: Inter 14.0px (w:700) | TEXT: " / month forever"
+                  FRAME: 'List'
+                    FRAME: 'Item'
+                      FRAME: 'Background+Border' | FILLS: ['#d4f933']
+                        VECTOR: 'Icon' | FILLS: ['#181b25']
+                      TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Inter 14.0px (w:500) | TEXT: "3 free pitch decks per month"
+                    FRAME: 'Item'
+                      FRAME: 'Background+Border' | FILLS: ['#d4f933']
+                        VECTOR: 'Icon' | FILLS: ['#181b25']
+                      TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Inter 14.0px (w:500) | TEXT: "Up to 10 slides per deck"
+                    FRAME: 'Item'
+                      FRAME: 'Background+Border' | FILLS: ['#d4f933']
+                        VECTOR: 'Icon' | FILLS: ['#181b25']
+                      TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Inter 14.0px (w:500) | TEXT: "Prompt to PPT synthesis mode"
+                    FRAME: 'Item'
+                      FRAME: 'Background+Border' | FILLS: ['#d4f933']
+                        VECTOR: 'Icon' | FILLS: ['#181b25']
+                      TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Inter 14.0px (w:500) | TEXT: "Standard PDF export"
+                    FRAME: 'Item'
+                      FRAME: 'Background+Border' | FILLS: ['#e2e8f0']
+                        TEXT: 'Text' | FILLS: ['#181b25'] | FONT: FreeSans 12.0px (w:700) | TEXT: "✕"
+                      TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Inter 14.0px (w:500) | TEXT: "250-page PDF OCR ingestion"
+                FRAME: 'Button:margin'
+                  FRAME: 'Button' | FILLS: ['#ffffff']
+                    TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "START FREE NOW"
+              FRAME: 'Enterprise Card' | FILLS: ['#f5f3ff']
+                FRAME: 'Container'
+                  TEXT: 'Text' | FILLS: ['#0b3dd0'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "FIRMS & CONSULTANCIES"
+                  FRAME: 'Heading 3'
+                    TEXT: 'Enterprise' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 24.0px (w:800) | TEXT: "Enterprise"
+                  FRAME: 'Container'
+                    TEXT: 'For venture firms, consultancies, and multi- team product orgs.' | FILLS: ['#475569'] | FONT: Inter 14.0px (w:400) | TEXT: "For venture firms, consultancies, and multi- team product or..."
+                  FRAME: 'Paragraph'
+                    TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 48.0px (w:800) | TEXT: "Custom"
+                    TEXT: 'Text' | FILLS: ['#475569'] | FONT: Inter 14.0px (w:700) | TEXT: " / seat pool"
+                  FRAME: 'List'
+                    FRAME: 'Item'
+                      FRAME: 'Background+Border' | FILLS: ['#d4f933']
+                        VECTOR: 'Icon' | FILLS: ['#181b25']
+                      TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Inter 14.0px (w:500) | TEXT: "Everything in Pro Maker"
+                    FRAME: 'Item'
+                      FRAME: 'Background+Border' | FILLS: ['#d4f933']
+                        VECTOR: 'Icon' | FILLS: ['#181b25']
+                      TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Inter 14.0px (w:500) | TEXT: "Unlimited Corporate Brand Kits"
+                    FRAME: 'Item'
+                      FRAME: 'Background+Border' | FILLS: ['#d4f933']
+                        VECTOR: 'Icon' | FILLS: ['#181b25']
+                      TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Inter 14.0px (w:500) | TEXT: "Dedicated Private Model (Zero Data Retention)"
+                    FRAME: 'Item'
+                      FRAME: 'Background+Border' | FILLS: ['#d4f933']
+                        VECTOR: 'Icon' | FILLS: ['#181b25']
+                      TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Inter 14.0px (w:500) | TEXT: "Okta SAML SSO & SOC2 Type II"
+                    FRAME: 'Item'
+                      FRAME: 'Background+Border' | FILLS: ['#d4f933']
+                        VECTOR: 'Icon' | FILLS: ['#181b25']
+                      TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Inter 14.0px (w:500) | TEXT: "Dedicated On-Call Slide Designer"
+                FRAME: 'Button:margin'
+                  FRAME: 'Button' | FILLS: ['#0b3dd0']
+                    TEXT: 'Text' | FILLS: ['#ffffff'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "TALK TO SALES TEAM"
+              FRAME: 'Pro Maker (Vibrant Highlighted Card)' | FILLS: ['#181b25']
+                FRAME: 'Container'
+                  TEXT: 'Text' | FILLS: ['#d4f933'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "ACTIVE DEALMAKER"
+                  FRAME: 'Heading 3'
+                    TEXT: 'Pro Maker' | FILLS: ['#ffffff'] | FONT: Plus Jakarta Sans 30.0px (w:800) | TEXT: "Pro Maker"
+                  FRAME: 'Container'
+                    TEXT: 'Engineered for startup founders, growth leads, and venture teams.' | FILLS: ['#cbd5e1'] | FONT: Inter 14.0px (w:400) | TEXT: "Engineered for startup founders, growth leads, and venture t..."
+                  FRAME: 'Paragraph'
+                    TEXT: 'Text' | FILLS: ['#ffdf00'] | FONT: Plus Jakarta Sans 48.0px (w:800) | TEXT: "$24"
+                    TEXT: 'Text' | FILLS: ['#cbd5e1'] | FONT: Inter 14.0px (w:700) | TEXT: " / month (billed annually)"
+                  FRAME: 'List'
+                    FRAME: 'Item'
+                      FRAME: 'Background' | FILLS: ['#d4f933']
+                        VECTOR: 'Icon' | FILLS: ['#181b25']
+                      FRAME: 'Strong'
+                        TEXT: 'Text' | FILLS: ['#e2e8f0'] | FONT: Inter 14.0px (w:700) | TEXT: "Unlimited"
+                      TEXT: 'Text' | FILLS: ['#e2e8f0'] | FONT: Inter 14.0px (w:400) | TEXT: "AI deck generation"
+                    FRAME: 'Item'
+                      FRAME: 'Background' | FILLS: ['#d4f933']
+                        VECTOR: 'Icon' | FILLS: ['#181b25']
+                      TEXT: 'Text' | FILLS: ['#e2e8f0'] | FONT: Inter 14.0px (w:400) | TEXT: "250-page PDF & Document Ingestion"
+                    FRAME: 'Item'
+                      FRAME: 'Background' | FILLS: ['#d4f933']
+                        VECTOR: 'Icon' | FILLS: ['#181b25']
+                      TEXT: 'Text' | FILLS: ['#e2e8f0'] | FONT: Inter 14.0px (w:400) | TEXT: "Napkin wireframe to Vector PPTX"
+                    FRAME: 'Item'
+                      FRAME: 'Background' | FILLS: ['#d4f933']
+                        VECTOR: 'Icon' | FILLS: ['#181b25']
+                      TEXT: 'Text' | FILLS: ['#e2e8f0'] | FONT: Inter 14.0px (w:400) | TEXT: "Native PowerPoint (.pptx) Vector Export"
+                    FRAME: 'Item'
+                      FRAME: 'Background' | FILLS: ['#d4f933']
+                        VECTOR: 'Icon' | FILLS: ['#181b25']
+                      TEXT: 'Text' | FILLS: ['#e2e8f0'] | FONT: Inter 14.0px (w:400) | TEXT: "1 Master Brand Kit Sync"
+                FRAME: 'Button:margin'
+                  FRAME: 'Button' | FILLS: ['#ff5722']
+                    TEXT: 'Text' | FILLS: ['#ffffff'] | FONT: Plus Jakarta Sans 14.0px (w:800) | TEXT: "START 7-DAY PRO TRIAL"
+                FRAME: 'Background+Border+Shadow' | FILLS: ['#ff5722']
+                  TEXT: 'Text' | FILLS: ['#ffffff'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "MOST POPULAR"
+        FRAME: 'Section - SECTION 7: FAQ & HIGH-ENERGY CTA BANNER' | FILLS: ['#f3f4f9']
+          FRAME: 'Container'
+            FRAME: 'Container'
+              FRAME: 'Background+Border+Shadow' | FILLS: ['#ffffff']
+                TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "CLEAR ANSWERS"
+              FRAME: 'Heading 2'
+                TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 36.0px (w:800) | TEXT: "Frequently Asked Questions"
+            FRAME: 'FAQ Accordion Items'
+              FRAME: 'Item 1' | FILLS: ['#ffffff']
+                FRAME: 'Container'
+                  FRAME: 'Heading 4'
+                    TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 18.0px (w:800) | TEXT: "Are the exported presentations really 100% editable in Power..."
+                  FRAME: 'Container'
+                    VECTOR: 'Icon' | FILLS: ['#181b25']
+              FRAME: 'Item 2' | FILLS: ['#ffffff']
+                FRAME: 'Container'
+                  FRAME: 'Heading 4'
+                    TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 18.0px (w:800) | TEXT: "Is my sensitive financial model or confidential pitch IP saf..."
+                  FRAME: 'Container'
+                    VECTOR: 'Icon' | FILLS: ['#181b25']
+              FRAME: 'Item 3' | FILLS: ['#ffffff']
+                FRAME: 'Container'
+                  FRAME: 'Heading 4'
+                    TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 18.0px (w:800) | TEXT: "What is the page limit for PDF and financial spreadsheet ing..."
+                  FRAME: 'Container'
+                    VECTOR: 'Icon' | FILLS: ['#181b25']
+            FRAME: 'FINAL BOLD AGENCY CTA CARD' | FILLS: ['#ffdf00']
+              FRAME: 'Background+Border+Shadow' | FILLS: ['#ffffff']
+                TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "🚀 IMMEDIATE ACCELERATION"
+              FRAME: 'Heading 2'
+                TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 48.0px (w:800) | TEXT: "Stop Staring at Blank Slides. Build Your Deck in 45 Seconds."
+              FRAME: 'Container'
+                TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Inter 18.0px (w:500) | TEXT: "Join 140,000+ founders and executives delivering high-convic..."
+              FRAME: 'Container'
+                FRAME: 'Input' | FILLS: ['#ffffff']
+                  FRAME: 'Container'
+                    TEXT: 'Enter your work email...' | FILLS: ['#94a3b8'] | FONT: Inter 16.0px (w:600) | TEXT: "Enter your work email..."
+                FRAME: 'Button' | FILLS: ['#ff5722']
+                  FRAME: 'Container'
+                    TEXT: 'Text' | FILLS: ['#ffffff'] | FONT: Plus Jakarta Sans 14.0px (w:800) | TEXT: "START FREE"
+                  FRAME: 'Container'
+                    VECTOR: 'Icon' | FILLS: ['#ffffff']
+              FRAME: 'Container'
+                TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:700) | TEXT: "No credit card required • 3 free presentations included"
+      FRAME: 'Footer - FOOTER' | FILLS: ['#ffffff']
+        FRAME: 'Container'
+          FRAME: 'HorizontalBorder'
+            FRAME: 'Container'
+              FRAME: 'Container'
+                FRAME: 'Background+Border+Shadow' | FILLS: ['#ffdf00']
+                  FRAME: 'Container'
+                    VECTOR: 'Icon' | FILLS: ['#181b25']
+                FRAME: 'Container'
+                  TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 20.0px (w:800) | TEXT: "PromptToPpt"
+              FRAME: 'Container'
+                TEXT: 'Vibrant AI presentation maker for venture deals, executive board reviews, and hyper- velocity product storytelling.' | FILLS: ['#475569'] | FONT: Inter 12.0px (w:400) | TEXT: "Vibrant AI presentation maker for venture deals, executive b..."
+              FRAME: 'Background+Border' | FILLS: ['#d4f933']
+                RECTANGLE: 'Background' | FILLS: ['#181b25']
+                TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 11.0px (w:700) | TEXT: "Solguruz Edition v3.0"
+            FRAME: 'Container'
+              FRAME: 'Heading 5'
+                TEXT: 'PRODUCT' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "PRODUCT"
+              FRAME: 'List'
+                FRAME: 'Item'
+                  TEXT: 'Ingestion Modes' | FILLS: ['#475569'] | FONT: Plus Jakarta Sans 12.0px (w:700) | TEXT: "Ingestion Modes"
+                FRAME: 'Item'
+                  TEXT: 'Interactive Studio' | FILLS: ['#475569'] | FONT: Plus Jakarta Sans 12.0px (w:700) | TEXT: "Interactive Studio"
+                FRAME: 'Item'
+                  TEXT: 'Curated Templates' | FILLS: ['#475569'] | FONT: Plus Jakarta Sans 12.0px (w:700) | TEXT: "Curated Templates"
+                FRAME: 'Item'
+                  TEXT: 'SaaS Pricing' | FILLS: ['#475569'] | FONT: Plus Jakarta Sans 12.0px (w:700) | TEXT: "SaaS Pricing"
+            FRAME: 'Container'
+              FRAME: 'Heading 5'
+                TEXT: 'FORMATS & TECH' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "FORMATS & TECH"
+              FRAME: 'List'
+                FRAME: 'Item'
+                  TEXT: '.PPTX OpenXML' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:700) | TEXT: ".PPTX OpenXML"
+                FRAME: 'Item'
+                  TEXT: 'Google Slides Bridge' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:700) | TEXT: "Google Slides Bridge"
+                FRAME: 'Item'
+                  TEXT: 'Keynote Native' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:700) | TEXT: "Keynote Native"
+                FRAME: 'Item'
+                  TEXT: 'Vision OCR Engine' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:700) | TEXT: "Vision OCR Engine"
+            FRAME: 'Container'
+              FRAME: 'Heading 5'
+                TEXT: 'TRUST & PRIVACY' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "TRUST & PRIVACY"
+              FRAME: 'Container'
+                TEXT: 'Zero data retention. Isolated sandboxed computation for enterprise decks.' | FILLS: ['#475569'] | FONT: Inter 12.0px (w:400) | TEXT: "Zero data retention. Isolated sandboxed computation for ente..."
+              FRAME: 'Container'
+                FRAME: 'Container'
+                  VECTOR: 'Icon' | FILLS: ['#059669']
+                TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 12.0px (w:800) | TEXT: "SOC2 Type II Certified"
+          FRAME: 'Container'
+            FRAME: 'Container'
+              TEXT: 'Text' | FILLS: ['#475569'] | FONT: Plus Jakarta Sans 12.0px (w:700) | TEXT: "© 2025 PromptToPpt Studio Inc. Inspired by Solguruz Creative..."
+            FRAME: 'Container'
+              FRAME: 'Link'
+                TEXT: 'Text' | FILLS: ['#475569'] | FONT: Plus Jakarta Sans 12.0px (w:700) | TEXT: "Privacy Protocol"
+              FRAME: 'Link'
+                TEXT: 'Text' | FILLS: ['#475569'] | FONT: Plus Jakarta Sans 12.0px (w:700) | TEXT: "Terms of Use"
+              FRAME: 'Link'
+                TEXT: 'Text' | FILLS: ['#475569'] | FONT: Plus Jakarta Sans 12.0px (w:700) | TEXT: "Security Dossier"
+      FRAME: 'Header - STICKY NAVBAR' | FILLS: ['#ffffff']
+        FRAME: 'Container'
+          FRAME: 'Link'
+            FRAME: 'Background+Border+Shadow' | FILLS: ['#ffdf00']
+              FRAME: 'Container'
+                VECTOR: 'Icon' | FILLS: ['#181b25']
+            FRAME: 'Container'
+              FRAME: 'Container'
+                TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 24.0px (w:800) | TEXT: "PromptToPpt"
+              FRAME: 'Background+Border+Shadow' | FILLS: ['#ff5722']
+                TEXT: 'Text' | FILLS: ['#ffffff'] | FONT: Inter 10.0px (w:700) | TEXT: "STUDIO 3.0"
+          FRAME: 'Nav Links'
+            FRAME: 'Link'
+              TEXT: 'Text' | FILLS: ['#475569'] | FONT: Plus Jakarta Sans 14.0px (w:700) | TEXT: "Ingest Modes"
+              FRAME: 'Background+Border' | FILLS: ['#fffbe6']
+                TEXT: 'Text' | FILLS: ['#181b25'] | FONT: Plus Jakarta Sans 11.0px (w:800) | TEXT: "4"
+            FRAME: 'Link'
+              TEXT: 'Text' | FILLS: ['#475569'] | FONT: Plus Jakarta Sans 14.0px (w:700) | TEXT: "Interactive Studio"
+            FRAME: 'Link'
+              TEXT: 'Text' | FILLS: ['#475569'] | FONT: Plus Jakarta Sans 14.0px (w:700) | TEXT: "How It Works"
+            FRAME: 'Link'
+              TEXT: 'Text' | FILLS: ['#475569'] | FONT: Plus Jakarta Sans 14.0px (w:700) | TEXT: "Templates"
+            FRAME: 'Link'
+              TEXT: 'Text' | FILLS: ['#475569'] | FONT: Plus Jakarta Sans 14.0px (w:700) | TEXT: "Pricing"
+            FRAME: 'Link'
+              TEXT: 'Text' | FILLS: ['#475569'] | FONT: Plus Jakarta Sans 14.0px (w:700) | TEXT: "FAQ"
+          FRAME: 'CTA Actions'
+            FRAME: 'Link'
+              TEXT: 'Text' | FILLS: ['#0f172a'] | FONT: Plus Jakarta Sans 14.0px (w:700) | TEXT: "Log In"
+            FRAME: 'Link' | FILLS: ['#ff5722']
+              FRAME: 'Container'
+                TEXT: 'Text' | FILLS: ['#ffffff'] | FONT: Plus Jakarta Sans 14.0px (w:800) | TEXT: "Create Free Deck"
+              FRAME: 'Container'
+                VECTOR: 'Icon' | FILLS: ['#ffffff']
