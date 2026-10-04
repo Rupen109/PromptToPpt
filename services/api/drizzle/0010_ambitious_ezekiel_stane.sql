@@ -1,0 +1,1 @@
+ALTER TABLE "presentation" ADD COLUMN "revision" integer DEFAULT 1 NOT NULL;

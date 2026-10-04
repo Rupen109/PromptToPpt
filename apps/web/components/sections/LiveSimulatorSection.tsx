@@ -2,27 +2,27 @@ import React from 'react';
 
 export function LiveSimulatorSection() {
   return (
-    <div className="bg-gradient-to-b from-[#f0f4f8] to-white pb-24 px-6 text-center z-10 relative">
+    <div className="bg-gradient-to-b from-[#f0f4f8] to-white pt-14 md:pt-24 pb-16 md:pb-24 px-4 sm:px-6 text-center z-10 relative">
       <div className="max-w-[1150px] mx-auto">
-        <div className="mt-24 mb-8">
+        <div className="mb-8">
           <div className="inline-flex bg-white border border-foreground font-heading font-extrabold text-xs py-1 px-3 rounded-full text-slate-500 shadow-sm">
             <span className="text-accent mr-2">⚡</span>
             LIVE INGESTION SIMULATOR
           </div>
-          <h2 className="font-heading text-4xl font-extrabold mt-4 text-foreground">See Raw Chaos Transform into High-Conviction Slides</h2>
+          <h2 className="font-heading text-3xl md:text-4xl font-extrabold mt-4 text-foreground">See Raw Chaos Transform into High-Conviction Slides</h2>
         </div>
 
-        <div className="bg-white rounded-[32px] p-12 shadow-[0_20px_40px_rgba(0,0,0,0.05)] border border-border text-left relative">
-          <div className="flex gap-20 items-center relative">
+        <div className="bg-white rounded-[32px] p-5 md:p-12 shadow-[0_20px_40px_rgba(0,0,0,0.05)] border border-border text-left relative">
+          <div className="flex flex-col md:flex-row gap-10 md:gap-20 items-stretch md:items-center relative">
             
             {/* Left: Raw Messy Source Input Mockup */}
-            <div className="flex-1 bg-white border-2 border-dashed border-border-strong rounded-3xl p-8 min-h-[340px] flex flex-col gap-6">
-              <div className="bg-slate-100 border border-border p-4 rounded-md font-heading text-xs font-bold flex justify-between items-start">
-                <div className="flex items-start gap-2">
-                  <span className="inline-block w-3 h-3 bg-red-500 rounded-full mt-0.5"></span>
-                  <span className="text-slate-600 leading-tight">INPUT:<br/>CONFIDENTIAL_MODEL_V3.PDF</span>
+            <div className="flex-1 min-w-0 bg-white border-2 border-dashed border-border-strong rounded-3xl p-4 sm:p-8 md:min-h-[340px] flex flex-col gap-6">
+              <div className="bg-slate-100 border border-border p-4 rounded-md font-heading text-xs font-bold flex flex-wrap justify-between items-start gap-2">
+                <div className="flex items-start gap-2 min-w-0">
+                  <span className="inline-block w-3 h-3 shrink-0 bg-red-500 rounded-full mt-0.5"></span>
+                  <span className="text-slate-600 leading-tight break-words [overflow-wrap:anywhere]">INPUT:<br/>CONFIDENTIAL_MODEL_V3.PDF</span>
                 </div>
-                <span className="text-[11px] bg-red-100 text-red-600 py-1.5 px-2.5 rounded text-left leading-tight">
+                <span className="shrink-0 ml-2 text-[11px] bg-red-100 text-red-700 py-1.5 px-2.5 rounded text-left leading-tight">
                   42 Pages<br/>Unstructured
                 </span>
               </div>
@@ -59,19 +59,19 @@ export function LiveSimulatorSection() {
             </div>
 
             {/* Center Arrow */}
-            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center">
+            <div className="md:absolute md:left-1/2 md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2 flex flex-col items-center -my-4 md:my-0 rotate-90 md:rotate-0">
               <div className="bg-highlight border-2 border-foreground w-12 h-12 rounded-full flex items-center justify-center font-bold text-xl shadow-[2px_2px_0px_0px_var(--color-text-primary)] z-10 text-foreground">
                 →
               </div>
-              <div className="bg-white border border-border rounded-full py-1 px-3 text-[10px] font-bold text-slate-500 mt-2 shadow-sm whitespace-nowrap relative z-10">
+              <div className="bg-white border border-border rounded-full py-1 px-3 text-[10px] font-bold text-slate-500 mt-2 shadow-sm whitespace-nowrap relative z-10 -rotate-90 md:rotate-0">
                 Synthesized in 28s
               </div>
             </div>
 
             {/* Right: Rendered Presentation Slide */}
-            <div className="flex-1 bg-foreground text-white rounded-3xl p-8 min-h-[340px] flex flex-col shadow-2xl">
+            <div className="flex-1 min-w-0 bg-foreground text-white rounded-3xl p-8 min-h-[340px] flex flex-col shadow-2xl">
               <div className="flex justify-between items-start border-b border-slate-700 pb-4 mb-6">
-                <span className="bg-primary/20 text-primary py-1 px-2 rounded text-[10px] font-extrabold leading-tight">
+                <span className="bg-primary/20 text-indigo-200 py-1 px-2 rounded text-[10px] font-extrabold leading-tight">
                   SLIDE 04:<br/>TRACTION
                 </span>
                 <span className="text-slate-300 text-xs font-bold">

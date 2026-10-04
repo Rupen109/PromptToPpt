@@ -1,89 +1,198 @@
-import React from 'react';
+'use client'
+
+import React, { useRef, useState } from 'react'
+import { ApiError } from '@prompttoppt/api-client'
+import { api } from '@/lib/api'
+import { Button } from '@/components/ui/Button'
+import { EDITOR_URL } from '@/lib/env'
+
+const QUICK_PROMPTS = [
+  ['🚀 $8.5M Series A Pitch', 'Series A pitch deck for a B2B AI operations startup raising $8.5M'],
+  ['📊 Q3 Board Governance', 'Q3 board governance update covering performance, risks and decisions needed'],
+  ['🛠 GTM Product Launch', 'Go-to-market launch plan for a new B2B SaaS product'],
+] as const
+
+const MAX_ATTACHMENTS = 5
+const ACCEPT = '.pdf,.pptx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,text/markdown'
+const KIND_ICON = { pdf: '📄', pptx: '📊', text: '📝', url: '🔗' } as const
+
+/** A source the visitor attached: uploaded + read by the server immediately, so problems are reported while they're still here. */
+interface Attachment {
+  key: string
+  label: string
+  kind?: keyof typeof KIND_ICON
+  id?: string
+  status: 'uploading' | 'ready' | 'error'
+  error?: string
+}
 
 export function HeroSection() {
+  const [prompt, setPrompt] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [atts, setAtts] = useState<Attachment[]>([])
+  const [linkOpen, setLinkOpen] = useState(false)
+  const [link, setLink] = useState('')
+  const [drag, setDrag] = useState(false)
+  const fileInput = useRef<HTMLInputElement>(null)
+  const linkInput = useRef<HTMLInputElement>(null)
+  const promptInput = useRef<HTMLTextAreaElement>(null)
+  const uploading = atts.some((a) => a.status === 'uploading')
+  const patch = (key: string, p: Partial<Attachment>) => setAtts((cur) => cur.map((a) => (a.key === key ? { ...a, ...p } : a)))
+  const room = () => MAX_ATTACHMENTS - atts.length
+
+  async function addFiles(files: File[]) {
+    setError(null)
+    const take = files.slice(0, Math.max(0, room()))
+    if (files.length > take.length) setError(`You can attach up to ${MAX_ATTACHMENTS} sources.`)
+    for (const f of take) {
+      const key = `${Date.now()}-${Math.random().toString(36).slice(2)}`
+      const tooBig = f.size > 15 * 1024 * 1024
+      setAtts((cur) => [...cur, { key, label: f.name, status: tooBig ? 'error' : 'uploading', ...(tooBig ? { error: 'Larger than 15 MB' } : {}) }])
+      if (tooBig) continue
+      try {
+        const a = await api.addDraftFile(f)
+        patch(key, { status: 'ready', id: a.id, kind: a.kind, label: f.name })
+      } catch (e) {
+        patch(key, { status: 'error', error: e instanceof ApiError ? e.message : 'Could not read that file' })
+      }
+    }
+  }
+
+  async function addLink() {
+    const raw = link.trim()
+    if (!raw) return
+    if (room() <= 0) return setError(`You can attach up to ${MAX_ATTACHMENTS} sources.`)
+    const url = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`
+    setError(null)
+    setLink('')
+    const key = `${Date.now()}-${Math.random().toString(36).slice(2)}`
+    setAtts((cur) => [...cur, { key, label: url.replace(/^https?:\/\/(www\.)?/i, ''), kind: 'url', status: 'uploading' }])
+    try {
+      const a = await api.addDraftLink(url)
+      patch(key, { status: 'ready', id: a.id, label: a.title || url })
+    } catch (e) {
+      patch(key, { status: 'error', error: e instanceof ApiError ? e.message : 'Could not read that page' })
+    }
+  }
+
+  // Store the prompt server-side and hand the editor an opaque id — never put prompt text in a URL.
+  async function generate() {
+    const ready = atts.filter((a) => a.status === 'ready' && a.id)
+    const text = prompt.trim() || (ready.length ? 'Create a presentation from the attached sources' : '')
+    if (!text) return setError('Describe your presentation first.')
+    if (uploading) return setError('Still reading your attachments — one moment.')
+    setBusy(true)
+    setError(null)
+    try {
+      const { id } = await api.createDraft(text, ready.map((a) => a.id!))
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- cross-origin editor subdomain
+      window.location.assign(`${EDITOR_URL}/start?draft=${encodeURIComponent(id)}`)
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Could not start your presentation. Please try again.')
+      setBusy(false)
+    }
+  }
+
   return (
-    <section className="bg-gradient-to-b from-[#f8f9fc] to-[#f0f4f8] py-20 px-6 text-center relative overflow-hidden z-0">
+    <section className="bg-gradient-to-b from-[#f8f9fc] to-[#f0f4f8] py-12 sm:py-16 md:py-20 px-4 sm:px-6 text-center relative overflow-hidden z-0">
       {/* Blurred blobs */}
       <div className="absolute rounded-full blur-[100px] -z-10 w-[300px] h-[300px] bg-[rgba(255,223,0,0.4)] -top-[50px] -left-[100px]"></div>
       <div className="absolute rounded-full blur-[100px] -z-10 w-[400px] h-[400px] bg-[rgba(255,87,34,0.3)] top-[100px] -right-[100px]"></div>
 
-      <div className="inline-flex items-center gap-3 bg-white border-2 border-foreground rounded-full py-2 px-5 mb-8 shadow-[3px_3px_0px_0px_var(--color-text-primary)]">
-        <span className="font-heading font-extrabold text-sm text-foreground"><span className="text-highlight">O</span> THE AGENCY-GRADE PITCH DECK ENGINE</span>
-        <span className="text-foreground text-sm font-bold">•</span>
-        <span className="font-heading font-bold text-sm text-slate-600">Over 140,000 Decks Synthesized</span>
+      <div className="inline-flex flex-col sm:flex-row items-center justify-center gap-x-3 gap-y-0.5 bg-white border-2 border-foreground rounded-3xl sm:rounded-full py-2 px-4 sm:px-5 mb-6 sm:mb-8 max-w-full shadow-[3px_3px_0px_0px_var(--color-text-primary)]">
+        <span className="font-heading font-extrabold text-xs sm:text-sm text-foreground"><span className="text-highlight">O</span> THE AGENCY-GRADE PITCH DECK ENGINE</span>
+        <span aria-hidden className="hidden sm:inline text-foreground text-sm font-bold">•</span>
+        <span className="font-heading font-bold text-xs sm:text-sm text-slate-600">PDF · PPTX · TXT · Web links</span>
       </div>
       
-      <h1 className="text-6xl leading-tight mb-6 max-w-[900px] mx-auto font-heading font-extrabold">
+      <h1 className="text-[1.9rem] min-[400px]:text-[2.15rem] sm:text-5xl lg:text-6xl leading-[1.18] sm:leading-tight mb-5 sm:mb-6 max-w-[900px] mx-auto font-heading font-extrabold text-balance">
         Turn Messy Documents into <br/>
-        <span className="bg-secondary px-2 rounded-sm inline-block -rotate-2 shadow-solid border-2 border-foreground">Boardroom-Ready</span><br/>
+        <span className="bg-secondary px-2 rounded-sm inline-block max-w-full -rotate-2 shadow-solid border-2 border-foreground my-1">Boardroom-Ready</span><br/>
         Presentations in 45 Seconds.
       </h1>
       
-      <p className="text-xl max-w-[700px] mx-auto mb-12 text-slate-600">
-        Stop agonizing over PowerPoint formatting. Type a prompt, drop a PDF, or snap a whiteboard photo. Our dual-agent AI builds high-conviction slides instantly.
+      <p className="text-base sm:text-lg md:text-xl max-w-[700px] mx-auto mb-8 sm:mb-12 text-slate-600">
+        Stop agonizing over PowerPoint formatting. Type a prompt, drop in a PDF or PowerPoint, or paste a website link. Our AI builds a designed, editable deck for you in seconds.
       </p>
 
       {/* Dynamic Prompt Builder */}
       <div className="relative max-w-[900px] mx-auto">
-        <div className="absolute -top-[15px] left-0 right-0 flex justify-between px-12 z-10 pointer-events-none">
+        <div className="absolute -top-[15px] left-0 right-0 flex justify-between px-4 sm:px-12 z-10 pointer-events-none">
           <div className="bg-highlight text-foreground font-heading font-extrabold text-xs py-1 px-3 rounded-full border-2 border-foreground shadow-[2px_2px_0px_0px_var(--color-text-primary)] -rotate-3">⚙️ ZERO FLUFF ENGINE</div>
           <div className="bg-accent text-white font-heading font-extrabold text-xs py-1 px-3 rounded-full border-2 border-foreground shadow-[2px_2px_0px_0px_var(--color-text-primary)] rotate-3">⏱ 45S RENDER</div>
         </div>
         
-        <div className="bg-white border-4 border-foreground rounded-3xl shadow-[8px_8px_0px_0px_var(--color-text-primary)] text-left overflow-hidden">
-          <div className="flex gap-2 p-4 px-6 bg-slate-50 border-b border-border">
-            <div className="py-2 px-4 font-heading font-bold text-xs text-white bg-primary rounded-full flex items-center gap-2">
-              <span className="mr-1">✨</span> PROMPT TO DECK
-            </div>
-            <div className="py-2 px-4 font-heading font-bold text-xs text-slate-500 bg-slate-100 rounded-full flex items-center gap-2">📄 PDF & FINANCIAL MODEL</div>
-            <div className="py-2 px-4 font-heading font-bold text-xs text-slate-500 bg-slate-100 rounded-full flex items-center gap-2">📷 NAPKIN / WIREFRAME</div>
-            <div className="py-2 px-4 font-heading font-bold text-xs text-slate-500 bg-slate-100 rounded-full flex items-center gap-2">🔗 LIVE WEB SCRAPE</div>
+        <div className="bg-white border-[3px] sm:border-4 border-foreground rounded-2xl sm:rounded-3xl shadow-[5px_5px_0px_0px_var(--color-text-primary)] sm:shadow-[8px_8px_0px_0px_var(--color-text-primary)] text-left overflow-hidden">
+          <div className="flex gap-2 p-3 sm:p-4 sm:px-6 pt-5 sm:pt-4 bg-slate-50 border-b border-border flex-wrap" role="group" aria-label="Ways to start">
+            <Button pill size="sm" variant="softActive" onClick={() => promptInput.current?.focus()}>✨ Prompt to deck</Button>
+            <Button pill size="sm" variant="soft" onClick={() => fileInput.current?.click()}>📄 PDF, PPT &amp; TXT files</Button>
+            <Button pill size="sm" variant="soft" onClick={() => { setLinkOpen(true); setTimeout(() => linkInput.current?.focus(), 0) }}>🔗 Reference website</Button>
           </div>
-          
-          <div className="p-6 bg-slate-50">
-            <div className="border border-foreground rounded-lg p-4 mb-6 bg-white shadow-sm">
+
+          <div
+            className={`p-3 sm:p-6 bg-slate-50 transition-colors ${drag ? 'bg-highlight/30 outline-dashed outline-2 outline-primary -outline-offset-8' : ''}`}
+            onDragOver={(e) => { e.preventDefault(); setDrag(true) }}
+            onDragLeave={() => setDrag(false)}
+            onDrop={(e) => { e.preventDefault(); setDrag(false); void addFiles([...e.dataTransfer.files]) }}
+          >
+            {/* Attached sources sit ABOVE the prompt card, so you can see exactly what the AI will read */}
+            {(atts.length > 0 || linkOpen) && (
+              <div className="mb-4">
+                {atts.length > 0 && (
+                  <ul className="flex flex-wrap gap-2" aria-label="Attached sources">
+                    {atts.map((a) => (
+                      <li key={a.key} className={`inline-flex items-center gap-2 max-w-[300px] rounded-full border-2 pl-3 pr-1.5 py-1 text-xs font-heading font-bold ${a.status === 'error' ? 'border-red-600 bg-red-50 text-red-800' : 'border-foreground bg-white text-foreground'}`} title={a.error ?? a.label}>
+                        <span aria-hidden>{a.status === 'uploading' ? '⏳' : a.status === 'error' ? '⚠️' : KIND_ICON[a.kind ?? 'text']}</span>
+                        <span className="truncate">{a.status === 'error' ? `${a.label} — ${a.error}` : a.label}</span>
+                        {a.status === 'uploading' && <span className="text-slate-500 font-normal">reading…</span>}
+                        <button type="button" aria-label={`Remove ${a.label}`} onClick={() => setAtts((cur) => cur.filter((x) => x.key !== a.key))} className="w-5 h-5 rounded-full hover:bg-slate-200 leading-none shrink-0">×</button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {linkOpen && (
+                  <form className={`flex gap-2 ${atts.length > 0 ? 'mt-3' : ''}`} onSubmit={(e) => { e.preventDefault(); void addLink() }}>
+                    <input ref={linkInput} value={link} onChange={(e) => setLink(e.target.value)} type="text" inputMode="url" placeholder="Paste a website link, e.g. www.tata.com/newsroom/…" aria-label="Reference website link" className="flex-1 min-w-0 border-2 border-foreground rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-primary" />
+                    <Button type="submit" size="sm" variant="primary" disabled={!link.trim() || room() <= 0}>Add link</Button>
+                    <button type="button" onClick={() => setLinkOpen(false)} aria-label="Close link box" className="px-2 text-slate-500 hover:text-foreground">×</button>
+                  </form>
+                )}
+              </div>
+            )}
+
+            <div className="border border-foreground rounded-lg p-3 sm:p-4 bg-white shadow-sm">
               <label className="font-heading text-xs font-extrabold text-slate-500 mb-2 block">
                 <span className="text-primary mr-1">⚙️</span> CONVERSATIONAL SYNTHESIS PROMPT
               </label>
-              <textarea 
-                className="w-full text-base py-2 border-none bg-transparent mb-4 font-sans resize-none h-[80px] text-foreground focus:outline-none" 
-                defaultValue="Series A pitch deck for B2B AI Operations raising $8.5M. Include 142% net dollar retention, enterprise customer quotes, TAM breakdown ($14B), and competitive moat wedge against legacy incumbent tools."
+              <textarea
+                ref={promptInput}
+                className="w-full text-base py-2 border-none bg-transparent font-sans resize-none h-[110px] sm:h-[96px] text-foreground focus:outline-none"
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                maxLength={4000}
+                placeholder="Describe your presentation: topic, audience, goal… or just a topic and we'll suggest directions."
+                aria-label="Presentation prompt"
               />
-              <div className="flex items-center gap-3 mt-6 flex-wrap">
-                <span className="inline-flex items-center gap-2 bg-white border border-border py-2 px-4 rounded-full font-heading font-bold text-xs text-foreground shadow-[1px_1px_0px_0px_var(--color-border)]">
-                  <span className="w-2.5 h-2.5 rounded-full inline-block border border-foreground bg-highlight"></span>
-                  12 Slides (Recommended)
-                </span>
-                <span className="inline-flex items-center gap-2 bg-white border border-border py-2 px-4 rounded-full font-heading font-bold text-xs text-foreground shadow-[1px_1px_0px_0px_var(--color-border)]">
-                  <span className="w-2.5 h-2.5 rounded-full inline-block border border-foreground bg-primary"></span>
-                  Vibe: Bold Minimal Cobalt
-                </span>
-                <span className="inline-flex items-center gap-2 bg-white border border-border py-2 px-4 rounded-full font-heading font-bold text-xs text-foreground shadow-[1px_1px_0px_0px_var(--color-border)]">
-                  <span className="w-2.5 h-2.5 rounded-full inline-block border border-foreground bg-accent"></span>
-                  Tone: Institutional VC
-                </span>
-                <span className="font-handwriting text-lg font-bold text-primary ml-2">Click chip to load blueprint ➔</span>
+              {/* tools bottom-left, primary action bottom-right */}
+              <div className="mt-3 flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
+                  <input ref={fileInput} type="file" multiple accept={ACCEPT} className="hidden" aria-label="Attach files" onChange={(e) => { void addFiles([...(e.target.files ?? [])]); e.target.value = '' }} />
+                  <Button size="sm" variant="white" onClick={() => fileInput.current?.click()} disabled={room() <= 0} title="PDF, PowerPoint (.pptx), text or Markdown">📎 Attach files</Button>
+                  <Button size="sm" variant="white" onClick={() => { setLinkOpen((v) => !v); setTimeout(() => linkInput.current?.focus(), 0) }} disabled={room() <= 0}>🔗 Add website link</Button>
+                  <span className="hidden lg:inline text-[11px] font-heading font-bold text-slate-500">PDF · PPTX · TXT · MD</span>
+                </div>
+                <Button onClick={generate} variant="dark" size="md" depth="md" loading={busy} disabled={uploading} className="w-full sm:w-auto sm:ml-auto !normal-case !tracking-normal !text-sm">{busy ? 'Starting…' : uploading ? 'Reading files…' : 'Generate Presentation 🚀'}</Button>
               </div>
             </div>
-            
-            <div className="flex justify-between items-center mt-8 pt-6 border-t border-dashed border-border-strong">
-              <div className="flex items-center gap-3">
-                <span className="font-heading text-xs font-extrabold text-slate-500">OR DROP SOURCE FILES:</span>
-                <span className="py-1 px-3 rounded-sm font-heading font-extrabold text-xs border border-transparent bg-red-100 text-red-700">.PDF</span>
-                <span className="py-1 px-3 rounded-sm font-heading font-extrabold text-xs border border-transparent bg-blue-100 text-blue-700">.PNG</span>
-                <span className="py-1 px-3 rounded-sm font-heading font-extrabold text-xs border border-transparent bg-purple-100 text-purple-700">.FIGMA</span>
-                <span className="py-1 px-3 rounded-sm font-heading font-extrabold text-xs border border-transparent bg-green-100 text-green-700">.XLSX</span>
-              </div>
-              <button className="bg-foreground text-highlight font-heading font-extrabold text-sm py-3 px-6 rounded-md shadow-solid hover:-translate-y-0.5 transition-transform">
-                Generate 12 PPTX Slides 🚀
-              </button>
-            </div>
-            
-            <div className="mt-8 flex gap-3 items-center">
-              <span className="font-heading text-xs font-extrabold text-slate-500">QUICK TEMPLATES:</span>
-              <span className="bg-slate-200 text-foreground py-1 px-3 rounded-full font-heading font-bold text-xs cursor-pointer hover:bg-slate-300">🚀 $8.5M Series A Pitch</span>
-              <span className="bg-slate-200 text-foreground py-1 px-3 rounded-full font-heading font-bold text-xs cursor-pointer hover:bg-slate-300">📊 Q3 Board Governance</span>
-              <span className="bg-slate-200 text-foreground py-1 px-3 rounded-full font-heading font-bold text-xs cursor-pointer hover:bg-slate-300">🛠 GTM Product Launch</span>
+
+            {error && <p role="alert" className="mt-4 text-sm font-bold text-red-700">{error}</p>}
+
+            <div className="mt-5 sm:mt-6 flex gap-2 sm:gap-3 items-center flex-wrap">
+              <span className="font-heading text-xs font-extrabold text-slate-500 w-full sm:w-auto">QUICK TEMPLATES:</span>
+              {QUICK_PROMPTS.map(([label, text]) => (
+                <Button key={label} pill size="xs" variant="soft" onClick={() => setPrompt(text)} className="!normal-case !tracking-normal">{label}</Button>
+              ))}
             </div>
           </div>
         </div>

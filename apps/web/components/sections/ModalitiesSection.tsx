@@ -1,163 +1,96 @@
-import React from 'react'
+import type { ReactNode } from 'react'
+import { Card, type CardTone } from '@/components/ui/Card'
+import { Badge, Section, SectionHeader, Tag, Tile } from './ui'
+
+/** What you can feed it — every modality here is something the product really reads today. */
+const MODALITIES: { n: string; title: string; body: string; tone: CardTone; tile: 'yellow' | 'accent' | 'primary' | 'lime'; icon: string; foot: [string, string, string]; mock: ReactNode }[] = [
+  {
+    n: '01', title: 'Prompt to Complete Deck', tone: 'cream', tile: 'yellow', icon: '✨',
+    body: 'Describe your topic, audience and goal. The AI plans the storyline, then writes and designs every slide for you.',
+    foot: ['AI Storyline', 'Fast', '⚡'],
+    mock: (
+      <>
+        <MockHead title="Prompt Pipeline" tag="12 Slides" tagClass="bg-highlight text-foreground" titleClass="text-primary" />
+        <div className="mt-3 flex flex-col gap-1">
+          {['01. Problem & Macro Shift', '02. Proprietary Solution'].map((t) => <Row key={t}>{t}</Row>)}
+          <Row className="bg-secondary/40">03. $14B Addressable Market</Row>
+        </div>
+      </>
+    ),
+  },
+  {
+    n: '02', title: 'PDF & PowerPoint Ingestion', tone: 'peach', tile: 'accent', icon: '📄',
+    body: 'Upload a PDF or a .pptx deck — up to 100 pages. The AI pulls out the key points and numbers and turns them into slides, with page-level references.',
+    foot: ['PDF & PPTX', 'Up to 100 pgs', '📄'],
+    mock: (
+      <>
+        <MockHead title="Document Reader" tag="84 Pgs Read" tagClass="bg-[#fee2e2] text-[#b91c1c]" titleClass="text-accent" />
+        <div className="mt-3 flex justify-between rounded bg-[#edf0f7] px-2 py-2 font-sans font-bold text-[11px] text-[#0f172a]"><span>Q3 Financial Model</span><span className="text-accent">24 Tables</span></div>
+        <div className="mt-2 h-2 rounded-full bg-[#e2e8f0] overflow-hidden"><div className="h-full w-4/5 rounded-full bg-accent" /></div>
+      </>
+    ),
+  },
+  {
+    n: '03', title: 'Notes & Text Files', tone: 'lavender', tile: 'primary', icon: '📝',
+    body: 'Drop in meeting notes, a brief or a Markdown file — or paste text straight in. The AI organises it into a clear, structured presentation.',
+    foot: ['TXT, MD & paste', 'Instant', '⚡'],
+    mock: (
+      <>
+        <MockHead title="Notes Reader" tag=".TXT · .MD" tagClass="bg-primary/10 text-primary" titleClass="text-primary" />
+        <div className="mt-3 flex items-center justify-between rounded bg-[#edf0f7] px-3 py-2 font-sans font-bold text-[10px] text-[#0f172a]"><span>launch-notes.txt</span><span className="rounded border border-foreground bg-white px-2 py-0.5">6 key points</span></div>
+      </>
+    ),
+  },
+  {
+    n: '04', title: 'Website Links', tone: 'cream', tile: 'lime', icon: '🌐',
+    body: 'Paste a link to an article, newsroom page or company site. The AI reads the page and builds slides from what it says, citing the source.',
+    foot: ['Public web pages', 'Cites sources', '🔗'],
+    mock: (
+      <>
+        <MockHead title="Page Reader" tag="Fetched" tagClass="bg-highlight text-foreground" titleClass="text-foreground" />
+        <div className="mt-3 rounded bg-[#edf0f7] px-3 py-1.5 font-sans font-bold text-[10px] text-[#0f172a]">🔗 tata.com/newsroom/launch</div>
+        <div className="mt-1.5 rounded border border-foreground bg-white px-3 py-1.5 font-sans font-bold text-[10px] text-foreground">Extracted: 1,240 words</div>
+      </>
+    ),
+  },
+]
+
+function MockHead({ title, tag, tagClass, titleClass }: { title: string; tag: string; tagClass: string; titleClass: string }) {
+  return <div className="flex items-center justify-between gap-2"><span className={`font-heading font-extrabold text-[11px] leading-4 ${titleClass}`}>{title}</span><span className={`rounded px-1.5 font-heading font-extrabold text-[11px] leading-4 ${tagClass}`}>{tag}</span></div>
+}
+function Row({ children, className = '' }: { children: ReactNode; className?: string }) {
+  return <div className={`rounded bg-[#edf0f7] px-2 py-1 font-sans font-bold text-[10px] leading-[15px] text-foreground ${className}`}>{children}</div>
+}
 
 export function ModalitiesSection() {
   return (
-    <section className="py-24 px-6 bg-background">
-      <div className="flex justify-between items-end mb-12 text-left max-w-[1200px] mx-auto">
-        <div className="max-w-[600px]">
-          <div className="bg-[#ffdf00] inline-block py-1 px-3 font-heading font-extrabold text-xs rounded-sm border border-foreground shadow-[2px_2px_0px_0px_currentColor] mb-4">
-            MULTI-MODAL INGESTION MATRIX
-          </div>
-          <h2 className="text-4xl mb-4 leading-[1.1] font-heading font-extrabold">Give It Anything. Get Boardroom Slides.</h2>
-          <p className="text-base text-secondary">
-            We don't limit you to typing prompts into a basic textbox. Ingest messy spreadsheets, 80-page whitepapers, whiteboard drawings, or live company URLs.
-          </p>
-        </div>
-        <div className="pb-4">
-          <span className="text-accent font-handwriting text-xl font-bold">↓ Supported file types & live bridges</span>
-        </div>
+    <Section id="modalities">
+      <SectionHeader
+        align="left" max="max-w-[644px]"
+        badge={<Badge>Multi-modal ingestion matrix</Badge>}
+        title={<>Give It Anything. Get Boardroom<br className="hidden md:block" /> Slides.</>}
+        subtitle="We don't limit you to typing prompts into a basic textbox. Drop in PDFs, PowerPoint decks, notes or live website links — the AI reads them and builds your deck."
+        aside={<p className="font-handwriting text-xl font-bold text-accent flex items-center gap-2 lg:pb-1"><span aria-hidden className="inline-block animate-bounce motion-reduce:animate-none">↓</span>Supported file types &amp; live bridges</p>}
+      />
+      <div className="mt-16 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6 items-stretch">
+        {MODALITIES.map((m, i) => (
+          <Card key={m.n} as="article" tone={m.tone} index={i} className="group/card p-6 flex flex-col h-full" wrapperClassName="h-full">
+            <div className="flex items-start justify-between">
+              <Tile tone={m.tile}><span aria-hidden className="text-xl">{m.icon}</span></Tile>
+              <Tag>Modality {m.n}</Tag>
+            </div>
+            <h3 className="mt-5 font-heading font-extrabold text-xl leading-7 text-foreground xl:min-h-14">{m.title}</h3>
+            <p className="mt-3 text-sm leading-5 text-[#475569] xl:min-h-[7.5rem]">{m.body}</p>
+            <div className="mt-5 lg:flex-1 rounded-xl border-2 border-foreground bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] lg:min-h-[8.5rem]">{m.mock}</div>
+            <div className="mt-5 pt-4 border-t border-foreground flex items-center justify-between gap-3 font-heading font-extrabold text-xs leading-4">
+              <span className="text-foreground">{m.foot[0]}</span>
+              <span className={m.tone === 'peach' ? 'text-accent' : 'text-primary'}>{m.foot[1]} <span aria-hidden>{m.foot[2]}</span></span>
+            </div>
+          </Card>
+        ))}
       </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-[1200px] mx-auto">
-        {/* Card 1 */}
-        <div className="bg-[#fffbe6] border border-border-strong rounded-lg p-6 flex flex-col gap-4 shadow-sm text-left">
-          <div className="flex justify-between items-start">
-            <div className="w-12 h-12 rounded-md flex items-center justify-center border border-foreground shadow-[2px_2px_0px_0px_currentColor] bg-[#ffdf00]">
-              ✨
-            </div>
-            <div className="bg-background border border-border-strong rounded-full py-1 px-3 font-heading text-[11px] font-extrabold text-foreground">
-              MODALITY 01
-            </div>
-          </div>
-          <h3 className="font-heading text-xl font-extrabold leading-[1.2]">Prompt to Complete Deck</h3>
-          <p className="text-sm leading-relaxed text-secondary">
-            Dual-agent storyline synthesis creates problem-solution arcs, TAM calculations, and competitor moats.
-          </p>
-          
-          <div className="bg-background border border-border rounded-md p-4 flex flex-col gap-2 mt-auto shadow-[0_4px_6px_rgba(0,0,0,0.02)]">
-            <div className="flex justify-between items-center mb-2">
-              <span className="font-heading text-[11px] font-bold text-[#0b3dd0]">Prompt Pipeline</span>
-              <span className="font-heading text-[11px] font-bold py-0.5 px-1.5 rounded bg-[#d4f933] text-[#181b25]">12 Slides</span>
-            </div>
-            <div className="bg-gray-100 py-1.5 px-2 rounded text-[10px] font-bold flex justify-between items-center text-foreground">
-              <span>01. Problem & Macro Shift</span>
-            </div>
-            <div className="bg-gray-100 py-1.5 px-2 rounded text-[10px] font-bold flex justify-between items-center text-foreground">
-              <span>02. Proprietary Solution</span>
-            </div>
-            <div className="bg-highlight py-1.5 px-2 rounded text-[10px] font-bold flex justify-between items-center text-foreground">
-              <span>03. $14B Addressable Market</span>
-            </div>
-          </div>
-          
-          <div className="flex justify-between items-center border-t border-border-strong pt-4 mt-4 font-heading text-xs font-bold">
-            <span>Dual-Agent Story</span>
-            <span className="text-[#0b3dd0]">Instant ⚡</span>
-          </div>
-        </div>
-        
-        {/* Card 2 */}
-        <div className="bg-[#fff2ee] border border-border-strong rounded-lg p-6 flex flex-col gap-4 shadow-sm text-left">
-          <div className="flex justify-between items-start">
-            <div className="w-12 h-12 rounded-md flex items-center justify-center border border-foreground shadow-[2px_2px_0px_0px_currentColor] bg-accent text-white">
-              📄
-            </div>
-            <div className="bg-background border border-border-strong rounded-full py-1 px-3 font-heading text-[11px] font-extrabold text-foreground">
-              MODALITY 02
-            </div>
-          </div>
-          <h3 className="font-heading text-xl font-extrabold leading-[1.2]">PDF & Docx Ingestion</h3>
-          <p className="text-sm leading-relaxed text-secondary">
-            Extract complex financial statements, SEC filings, and 50+ page PDFs into structured charts and executive bullets.
-          </p>
-          
-          <div className="bg-background border border-border rounded-md p-4 flex flex-col gap-2 mt-auto shadow-[0_4px_6px_rgba(0,0,0,0.02)]">
-            <div className="flex justify-between items-center mb-2">
-              <span className="font-heading text-[11px] font-bold text-accent">Document OCR</span>
-              <span className="font-heading text-[11px] font-bold py-0.5 px-1.5 rounded bg-red-100 text-red-700">84 Pgs Analyzed</span>
-            </div>
-            <div className="bg-gray-100 py-1.5 px-2 rounded text-[10px] font-bold flex justify-between items-center text-foreground">
-              <span>Q3 Financial Model</span>
-              <span className="text-accent">24 Tables</span>
-            </div>
-            <div className="bg-gray-100 rounded text-[10px] font-bold flex justify-between items-center text-foreground h-5 overflow-hidden p-0">
-              <div className="w-[60%] h-full bg-accent"></div>
-            </div>
-          </div>
-          
-          <div className="flex justify-between items-center border-t border-border-strong pt-4 mt-4 font-heading text-xs font-bold">
-            <span>Smart OCR Engine</span>
-            <span className="text-accent">Up to 250 Pgs 📄</span>
-          </div>
-        </div>
-        
-        {/* Card 3 */}
-        <div className="bg-[#f5f3ff] border border-border-strong rounded-lg p-6 flex flex-col gap-4 shadow-sm text-left">
-          <div className="flex justify-between items-start">
-            <div className="w-12 h-12 rounded-md flex items-center justify-center border border-foreground shadow-[2px_2px_0px_0px_currentColor] bg-primary text-white">
-              ✏️
-            </div>
-            <div className="bg-background border border-border-strong rounded-full py-1 px-3 font-heading text-[11px] font-extrabold text-foreground">
-              MODALITY 03
-            </div>
-          </div>
-          <h3 className="font-heading text-xl font-extrabold leading-[1.2]">Napkin & Wireframe</h3>
-          <p className="text-sm leading-relaxed text-secondary">
-            Snap a phone photo of a whiteboard flowchart or app wireframe. Vision AI reconstructs editable vector shapes.
-          </p>
-          
-          <div className="bg-background border border-border rounded-md p-4 flex flex-col gap-2 mt-auto shadow-[0_4px_6px_rgba(0,0,0,0.02)]">
-            <div className="flex justify-between items-center mb-2">
-              <span className="font-heading text-[11px] font-bold text-[#0b3dd0]">Vision Vectorizer</span>
-              <span className="font-heading text-[11px] font-bold py-0.5 px-1.5 rounded bg-[#0b3dd0] text-white">Raster ➔ Vector</span>
-            </div>
-            <div className="bg-gray-100 py-1.5 px-2 rounded text-[10px] font-bold flex justify-between items-center text-foreground">
-              <span>Hand Sketch</span>
-              <span className="bg-white py-0.5 px-1 rounded border border-gray-200">Editable SVG</span>
-            </div>
-          </div>
-          
-          <div className="flex justify-between items-center border-t border-border-strong pt-4 mt-4 font-heading text-xs font-bold">
-            <span>Shape Recognition</span>
-            <span className="text-[#0b3dd0]">100% Vector 🎨</span>
-          </div>
-        </div>
-
-        {/* Card 4 */}
-        <div className="bg-[#fffbe6] border border-border-strong rounded-lg p-6 flex flex-col gap-4 shadow-sm text-left">
-          <div className="flex justify-between items-start">
-            <div className="w-12 h-12 rounded-md flex items-center justify-center border border-foreground shadow-[2px_2px_0px_0px_currentColor] bg-highlight text-foreground">
-              🌐
-            </div>
-            <div className="bg-background border border-border-strong rounded-full py-1 px-3 font-heading text-[11px] font-extrabold text-foreground">
-              MODALITY 04
-            </div>
-          </div>
-          <h3 className="font-heading text-xl font-extrabold leading-[1.2]">URL & Web Scraper</h3>
-          <p className="text-sm leading-relaxed text-secondary">
-            Paste Crunchbase, Notion, or pitch articles. Pulls verified market stats, citations, and competitor logos automatically.
-          </p>
-          
-          <div className="bg-background border border-border rounded-md p-4 flex flex-col gap-2 mt-auto shadow-[0_4px_6px_rgba(0,0,0,0.02)]">
-            <div className="flex justify-between items-center mb-2">
-              <span className="font-heading text-[11px] font-bold text-[#181b25]">Live Citation Bridge</span>
-              <span className="font-heading text-[11px] font-bold py-0.5 px-1.5 rounded bg-[#d4f933] text-[#181b25]">Verified</span>
-            </div>
-            <div className="bg-gray-100 py-1.5 px-2 rounded text-[10px] font-bold flex justify-between items-center text-foreground">
-              <span>🔗 crunchbase.com/co/zenith</span>
-            </div>
-            <div className="bg-white border border-gray-200 py-1.5 px-2 rounded text-[10px] font-bold flex justify-between items-center text-foreground">
-              <span>Verified Round: $12M</span>
-              <span className="text-emerald-600">✓</span>
-            </div>
-          </div>
-          
-          <div className="flex justify-between items-center border-t border-border-strong pt-4 mt-4 font-heading text-xs font-bold">
-            <span>Live Grounding</span>
-            <span>Zero Hallucinations 🛡️</span>
-          </div>
-        </div>
-      </div>
-    </section>
+    </Section>
   )
 }
+
+export default ModalitiesSection

@@ -1,0 +1,93 @@
+[
+  {
+    "title": "protected editor route redirects a signed-out user to login with ?next",
+    "ok": true,
+    "error": "",
+    "noise": [
+      "http 401: GET http://localhost:4000/api/v1/me",
+      "console: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+      "http 401: GET http://localhost:4000/api/v1/me",
+      "console: Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    ],
+    "ms": 560
+  },
+  {
+    "title": "login form validates: empty submit blocked, wrong password shows an error",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 877
+  },
+  {
+    "title": "signup validates: short password blocked; valid sign-up lands in the editor",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1160
+  },
+  {
+    "title": "session survives a reload and shows the signed-in sidebar (plan, credits, log out)",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 843
+  },
+  {
+    "title": "signed-in user hitting /login or /signup is not stuck (can still navigate)",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 59
+  },
+  {
+    "title": "duplicate email sign-up shows an error",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 767
+  },
+  {
+    "title": "open-redirect is blocked: ?next=https://evil.example never leaves our domains",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1155
+  },
+  {
+    "title": "login → logout → protected pages are locked again",
+    "ok": true,
+    "error": "",
+    "noise": [
+      "http 401: GET http://localhost:4000/api/v1/me",
+      "console: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+      "http 401: GET http://localhost:4000/api/v1/me",
+      "console: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+      "http 401: GET http://localhost:4000/api/v1/me",
+      "console: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+      "http 401: GET http://localhost:4000/api/v1/me",
+      "console: Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    ],
+    "ms": 868
+  },
+  {
+    "title": "login with the new account works and returns to the originally requested page",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 238
+  },
+  {
+    "title": "admin area is hidden from non-owners (no link; direct URL does not render the dashboard)",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1793
+  },
+  {
+    "title": "Google sign-in button is offered on login and signup",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 757
+  }
+]

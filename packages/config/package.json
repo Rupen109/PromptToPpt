@@ -2,5 +2,9 @@
   "name": "@prompttoppt/config",
   "version": "0.0.1",
   "private": true,
-  "description": "Shared ESLint, Prettier, TypeScript configs"
+  "description": "Shared ESLint, Prettier, TypeScript configs",
+  "files": [
+    "tsconfig.base.json",
+    "tsconfig.lib.json"
+  ]
 }

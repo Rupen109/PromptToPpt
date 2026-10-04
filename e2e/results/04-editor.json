@@ -1,0 +1,205 @@
+[
+  {
+    "title": "starter: editor loads the template deck (11 slides, canvas, toolbar, save status)",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 13
+  },
+  {
+    "title": "starter: inserting/moving objects is gated (upgrade modal) — server-side plan, not silent",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 741
+  },
+  {
+    "title": "pro: plan card shows Pro after grant (entitlements refreshed from server)",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 15
+  },
+  {
+    "title": "rail: clicking a thumbnail activates that slide; PageDown/PageUp navigate",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 707
+  },
+  {
+    "title": "rail: + New slide → blank slide and a layout slide are added and selected",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 809
+  },
+  {
+    "title": "rail: slide options menu — duplicate, move up/down, lock, colours, sticker, delete",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 2659
+  },
+  {
+    "title": "rail: right-click on a thumbnail opens the same menu",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 84
+  },
+  {
+    "title": "rail: drag a thumbnail to reorder",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 538
+  },
+  {
+    "title": "text: click selects and shows the formatting toolbar; Escape / canvas click deselects",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 274
+  },
+  {
+    "title": "text: font size −/+ changes the size",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 183
+  },
+  {
+    "title": "text: bold + alignment buttons toggle",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 226
+  },
+  {
+    "title": "text: colour swatches — Red really renders red; theme colour and custom colour apply",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 995
+  },
+  {
+    "title": "text: double-click edits inline; typing is saved (autosave → Saved) and survives reload",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 2905
+  },
+  {
+    "title": "object: drag moves, resize handle resizes, arrow keys nudge",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 958
+  },
+  {
+    "title": "object: undo / redo (buttons and ⌘Z / ⌘⇧Z) restore state",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1105
+  },
+  {
+    "title": "object: duplicate, lock (blocks delete), unlock, delete",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 909
+  },
+  {
+    "title": "insert menu: text box, rectangle, circle, sticker each add an element; image placeholder; AI image dialog opens and closes",
+    "ok": true,
+    "error": "",
+    "noise": [
+      "console: Loading the image 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/PNG_transparency_demonstration_1.png/280px-PNG_transparency_demonstration_1.png' violates the following Content Security Po",
+      "console: Loading the image 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/PNG_transparency_demonstration_1.png/280px-PNG_transparency_demonstration_1.png' violates the following Content Security Po",
+      "console: Loading the image 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/PNG_transparency_demonstration_1.png/280px-PNG_transparency_demonstration_1.png' violates the following Content Security Po",
+      "console: Loading the image 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/PNG_transparency_demonstration_1.png/280px-PNG_transparency_demonstration_1.png' violates the following Content Security Po"
+    ],
+    "ms": 2688
+  },
+  {
+    "title": "style drawer: themes tab applies a new theme to ALL slides; premium theme gated or allowed by plan",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 623
+  },
+  {
+    "title": "style drawer: tabs (design/colour/fonts), layout alternatives, background colour, font selects",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1644
+  },
+  {
+    "title": "notes: speaker notes open, type, persist across slide switch",
+    "ok": true,
+    "error": "",
+    "noise": [
+      "console: Loading the image 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/PNG_transparency_demonstration_1.png/280px-PNG_transparency_demonstration_1.png' violates the following Content Security Po",
+      "console: Loading the image 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/PNG_transparency_demonstration_1.png/280px-PNG_transparency_demonstration_1.png' violates the following Content Security Po"
+    ],
+    "ms": 536
+  },
+  {
+    "title": "title: rename the presentation → persists after reload",
+    "ok": true,
+    "error": "",
+    "noise": [
+      "console: Loading the image 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/PNG_transparency_demonstration_1.png/280px-PNG_transparency_demonstration_1.png' violates the following Content Security Po",
+      "console: Loading the image 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/PNG_transparency_demonstration_1.png/280px-PNG_transparency_demonstration_1.png' violates the following Content Security Po"
+    ],
+    "ms": 2176
+  },
+  {
+    "title": "more menu: lock slide, save version (⌘S), version history opens and restores",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 2040
+  },
+  {
+    "title": "autosave: offline edit shows the offline banner, then syncs when back online",
+    "ok": true,
+    "error": "",
+    "noise": [
+      "console: Failed to load resource: net::ERR_INTERNET_DISCONNECTED"
+    ],
+    "ms": 4697
+  },
+  {
+    "title": "keyboard shortcuts: ⌘C/⌘V paste, Delete removes, Enter edits text",
+    "ok": true,
+    "error": "",
+    "noise": [
+      "console: Loading the image 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/PNG_transparency_demonstration_1.png/280px-PNG_transparency_demonstration_1.png' violates the following Content Security Po",
+      "console: Loading the image 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/PNG_transparency_demonstration_1.png/280px-PNG_transparency_demonstration_1.png' violates the following Content Security Po"
+    ],
+    "ms": 679
+  },
+  {
+    "title": "present mode: opens, ←/→ navigate, N toggles notes, Esc returns to the editor",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 898
+  },
+  {
+    "title": "more menu: Delete presentation removes it and returns home",
+    "ok": true,
+    "error": "",
+    "noise": [
+      "http 404: GET http://localhost:4000/api/v1/presentations/kLbL6IUTG0EppGfXg7T62",
+      "console: Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "http 404: GET http://localhost:4000/api/v1/presentations/kLbL6IUTG0EppGfXg7T62",
+      "console: Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "ms": 2576
+  }
+]

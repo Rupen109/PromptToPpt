@@ -1,0 +1,23 @@
+{
+  "extends": "../../packages/config/tsconfig.base.json",
+  "compilerOptions": {
+    "types": [
+      "node"
+    ],
+    "noEmit": true,
+    "rootDir": ".",
+    "allowImportingTsExtensions": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": [
+      "ES2023"
+    ]
+  },
+  "include": [
+    "src",
+    "scripts",
+    "drizzle.config.ts",
+    "tsup.config.ts",
+    "vitest.config.ts"
+  ]
+}

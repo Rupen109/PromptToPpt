@@ -1,0 +1,6 @@
+export { CATEGORIES, type CategoryId } from './categories'
+export { DESIGNS, FREE_PER_CATEGORY, designById, type TemplateDesign } from './build'
+export { FONT_PAIRS, MAX_WEIGHT, MOTIONS, type FontKey, type MotionKey } from './kits'
+export { SKELETONS } from './skeletons'
+export { TEMPLATE_PHOTO_COUNT, composeDeck, pickDesign, templateContents, templatePhotoKey, templateSlides } from './deck'
+export * from './lab/index'

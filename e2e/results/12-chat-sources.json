@@ -1,0 +1,51 @@
+[
+  {
+    "title": "attach a document in the chat (📎) → chip appears; message mentions it",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 121
+  },
+  {
+    "title": "\"add more content from my document\" uses the attached source (facts from the document appear on slides)",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 16306
+  },
+  {
+    "title": "the conversation is kept: reload → open the panel → previous messages are still there",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 2596
+  },
+  {
+    "title": "closing and reopening the panel keeps the chat (no re-fetch flicker to the empty state)",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1405
+  },
+  {
+    "title": "the deck remembers its source: a follow-up WITHOUT re-attaching still has the document (\"Using 1 source\")",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 16841
+  },
+  {
+    "title": "Clear chat empties the conversation (slides untouched) and it stays cleared after reload",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 3798
+  },
+  {
+    "title": "another user cannot read my chat (404)",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 77
+  }
+]

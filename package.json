@@ -10,15 +10,28 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,md}\"",
-    "clean": "turbo run clean"
+    "clean": "turbo run clean",
+    "db:generate": "pnpm --filter @prompttoppt/api db:generate",
+    "db:migrate": "pnpm --filter @prompttoppt/api db:migrate",
+    "db:local": "pnpm --filter @prompttoppt/api db:local",
+    "e2e": "node e2e/run.mjs"
   },
   "devDependencies": {
-    "turbo": "^2.0.0",
+    "axe-core": "^4.13.0",
+    "fflate": "^0.8.3",
+    "playwright-core": "^1.63.0",
     "prettier": "^3.3.0",
+    "turbo": "^2.0.0",
     "typescript": "^5.5.0"
   },
   "engines": {
     "node": ">=20.0.0",
     "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.0.0",
+  "pnpm": {
+    "overrides": {
+      "image-size": ">=2.0.3"
+    }
   }
 }

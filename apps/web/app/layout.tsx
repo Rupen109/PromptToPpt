@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
-import { Inter, Plus_Jakarta_Sans, Caveat } from 'next/font/google'
+import { Inter, Plus_Jakarta_Sans, Caveat, Sora } from 'next/font/google'
 import './globals.css'
+import { SITE_URL } from '@/lib/env'
 
 // ─── Fonts ────────────────────────────────────────────────────────────────
 
@@ -18,6 +19,9 @@ const plusJakartaSans = Plus_Jakarta_Sans({
   weight: ['700', '800'],
 })
 
+// Wordmark only: a light + extra-bold pair (see docs/BRAND.md)
+const sora = Sora({ subsets: ['latin'], variable: '--font-logo', display: 'swap', weight: ['300', '800'] })
+
 const caveat = Caveat({
   subsets: ['latin'],
   variable: '--font-caveat',
@@ -29,7 +33,7 @@ const caveat = Caveat({
 // Each page should override these using generateMetadata()
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env['NEXT_PUBLIC_APP_URL'] ?? 'https://prompttoppt.com'),
+  metadataBase: new URL(SITE_URL),
   title: {
     default: 'promptToPpt — AI Presentation Maker',
     template: '%s | promptToPpt',
@@ -85,7 +89,7 @@ export const metadata: Metadata = {
     creator: '@prompttoppt',
   },
   icons: {
-    icon: '/favicon.ico',
+    icon: [{ url: '/favicon.svg', type: 'image/svg+xml' }, { url: '/favicon-32x32.png', sizes: '32x32', type: 'image/png' }, { url: '/favicon.ico', sizes: 'any' }],
     shortcut: '/favicon-16x16.png',
     apple: '/apple-touch-icon.png',
   },
@@ -111,7 +115,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${plusJakartaSans.variable} ${caveat.variable}`}
+      className={`${inter.variable} ${plusJakartaSans.variable} ${caveat.variable} ${sora.variable}`}
     >
       <head>
         {/* Preconnect to Google Fonts for performance */}

@@ -1,0 +1,109 @@
+import { Hono } from 'hono'
+import { cors } from 'hono/cors'
+import { logger } from 'hono/logger'
+import { secureHeaders } from 'hono/secure-headers'
+import { auth } from './auth.ts'
+import { env } from './env.ts'
+import { BillingError, ConflictError, GateError } from './billing/errors.ts'
+import { billing } from './routes/billing.ts'
+import { images } from './routes/images.ts'
+import { db } from './db/index.ts'
+import { generatedAsset } from './db/schema.ts'
+import { getStorage } from './storage/index.ts'
+import { and, eq, isNull } from 'drizzle-orm'
+import { exportsRoute } from './routes/exports.ts'
+import { models } from './routes/models.ts'
+import { flagsPublic } from './routes/flags.ts'
+import { admin } from './routes/admin.ts'
+import { drafts } from './routes/drafts.ts'
+import { generation } from './routes/generation.ts'
+import { presentations } from './routes/presentations.ts'
+import { projects } from './routes/projects.ts'
+import { sources } from './routes/sources.ts'
+import { loadSession, requireAuth, type AppEnv } from './middleware/session.ts'
+import { rateLimit } from './middleware/rate-limit.ts'
+import { originCheck } from './middleware/origin-check.ts'
+import { authGuard } from './security/auth-guard.ts'
+import { bodyLimit } from 'hono/body-limit'
+
+export const app = new Hono<AppEnv>()
+
+app.use('*', logger())
+
+/**
+ * Generated pictures, served by capability URL (the id is 192 random bits — unguessable, so slides render for share-link
+ * viewers and exports without a login). Registered BEFORE secureHeaders/CORS on purpose: it needs a cross-origin
+ * resource policy (editor, website and share viewer all embed it), and nothing else here should. Content is
+ * allow-listed image bytes served with nosniff + a sandbox CSP so even a hostile file cannot run script.
+ */
+app.get('/api/v1/assets/:id', async (c) => {
+  const id = c.req.param('id')
+  if (!/^[A-Za-z0-9_-]{32}$/.test(id)) return c.notFound()
+  const [row] = await db.select().from(generatedAsset).where(and(eq(generatedAsset.id, id), eq(generatedAsset.status, 'ready'), isNull(generatedAsset.deletedAt)))
+  if (!row) return c.notFound()
+  const bytes = await (await getStorage()).get(row.storageKey)
+  if (!bytes) return c.notFound()
+  return new Response(Buffer.from(bytes), {
+    headers: {
+      'Content-Type': row.mime, 'Content-Length': String(bytes.length), 'X-Content-Type-Options': 'nosniff',
+      'Content-Security-Policy': "default-src 'none'; sandbox", 'Cross-Origin-Resource-Policy': 'cross-origin', 'Access-Control-Allow-Origin': '*',
+      'Cache-Control': 'public, max-age=31536000, immutable',
+    },
+  })
+})
+app.use('*', secureHeaders({ crossOriginResourcePolicy: 'same-site' }))
+app.use(
+  '*',
+  cors({
+    origin: [env.WEB_URL, env.EDITOR_URL],
+    credentials: true,
+    allowHeaders: ['Content-Type', 'Authorization'],
+    exposeHeaders: ['Content-Disposition'],
+    allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  }),
+)
+
+app.get('/health', (c) => c.json({ status: 'ok', timestamp: new Date().toISOString() }))
+
+// Better Auth owns /api/auth/* (sign-up, sign-in, sign-out, session, OAuth callbacks).
+// Auth surface: tiny bodies, no CSRF from other origins, a generous bucket for session reads (the editor polls them), a tighter one for everything
+// else, and the database-backed sign-up / sign-in / reset limits in `authGuard`.
+const authBucket = rateLimit({ windowMs: 60_000, max: 60 })
+const sessionBucket = rateLimit({ windowMs: 60_000, max: 300 })
+app.use('/api/auth/*', bodyLimit({ maxSize: 16 * 1024, onError: (c) => c.json({ code: 'PAYLOAD_TOO_LARGE', message: 'Request too large' }, 413) }))
+app.use('/api/auth/*', originCheck)
+app.use('/api/auth/*', (c, next) => (new URL(c.req.url).pathname === '/api/auth/get-session' ? sessionBucket(c, next) : authBucket(c, next)))
+app.use('/api/auth/*', authGuard)
+app.on(['GET', 'POST'], '/api/auth/*', (c) => auth.handler(c.req.raw))
+
+// Every JSON body is small except these (they carry their own, larger, explicit limits): a global ceiling stops multi-megabyte junk before any parsing.
+const OWN_BODY_LIMIT = /^\/api\/v1\/(presentations\/[^/]+|sources\/(pdf|file)|drafts\/attachments|webhooks\/.*)$/
+const defaultBody = bodyLimit({ maxSize: 256 * 1024, onError: (c) => c.json({ success: false, error: { code: 'TOO_LARGE', message: 'Request is too large' } }, 413) })
+app.use('/api/v1/*', (c, next) => (['GET', 'HEAD', 'OPTIONS'].includes(c.req.method) || OWN_BODY_LIMIT.test(new URL(c.req.url).pathname) ? next() : defaultBody(c, next)))
+app.use('/api/v1/*', originCheck)
+app.use('/api/v1/*', loadSession)
+app.get('/api/v1', (c) => c.json({ version: '1.0.0', name: 'promptToPpt API' }))
+app.get('/api/v1/me', requireAuth, (c) => {
+  const { user } = c.get('session')!
+  return c.json({ success: true, data: { id: user.id, email: user.email, name: user.name, image: user.image ?? null, role: (user as { role?: string }).role ?? 'user' } })
+})
+app.route('/api/v1/drafts', drafts)
+app.route('/api/v1/generation', generation)
+app.route('/api/v1/presentations', presentations)
+app.route('/api/v1/projects', projects)
+app.route('/api/v1/sources', sources)
+app.route('/api/v1', billing)
+app.route('/api/v1', images)
+app.route('/api/v1/exports', exportsRoute)
+app.route('/api/v1/models', models)
+app.route('/api/v1/flags', flagsPublic)
+app.route('/api/v1/admin', admin)
+
+app.onError((err, c) => {
+  if (err instanceof ConflictError) return c.json({ success: false, error: { code: 'CONFLICT', message: err.message, details: err.details } }, 409)
+  if (err instanceof BillingError) return c.json({ success: false, error: { code: err.code, message: err.message } }, err.status)
+  if (err instanceof GateError) return c.json({ success: false, error: { code: err.code, message: err.message, ...(err.details ? { details: err.details } : {}) } }, err.status)
+  console.error(err)
+  return c.json({ success: false, error: { code: 'INTERNAL', message: 'Something went wrong' } }, 500)
+})
+app.notFound((c) => c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Not found' } }, 404))

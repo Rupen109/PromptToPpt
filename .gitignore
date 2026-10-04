@@ -1,6 +1,24 @@
 node_modules/
 .next/
 dist/
+build/
+out/
 .turbo/
+coverage/
 *.tsbuildinfo
+next-env.d.ts
+
+# Secrets — never commit. Only *.example files are tracked.
+.env
+.env.*
+!.env.example
+
+.DS_Store
+.vscode/
+.idea/
+*.log
 spec_extracted.txt
+.local/
+
+# local generated-asset storage (dev)
+.data/

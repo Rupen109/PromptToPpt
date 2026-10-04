@@ -81,110 +81,7 @@ export interface CreditLedgerEntry {
   createdAt: string
 }
 
-// ---- Presentations ----
-
-export type AspectRatio = '16:9' | '4:3' | '1:1'
-
-export interface PresentationMeta {
-  id: string
-  userId: string
-  title: string
-  aspectRatio: AspectRatio
-  themeId: string
-  language: string
-  slideCount: number
-  createdAt: string
-  updatedAt: string
-}
-
-// ---- Slides ----
-
-export type SlideLayoutId =
-  | 'title'
-  | 'title-body'
-  | 'split-image-text'
-  | 'image-full'
-  | 'quote'
-  | 'timeline'
-  | 'process'
-  | 'comparison'
-  | 'metrics'
-  | 'chart'
-  | 'table'
-  | 'roadmap'
-  | 'architecture'
-  | 'case-study'
-  | 'section-divider'
-  | 'thank-you'
-  | 'blank'
-
-export type ElementType = 'text' | 'image' | 'icon' | 'chart' | 'table' | 'shape' | 'diagram'
-
-export interface SlideElement {
-  id: string
-  type: ElementType
-  x: number
-  y: number
-  width: number
-  height: number
-  locked: boolean
-  zIndex: number
-  data: Record<string, unknown>
-}
-
-export interface SlideBackground {
-  type: 'color' | 'gradient' | 'image'
-  value: string
-}
-
-export type ValidationStatus = 'pending' | 'passed' | 'warning' | 'failed'
-
-export interface SlideValidation {
-  status: ValidationStatus
-  issues: string[]
-}
-
-export interface Slide {
-  id: string
-  presentationId: string
-  position: number
-  layoutId: SlideLayoutId
-  locked: boolean
-  background: SlideBackground
-  elements: SlideElement[]
-  speakerNotes: string
-  sources: string[]
-  validation: SlideValidation
-}
-
-// ---- Themes ----
-
-export interface ThemeTypography {
-  headingFont: string
-  bodyFont: string
-  monoFont?: string
-}
-
-export interface ThemeColors {
-  primary: string
-  secondary: string
-  accent: string
-  background: string
-  surface: string
-  textPrimary: string
-  textSecondary: string
-  textMuted: string
-  border: string
-}
-
-export interface Theme {
-  id: string
-  name: string
-  colors: ThemeColors
-  typography: ThemeTypography
-  borderRadius: string
-  isBuiltIn: boolean
-}
+// Presentation / slide / theme / prompt-analysis types live in @prompttoppt/validation (Zod schemas are the single source).
 
 // ---- Generation Jobs ----
 
@@ -205,28 +102,10 @@ export interface GenerationJob {
   presentationId?: string
   status: JobStatus
   prompt: string
-  analysisResult?: PromptAnalysis
   progress: number // 0-100
   errorMessage?: string
   createdAt: string
   updatedAt: string
-}
-
-// ---- Prompt Analysis ----
-
-export interface PromptAnalysis {
-  topic: string
-  objective?: string
-  audience?: string
-  tone?: string
-  language: string
-  slideCount?: number
-  durationMinutes?: number
-  requiredSections?: string[]
-  visualStyle?: string
-  outputFormat?: AspectRatio
-  isDetailed: boolean
-  suggestedDirections?: string[]
 }
 
 // ---- AI Usage ----
@@ -238,6 +117,10 @@ export type AIRequestType =
   | 'slide_content'
   | 'image_generation'
   | 'ai_edit'
+  | 'picture_verify'
+  | 'picture_query'
+  | 'deck_critic'
+  | 'ai_assist'
   | 'source_analysis'
   | 'validation'
 

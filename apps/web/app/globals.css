@@ -9,124 +9,12 @@
 /* Google Fonts — loaded here for Next.js (also configured in layout.tsx) */
 @import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300;0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;0,14..32,800;0,14..32,900;1,14..32,400&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap');
 
+@import '@prompttoppt/theme/tokens.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 /* ─── CSS Custom Properties (Design Tokens) ─────────────────────────────── */
-:root {
-  /* ─── Brand Colors ──────────────────────────────────────────── */
-  --color-primary:          #0b3dd0; /* Cobalt Blue */
-  --color-primary-hover:    #0a30a3;
-  --color-secondary:        #ffdf00; /* Yellow */
-  --color-secondary-hover:  #e6c800;
-  --color-accent:           #ff5722; /* Orange */
-  --color-accent-hover:     #e64a19;
-  --color-highlight:        #d4f933; /* Lime Green */
-
-  /* ─── Neutral Palette ───────────────────────────────────────── */
-  --color-white:            #ffffff;
-  --color-black:            #000000;
-  --color-gray-50:          #f6f7fc; /* figma offset bg */
-  --color-gray-100:         #f3f4f9; /* figma offset bg */
-  --color-gray-200:         #edf0f7;
-  --color-gray-300:         #cbd5e1;
-  --color-gray-400:         #94a3b8;
-  --color-gray-500:         #64748b;
-  --color-gray-600:         #475569; /* text secondary */
-  --color-gray-700:         #334155;
-  --color-gray-800:         #1e293b;
-  --color-gray-900:         #181b25; /* text primary navy */
-
-  /* ─── Semantic Colors ───────────────────────────────────────── */
-  --color-success:          #059669;
-  --color-success-light:    #d1fae5;
-  --color-warning:          #ffdf00;
-  --color-error:            #ef4444;
-  --color-error-light:      #fee2e2;
-
-  /* ─── Surface / Background ──────────────────────────────────── */
-  --color-bg:               #ffffff;
-  --color-bg-secondary:     #f3f4f9;
-  --color-surface:          #ffffff;
-  --color-border:           #e2e8f0;
-  --color-border-strong:    #cbd5e1;
-
-  /* Card Backgrounds from Figma */
-  --color-card-yellow:      #fffbe6;
-  --color-card-orange:      #fff2ee;
-  --color-card-purple:      #f5f3ff;
-  --color-card-blue:        #eef1fe;
-
-  /* ─── Text ───────────────────────────────────────────────────── */
-  --color-text-primary:     #181b25;
-  --color-text-secondary:   #475569;
-  --color-text-muted:       #94a3b8;
-  --color-text-inverse:     #ffffff;
-
-  /* ─── Typography ─────────────────────────────────────────────── */
-  --font-heading:           var(--font-plus-jakarta-sans), 'Plus Jakarta Sans', system-ui, sans-serif;
-  --font-body:              var(--font-inter), 'Inter', system-ui, sans-serif;
-  --font-handwriting:       var(--font-caveat), 'Caveat', cursive;
-
-  --text-micro:             0.625rem; /* 10px */
-  --text-xs:                0.75rem;  /* 12px */
-  --text-sm:                0.875rem; /* 14px */
-  --text-base:              1rem;     /* 16px */
-  --text-lg:                1.125rem; /* 18px */
-  --text-xl:                1.25rem;  /* 20px */
-  --text-2xl:               1.5rem;   /* 24px */
-  --text-3xl:               1.875rem; /* 30px */
-  --text-4xl:               2.25rem;  /* 36px */
-  --text-5xl:               3rem;     /* 48px */
-  --text-6xl:               3.75rem;  /* 60px */
-  
-  --font-light:             300;
-  --font-normal:            400;
-  --font-medium:            500;
-  --font-semibold:          600;
-  --font-bold:              700;
-  --font-extrabold:         800;
-
-  --leading-tight:          1.1;
-  --leading-snug:           1.375;
-  --leading-normal:         1.5;
-  --leading-relaxed:        1.625;
-
-  --tracking-tight:         -0.025em;
-  --tracking-normal:        0;
-  --tracking-wide:          0.025em;
-
-  /* ─── Spacing ────────────────────────────────────────────────── */
-  --space-1:                0.25rem;
-  --space-2:                0.5rem;
-  --space-3:                0.75rem;
-  --space-4:                1rem;
-  --space-6:                1.5rem;
-  --space-8:                2rem;
-  --space-12:               3rem;
-  --space-16:               4rem;
-  --space-20:               5rem;
-  --space-24:               6rem;
-  --space-32:               8rem;
-
-  /* ─── Border Radius ─────────────────────────────────────────── */
-  --radius-sm:              0.25rem;
-  --radius-md:              0.5rem;
-  --radius-lg:              1rem;
-  --radius-xl:              1.5rem;
-  --radius-full:            9999px;
-
-  /* ─── Shadows (Custom Solid SaaS look) ──────────────────────── */
-  --shadow-sm:              0 1px 2px rgba(24, 27, 37, 0.05);
-  --shadow-md:              0 4px 6px -1px rgba(24, 27, 37, 0.1);
-  --shadow-lg:              0 10px 15px -3px rgba(24, 27, 37, 0.1);
-  --shadow-solid:           4px 4px 0px 0px rgba(24, 27, 37, 1);
-  --shadow-solid-primary:   4px 4px 0px 0px var(--color-primary);
-
-  /* ─── Layout ─────────────────────────────────────────────────── */
-  --container-max:          1440px;
-  --nav-height:             72px;
-}
 
 /* ─── Global Reset ───────────────────────────────────────────────────────── */
 *, *::before, *::after {
@@ -172,7 +60,8 @@ a {
   transition: color var(--transition-fast);
 }
 
-a:hover { color: var(--color-primary-hover); }
+/* :where() keeps this at zero specificity so a button/CTA's own text colour (text-white, text-foreground…) is never overridden on hover */
+:where(a:hover) { color: var(--color-primary-hover); }
 
 img, video {
   max-width: 100%;
@@ -228,4 +117,13 @@ input, textarea, select { font-family: inherit; font-size: inherit; }
 /* ─── Smooth Page Transitions ────────────────────────────────────────────── */
 @media (prefers-reduced-motion: no-preference) {
   html { scroll-behavior: smooth; }
+}
+
+/* ─── Scroll-reveal (components/ui/Reveal.tsx) ──────────────────────────────
+ * Hidden only when JavaScript is available AND the visitor hasn't asked for reduced motion; otherwise content is just visible. */
+@media (scripting: enabled) and (prefers-reduced-motion: no-preference) {
+  [data-reveal]:not([data-visible]) { opacity: 0; transform: translateY(28px); }
+  [data-reveal] {
+    transition: opacity 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) var(--reveal-delay, 0ms), transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) var(--reveal-delay, 0ms);
+  }
 }

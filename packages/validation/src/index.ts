@@ -55,7 +55,7 @@ export const updateSlideSchema = z.object({
     })
     .optional(),
   speakerNotes: z.string().max(5000).optional(),
-  elements: z.array(z.record(z.unknown())).optional(),
+  elements: z.array(z.record(z.string(), z.unknown())).optional(),
 })
 
 export type UpdateSlideInput = z.infer<typeof updateSlideSchema>
@@ -127,3 +127,5 @@ export const checkoutSchema = z.object({
 })
 
 export type CheckoutInput = z.infer<typeof checkoutSchema>
+export * from './presentation'
+export * from './plans'

@@ -1,0 +1,14 @@
+**/node_modules
+**/.next
+**/dist
+**/.turbo
+**/.env
+**/.env.*
+!**/.env.example
+**/.local
+.git
+docs
+scripts
+# the website's next.config.ts imports the shared security-header definition
+!scripts/csp.mjs
+!scripts/csp.d.mts

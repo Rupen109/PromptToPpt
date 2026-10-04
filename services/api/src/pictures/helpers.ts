@@ -1,0 +1,112 @@
+import type { PictureRequest } from './pick.ts'
+import type { AspectGroup } from './types.ts'
+import { LIBRARY_TAGS, type LibraryTag } from './library-tags.ts'
+
+const STOP = new Set(
+  ('a an the and or but of to in on at for with by from as is are was were be been being this that these those it its into over under about across between ' +
+    'we you your our their his her they them i me my us who what which how why when where than then so such very more most can will would should could ' +
+    'photo photos photograph picture pictures image images shot showing shows show shown depicting depict illustrating illustration visual visuals scene ' +
+    'concept conceptual symbolising symbolizing representing representation featuring features slide slides generic stock modern new key main overview ' +
+    'introduction intro summary background close closeup up high quality professional wide view style top down').split(/\s+/),
+)
+const FOREIGN = new Set('de du et y em di da el los las una uno por para con und der die das ist nicht les des pour est que che per il uma não dos é são'.split(/\s+/))
+
+/** Light suffix stemmer — only needs to be symmetric between request and tag text. */
+export function stem(w: string): string {
+  if (w.length > 4 && w.endsWith('ies')) return w.slice(0, -3) + 'y'
+  if (w.length > 5 && w.endsWith('ing')) return w.slice(0, -3)
+  if (w.length > 4 && w.endsWith('ed')) return w.slice(0, -2)
+  if (w.length > 4 && /(ss|sh|ch|x)es$/.test(w)) return w.slice(0, -2)
+  if (w.length > 3 && w.endsWith('s') && !w.endsWith('ss')) return w.slice(0, -1)
+  return w
+}
+
+/** lower-cased content words (stop-words removed, de-duplicated, order kept). */
+export function keywords(text: string): string[] {
+  const out: string[] = []
+  for (const raw of text.toLowerCase().split(/[^\p{L}\p{N}]+/u)) {
+    if (raw.length < 3 || STOP.has(raw) || /^\d+$/.test(raw)) continue
+    if (!out.includes(raw)) out.push(raw)
+  }
+  return out
+}
+export const stems = (text: string): string[] => [...new Set(keywords(text).map(stem))]
+
+export const looksNonEnglish = (text: string): boolean =>
+  /[^\x00-\x7F]/.test(text.replace(/[‘’“”–—…]/g, '')) || text.toLowerCase().split(/\W+/).some((w) => FOREIGN.has(w))
+
+const MAX_QUERY_WORDS = 6
+const clip = (words: string[]) => words.slice(0, MAX_QUERY_WORDS).join(' ')
+
+/** 1–2 short English search queries: the intent first, then title + topic. Deterministic. */
+export function buildQueries(req: Pick<PictureRequest, 'intent' | 'title' | 'topic'>): string[] {
+  const out: string[] = []
+  const add = (q: string) => {
+    if (q && !out.includes(q)) out.push(q)
+  }
+  add(clip(keywords(req.intent)))
+  add(clip([...new Set([...keywords(req.title), ...keywords(req.topic)])]))
+  return out.slice(0, 2)
+}
+
+export type Orientation = 'landscape' | 'portrait' | 'square'
+export const orientationFor = (a: AspectGroup): Orientation => (a === 'tall' ? 'portrait' : a === 'square' ? 'square' : 'landscape')
+
+/** library slot → shape (slots 1,2,8 wide; 3,4,9 tall; 5,6 square; 7,10 standard) */
+export function slotAspect(key: string): AspectGroup {
+  const n = Number(key.slice(key.lastIndexOf('-') + 1))
+  return [1, 2, 8].includes(n) ? 'wide' : [3, 4, 9].includes(n) ? 'tall' : [5, 6].includes(n) ? 'square' : 'standard'
+}
+
+export interface LibraryMatch {
+  key: string
+  /** weighted keyword overlap (intent 3, title 2, topic 1, slide text 0.5) */
+  score: number
+  matched: number
+  /** ranking value = score + aspect bonus */
+  rank: number
+}
+const W = { intent: 3, title: 2, topic: 1, text: 0.5 }
+
+/** Score every tagged library picture against the request; only pictures with at least two distinct matching keywords are returned, best first. */
+export function scoreLibrary(req: Pick<PictureRequest, 'intent' | 'title' | 'topic' | 'text' | 'aspect'>, tags: Record<string, LibraryTag> = LIBRARY_TAGS): LibraryMatch[] {
+  const fields: [Set<string>, number][] = [
+    [new Set(stems(req.intent)), W.intent],
+    [new Set(stems(req.title)), W.title],
+    [new Set(stems(req.topic)), W.topic],
+    [new Set(stems(req.text)), W.text],
+  ]
+  const out: LibraryMatch[] = []
+  for (const [key, tag] of Object.entries(tags)) {
+    let score = 0
+    let matched = 0
+    for (const k of new Set(tag.keywords.map(stem))) {
+      const w = Math.max(0, ...fields.map(([set, weight]) => (set.has(k) ? weight : 0)))
+      if (w > 0) {
+        score += w
+        matched++
+      }
+    }
+    if (matched < 2) continue
+    out.push({ key, score, matched, rank: score + (slotAspect(key) === req.aspect ? 1 : 0) })
+  }
+  return out.sort((a, b) => b.rank - a.rank || a.key.localeCompare(b.key))
+}
+/** a keyword-only match strong enough to accept WITHOUT a vision check (be conservative) */
+export const isStrongLibraryMatch = (m: LibraryMatch) => m.matched >= 3 && m.score >= 8
+
+/** how well a stock photo's own alt text covers the search query (0..1) and how many query words matched */
+export function altOverlap(query: string, alt: string): { ratio: number; matched: number } {
+  const q = stems(query)
+  if (q.length === 0) return { ratio: 0, matched: 0 }
+  const a = new Set(stems(alt))
+  const matched = q.filter((w) => a.has(w)).length
+  return { ratio: matched / q.length, matched }
+}
+export const isStrongAltMatch = (o: { ratio: number; matched: number }) => o.matched >= 2 && o.ratio >= 0.6
+
+export function sniffImage(b: Uint8Array): 'image/jpeg' | 'image/png' | null {
+  if (b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'image/jpeg'
+  if (b.length > 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return 'image/png'
+  return null
+}

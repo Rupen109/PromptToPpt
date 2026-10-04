@@ -1,31 +1,32 @@
-import React from 'react';
+'use client'
+
+import { useRouter } from 'next/navigation'
+import { useState, type FormEvent } from 'react'
+import { Button } from '@/components/ui/Button'
+import { Card } from '@/components/ui/Card'
+import { HARD } from './ui'
 
 export function CtaSection() {
+  const router = useRouter()
+  const [email, setEmail] = useState('')
+  function go(e: FormEvent) {
+    e.preventDefault()
+    router.push(`/signup${email.trim() ? `?email=${encodeURIComponent(email.trim())}` : ''}`)
+  }
   return (
-    <section className="pt-4 pb-24 px-6 bg-[#f3f4f9]">
-      <div className="bg-secondary border-2 border-foreground shadow-[8px_8px_0px_0px_#181b25] rounded-3xl p-8 md:p-16 text-center max-w-[1000px] mx-auto">
-        <div className="bg-white text-foreground border border-foreground inline-block py-1 px-3 font-heading font-extrabold text-xs rounded-sm shadow-[2px_2px_0px_0px_#181b25] mb-4">
-          🚀 IMMEDIATE ACCELERATION
-        </div>
-        <h2 className="text-3xl md:text-4xl font-heading font-extrabold text-foreground leading-[1.1] mb-4 max-w-[800px] mx-auto">
-          Stop Staring at Blank Slides. Build Your Deck in 45 Seconds.
-        </h2>
-        <div className="flex flex-col sm:flex-row justify-center items-center gap-2 mt-8 mb-4">
-          <input
-            type="email"
-            placeholder="Enter your work email..."
-            className="py-3 px-4 text-base rounded-md border-2 border-border-strong w-full sm:w-[300px] bg-white text-foreground placeholder:text-slate-400 focus:outline-none focus:border-foreground"
-          />
-          <button className="bg-primary hover:bg-primary-hover text-white px-8 py-3 rounded-md font-heading font-bold text-[1.2rem] shadow-solid hover:-translate-y-0.5 hover:shadow-[4px_6px_0px_0px_#181b25] transition-all cursor-pointer">
-            START FREE
-          </button>
-        </div>
-        <p className="text-sm text-slate-700 leading-relaxed">
-          No credit card required • 3 free presentations included
-        </p>
-      </div>
+    <section className="bg-[#f3f4f9] border-b-2 border-foreground px-5 md:px-10 pt-16 pb-16 md:pb-28">
+      <Card tone="yellow" shadow="lg" hover={false} wrapperClassName="max-w-[816px] mx-auto h-auto" className="px-6 md:px-12 py-16 md:py-[67px] text-center flex flex-col items-center">
+        <span className={`inline-block -rotate-[0.05deg] bg-white border-2 border-foreground rounded-full px-[22px] py-[7px] font-heading font-extrabold text-xs uppercase text-foreground ${HARD.sm}`}>🚀 Immediate acceleration</span>
+        <h2 className="mt-8 font-heading font-extrabold text-4xl md:text-5xl leading-[1.05] text-foreground max-w-[672px]">Stop Staring at Blank Slides. Build Your Deck in Under a Minute.</h2>
+        <p className="mt-6 text-lg leading-7 font-medium text-foreground max-w-[576px]">Describe your topic, drop in a PDF or a link, and get a designed, editable presentation you can present today.</p>
+        <form onSubmit={go} className="mt-8 w-full max-w-[448px] flex flex-col sm:flex-row gap-3">
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Enter your work email…" aria-label="Email address" className={`flex-1 min-w-0 h-12 rounded-xl border-2 border-foreground bg-white px-[18px] font-sans text-base font-semibold text-foreground placeholder:text-[#94a3b8] focus:outline-none focus:ring-2 focus:ring-primary transition-shadow focus:shadow-[4px_5px_0_0_#181b25] ${HARD.sm}`} />
+          <Button type="submit" variant="accent" size="lg" arrow className="!h-12 !rounded-xl !px-[30px]">Start free</Button>
+        </form>
+        <p className="mt-5 font-heading font-bold text-xs text-foreground">No credit card required • The free plan includes 100 credits</p>
+      </Card>
     </section>
-  );
+  )
 }
 
-export default CtaSection;
+export default CtaSection

@@ -1,0 +1,128 @@
+[
+  {
+    "title": "a11y (axe, WCAG A/AA serious+critical): website landing",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 2710
+  },
+  {
+    "title": "a11y (axe, WCAG A/AA serious+critical): website pricing",
+    "ok": false,
+    "error": "pricing: color-contrast(1) e.g. <span class=\"absolute -top-4 left-1/2 -translate-x-1/2 bg-accent text-white bord",
+    "noise": [],
+    "ms": 3018,
+    "shot": "09-a11y-cross-1.png"
+  },
+  {
+    "title": "a11y (axe, WCAG A/AA serious+critical): website templates",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 3236
+  },
+  {
+    "title": "a11y (axe, WCAG A/AA serious+critical): website template detail",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 2530
+  },
+  {
+    "title": "a11y (axe, WCAG A/AA serious+critical): website login",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 2226
+  },
+  {
+    "title": "a11y (axe, WCAG A/AA serious+critical): website signup",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 2228
+  },
+  {
+    "title": "a11y (axe, WCAG A/AA serious+critical): website ai-ppt-maker",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 2417
+  },
+  {
+    "title": "a11y (axe): app editor home",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 2795
+  },
+  {
+    "title": "a11y (axe): app created by me",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 2808
+  },
+  {
+    "title": "a11y (axe): app templates",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 3498
+  },
+  {
+    "title": "a11y (axe): app billing",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 2563
+  },
+  {
+    "title": "a11y (axe): app editor",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 2743
+  },
+  {
+    "title": "keyboard: landing page — Tab reaches header links, hero prompt, Generate; focus is always visible",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 969
+  },
+  {
+    "title": "keyboard: editor — Tab into the canvas toolbar; Esc closes menus; no keyboard trap in dialogs",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 2275
+  },
+  {
+    "title": "network: a failed API call on Home shows a message, not a blank/crashed page",
+    "ok": true,
+    "error": "",
+    "noise": [
+      "console: Failed to load resource: net::ERR_FAILED",
+      "console: Failed to load resource: net::ERR_FAILED"
+    ],
+    "ms": 2087
+  },
+  {
+    "title": "network: API down at editor load → clear \"couldn't reach the server\" with Retry",
+    "ok": true,
+    "error": "",
+    "noise": [
+      "console: Failed to load resource: net::ERR_FAILED",
+      "console: Failed to load resource: net::ERR_FAILED"
+    ],
+    "ms": 266
+  },
+  {
+    "title": "refresh mid-generation resumes (job id kept) instead of starting over",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 23875
+  }
+]

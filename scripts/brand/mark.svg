@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="promptToPpt">
+  <defs>
+    <linearGradient id="pt-g" x1="8" y1="2" x2="58" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2F63F5"/>
+      <stop offset="0.55" stop-color="#0B3DD0"/>
+      <stop offset="1" stop-color="#082A9A"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="url(#pt-g)"/>
+  <g fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" transform="translate(-2.5 -2.5)">
+    <path d="M22.5 18.5V50"/>
+    <path d="M22.5 18.5H36a11 11 0 0 1 0 22H22.5"/>
+  </g>
+  <path d="M32.4 21.7Q33.65 25.95 37.9 27.2Q33.65 28.45 32.4 32.7Q31.15 28.45 26.9 27.2Q31.15 25.95 32.4 21.7Z" fill="#FFDF00"/>
+  <rect x="29" y="46" width="14" height="6" rx="3" fill="#FF5722"/>
+</svg>

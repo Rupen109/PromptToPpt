@@ -1,0 +1,65 @@
+[
+  {
+    "title": "panel: opens from the toolbar, shows scope toggle, model picker, suggestions, closes",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 363
+  },
+  {
+    "title": "panel: Send is disabled for an empty message; scope toggle switches placeholder",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 72
+  },
+  {
+    "title": "deck request: \"change colours to warm oranges\" restyles every slide live (no reload) and offers Undo",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 3555
+  },
+  {
+    "title": "deck request: animate + fonts (\"animate every slide, use a serif font\")",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 3119
+  },
+  {
+    "title": "slide request: \"make this slide shorter\" edits only the active slide",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 3448
+  },
+  {
+    "title": "quick actions (Rewrite / Shorten / Expand / Improve hierarchy) are available for the slide",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1946
+  },
+  {
+    "title": "honesty: an impossible request (export + share) is declined in plain words, not faked",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 3136
+  },
+  {
+    "title": "pictures: \"add a picture\" proposes an image (with Generate / Open image studio) instead of silently doing nothing",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 13576
+  },
+  {
+    "title": "credits: the plan card shows credits were spent and the Starter/Pro balance decreased",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 11
+  }
+]

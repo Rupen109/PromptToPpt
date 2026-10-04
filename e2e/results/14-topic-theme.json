@@ -1,0 +1,30 @@
+[
+  {
+    "title": "\"ppt on environment of india\" → DARK deck in environment greens (not a generic colour)",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 63513
+  },
+  {
+    "title": "\"ppt on gandhi jayanti\" → dark deck with a colour scheme that is not the default blue",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 51834
+  },
+  {
+    "title": "an explicit \"light mode\" request gives a light deck",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 35002
+  },
+  {
+    "title": "Style › Colors › Light/Dark switch converts the whole deck both ways and keeps content and brand colours",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 5148
+  }
+]

@@ -1,0 +1,198 @@
+[
+  {
+    "title": "sidebar lists all 18 sections in 4 groups and no \"COMING\" placeholders",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 19
+  },
+  {
+    "title": "Sales & revenue: loads real data (no errors, no NaN/undefined/Infinity), has a heading, tables have headers",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1879
+  },
+  {
+    "title": "Subscriptions: loads real data (no errors, no NaN/undefined/Infinity), has a heading, tables have headers",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1826
+  },
+  {
+    "title": "Cost & margin: loads real data (no errors, no NaN/undefined/Infinity), has a heading, tables have headers",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1841
+  },
+  {
+    "title": "Presentations: loads real data (no errors, no NaN/undefined/Infinity), has a heading, tables have headers",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1825
+  },
+  {
+    "title": "Prompts / use cases: loads real data (no errors, no NaN/undefined/Infinity), has a heading, tables have headers",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1845
+  },
+  {
+    "title": "Images: loads real data (no errors, no NaN/undefined/Infinity), has a heading, tables have headers",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1853
+  },
+  {
+    "title": "Exports: loads real data (no errors, no NaN/undefined/Infinity), has a heading, tables have headers",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1855
+  },
+  {
+    "title": "Providers: loads real data (no errors, no NaN/undefined/Infinity), has a heading, tables have headers",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1843
+  },
+  {
+    "title": "Performance: loads real data (no errors, no NaN/undefined/Infinity), has a heading, tables have headers",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1849
+  },
+  {
+    "title": "Google Cloud: loads real data (no errors, no NaN/undefined/Infinity), has a heading, tables have headers",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1843
+  },
+  {
+    "title": "Feature flags: loads real data (no errors, no NaN/undefined/Infinity), has a heading, tables have headers",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1829
+  },
+  {
+    "title": "Audit logs: loads real data (no errors, no NaN/undefined/Infinity), has a heading, tables have headers",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1826
+  },
+  {
+    "title": "costs show in INR (₹) by default; the toggle switches to USD and the choice survives a reload",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 6272
+  },
+  {
+    "title": "Google Cloud: add two readings → burn vs ledger comparison appears; readings can be removed",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 6478
+  },
+  {
+    "title": "date-range buttons refetch (Today / 7 / 30 / 90 days) on a section without errors",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 5579
+  },
+  {
+    "title": "sales & subscriptions tables paginate / filter without errors",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 3145
+  },
+  {
+    "title": "exports page reflects a real export (export a deck, it appears in Recent exports)",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 4023
+  },
+  {
+    "title": "prompts page never shows emails or names (privacy)",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 2646
+  },
+  {
+    "title": "providers page shows integration status without secrets",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 2621
+  },
+  {
+    "title": "feature flags: toggle a flag, it persists after reload and shows in audit logs; reset restores default",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 14314
+  },
+  {
+    "title": "maintenance mode really blocks AI for users and the banner shows; turning it off restores",
+    "ok": true,
+    "error": "",
+    "noise": [
+      "http 503: POST http://localhost:4000/api/v1/generation/analyze",
+      "console: Failed to load resource: the server responded with a status of 503 (Service Unavailable)"
+    ],
+    "ms": 4895
+  },
+  {
+    "title": "audit log: filters + CSV download work and the page hides its own reads by default",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 2468
+  },
+  {
+    "title": "non-admin gets 403 from every new admin API",
+    "ok": true,
+    "error": "",
+    "noise": [
+      "http 403: GET http://localhost:4000/api/v1/admin/sales/summary",
+      "console: Failed to load resource: the server responded with a status of 403 (Forbidden)",
+      "http 403: GET http://localhost:4000/api/v1/admin/subscriptions/summary",
+      "console: Failed to load resource: the server responded with a status of 403 (Forbidden)",
+      "http 403: GET http://localhost:4000/api/v1/admin/cloud",
+      "console: Failed to load resource: the server responded with a status of 403 (Forbidden)",
+      "http 403: GET http://localhost:4000/api/v1/admin/margin/summary",
+      "console: Failed to load resource: the server responded with a status of 403 (Forbidden)",
+      "http 403: GET http://localhost:4000/api/v1/admin/prompts/overview",
+      "console: Failed to load resource: the server responded with a status of 403 (Forbidden)",
+      "http 403: GET http://localhost:4000/api/v1/admin/images/summary",
+      "console: Failed to load resource: the server responded with a status of 403 (Forbidden)",
+      "http 403: GET http://localhost:4000/api/v1/admin/exports/summary",
+      "console: Failed to load resource: the server responded with a status of 403 (Forbidden)",
+      "http 403: GET http://localhost:4000/api/v1/admin/audit",
+      "console: Failed to load resource: the server responded with a status of 403 (Forbidden)",
+      "http 403: GET http://localhost:4000/api/v1/admin/performance/overview",
+      "console: Failed to load resource: the server responded with a status of 403 (Forbidden)",
+      "http 403: GET http://localhost:4000/api/v1/admin/providers/overview",
+      "console: Failed to load resource: the server responded with a status of 403 (Forbidden)",
+      "http 403: GET http://localhost:4000/api/v1/admin/flags",
+      "console: Failed to load resource: the server responded with a status of 403 (Forbidden)",
+      "http 403: GET http://localhost:4000/api/v1/admin/presentations/summary",
+      "console: Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    ],
+    "ms": 1518
+  }
+]

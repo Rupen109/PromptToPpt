@@ -28,17 +28,16 @@ export interface AnalyticsClient {
 
 export function buildEvent(
   name: ProductEventName,
-  properties: Record<string, unknown> = {}
+  properties: Record<string, unknown> = {},
+  // Passed in by the caller: this package runs in the browser too, where `process` doesn't exist.
+  environment: 'development' | 'staging' | 'production' = 'development',
 ): ProductEvent {
   return {
     name,
     properties: {
       ...properties,
       timestamp: new Date().toISOString(),
-      environment: (process.env['NODE_ENV'] ?? 'development') as
-        | 'development'
-        | 'staging'
-        | 'production',
+      environment,
     },
   }
 }

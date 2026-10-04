@@ -1,0 +1,14 @@
+{
+  "name": "@prompttoppt/ui",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Shared presentation renderer (slides, charts, animation runtime) used by the editor, the website and the share viewer",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": { ".": "./src/index.ts", "./logo": "./src/Logo.tsx" },
+  "scripts": { "typecheck": "tsc --noEmit", "test": "vitest run --passWithNoTests" },
+  "dependencies": { "@prompttoppt/theme": "workspace:*", "@prompttoppt/validation": "workspace:*" },
+  "peerDependencies": { "react": "^19.0.0" },
+  "devDependencies": { "@types/react": "^19", "react": "19.3.0", "typescript": "^5.5.0", "vitest": "^5.0.3" }
+}

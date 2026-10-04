@@ -1,0 +1,116 @@
+[
+  {
+    "title": "home: sidebar links navigate (Home, Created by me, Templates, Billing)",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 501
+  },
+  {
+    "title": "home: \"Create Presentation\" disabled when empty, enabled with text",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 638
+  },
+  {
+    "title": "home: every visible control does something (no dead/disabled placeholders)",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 14
+  },
+  {
+    "title": "home: \"Upload files, or links\" dialog adds a text file and a link as sources",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1062
+  },
+  {
+    "title": "templates: open a free design, change shape, create → lands in the editor with 11 slides",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1421
+  },
+  {
+    "title": "templates: a Pro template shows a lock and asks to upgrade on a Starter plan",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1788
+  },
+  {
+    "title": "templates: category tabs + search + empty state",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1554
+  },
+  {
+    "title": "AI: prompt → analyse → choose → generate → editor opens with a real deck (real model)",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 21125
+  },
+  {
+    "title": "create: choosing a length only SELECTS it (nothing starts); a model click starts; only models allowed on the plan are listed",
+    "ok": false,
+    "error": "no prompt to pick a model",
+    "noise": [],
+    "ms": 4225,
+    "shot": "03-create-8.png"
+  },
+  {
+    "title": "AI: generation cancel + back button on the create screen are wired",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 677
+  },
+  {
+    "title": "library: decks listed on Home and Created-by-me; search filters",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1510
+  },
+  {
+    "title": "library: clicking a deck card opens it in the editor",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 13
+  },
+  {
+    "title": "projects: Starter is told projects need Pro (upgrade modal), not silently ignored",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1428
+  },
+  {
+    "title": "start handoff: /start with a bad draft id explains and offers a way back",
+    "ok": true,
+    "error": "",
+    "noise": [
+      "http 404: POST http://localhost:4000/api/v1/drafts/doesnotexist/claim",
+      "console: Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "ms": 578
+  },
+  {
+    "title": "unknown deck id shows \"not found\" with a way home; unknown route redirects home",
+    "ok": true,
+    "error": "",
+    "noise": [
+      "http 404: GET http://localhost:4000/api/v1/presentations/nope-nope",
+      "console: Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "http 404: GET http://localhost:4000/api/v1/presentations/nope-nope",
+      "console: Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "ms": 1151
+  }
+]

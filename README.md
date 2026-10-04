@@ -4,27 +4,38 @@
 
 - Node.js >= 20
 - pnpm >= 9 (`npm install -g pnpm`)
-- Docker Desktop (for local PostgreSQL + Redis)
+- Docker Desktop **or** nothing — `pnpm db:local` runs an embedded Postgres
 
 ## Quick Start
 
 ```bash
-# 1. Install all dependencies
 pnpm install
 
-# 2. Start local services (PostgreSQL + Redis)
-docker-compose up -d
+# Database — pick one
+docker compose up -d        # Docker
+pnpm db:local               # no Docker (leave running in its own terminal)
 
-# 3. Copy environment variables
+# Env files (all gitignored). Generate AUTH_SECRET with: openssl rand -base64 32
+cp services/api/.env.example services/api/.env      # fill AUTH_SECRET (+ GEMINI_API_KEY later)
 cp apps/web/.env.example apps/web/.env.local
-cp services/api/.env.example services/api/.env
+cp apps/editor/.env.example apps/editor/.env.local
 
-# 4. Run database migrations (Phase 1 onwards)
-# pnpm --filter @prompttoppt/api db:migrate
-
-# 5. Start all apps in dev mode
-pnpm dev
+pnpm db:migrate
+pnpm dev                    # web :3000 · editor :3001 · api :4000
 ```
+
+Flow to try: type a prompt on http://localhost:3000 → Generate → sign up → you land in the editor at `/create` with your prompt.
+
+Useful commands:
+
+```bash
+pnpm --filter @prompttoppt/api ai:check          # ping every catalogue model with your key (no DB writes)
+pnpm --filter @prompttoppt/api catalog:sync      # OpenRouter price refresh (dry run; add -- --apply)
+pnpm --filter @prompttoppt/api make-admin you@x.com   # owner dashboard access → /admin on the editor
+pnpm db:reset                                    # recreate the LOCAL *_dev database
+```
+
+Checks: `pnpm typecheck && pnpm lint && pnpm test && pnpm build` (API tests need the database running + migrated).
 
 ## Individual Apps
 
@@ -42,9 +53,9 @@ pnpm --filter @prompttoppt/api dev
 ## Monorepo Structure
 
 ```
-apps/web         → Next.js 14 SEO website
+apps/web         → Next.js 16 SEO website + login/signup
 apps/editor      → React + Vite presentation editor
-services/api     → Hono API server
+services/api     → Hono API server + Better Auth
 services/worker  → Async generation worker
 packages/types   → Shared TypeScript types
 packages/validation → Zod schemas
@@ -63,11 +74,10 @@ See `.env.example` files in each app/service directory.
 
 | Layer | Technology |
 |---|---|
-| Public Website | Next.js 14 (App Router) |
-| Editor | React 18 + Vite |
+| Public Website | Next.js 16 (App Router) |
+| Editor | React 19 + Vite |
 | API | Hono on Node.js |
 | Database | PostgreSQL 16 (Drizzle ORM) |
-| Cache | Redis 7 |
 | Queue | AWS SQS |
 | Storage | AWS S3 |
 | AI (dev) | Google Gemini API |
@@ -77,3 +87,5 @@ See `.env.example` files in each app/service directory.
 | Auth | Better Auth |
 | Email | Resend |
 | Monitoring | Sentry |
+
+See `docs/AUDIT.md`, `docs/DEPLOYMENT.md` and `docs/adr/`.

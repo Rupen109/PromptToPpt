@@ -1,78 +1,48 @@
-import React from 'react';
+import { Card, type CardTone } from '@/components/ui/Card'
+import { Badge, Section, SectionHeader, Tag, Tile } from './ui'
+
+const STEPS: { n: string; tag: string; title: string; tone: CardTone; tile: 'yellow' | 'accent' | 'primary'; tagText: string; body: string; chip: string }[] = [
+  {
+    n: '01', tag: 'INPUT STAGE', title: 'Feed Any Raw Source', tone: 'cream', tile: 'yellow', tagText: 'text-foreground',
+    body: 'Drop in a PDF, a PowerPoint, your notes or a web link — or simply type your vision. The AI reads your sources and pulls out the points that matter.',
+    chip: 'Accepts PDF, PowerPoint, text files & web links',
+  },
+  {
+    n: '02', tag: 'AGENT SYNTHESIS', title: 'AI Builds High-Impact Story', tone: 'peach', tile: 'accent', tagText: 'text-[#b02f00]',
+    body: 'In well under a minute, the AI maps your storyline, turns your data into charts and tables, and writes every slide in one consistent design.',
+    chip: 'Charts & tables built from your own data',
+  },
+  {
+    n: '03', tag: 'DELIVERY', title: 'Edit, Present & Export', tone: 'lavender', tile: 'primary', tagText: 'text-primary',
+    body: 'Tweak any slide in the live editor, ask the AI assistant to restyle or animate the whole deck, present full-screen — and export on paid plans.',
+    chip: 'Live editor, present mode & export (Pro)',
+  },
+]
 
 export default function WorkflowSection() {
   return (
-    <section className="py-24 px-6 bg-white text-center">
-      <div className="mb-16 flex flex-col items-center">
-        <div className="bg-highlight text-foreground inline-block py-1 px-3 font-heading font-extrabold text-[11px] rounded-full border border-foreground mb-4 shadow-[2px_2px_0px_0px_#181b25]">
-          INSTANT VELOCITY
-        </div>
-        <h2 className="text-4xl mb-4 leading-[1.1] font-heading font-extrabold">
-          From Chaos to Pitch Deck in 3 Steps
-        </h2>
-        <p className="text-base text-secondary max-w-[600px] mx-auto">
-          Never open a blank PowerPoint slide again. Let intelligent agents orchestrate the storyline, structure data, and render vector decks.
-        </p>
+    <Section id="workflow">
+      <SectionHeader
+        badge={<Badge bg="bg-highlight">Instant velocity</Badge>}
+        title="From Chaos to Pitch Deck in 3 Steps"
+        subtitle="Never open a blank PowerPoint slide again. Let intelligent agents orchestrate the storyline, structure data, and render a designed deck."
+        max="max-w-[672px]"
+      />
+      <div className="mt-16 grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8 items-stretch max-w-[560px] lg:max-w-none mx-auto">
+        {STEPS.map((s, i) => (
+          <Card key={s.n} as="article" tone={s.tone} index={i} className="group/card p-8 flex flex-col h-full" wrapperClassName="h-full">
+            <div className="flex items-center justify-between">
+              <Tile tone={s.tile} size={56}><span className="font-heading font-extrabold text-2xl">{s.n}</span></Tile>
+              <Tag className={s.tagText}>{s.tag}</Tag>
+            </div>
+            <h3 className="font-heading font-extrabold text-2xl leading-8 text-foreground pt-3 mt-3 lg:min-h-[5.5rem]">{s.title}</h3>
+            <p className="mt-3 mb-6 text-base leading-6 text-[#475569] min-h-24">{s.body}</p>
+            <div className="mt-auto pt-0 flex items-center gap-2.5 bg-white border-2 border-foreground rounded-xl px-3.5 py-3 font-heading font-bold text-xs leading-4 text-foreground">
+              <span aria-hidden className="text-accent">★</span>{s.chip}
+            </div>
+          </Card>
+        ))}
       </div>
-      
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-[1100px] mx-auto">
-        {/* Step 1 */}
-        <div className="bg-[#fffbe6] border-2 border-foreground rounded-xl p-8 shadow-[8px_8px_0px_0px_#181b25] flex flex-col text-left">
-          <div className="flex justify-between items-center mb-6">
-            <div className="bg-highlight text-foreground border-2 border-foreground rounded-md w-12 h-12 flex items-center justify-center font-heading text-2xl font-extrabold shadow-[4px_4px_0px_0px_#181b25]">
-              01
-            </div>
-            <div className="bg-white text-foreground border border-foreground rounded-full px-3 py-1 font-heading text-[10px] font-extrabold">
-              INPUT STAGE
-            </div>
-          </div>
-          <h3 className="text-2xl font-heading font-extrabold mb-4 leading-[1.1]">Feed Any Raw Source</h3>
-          <p className="text-sm text-secondary leading-relaxed mb-8 flex-1">
-            Drop investment memos, napkin wireframes, messy spreadsheets, or simply type your vision. Context parsers instantly isolate thesis points.
-          </p>
-          <div className="bg-white border border-foreground rounded-md py-2 px-4 flex items-center gap-2 text-[10px] font-bold text-foreground">
-            <span className="text-[#ff5722]">☑</span> Accepts PDF, Figma, JPG, Notion & XLSX
-          </div>
-        </div>
-        
-        {/* Step 2 */}
-        <div className="bg-[#fff2ee] border-2 border-foreground rounded-xl p-8 shadow-[8px_8px_0px_0px_#181b25] flex flex-col text-left">
-          <div className="flex justify-between items-center mb-6">
-            <div className="bg-[#ff5722] text-white border-2 border-foreground rounded-md w-12 h-12 flex items-center justify-center font-heading text-2xl font-extrabold shadow-[4px_4px_0px_0px_#181b25]">
-              02
-            </div>
-            <div className="bg-white text-[#ff5722] border border-foreground rounded-full px-3 py-1 font-heading text-[10px] font-extrabold">
-              AGENT SYNTHESIS
-            </div>
-          </div>
-          <h3 className="text-2xl font-heading font-extrabold mb-4 leading-[1.1]">AI Builds High-Impact Story</h3>
-          <p className="text-sm text-secondary leading-relaxed mb-8 flex-1">
-            In 30 seconds, dual AI engines map narrative density, construct charts from tables, and write punchy executive bullet points.
-          </p>
-          <div className="bg-white border border-foreground rounded-md py-2 px-4 flex items-center gap-2 text-[10px] font-bold text-foreground">
-            <span className="text-[#ff5722]">☑</span> Auto-calculates TAM, Moat & Financials
-          </div>
-        </div>
-        
-        {/* Step 3 */}
-        <div className="bg-[#f5f3ff] border-2 border-foreground rounded-xl p-8 shadow-[8px_8px_0px_0px_#181b25] flex flex-col text-left">
-          <div className="flex justify-between items-center mb-6">
-            <div className="bg-[#0b3dd0] text-white border-2 border-foreground rounded-md w-12 h-12 flex items-center justify-center font-heading text-2xl font-extrabold shadow-[4px_4px_0px_0px_#181b25]">
-              03
-            </div>
-            <div className="bg-white text-[#0b3dd0] border border-foreground rounded-full px-3 py-1 font-heading text-[10px] font-extrabold">
-              DELIVERY
-            </div>
-          </div>
-          <h3 className="text-2xl font-heading font-extrabold mb-4 leading-[1.1]">Export Native .PPTX</h3>
-          <p className="text-sm text-secondary leading-relaxed mb-8 flex-1">
-            Tweak slides in our live canvas or export directly to Microsoft PowerPoint, Keynote, or Google Slides. 100% vector and typography editable.
-          </p>
-          <div className="bg-white border border-foreground rounded-md py-2 px-4 flex items-center gap-2 text-[10px] font-bold text-foreground">
-            <span className="text-[#ff5722]">☑</span> 100% Vector Shapes & Native Fonts
-          </div>
-        </div>
-      </div>
-    </section>
-  );
+    </Section>
+  )
 }

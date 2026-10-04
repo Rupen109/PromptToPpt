@@ -1,0 +1,1 @@
+ALTER TABLE "generated_asset" ADD COLUMN "status" text DEFAULT 'ready' NOT NULL;

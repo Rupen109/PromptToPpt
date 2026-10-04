@@ -1,5 +1,5 @@
-version: '3.9'
-
+# Local infrastructure. No Docker? Run `pnpm db:local` for an embedded Postgres on the same port/credentials.
+# Redis intentionally absent: nothing needs it yet (queue = SQS, rate limiting is in-process). Add it with the feature that needs it.
 services:
   postgres:
     image: postgres:16-alpine
@@ -19,21 +19,5 @@ services:
       timeout: 5s
       retries: 5
 
-  redis:
-    image: redis:7-alpine
-    container_name: prompttoppt-redis
-    restart: unless-stopped
-    ports:
-      - '6379:6379'
-    volumes:
-      - redis_data:/data
-    command: redis-server --appendonly yes
-    healthcheck:
-      test: ['CMD', 'redis-cli', 'ping']
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
 volumes:
   postgres_data:
-  redis_data:

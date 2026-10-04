@@ -1,0 +1,259 @@
+[
+  {
+    "title": "/ renders @390px without overflow or errors",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 2102
+  },
+  {
+    "title": "/ renders @768px without overflow or errors",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1662
+  },
+  {
+    "title": "/ renders @1440px without overflow or errors",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1640
+  },
+  {
+    "title": "/pricing renders @390px without overflow or errors",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1596
+  },
+  {
+    "title": "/pricing renders @768px without overflow or errors",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1546
+  },
+  {
+    "title": "/pricing renders @1440px without overflow or errors",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1596
+  },
+  {
+    "title": "/templates renders @390px without overflow or errors",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1652
+  },
+  {
+    "title": "/templates renders @768px without overflow or errors",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 2186
+  },
+  {
+    "title": "/templates renders @1440px without overflow or errors",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1986
+  },
+  {
+    "title": "/ai-ppt-maker renders @390px without overflow or errors",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1513
+  },
+  {
+    "title": "/ai-ppt-maker renders @768px without overflow or errors",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1474
+  },
+  {
+    "title": "/ai-ppt-maker renders @1440px without overflow or errors",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1477
+  },
+  {
+    "title": "/login renders @390px without overflow or errors",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1482
+  },
+  {
+    "title": "/login renders @768px without overflow or errors",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1529
+  },
+  {
+    "title": "/login renders @1440px without overflow or errors",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1475
+  },
+  {
+    "title": "/signup renders @390px without overflow or errors",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1470
+  },
+  {
+    "title": "/signup renders @768px without overflow or errors",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1512
+  },
+  {
+    "title": "/signup renders @1440px without overflow or errors",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1511
+  },
+  {
+    "title": "/templates/pitch-launchpad renders @390px without overflow or errors",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1656
+  },
+  {
+    "title": "/templates/pitch-launchpad renders @768px without overflow or errors",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1787
+  },
+  {
+    "title": "/templates/pitch-launchpad renders @1440px without overflow or errors",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1674
+  },
+  {
+    "title": "every link on every public page resolves (no 404, no empty href)",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 9190
+  },
+  {
+    "title": "header nav: each item scrolls to its section / navigates",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 28
+  },
+  {
+    "title": "hero: example chips fill the prompt box",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 19
+  },
+  {
+    "title": "hero: typing in the prompt box works and Generate is enabled",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 133
+  },
+  {
+    "title": "hero: attach a .txt file → chip appears → can be removed",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 413
+  },
+  {
+    "title": "hero: unsupported file type is refused with a clear message",
+    "ok": true,
+    "error": "",
+    "noise": [
+      "http 422: POST http://localhost:4000/api/v1/drafts/attachments",
+      "console: Failed to load resource: the server responded with a status of 422 (Unprocessable Entity)"
+    ],
+    "ms": 42
+  },
+  {
+    "title": "hero: add website link → chip; invalid link is refused with a message",
+    "ok": true,
+    "error": "",
+    "noise": [
+      "http 400: POST http://localhost:4000/api/v1/drafts/attachments/link",
+      "console: Failed to load resource: the server responded with a status of 400 (Bad Request)"
+    ],
+    "ms": 100
+  },
+  {
+    "title": "hero: Generate while signed out hands off to sign-up/login with the prompt kept",
+    "ok": true,
+    "error": "",
+    "noise": [
+      "http 422: POST http://localhost:4000/api/v1/drafts/attachments/link",
+      "console: Failed to load resource: the server responded with a status of 422 (Unprocessable Entity)"
+    ],
+    "ms": 625
+  },
+  {
+    "title": "pricing: monthly/annual toggle changes prices",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 494
+  },
+  {
+    "title": "pricing: plan buttons point to signup / billing",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 14
+  },
+  {
+    "title": "FAQ: items open and close",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1375
+  },
+  {
+    "title": "templates: category tabs filter, search filters, card opens detail page",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1838
+  },
+  {
+    "title": "template detail: next/prev/play/thumbnails work, Use-this-template targets the editor",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 2425
+  },
+  {
+    "title": "template detail: unknown id → 404 page, not a crash",
+    "ok": true,
+    "error": "",
+    "noise": [
+      "http 404: GET http://localhost:3000/templates/does-not-exist",
+      "console: Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "ms": 89
+  }
+]

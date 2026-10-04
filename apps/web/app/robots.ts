@@ -1,7 +1,8 @@
 import type { MetadataRoute } from 'next'
+import { SITE_URL } from '@/lib/env'
 
 export default function robots(): MetadataRoute.Robots {
-  const BASE_URL = process.env['NEXT_PUBLIC_APP_URL'] ?? 'https://prompttoppt.com'
+  const BASE_URL = SITE_URL
 
   return {
     rules: [
@@ -11,7 +12,8 @@ export default function robots(): MetadataRoute.Robots {
         disallow: [
           '/api/',        // Never expose API routes
           '/_next/',      // Internal Next.js
-          '/dashboard/',  // Authenticated pages
+          '/login',
+          '/signup',
           '/editor/',     // App subdomain — separate
         ],
       },

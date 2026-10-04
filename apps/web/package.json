@@ -7,18 +7,22 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "echo \"no tests yet\""
   },
   "dependencies": {
     "@prompttoppt/analytics": "workspace:*",
+    "@prompttoppt/api-client": "workspace:*",
     "@prompttoppt/theme": "workspace:*",
     "@prompttoppt/types": "workspace:*",
+    "@prompttoppt/ui": "workspace:*",
+    "@prompttoppt/validation": "workspace:*",
     "next": "16.3.8",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },
   "devDependencies": {
-    "@types/node": "^20",
+    "@types/node": "^22.0.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "autoprefixer": "^10.6.1",
