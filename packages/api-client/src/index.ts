@@ -69,8 +69,12 @@ export interface CreateJobInput {
   /** remix this deck of yours into a NEW deck with the same look (Pro/Gold); its text comes in as `sourceIds` from remixSource() */
   remixOf?: string
   sourceIds?: string[]
+  /** language the person chose for the deck (code from DECK_LANGUAGES); omitted → detected from the request */
+  language?: string
   idempotencyKey: string
 }
+export interface AskDeckAnswer { answer: string; slides: { n: number; id: string }[]; creditsCharged: number; model: string }
+export interface ResearchResult { sources: (SourceSummary & { url?: string })[]; creditsCharged: number }
 export interface PresentationSummary {
   id: string
   title: string
@@ -354,8 +358,8 @@ export function createApiClient({ apiUrl, sessionUser, onSessionChanged }: ApiCl
     addDraftLink: (url: string) => request<DraftAttachment>('/api/v1/drafts/attachments/link', { method: 'POST', body: JSON.stringify({ url }) }),
 
     /** Editor → after login, exchanges the draft id for the prompt (single use, owner-bound). */
-    analyze: (prompt: string, sourceIds: string[] = []) =>
-      request<AnalyzeResult>('/api/v1/generation/analyze', { method: 'POST', body: JSON.stringify({ prompt, sourceIds }) }),
+    analyze: (prompt: string, sourceIds: string[] = [], language?: string) =>
+      request<AnalyzeResult>('/api/v1/generation/analyze', { method: 'POST', body: JSON.stringify({ prompt, sourceIds, ...(language ? { language } : {}) }) }),
     createJob: (input: CreateJobInput) => request<JobView>('/api/v1/generation/jobs', { method: 'POST', body: JSON.stringify(input) }),
     getJob: (id: string) => request<JobView>(`/api/v1/generation/jobs/${encodeURIComponent(id)}`),
     cancelJob: (id: string) => request<JobView>(`/api/v1/generation/jobs/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),
@@ -408,6 +412,9 @@ export function createApiClient({ apiUrl, sessionUser, onSessionChanged }: ApiCl
     deleteComment: (id: string, commentId: string) => request<{ deleted: boolean }>(`/api/v1/presentations/${encodeURIComponent(id)}/comments/items/${encodeURIComponent(commentId)}`, { method: 'DELETE' }),
     markCommentsSeen: (id: string) => request<{ seenAt: string }>(`/api/v1/presentations/${encodeURIComponent(id)}/comments/seen`, { method: 'POST', body: '{}' }),
     addTextSource: (text: string, title?: string) => request<SourceSummary>('/api/v1/sources/text', { method: 'POST', body: JSON.stringify({ text, ...(title ? { title } : {}) }) }),
+    /** Wikipedia (Pro/Gold, free) or live web search (Gold, costs credits): the facts come back as ready-made sources. */
+    research: (body: { query: string; mode: 'wikipedia' | 'web'; language?: string; requestId: string }) =>
+      request<ResearchResult>('/api/v1/sources/research', { method: 'POST', body: JSON.stringify(body) }),
     addUrlSource: (url: string) => request<SourceSummary>('/api/v1/sources/url', { method: 'POST', body: JSON.stringify({ url }) }),
     addPdfSource: (file: File) => {
       const body = new FormData()
@@ -438,6 +445,9 @@ export function createApiClient({ apiUrl, sessionUser, onSessionChanged }: ApiCl
     /** Pro+. Returns validated replacement content for ONE slide; apply it as a command. */
     aiEdit: (id: string, body: { slideId: string; command: AiEditCommand; argument?: string; model?: string; requestId: string }) =>
       request<AiEditResult>(`/api/v1/presentations/${encodeURIComponent(id)}/ai-edit`, { method: 'POST', body: JSON.stringify(body) }),
+    /** Pro/Gold. A question about the deck's own text: a short answer that points at slides. Read-only. */
+    askDeck: (id: string, body: { question: string; history?: { role: 'user' | 'ai'; text: string }[]; model?: string; requestId: string }) =>
+      request<AskDeckAnswer>(`/api/v1/presentations/${encodeURIComponent(id)}/ask`, { method: 'POST', body: JSON.stringify(body) }),
     /** Chat-style assistant: free-form instruction → validated theme/animation/content changes to apply as ONE undoable step. */
     aiAssist: (id: string, body: { instruction: string; scope: 'deck' | 'slide'; slideId?: string; activeSlideId?: string; model?: string; requestId: string; sourceIds?: string[]; recent?: { theme: boolean; slideIds: string[]; summary: string[] }[]; conversation?: { role: 'user' | 'assistant'; text: string }[] }) =>
       request<AiAssistResult>(`/api/v1/presentations/${encodeURIComponent(id)}/ai-assist`, { method: 'POST', body: JSON.stringify(body) }),

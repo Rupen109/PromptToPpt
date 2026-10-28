@@ -69,7 +69,7 @@ function InlineText({ el, theme, slide, onCommit }: { el: TextElement; theme: Th
       }}
       style={{
         position: 'absolute', left: el.x, top: el.y, width: el.width, height: el.height, zIndex: 9000, outline: '3px solid #2563eb', background: 'rgba(255,255,255,0.0)', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere',
-        display: 'flex', flexDirection: 'column', justifyContent: { top: 'flex-start', middle: 'center', bottom: 'flex-end' }[el.valign], textAlign: el.align, color: resolveColor(el.color, theme, slide), fontSize: el.fontSize, lineHeight: 1.3,
+        display: 'flex', flexDirection: 'column', justifyContent: { top: 'flex-start', middle: 'center', bottom: 'flex-end' }[el.valign], textAlign: { left: 'start', center: 'center', right: 'end' }[el.align] as 'start' | 'center' | 'end', unicodeBidi: 'plaintext', color: resolveColor(el.color, theme, slide), fontSize: el.fontSize, lineHeight: 1.3,
         fontFamily: `'${heading ? theme.fonts.heading : theme.fonts.body}', system-ui, sans-serif`, fontWeight: el.role === 'title' || el.role === 'metric' ? 800 : heading ? 700 : 400,
         paddingLeft: el.paragraphs[0]?.list ? 0 : 0,
       }}

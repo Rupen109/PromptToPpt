@@ -71,7 +71,8 @@ for (const planId of PLANS) {
   // ── what this plan may use ──
   const tiers: string[] = ent0.features.modelTiers ?? ['starter']
   const textModels = ((await call(cookie, 'GET', '/api/v1/models', undefined, ip)).json.data?.models ?? []).filter((m: any) => tiers.includes(m.tier))
-  const imageModels = ((await call(cookie, 'GET', '/api/v1/models?kind=image', undefined, ip)).json.data?.models ?? []).filter((m: any) => tiers.includes(m.tier))
+  // AI pictures (the paid "generate a picture" button) are NOT part of the test mix unless asked for: deck pictures come from Unsplash / the template library
+  const imageModels: any[] = process.env['INCLUDE_AI_IMAGES'] === '1' ? ((await call(cookie, 'GET', '/api/v1/models?kind=image', undefined, ip)).json.data?.models ?? []).filter((m: any) => tiers.includes(m.tier)) : []
   console.log(`text models: ${textModels.map((m: any) => `${m.id}[${m.tier}]`).join(', ')}\nimage models: ${imageModels.map((m: any) => `${m.id}[${m.tier}]`).join(', ') || 'none'}`)
   const weighted = (ms: any[]) => { const w = (m: any) => (m.tier === 'starter' ? 6 : m.tier === 'premium' ? 3 : 1); const bag = ms.flatMap((m) => Array(w(m)).fill(m)); return pick(bag) as any }
 

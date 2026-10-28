@@ -5,7 +5,7 @@ import { seedCatalog } from '../ai/catalog-seed.ts'
 
 const base: PlanFeatures = {
   watermark: true, exportFormats: [], aiEdits: true, advancedEditor: false, premiumTemplates: false, advancedSharing: false,
-  modelTiers: ['starter'], brandKit: false, knowledgeBase: false, support: 'community', speed: 'standard', projects: false,
+  modelTiers: ['starter'], brandKit: false, knowledgeBase: false, support: 'community', speed: 'standard', projects: false, askDeck: false, webData: 'none',
 }
 const ALL_EXPORTS = ['pptx', 'pdf', 'png', 'jpg', 'html'] as const
 
@@ -18,11 +18,11 @@ export const PLAN_SEED = [
   { id: 'starter', name: 'Starter', sortOrder: 0, monthlyCredits: 100, maxSlides: 20, maxPresentationsPerMonth: null, maxImagesPerPresentation: 3, maxImagesPerMonth: 6, features: base },
   {
     id: 'pro', name: 'Pro', sortOrder: 1, monthlyCredits: 3000, maxSlides: 40, maxPresentationsPerMonth: 50, maxImagesPerPresentation: 10, maxImagesPerMonth: 60,
-    features: { ...base, watermark: false, exportFormats: [...ALL_EXPORTS], advancedEditor: true, premiumTemplates: true, advancedSharing: true, modelTiers: ['starter', 'premium'], support: 'whatsapp', speed: 'fast', projects: true },
+    features: { ...base, watermark: false, exportFormats: [...ALL_EXPORTS], advancedEditor: true, premiumTemplates: true, advancedSharing: true, modelTiers: ['starter', 'premium'], support: 'whatsapp', speed: 'fast', projects: true, askDeck: true, webData: 'wikipedia' },
   },
   {
     id: 'gold', name: 'Gold', sortOrder: 2, monthlyCredits: 10000, maxSlides: 60, maxPresentationsPerMonth: null, maxImagesPerPresentation: 20, maxImagesPerMonth: 100,
-    features: { ...base, watermark: false, exportFormats: [...ALL_EXPORTS], advancedEditor: true, premiumTemplates: true, advancedSharing: true, modelTiers: ['starter', 'premium', 'frontier'], brandKit: true, knowledgeBase: true, support: 'whatsapp', speed: 'ultra', projects: true },
+    features: { ...base, watermark: false, exportFormats: [...ALL_EXPORTS], advancedEditor: true, premiumTemplates: true, advancedSharing: true, modelTiers: ['starter', 'premium', 'frontier'], brandKit: true, knowledgeBase: true, support: 'whatsapp', speed: 'ultra', projects: true, askDeck: true, webData: 'web' },
   },
 ] as const
 
@@ -50,6 +50,12 @@ export const CREDIT_COST_SEED = [
   { action: 'ai_edit', tier: 'starter', credits: 2 },
   { action: 'ai_edit', tier: 'premium', credits: 4 },
   { action: 'ai_edit', tier: 'frontier', credits: 10 },
+  { action: 'ask_deck', tier: 'starter', credits: 1 },
+  { action: 'ask_deck', tier: 'premium', credits: 2 },
+  { action: 'ask_deck', tier: 'frontier', credits: 5 },
+  { action: 'web_research', tier: 'starter', credits: 60 },
+  { action: 'web_research', tier: 'premium', credits: 60 },
+  { action: 'web_research', tier: 'frontier', credits: 60 },
   { action: 'image', tier: 'starter', credits: 20 },
   { action: 'image', tier: 'premium', credits: 60 },
   { action: 'image', tier: 'frontier', credits: 200 },

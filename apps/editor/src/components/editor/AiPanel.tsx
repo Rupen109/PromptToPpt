@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ApiError, isGateError, type AiEditCommand, type AiImageProposal, type ModelOption, type SourceSummary } from '@prompttoppt/api-client'
 import { SourcesDialog } from '@/components/SourcesDialog'
+import { AskDeck } from '@/components/editor/AskDeck'
 import { findUrls, type Presentation, type Slide } from '@prompttoppt/validation'
 import * as C from '@/editor/commands'
 import { useDoc } from '@/editor/store'
@@ -56,6 +57,8 @@ export function AiPanel({ doc, slide, presentationId, onClose, onBeforeSend, onR
   const [models, setModels] = useState<ModelOption[]>([])
   const [model, setModel] = useState('')
   const [scope, setScope] = useState<'deck' | 'slide'>('deck')
+  /** Edit: the assistant changes the deck. Ask: questions about the deck's content (read-only). */
+  const [mode, setMode] = useState<'edit' | 'ask'>('edit')
   const [text, setText] = useState('')
   const [msgs, setMsgs] = useState<Msg[]>([])
   const [pending, setPending] = useState(false)
@@ -175,6 +178,12 @@ export function AiPanel({ doc, slide, presentationId, onClose, onBeforeSend, onR
         <div className="flex items-center gap-3">{msgs.length > 0 && <button onClick={() => void clearChat()} className="text-xs text-slate-500 hover:text-slate-800 underline">Clear chat</button>}<button onClick={onClose} aria-label="Close AI panel" className="text-xl leading-none text-slate-500 hover:text-slate-800">×</button></div>
       </div>
 
+      <div role="tablist" aria-label="Assistant mode" className="mx-4 mt-3 bg-slate-100 p-1 rounded-lg grid grid-cols-2 text-xs font-semibold">
+        {([['edit', '✏️ Edit'], ['ask', '💬 Ask']] as const).map(([k, label]) => (
+          <button key={k} role="tab" aria-selected={mode === k} onClick={() => setMode(k)} className={`py-1.5 rounded-md ${mode === k ? 'bg-white shadow-sm' : 'text-slate-500'}`}>{label}</button>
+        ))}
+      </div>
+      {mode === 'ask' ? <AskDeck doc={doc} presentationId={presentationId} /> : (<>
       <div className="px-4 pt-3 space-y-2">
         <div role="group" aria-label="What should the AI change?" className="bg-slate-100 p-1 rounded-lg grid grid-cols-2 text-xs font-semibold">
           {([['deck', 'Whole deck'], ['slide', `This slide (${slideNo})`]] as const).map(([k, label]) => (
@@ -255,6 +264,7 @@ export function AiPanel({ doc, slide, presentationId, onClose, onBeforeSend, onR
         </form>
         <p className="text-[11px] text-slate-500">Enter to send · Shift+Enter for a new line{cost !== null && <> · ≈ {cost} credits per message</>}{links.length > 0 && <> (includes reading {links.length === 1 ? 'the linked page' : `${links.length} linked pages`})</>} · changes apply live (⌘Z to undo) · failed requests are refunded</p>
       </div>
+      </>)}
       {sourcesOpen && <SourcesDialog count={attached.length + doc.sources.length} onAdd={(src) => setAttached((x) => [...x, src])} onClose={() => setSourcesOpen(false)} />}
     </aside>
   )

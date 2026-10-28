@@ -121,6 +121,8 @@ export type AIRequestType =
   | 'picture_query'
   | 'deck_critic'
   | 'ai_assist'
+  | 'ask_deck'
+  | 'web_research'
   | 'source_analysis'
   | 'free_outline'
   | 'free_pdf'

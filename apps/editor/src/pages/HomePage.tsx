@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { ApiError, type PresentationSummary, type SourceSummary } from '@prompttoppt/api-client'
+import { DECK_LANGUAGES } from '@prompttoppt/validation'
 import { SourcesDialog } from '@/components/SourcesDialog'
 import { api } from '@/lib/api'
 import { MaintenanceBanner } from '@/lib/flags'
 import { DeckThumb } from '@/components/DeckThumb'
 import { Sidebar } from '@/components/Sidebar'
-import { clearPending, setPendingPrompt, setPendingSources } from '@/lib/pending-prompt'
+import { clearPending, setPendingLanguage, setPendingPrompt, setPendingSources } from '@/lib/pending-prompt'
 
 const MAX_SOURCES = 10
 const FILE_TYPES = /\.(pdf|pptx|docx|docm|xlsx|xlsm|csv|tsv|eml|txt|md|markdown)$/i
@@ -50,6 +51,8 @@ export function HomePage() {
   const navigate = useNavigate()
   const [sources, setSources] = useState<SourceSummary[]>([])
   const [dialog, setDialog] = useState(false)
+  /** language of the deck: '' = detect it from what is typed */
+  const [language, setLanguage] = useState('')
   /** attachments the server is still checking: shown as normal chips (no spinner), settled in the background */
   const [pending, setPending] = useState<{ key: string; label: string; icon: string }[]>([])
   const [attachError, setAttachError] = useState<string | null>(null)
@@ -118,6 +121,7 @@ export function HomePage() {
       clearPending() // a new request must never inherit a previous run's job/sources
       setPendingPrompt(text)
       setPendingSources(list.map((s) => s.id))
+      setPendingLanguage(language)
       navigate('/create')
     } finally {
       submitting.current = false
@@ -170,6 +174,13 @@ export function HomePage() {
                   <button type="button" aria-label={`Remove ${c.label}`} onClick={() => { cancelled.current.add(c.key); setPending((p) => p.filter((x) => x.key !== c.key)) }} className="w-4 h-4 rounded-full hover:bg-primary/20 leading-none">×</button>
                 </span>
               ))}
+              <label className="inline-flex items-center gap-1.5 rounded-full border border-border bg-slate-50 pl-3 pr-1 py-1 text-sm text-slate-700">
+                <span aria-hidden>🌐</span>
+                <select value={language} onChange={(e) => setLanguage(e.target.value)} aria-label="Deck language" className="bg-transparent py-1 pr-2 text-sm font-medium focus:outline-none max-w-[200px]">
+                  <option value="">Auto-detect language</option>
+                  {DECK_LANGUAGES.map((l) => <option key={l.code} value={l.code}>{l.name === l.native ? l.name : `${l.name} — ${l.native}`}</option>)}
+                </select>
+              </label>
               <button
                 type="submit"
                 disabled={!prompt.trim()}
@@ -210,7 +221,7 @@ export function HomePage() {
           )}
         </div>
       </main>
-      {dialog && <SourcesDialog count={sources.length} onAdd={(s) => keep([...sourcesRef.current, s])} onClose={() => setDialog(false)} />}
+      {dialog && <SourcesDialog count={sources.length} language={language} onAdd={(s) => keep(sourcesRef.current.some((x) => x.id === s.id) ? sourcesRef.current : [...sourcesRef.current, s])} onClose={() => setDialog(false)} />}
     </div>
   )
 }

@@ -169,3 +169,29 @@ describe('usage ledger', () => {
     await expect(db.delete(aiUsageEvent).where(eq(aiUsageEvent.userId, userId))).rejects.toThrow()
   })
 })
+
+describe('deck language (100+ languages)', () => {
+  it('a chosen language beats the detected one in the analysis, and the model is told the choice', async () => {
+    const u = await signUp()
+    const body = await j(await post('/analyze', u.cookie, { prompt: 'Create an 8 slide overview of our onboarding process for new customers', language: 'hi' }))
+    expect(body.data.analysis.language).toBe('hi')
+    const none = await j(await post('/analyze', u.cookie, { prompt: 'Create an 8 slide overview of our onboarding process for new customers' }))
+    expect(none.data.analysis.language).toBe('en')
+  })
+
+  it('an unknown language is refused (400) on analyze and on create; nothing is charged or queued', async () => {
+    const u = await signUp()
+    expect((await post('/analyze', u.cookie, { prompt: 'A deck about tea for beginners at a cafe', language: 'xx-klingon' })).status).toBe(400)
+    expect((await post('/jobs', u.cookie, { prompt: 'A deck about tea for beginners at a cafe', slideCount: 5, language: 'zz', idempotencyKey: `key-${rid()}-${rid()}` })).status).toBe(400)
+  })
+
+  it('a deck created with a language is saved in that language', async () => {
+    const u = await signUp()
+    await setPlan(u.id, 'pro')
+    const created = await j(await post('/jobs', u.cookie, { prompt: 'Create a 5 slide overview of our onboarding process for new customers', slideCount: 5, language: 'ar', idempotencyKey: `key-${rid()}-${rid()}` }))
+    await drain(created.data.id)
+    const view = await j(await app.request(`/api/v1/generation/jobs/${created.data.id}`, { headers: { Cookie: u.cookie } }))
+    const deck = await j(await app.request(`/api/v1/presentations/${view.data.presentationId}`, { headers: { Cookie: u.cookie } }))
+    expect(deck.data.document.language).toBe('ar')
+  })
+})

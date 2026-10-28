@@ -1,7 +1,7 @@
 import { base64ToBytes, imageToBase64, ProviderError, type AIProvider, type ImageRequest, type ImageResponse, type TextRequest, type TextResponse } from './types'
 
 interface ORResponse {
-  choices?: { message?: { content?: string | null; images?: { image_url?: { url?: string } }[] }; finish_reason?: string }[]
+  choices?: { message?: { content?: string | null; images?: { image_url?: { url?: string } }[]; annotations?: { type?: string; url_citation?: { url?: string; title?: string } }[] }; finish_reason?: string }[]
   usage?: {
     prompt_tokens?: number
     completion_tokens?: number
@@ -12,6 +12,9 @@ interface ORResponse {
   model?: string
   error?: { code?: number | string; message?: string }
 }
+
+/** The OpenRouter web plugin returns up to this many results per search and bills about $4 per 1,000 results. */
+const WEB_RESULTS = 5
 
 export interface OpenRouterOptions {
   apiKey: string
@@ -56,6 +59,7 @@ export class OpenRouterProvider implements AIProvider {
           temperature: req.temperature ?? 0.7,
           ...(req.maxOutputTokens ? { max_tokens: req.maxOutputTokens } : {}),
           usage: { include: true },
+          ...(req.webSearch ? { plugins: [{ id: 'web', max_results: WEB_RESULTS }] } : {}),
           // 0 = no hidden reasoning (billed as output). Models that always reason simply ignore it.
           ...(req.thinkingBudget === 0 ? { reasoning: { enabled: false } } : {}),
           // JSON is requested in the prompt and validated by the gateway; `response_format` isn't honoured by every model.
@@ -75,9 +79,13 @@ export class OpenRouterProvider implements AIProvider {
     }
     const text = body.choices?.[0]?.message?.content ?? ''
     const u = body.usage ?? {}
+    const citations = req.webSearch
+      ? [...new Map((body.choices?.[0]?.message?.annotations ?? []).flatMap((a) => (a.type === 'url_citation' && a.url_citation?.url ? [[a.url_citation.url, { url: a.url_citation.url, title: (a.url_citation.title ?? '').slice(0, 200) }] as const] : [])))].map(([, v]) => v)
+      : undefined
     return {
       text,
       modelVersion: body.model,
+      ...(req.webSearch ? { citations, extraCostUsd: WEB_RESULTS * 0.004 } : {}),
       reportedCostUsd: typeof u.cost === 'number' ? u.cost : undefined,
       usage: {
         inputTokens: u.prompt_tokens ?? 0,

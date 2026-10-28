@@ -79,6 +79,9 @@ export interface ViewProps {
   play?: boolean
 }
 
+/** CSS logical alignment: identical to left/right for left-to-right text, mirrored for right-to-left paragraphs. */
+const ALIGN_LOGICAL = { left: 'start', center: 'center', right: 'end' } as const
+
 export function ElementView({ el, theme, slide, play = false }: { el: SlideElement; theme: Theme; slide: Slide } & ViewProps) {
   const colors = { ...theme.colors, ...slide.themeOverrides } as Record<string, string>
   // Animations use `transform`, which would clobber a rotation — so an animated, rotated element gets a positioned wrapper that
@@ -94,7 +97,7 @@ export function ElementView({ el, theme, slide, play = false }: { el: SlideEleme
       const weight = el.weight ?? (el.role === 'title' || el.role === 'metric' ? 800 : heading ? 700 : 400)
       const byP = !!el.animation?.byParagraph && play
       const style: CSSProperties = {
-        ...base, display: 'flex', flexDirection: 'column', justifyContent: { top: 'flex-start', middle: 'center', bottom: 'flex-end' }[el.valign], textAlign: el.align,
+        ...base, display: 'flex', flexDirection: 'column', justifyContent: { top: 'flex-start', middle: 'center', bottom: 'flex-end' }[el.valign], textAlign: ALIGN_LOGICAL[el.align], // 'start' keeps left-to-right text on the left and puts right-to-left text (Arabic, Hebrew, Urdu…) on the right
         color: resolveColor(el.color, theme, slide), fontSize: el.fontSize, lineHeight: el.lineHeight ?? 1.3, fontFamily: `'${heading ? theme.fonts.heading : theme.fonts.body}', system-ui, sans-serif`,
         fontWeight: weight, fontStyle: el.role === 'quote' ? 'italic' : undefined, overflowWrap: 'anywhere',
         ...(el.uppercase ? { textTransform: 'uppercase' as const } : {}), ...(el.letterSpacing ? { letterSpacing: el.letterSpacing } : {}),
@@ -104,8 +107,9 @@ export function ElementView({ el, theme, slide, play = false }: { el: SlideEleme
       return wrap(
         <div style={style} {...(el.animation && play ? { 'data-pt-anim': '' } : {})}>
           {el.paragraphs.map((p, i) => (
-            <div key={i} {...(byP ? { 'data-pt-anim': '' } : {})} style={{ marginBottom: i < el.paragraphs.length - 1 ? el.fontSize * (el.paraGap ?? 0.5) : 0, paddingLeft: p.list ? el.fontSize * 0.9 : 0, position: 'relative', ...(byP ? anim(el.animation, true, i * (el.animation?.stagger ?? 100)) : {}) }}>
-              {p.list && <span style={{ position: 'absolute', left: 0 }}>{p.list === 'bullet' ? el.bullet : `${i + 1}.`}</span>}
+            <div key={i} {...(byP ? { 'data-pt-anim': '' } : {})} style={{ marginBottom: i < el.paragraphs.length - 1 ? el.fontSize * (el.paraGap ?? 0.5) : 0, unicodeBidi: 'plaintext', paddingInlineStart: p.list ? el.fontSize * 0.9 : 0, position: 'relative', // each paragraph reads in the direction of its own first strong letter
+          ...(byP ? anim(el.animation, true, i * (el.animation?.stagger ?? 100)) : {}) }}>
+              {p.list && <span style={{ position: 'absolute', insetInlineStart: 0 }}>{p.list === 'bullet' ? el.bullet : `${i + 1}.`}</span>}
               {p.runs.map((r, k) => {
                 const inner = isCount && play ? <CountUp text={r.text} duration={el.animation!.duration} delay={el.animation!.delay} play /> : r.text
                 const st: CSSProperties = { fontWeight: r.bold ? 700 : undefined, fontStyle: r.italic ? 'italic' : undefined, ...(r.color ? { color: resolveColor(r.color, theme, slide) } : {}) }

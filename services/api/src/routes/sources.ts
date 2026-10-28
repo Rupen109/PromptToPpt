@@ -13,6 +13,13 @@ import { BusyError, parseUpload } from '../sources/parse-pool.ts'
 import { busyAnswer, uploadGate } from '../middleware/upload-gate.ts'
 import { readLink } from '../sources/link.ts'
 import { saveSource } from '../sources/store.ts'
+import { AIUnavailableError } from '@prompttoppt/ai'
+import { aiConfigured, gateway } from '../ai/gateway.ts'
+import { creditPrice, refundCredits, reserveCredits } from '../billing/credits.ts'
+import { assertWebData, getEntitlements } from '../billing/entitlements.ts'
+import { refuseIfOn } from '../flags/flags.ts'
+import { briefWithSources, researchInput, webResearchPrompt } from '../research/web.ts'
+import { searchWikipedia, wikiLang } from '../research/wikipedia.ts'
 
 export const sources = new Hono<AppEnv>()
 sources.use('*', requireAuth)
@@ -40,6 +47,48 @@ const save = saveSource
 sources.post('/text', zValidator('json', z.object({ title: z.string().trim().max(200).optional(), text: z.string().trim().min(20, 'Add a bit more text').max(200_000) })), async (c) => {
   const { title, text } = c.req.valid('json')
   return c.json({ success: true, data: await save(c.get('session')!.user.id, 'text', fromText(title ?? '', text)) }, 201)
+})
+
+/**
+ * "Google & Wikipedia data": turns a topic into ready-made sources the deck is then built from (and cites).
+ *  - wikipedia: free, Pro and Gold; up to 3 articles, each saved as its own source with its page link.
+ *  - web: live web search, Gold; one research brief with the pages it used; costs credits (refunded if the search fails).
+ */
+sources.post('/research', rateLimit({ windowMs: 60_000, max: 6, key: byUser('research'), message: 'You are searching very quickly. Wait a moment and try again.' }), zValidator('json', researchInput), async (c) => {
+  const input = c.req.valid('json')
+  const userId = c.get('session')!.user.id
+  const maint = await refuseIfOn('maintenance_mode', c, userId)
+  if (maint) return maint
+  const ent = await getEntitlements(userId)
+  assertWebData(ent, input.mode)
+  const lang = wikiLang(input.language)
+
+  if (input.mode === 'wikipedia') {
+    let pages
+    try { pages = await searchWikipedia(input.query, lang) } catch (e) {
+      console.warn('[research] wikipedia failed:', (e as Error).message)
+      return fail(c, 422, 'RESEARCH_FAILED', 'Wikipedia could not be reached. Please try again in a moment.')
+    }
+    if (pages.length === 0) return fail(c, 422, 'NO_RESULTS', 'Wikipedia has no article on that topic. Try different words.')
+    const saved = []
+    for (const pg of pages) saved.push(await saveSource(userId, 'url', fromText(pg.title, pg.text), pg.url))
+    return c.json({ success: true, data: { sources: saved.map((x, i) => ({ ...x, url: pages[i]!.url })), creditsCharged: 0 } }, 201)
+  }
+
+  if (!aiConfigured) return c.json({ success: false, error: { code: 'AI_NOT_CONFIGURED', message: 'AI is not configured on this server' } }, 503)
+  const price = await creditPrice('web_research', 'starter')
+  await reserveCredits(userId, price, 'web_research', input.requestId, { strict: true })
+  try {
+    const out = await gateway.search({ route: 'fast', requestType: 'web_research', ...webResearchPrompt(input.query, lang), ctx: { userId } })
+    const doc = briefWithSources(input.query, out.text, out.citations)
+    const saved = await saveSource(userId, 'text', fromText(doc.title, doc.text))
+    return c.json({ success: true, data: { sources: [{ ...saved, citations: out.citations.length }], creditsCharged: price } }, 201)
+  } catch (e) {
+    await refundCredits(userId, 'web_research', input.requestId)
+    if (e instanceof AIUnavailableError) return c.json({ success: false, error: { code: 'AI_UNAVAILABLE', message: 'Web search is busy or unavailable. You were not charged — please try again.' } }, 503)
+    console.error('[research]', e)
+    return fail(c, 422, 'RESEARCH_FAILED', 'The web search could not finish. You were not charged.')
+  }
 })
 
 sources.post('/url', zValidator('json', z.object({ url: z.string().trim().max(2000) })), async (c) => {

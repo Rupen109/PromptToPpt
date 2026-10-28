@@ -33,6 +33,13 @@ export function mockRespond(req: TextRequest): string {
   if (task === 'free_pdf') {
     return JSON.stringify({ title: 'Mock document', summary: 'A short mock summary.', keyPoints: ['One', 'Two', 'Three', 'Four'], slides: Array.from({ length: 6 }, (_, i) => ({ title: `Part ${i + 1}`, points: ['Alpha', 'Beta', 'Gamma'] })) })
   }
+  if ((task === 'askdeck' || task === 'webresearch') && req.prompt.includes('FAIL_PLEASE')) throw new Error('mock model failure') // lets tests exercise the refund path
+  if (task === 'askdeck') {
+    const deck = req.prompt.match(/<deck>\n([\s\S]*?)\n<\/deck>/)?.[1] ?? ''
+    const q = req.prompt.match(/<question>([\s\S]*?)<\/question>/)?.[1] ?? ''
+    return JSON.stringify(/not in the deck|unknowable/i.test(q) ? { answer: 'The deck does not say.', slides: [] } : { answer: `From the deck: ${deck.split('\n')[0]?.slice(0, 200) ?? ''}`, slides: [1] })
+  }
+  if (task === 'webresearch') return 'Mock web brief: the topic is widely covered; key facts follow. [example.com]'
   if (task === 'critic') return JSON.stringify({ defects: [] })
   if (task === 'picture_query') return JSON.stringify({ queries: [String(p['topic'] ?? p['intent'] ?? 'business meeting').slice(0, 60)] })
   if (task === 'picture_verify') return JSON.stringify({ score: 4, reason: 'mock' })

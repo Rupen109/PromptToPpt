@@ -7,7 +7,7 @@ import { ThinkingLoader } from '@/components/ThinkingLoader'
 import { ModelPicker } from '@/components/ModelPicker'
 import { api } from '@/lib/api'
 import { useEntitlements } from '@/lib/entitlements'
-import { clearPending, getPendingJob, getPendingPrompt, getPendingSources, setPendingJob } from '@/lib/pending-prompt'
+import { clearPending, getPendingJob, getPendingLanguage, getPendingPrompt, getPendingSources, setPendingJob } from '@/lib/pending-prompt'
 
 type Retry = { type: 'analyze' } | { type: 'start'; result: AnalyzeResult; slideCount: number; direction?: Direction | undefined } | { type: 'home' }
 
@@ -103,7 +103,7 @@ export function CreatePage() {
     if (!prompt) return
     setPhase({ kind: 'analyzing' })
     try {
-      const result = await api.analyze(prompt, getPendingSources())
+      const result = await api.analyze(prompt, getPendingSources(), getPendingLanguage())
       setPhase(result.mode === 'broad' && result.directions ? { kind: 'pick-direction', result } : { kind: 'pick-length', result })
     } catch (e) {
       setPhase({ kind: 'error', message: errMessage(e), retry: { type: 'analyze' } })
@@ -121,7 +121,7 @@ export function CreatePage() {
       if (!prompt) return
       setPhase({ kind: 'generating', job: null })
       try {
-        const job = await api.createJob({ prompt, analysis: result.analysis, slideCount, sourceIds: getPendingSources(), ...((modelOverride ?? modelId) ? { model: (modelOverride ?? modelId)! } : {}), ...(direction ? { direction } : {}), ...(defaultKit && useKit ? { brandKitId: defaultKit.id } : {}), idempotencyKey: idemKey.current })
+        const job = await api.createJob({ prompt, analysis: result.analysis, slideCount, sourceIds: getPendingSources(), ...(getPendingLanguage() ? { language: getPendingLanguage()! } : {}), ...((modelOverride ?? modelId) ? { model: (modelOverride ?? modelId)! } : {}), ...(direction ? { direction } : {}), ...(defaultKit && useKit ? { brandKitId: defaultKit.id } : {}), idempotencyKey: idemKey.current })
         setPendingJob(job.id)
         setPhase({ kind: 'generating', job })
       } catch (e) {

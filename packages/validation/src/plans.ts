@@ -29,6 +29,10 @@ export const planFeaturesSchema = z.object({
   speed: z.enum(['standard', 'fast', 'ultra']),
   /** organise presentations into projects (folders) */
   projects: z.boolean(),
+  /** "Chat with your presentation": ask questions about a deck and get answers that point to slides */
+  askDeck: z.boolean().default(false),
+  /** facts to build decks from: none, Wikipedia (free), or Wikipedia + live web search (costs credits) */
+  webData: z.enum(['none', 'wikipedia', 'web']).default('none'),
 })
 export type PlanFeatures = z.infer<typeof planFeaturesSchema>
 

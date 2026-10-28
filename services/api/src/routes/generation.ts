@@ -6,7 +6,7 @@ import { nanoid } from 'nanoid'
 import { z } from 'zod'
 import { AIUnavailableError } from '@prompttoppt/ai'
 import { designById } from '@prompttoppt/theme'
-import { directionSchema, directionsSchema, promptAnalysisSchema } from '@prompttoppt/validation'
+import { deckLanguage, directionSchema, directionsSchema, promptAnalysisSchema } from '@prompttoppt/validation'
 import { aiConfigured, catalog, gateway } from '../ai/gateway.ts'
 import { defaultModel } from './models.ts'
 import { analyzePrompt, directionsPrompt } from '../ai/prompts.ts'
@@ -27,6 +27,8 @@ generation.use('*', requireAuth)
 const err = (code: string, message: string) => ({ success: false as const, error: { code, message } })
 const promptField = z.string().trim().min(3).max(4000)
 const sourceIds = z.array(z.string().max(64)).max(10).default([])
+/** a language from the deck language list (100+); anything else is a 400, so the model is never told an invented language */
+const languageField = z.string().max(12).refine((c) => deckLanguage(c) !== undefined, 'Unknown language').optional()
 
 /** Internal error text (stack fragments, provider messages, paths) never reaches the browser: only a short, plain-language reason does. */
 const safeJobError = (e: string | null): string | null => (e ? (/^[A-Z][^\n]{0,140}$/.test(e) && !/(\bat\b .*\(|\/|\\|https?:|key|token|secret|SELECT|INSERT|ECONN|ENOTFOUND|undefined|\[object)/i.test(e) ? e : 'Generation failed. You were not charged — please try again.') : null)
@@ -43,9 +45,10 @@ const unavailable = (c: any, e: unknown) => {
  * Step 1 of the new-presentation flow: understand the request. Broad topic → 3–4 directions to pick from;
  * detailed → go straight to generation. The model analyses; `decideMode` (deterministic) decides.
  */
-generation.post('/analyze', rateLimit({ windowMs: 60_000, max: 6, key: byUser('analyze') }), zValidator('json', z.object({ prompt: promptField, sourceIds })), async (c) => {
+generation.post('/analyze', rateLimit({ windowMs: 60_000, max: 6, key: byUser('analyze') }), zValidator('json', z.object({ prompt: promptField, sourceIds, language: languageField })), async (c) => {
   if (!aiConfigured) return c.json(err('AI_NOT_CONFIGURED', 'AI is not configured on this server'), 503)
-  const { prompt, sourceIds: srcIds } = c.req.valid('json')
+  const { prompt, sourceIds: srcIds, language } = c.req.valid('json')
+  const chosen = deckLanguage(language)
   const userId = c.get('session')!.user.id
   const maint = await refuseIfOn('maintenance_mode', c, userId)
   if (maint) return maint
@@ -53,7 +56,8 @@ generation.post('/analyze', rateLimit({ windowMs: 60_000, max: 6, key: byUser('a
   const [{ n: analyses } = { n: 0 }] = await db.select({ n: count() }).from(aiUsageEvent).where(and(eq(aiUsageEvent.userId, userId), eq(aiUsageEvent.requestType, 'prompt_analysis'), gte(aiUsageEvent.createdAt, new Date(Date.now() - 24 * 3600_000))))
   if (analyses >= ANALYZE_DAILY_LIMIT) return c.json(err('LIMIT_REACHED', 'You have reached today\'s limit for starting new presentations. Please try again tomorrow.'), 429)
   try {
-    const analysis = await gateway.run({ route: 'fast', requestType: 'prompt_analysis', ...analyzePrompt(prompt), schema: promptAnalysisSchema, ctx: { userId } })
+    const found = await gateway.run({ route: 'fast', requestType: 'prompt_analysis', ...analyzePrompt(prompt, chosen), schema: promptAnalysisSchema, ctx: { userId } })
+    const analysis = chosen ? { ...found, language: chosen.code } : found
     const mode = decideMode(prompt, analysis, srcIds.length > 0)
     const directions = mode === 'broad' ? (await gateway.run({ route: 'fast', requestType: 'direction_suggestion', ...directionsPrompt(analysis), schema: directionsSchema, ctx: { userId } })).directions : undefined
     const ent = await getEntitlements(userId)
@@ -84,6 +88,8 @@ const createJob = z.object({
   /** build a new deck in this brand kit (Pro/Gold); ignored when rewriting an existing deck */
   brandKitId: z.string().max(32).optional(),
   sourceIds,
+  /** the language the person chose for the deck (any of the 100+ in the picker); omitted → detected from the request */
+  language: languageField,
   /** generated once per user action in the client; retries of the same action reuse it */
   idempotencyKey: z.string().min(8).max(64),
 })

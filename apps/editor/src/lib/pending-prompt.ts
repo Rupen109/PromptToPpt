@@ -38,6 +38,7 @@ export const clearPending = () => {
   try {
     sessionStorage.removeItem(KEY)
     sessionStorage.removeItem(SRC_KEY)
+    sessionStorage.removeItem(LANG_KEY)
   } catch {
     /* ignore */
   }
@@ -58,5 +59,23 @@ export const getPendingSources = (): string[] => {
     return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
   } catch {
     return []
+  }
+}
+
+// The language the person picked for the deck on the home screen ('' = detect it from the request).
+const LANG_KEY = 'prompttoppt:pending-language'
+export const setPendingLanguage = (code: string) => {
+  try {
+    if (code) sessionStorage.setItem(LANG_KEY, code)
+    else sessionStorage.removeItem(LANG_KEY)
+  } catch {
+    /* ignore */
+  }
+}
+export const getPendingLanguage = (): string | undefined => {
+  try {
+    return sessionStorage.getItem(LANG_KEY) || undefined
+  } catch {
+    return undefined
   }
 }

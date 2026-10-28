@@ -93,6 +93,17 @@ export function assertAiEdits(ent: Pick<Entitlements, 'features' | 'plan'>) {
   if (!ent.features.aiEdits) throw new GateError('UPGRADE_REQUIRED', `AI edits are not included in the ${ent.plan.name} plan.`, 403, { feature: 'aiEdits' })
 }
 
+export function assertAskDeck(ent: Pick<Entitlements, 'features' | 'plan'>) {
+  if (!ent.features.askDeck) throw new GateError('UPGRADE_REQUIRED', `Chat with your presentation is not included in the ${ent.plan.name} plan.`, 403, { feature: 'askDeck' })
+}
+
+/** 'wikipedia' needs Pro or Gold; 'web' (live web search, costs credits) needs Gold. */
+export function assertWebData(ent: Pick<Entitlements, 'features' | 'plan'>, mode: 'wikipedia' | 'web') {
+  const have = ent.features.webData ?? 'none'
+  if (have === 'web' || (have === 'wikipedia' && mode === 'wikipedia')) return
+  throw new GateError('UPGRADE_REQUIRED', mode === 'web' ? `Web search is not included in the ${ent.plan.name} plan.` : `Wikipedia data is not included in the ${ent.plan.name} plan.`, 403, { feature: 'webData', mode })
+}
+
 export function assertExport(ent: Pick<Entitlements, 'features' | 'plan'>, format: ExportFormat) {
   if (!ent.features.exportFormats.includes(format)) {
     throw new GateError('UPGRADE_REQUIRED', ent.features.exportFormats.length === 0 ? `Export is not available on the ${ent.plan.name} plan. Upgrade to export.` : `${format.toUpperCase()} export is not included in the ${ent.plan.name} plan.`, 403, { feature: 'export', format })

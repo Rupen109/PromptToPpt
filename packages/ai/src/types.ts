@@ -30,6 +30,8 @@ export interface TextRequest {
   maxOutputTokens?: number
   /** cap on hidden "thinking" tokens (billed as output). 0 disables thinking. Omit to let the model decide. */
   thinkingBudget?: number
+  /** let the model search the web for this one call (Gemini: Google Search grounding; OpenRouter: web plugin). Not combined with `json`. */
+  webSearch?: boolean
   signal?: AbortSignal
 }
 
@@ -40,6 +42,10 @@ export interface TextResponse {
   reportedCostUsd?: number | undefined
   /** provider-reported concrete version, when different from the requested alias */
   modelVersion?: string | undefined
+  /** pages the model's web search actually used (only with `webSearch`) */
+  citations?: { url: string; title: string }[] | undefined
+  /** the search fee on top of tokens, estimated by us (Google grounding / the OpenRouter web plugin bill per search) */
+  extraCostUsd?: number | undefined
 }
 
 export type ImageAspect = '1:1' | '4:3' | '3:4' | '16:9' | '9:16'

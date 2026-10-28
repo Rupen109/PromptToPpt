@@ -60,6 +60,23 @@ export interface RunInput<T> {
   signal?: AbortSignal
 }
 
+export interface SearchRunInput {
+  route: RouteClass
+  model?: string | undefined
+  requestType: AIRequestType
+  system: string
+  prompt: string
+  ctx?: { userId?: string | undefined; presentationId?: string | undefined; jobId?: string | undefined }
+  maxOutputTokens?: number
+  signal?: AbortSignal
+}
+export interface SearchResult {
+  text: string
+  citations: { url: string; title: string }[]
+  /** the model that answered */
+  model: ModelDefinition
+}
+
 export interface ImageRunInput {
   /** a catalog image model (user-picked); fallbacks stay within its access tier */
   model: string
@@ -175,6 +192,40 @@ export class AIGateway {
     throw new AIUnavailableError('all image models failed', causes)
   }
 
+  /**
+   * A model answer grounded on live web search: free text plus the pages it used. Same discipline as `run` (model chain, ledger row for every
+   * attempt including the search fee) but the reply is text, not JSON, because search tools cannot be combined with a JSON-only mode.
+   * The text is UNTRUSTED web content: callers store it as a source and never act on instructions in it.
+   */
+  async search(input: SearchRunInput): Promise<SearchResult> {
+    const registry = typeof this.o.registry === 'function' ? await this.o.registry() : this.o.registry
+    const chain = input.model ? registry.chainFor(input.model) : registry.chain(input.route)
+    if (chain.length === 0) throw new AIUnavailableError('no models configured for search', [])
+    const causes: string[] = []
+    for (const def of chain) {
+      const provider = this.o.providers[def.provider]
+      if (!provider) { causes.push(`${def.model}: provider "${def.provider}" not configured`); continue }
+      const started = Date.now()
+      const signal = AbortSignal.any([AbortSignal.timeout(this.o.timeoutMs ?? 60_000), ...(input.signal ? [input.signal] : [])])
+      let usage = ZERO_USAGE
+      let reported: number | undefined
+      let extra = 0
+      try {
+        const res = await provider.generateText({ model: def.model, system: input.system, prompt: input.prompt, webSearch: true, signal, maxOutputTokens: input.maxOutputTokens ?? 4000, thinkingBudget: 0 })
+        usage = res.usage; reported = res.reportedCostUsd; extra = res.extraCostUsd ?? 0
+        if (!res.text.trim()) throw new ProviderError('model returned no text', 'empty', false)
+        await this.record(def, { ...input, schema: undefined as never }, usage, res.modelVersion, started, 'success', undefined, reported, extra)
+        return { text: res.text, citations: res.citations ?? [], model: def }
+      } catch (e) {
+        const err = e instanceof ProviderError ? e : new ProviderError((e as Error).message, 'unknown', false)
+        await this.record(def, { ...input, schema: undefined as never }, usage, undefined, started, 'error', err.code, reported, extra)
+        causes.push(`${def.model}: ${err.message}`)
+        if (input.signal?.aborted) throw err
+      }
+    }
+    throw new AIUnavailableError('all models failed', causes)
+  }
+
   private async runOnModel<T>(def: ModelDefinition, provider: AIProvider, input: RunInput<T>): Promise<T> {
     const retries = this.o.retriesPerModel ?? 2
     const sleep = this.o.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)))
@@ -231,7 +282,7 @@ export class AIGateway {
     }
   }
 
-  private record(def: ModelDefinition, input: RunInput<unknown>, usage: Usage, modelVersion: string | undefined, started: number, status: 'success' | 'error', errorCode?: string, reportedCostUsd?: number) {
+  private record(def: ModelDefinition, input: RunInput<unknown>, usage: Usage, modelVersion: string | undefined, started: number, status: 'success' | 'error', errorCode?: string, reportedCostUsd?: number, extraCostUsd = 0) {
     return this.o.recordUsage({
       ...input.ctx,
       provider: def.provider,
@@ -243,7 +294,7 @@ export class AIGateway {
       status,
       errorCode,
       // pictures are billed per image (token counts are kept for analytics but not priced, or they'd be counted twice)
-      providerCostUsd: computeCostUsd(input.requestType === 'image_generation' ? { ...usage, inputTokens: 0, outputTokens: 0 } : usage, def.pricing),
+      providerCostUsd: computeCostUsd(input.requestType === 'image_generation' ? { ...usage, inputTokens: 0, outputTokens: 0 } : usage, def.pricing) + extraCostUsd,
       reportedCostUsd,
       pricing: def.pricing,
     })

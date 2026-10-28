@@ -8,7 +8,7 @@ COPY services/api ./services/api
 RUN pnpm install --frozen-lockfile --filter @prompttoppt/api...
 RUN pnpm --filter @prompttoppt/api build
 # Self-contained production deps (third-party only; workspace code is already bundled into dist)
-RUN pnpm --filter @prompttoppt/api deploy --prod /out && cp -r services/api/dist /out/dist && cp -r services/api/drizzle /out/drizzle
+RUN pnpm --filter @prompttoppt/api deploy --prod /out && cp -r services/api/dist /out/dist && mkdir -p /out/drizzle && cp -r services/api/drizzle/. /out/drizzle/
 
 FROM node:22-alpine
 ENV NODE_ENV=production

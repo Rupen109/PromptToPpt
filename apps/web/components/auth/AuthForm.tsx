@@ -36,7 +36,7 @@ export function AuthForm({ mode, next, defaultEmail }: { mode: Mode; next?: stri
       return
     }
     // When email verification is on, sign-up creates no session: the person must confirm their address first.
-    if (mode === 'signup' && !(data as { token?: string | null } | null)?.token) {
+    if (mode === 'signup' && !(data as { hasSession?: boolean } | null)?.hasSession) {
       setCheckEmail(email)
       setBusy(false)
       return

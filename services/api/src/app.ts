@@ -107,6 +107,8 @@ const withoutTokens = (v: unknown, depth = 0): unknown => {
   if (Array.isArray(v)) return v.map((x) => withoutTokens(x, depth + 1))
   const out: Record<string, unknown> = {}
   for (const [k, val] of Object.entries(v)) if (k !== 'token') out[k] = withoutTokens(val, depth + 1)
+  // the web form needs to know whether sign-up opened a session (no session = "confirm your email first"), never the token itself
+  if (depth === 0 && typeof (v as { token?: unknown }).token === 'string') out['hasSession'] = true
   return out
 }
 app.on(['GET', 'POST'], '/api/auth/*', async (c) => {

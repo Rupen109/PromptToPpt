@@ -39,7 +39,9 @@ describe('request hardening', () => {
     const cookie = up.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ')
     const raw = decodeURIComponent(cookie.split('=')[1] ?? '').split('.')[0]!
     expect(raw.length).toBeGreaterThan(10)
-    expect(await up.text()).not.toContain(raw)
+    const upText = await up.text()
+    expect(upText).not.toContain(raw)
+    expect(JSON.parse(upText).hasSession).toBe(true) // the sign-up form needs to know a session was opened (else it says "confirm your email")
     const sess = await app.request('/api/auth/get-session', { headers: { Cookie: cookie } })
     const text = await sess.text()
     expect(text).not.toContain(raw)

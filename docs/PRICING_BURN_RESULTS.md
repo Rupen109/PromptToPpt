@@ -38,5 +38,7 @@ Pro looks the same: pictures were 45 % of its cost ($0.94 of $2.06).
 7. **`ai_usage_event.credit_cost` is always 0**, so cost-vs-credit per action cannot be read from one table; the credit ledger has the credits. Fill the column when charging (reporting gap).
 8. The "at zero credits" refusal message was **not verified**: Gold stopped at the time cap, and the Pro script hung before its zero-credit check. Test it separately.
 
+**Note (owner decision, 2026-10-27):** the AI-picture button was in this run's mix by my choice; it will not be used in later runs. The numbers above therefore overstate cost for customers who do not use that button. A no-AI-picture run is still to be done.
+
 ## Not covered
 Vertex Gemini only (dev). Production uses OpenRouter, with different models and prices: re-run `PLANS=pro,gold pnpm tsx scripts/pricing-burn.ts` with that key and a spend cap. One mix of behaviour was simulated; real customers use fewer pictures and assists than this mix, so these margins are a worst-realistic case, not an average.

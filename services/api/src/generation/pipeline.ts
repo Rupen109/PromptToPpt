@@ -2,7 +2,7 @@ import { and, eq, ne, sql } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { applyValidation, composeDeck, designById, pickDesign, type Photo } from '@prompttoppt/theme'
 import {
-  SCHEMA_VERSION, accessTierSchema, directionSchema, outlineSchema, promptAnalysisSchema, slideContentSchema,
+  SCHEMA_VERSION, accessTierSchema, deckLanguage, directionSchema, outlineSchema, promptAnalysisSchema, slideContentSchema,
   type Direction, type Outline, type Presentation, type PromptAnalysis, type Slide, type SlideContent,
 } from '@prompttoppt/validation'
 import { z } from 'zod'
@@ -32,6 +32,8 @@ export class JobCancelled extends Error {}
 
 const optionsSchema = z.object({
   analysis: promptAnalysisSchema.optional(),
+  /** language the person chose for the deck (code from DECK_LANGUAGES); beats whatever the analysis detected */
+  language: z.string().max(12).optional(),
   direction: directionSchema.optional(),
   slideCount: z.number().int().optional(),
   /** set by the server from the plan (and, later, the chosen model) — selects the model chain */
@@ -142,7 +144,9 @@ async function generate(jobId: string, hold: { pictures?: PictureSession }): Pro
     // 1 ─ analyse
     await stage(jobId, 'analyzing', 5)
     if (!cp.analysis) {
-      cp.analysis = opts.analysis ?? (await gateway.run({ route: 'fast', requestType: 'prompt_analysis', ...analyzePrompt(prompt), schema: promptAnalysisSchema, ctx }))
+      const chosen = deckLanguage(opts.language)
+      const found = opts.analysis ?? (await gateway.run({ route: 'fast', requestType: 'prompt_analysis', ...analyzePrompt(prompt, chosen), schema: promptAnalysisSchema, ctx }))
+      cp.analysis = chosen ? { ...found, language: chosen.code } : found
       await saveCheckpoint(jobId, cp)
     }
     analysis = cp.analysis

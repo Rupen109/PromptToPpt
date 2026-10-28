@@ -1,7 +1,7 @@
 import { base64ToBytes, imageToBase64, ProviderError, type AIProvider, type ImageRequest, type ImageResponse, type TextRequest, type TextResponse } from './types'
 
 interface GeminiResponse {
-  candidates?: { content?: { parts?: { text?: string; thought?: boolean; inlineData?: { mimeType?: string; data?: string } }[] }; finishReason?: string }[]
+  candidates?: { content?: { parts?: { text?: string; thought?: boolean; inlineData?: { mimeType?: string; data?: string } }[] }; finishReason?: string; groundingMetadata?: { groundingChunks?: { web?: { uri?: string; title?: string } }[] } }[]
   usageMetadata?: { promptTokenCount?: number; cachedContentTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number }
   modelVersion?: string
   promptFeedback?: { blockReason?: string }
@@ -17,6 +17,9 @@ export interface GeminiBackend {
 }
 
 export const AI_STUDIO: GeminiBackend = { id: 'gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta', auth: 'header' }
+/** Google Search grounding is billed per grounded prompt (about $35 per 1,000). Re-check on the Google pricing page before relying on margins. */
+export const GEMINI_SEARCH_USD = 0.035
+
 export const VERTEX: GeminiBackend = { id: 'vertex', baseUrl: 'https://aiplatform.googleapis.com/v1/publishers/google', auth: 'query' }
 
 /** Google Gemini (AI Studio or Vertex). Direct REST — no SDK, so the response shape stays behind this file. Both backends speak the same request/response format. */
@@ -47,10 +50,11 @@ export class GeminiProvider implements AIProvider {
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: req.system }] },
           contents: [{ role: 'user', parts: [...(req.images ?? []).map((i) => ({ inlineData: { mimeType: i.mimeType, data: imageToBase64(i) } })), { text: req.prompt }] }],
+          ...(req.webSearch ? { tools: [{ googleSearch: {} }] } : {}),
           generationConfig: {
             temperature: req.temperature ?? 0.7,
             ...(req.maxOutputTokens ? { maxOutputTokens: req.maxOutputTokens } : {}),
-            ...(req.json ? { responseMimeType: 'application/json' } : {}),
+            ...(req.json && !req.webSearch ? { responseMimeType: 'application/json' } : {}),
             ...(req.thinkingBudget !== undefined ? { thinkingConfig: { thinkingBudget: req.thinkingBudget } } : {}),
           },
         }),
@@ -73,9 +77,13 @@ export class GeminiProvider implements AIProvider {
     const parts = body.candidates?.[0]?.content?.parts ?? []
     const text = parts.filter((p) => !p.thought).map((p) => p.text ?? '').join('')
     const u = body.usageMetadata ?? {}
+    const citations = req.webSearch
+      ? [...new Map((body.candidates?.[0]?.groundingMetadata?.groundingChunks ?? []).flatMap((g) => (g.web?.uri ? [[g.web.uri, { url: g.web.uri, title: (g.web.title ?? '').slice(0, 200) }] as const] : [])))].map(([, v]) => v)
+      : undefined
     return {
       text,
       modelVersion: body.modelVersion,
+      ...(req.webSearch ? { citations, extraCostUsd: GEMINI_SEARCH_USD } : {}),
       usage: {
         inputTokens: u.promptTokenCount ?? 0,
         cachedTokens: u.cachedContentTokenCount ?? 0,

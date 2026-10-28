@@ -27,6 +27,7 @@ export class MockProvider implements AIProvider {
     const text = await this.respond(req, this.calls.length)
     return {
       text,
+      ...(req.webSearch ? { citations: [{ url: 'https://example.com/mock-page', title: 'Mock page' }], extraCostUsd: 0.035 } : {}),
       modelVersion: `${req.model}-mock`,
       usage: { inputTokens: Math.ceil((req.system.length + req.prompt.length) / 4), cachedTokens: 0, outputTokens: Math.ceil(text.length / 4), reasoningTokens: 0, imageCount: 0 },
     }

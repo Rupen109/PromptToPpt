@@ -46,6 +46,10 @@ export function planHighlights(plan: PlanView, previous?: PlanView): { lead: str
   if (f.advancedSharing) items.push('Password-protected & expiring share links')
   if (f.advancedEditor) items.push('Advanced editor')
   if (f.aiEdits) items.push('AI edits')
+  items.push('Write decks in 100+ languages')
+  if (f.askDeck) items.push('Chat with your presentation (AskPPT)')
+  if (f.webData === 'web') items.push('Wikipedia & live web search data')
+  else if (f.webData === 'wikipedia') items.push('Wikipedia data with citations')
   // brand kits: Pro 1, Gold 5 (the server's limit is MAX_KITS in services/api/src/brand/kits.ts). The shared knowledge base is not built yet, so it is not advertised.
   const kits = plan.id === 'gold' ? 5 : plan.id === 'pro' ? 1 : 0
   if (kits) items.push(kits === 1 ? 'Brand kit: your logo, colours and fonts' : `Up to ${kits} brand kits (logo, colours, fonts)`)

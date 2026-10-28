@@ -100,6 +100,8 @@ function addText(slide: PptxGenJS.Slide, el: TextElement, theme: Theme, sl: Slid
   const color = hex6(resolveColor(el.color, theme, sl))
   const font = HEADING_ROLES.has(el.role) ? theme.fonts.heading : theme.fonts.body
   const size = pt(el.fontSize)
+  // Arabic, Hebrew, Persian, Urdu… read right-to-left: PowerPoint needs each paragraph flagged, and "left" then means the reading start (the right edge)
+  const rtl = RTL_CHARS.test(el.paragraphs.map((p) => p.runs.map((r) => r.text).join('')).join(' '))
   const runs: PptxGenJS.TextProps[] = []
   el.paragraphs.forEach((p, pi) => {
     const last = pi === el.paragraphs.length - 1
@@ -108,6 +110,7 @@ function addText(slide: PptxGenJS.Slide, el: TextElement, theme: Theme, sl: Slid
       runs.push({
         text: el.uppercase ? r.text.toUpperCase() : r.text,
         options: {
+          ...(rtl ? { rtlMode: true } : {}),
           ...((r.bold ?? (el.weight ? el.weight >= 600 : false)) ? { bold: true } : {}), ...(r.italic ? { italic: true } : {}), ...(r.color ? { color: hex6(resolveColor(r.color, theme, sl)) } : {}), ...(r.link ? { hyperlink: { url: r.link } } : {}),
           ...(ri === 0 && p.list ? { bullet: p.list === 'number' ? { type: 'number' as const } : { characterCode: (el.bullet.codePointAt(0) ?? 0x2022).toString(16).toUpperCase().padStart(4, '0') } } : {}),
           ...(ri === 0 && p.list ? { indentLevel: 0 } : {}),
@@ -119,11 +122,14 @@ function addText(slide: PptxGenJS.Slide, el: TextElement, theme: Theme, sl: Slid
   })
   slide.addText(runs, {
     ...named(el), x: inch(el.x), y: inch(el.y), w: inch(el.width), h: inch(el.height), margin: 0, fontFace: font, fontSize: size, color,
-    align: el.align, valign: el.valign === 'middle' ? 'middle' : el.valign, lineSpacingMultiple: el.lineHeight ?? 1.2,
+    align: rtl && el.align === 'left' ? 'right' : rtl && el.align === 'right' ? 'left' : el.align, ...(rtl ? { rtlMode: true } : {}), valign: el.valign === 'middle' ? 'middle' : el.valign, lineSpacingMultiple: el.lineHeight ?? 1.2,
     ...(el.letterSpacing ? { charSpacing: Math.round((el.letterSpacing / 2) * 10) / 10 } : {}), rotate: el.rotation || 0,
     ...(el.opacity < 1 ? { transparency: transparency(el.opacity) } : {}), wrap: true, fit: 'none',
   })
 }
+
+/** any letter from a right-to-left script (Hebrew, Arabic, Syriac, Thaana, N'Ko…) */
+const RTL_CHARS = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/
 
 function addShape(pptx: PptxGenJS, slide: PptxGenJS.Slide, el: Extract<SlideElement, { type: 'shape' }>, theme: Theme, sl: Slide) {
   const pos = { ...named(el), x: inch(el.x), y: inch(el.y), w: inch(el.width), h: inch(el.height), rotate: el.rotation || 0 }

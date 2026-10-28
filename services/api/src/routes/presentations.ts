@@ -10,12 +10,13 @@ import { findUrls, presentationSchema, type AccessTier, type Presentation, type 
 import { aiAssistInput, aiAssistOutput, aiAssistPrompt, compileAssist } from '../ai/ai-assist.ts'
 import { readLinkedPages } from '../ai/linked-pages.ts'
 import { aiEditInput, aiEditOutput, aiEditPrompt } from '../ai/ai-edit.ts'
+import { askDeckInput, askDeckOutput, askDeckPrompt, deckDigest } from '../ai/ask-deck.ts'
 import { aiConfigured, catalog, gateway } from '../ai/gateway.ts'
 import { resolveAccess } from '../collab/access.ts'
 import { publishRevision } from '../live/bus.ts'
 import { isPremiumTheme, lookOf } from '../billing/premium-look.ts'
 import { creditPrice, refundCredits, reserveCredits } from '../billing/credits.ts'
-import { assertAiEdits, assertModelTier, assertPresentationQuota, getEntitlements } from '../billing/entitlements.ts'
+import { assertAiEdits, assertAskDeck, assertModelTier, assertPresentationQuota, getEntitlements } from '../billing/entitlements.ts'
 import { BillingError, ConflictError, GateError } from '../billing/errors.ts'
 import { db } from '../db/index.ts'
 import { env } from '../env.ts'
@@ -290,6 +291,52 @@ presentations.delete('/:id', async (c) => {
   if (!res.length) return notFound(c)
   void audit(userId, 'presentation.delete', { presentationId: res[0]!.id }, ipOf(c.req.raw.headers))
   return c.json({ success: true, data: null })
+})
+
+/**
+ * Chat with the presentation: a question about the deck's own words (and its attached sources) → a short answer that points to slides.
+ * Read-only: it never changes the deck. Pro/Gold; charged per question (idempotent by requestId) and refunded if the model fails.
+ */
+presentations.post('/:id/ask', rateLimit({ windowMs: 60_000, max: 20, key: byUser('askdeck') }), zValidator('json', askDeckInput), async (c) => {
+  if (!aiConfigured) return c.json({ success: false, error: { code: 'AI_NOT_CONFIGURED', message: 'AI is not configured on this server' } }, 503)
+  const id = c.req.param('id')
+  const access = await resolveAccess(id, c.get('session')!.user.id)
+  if (!access) return notFound(c)
+  const userId = access.ownerId // a collaborator's question is charged to the OWNER, like AI edits
+  const input = c.req.valid('json')
+  const off = (await refuseIfOn('maintenance_mode', c, userId)) ?? (await refuseIfOff('ai_assistant', c, userId))
+  if (off) return off
+
+  const ent = await getEntitlements(userId)
+  assertAskDeck(ent)
+  const [p] = await db.select().from(presentation).where(mine(id, userId))
+  if (!p) return notFound(c)
+  const [v] = await db.select().from(presentationVersion).where(and(eq(presentationVersion.presentationId, id), eq(presentationVersion.version, p.latestVersion)))
+  const doc = v!.document as Presentation
+
+  const { rows } = await catalog()
+  const picked = input.model ? rows.find((r) => r.id === input.model && r.kind === 'text') : defaultModel(ent, rows)
+  if (!picked) return c.json({ success: false, error: { code: 'INVALID_MODEL', message: 'That model is not available.' } }, 400)
+  const tier = picked.accessTier as AccessTier
+  assertModelTier(ent, tier)
+  const price = await creditPrice('ask_deck', tier)
+  await reserveCredits(userId, price, 'ask_deck', input.requestId, { strict: true })
+  try {
+    const sources = trimSources(await loadSources(userId, (doc.sources ?? []).map((x) => x.id)), 24_000)
+    const digest = deckDigest(doc)
+    const out = await gateway.run({
+      route: 'fast', model: picked.id, requestType: 'ask_deck',
+      ...askDeckPrompt({ question: input.question, history: input.history, title: doc.title, digest: digest.text, slideCount: digest.slideCount, language: doc.language, sources }),
+      schema: askDeckOutput, ctx: { userId, presentationId: id },
+    })
+    const slides = [...new Set(out.slides)].filter((n) => n >= 1 && n <= doc.slides.length).map((n) => ({ n, id: doc.slides[n - 1]!.id }))
+    return c.json({ success: true, data: { answer: out.answer, slides, creditsCharged: price, model: picked.id } })
+  } catch (e) {
+    await refundCredits(userId, 'ask_deck', input.requestId)
+    if (e instanceof AIUnavailableError) return c.json({ success: false, error: { code: 'AI_UNAVAILABLE', message: 'The AI service is busy or unavailable. You were not charged — please try again.' } }, 503)
+    console.error('[ask-deck]', e)
+    return c.json({ success: false, error: { code: 'ASK_FAILED', message: 'The AI could not answer that. You were not charged.' } }, 502)
+  }
 })
 
 /**

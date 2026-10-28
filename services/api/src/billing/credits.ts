@@ -9,7 +9,7 @@ import type { Period } from './entitlements.ts'
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 type PlanRow = typeof plan.$inferSelect
 
-export async function creditPrice(action: 'generate_slide' | 'ai_edit' | 'image', tier: AccessTier): Promise<number> {
+export async function creditPrice(action: 'generate_slide' | 'ai_edit' | 'image' | 'ask_deck' | 'web_research', tier: AccessTier): Promise<number> {
   const [row] = await db.select().from(creditCost).where(and(eq(creditCost.action, action), eq(creditCost.tier, tier)))
   if (!row) throw new Error(`no credit price for ${action}/${tier}`)
   return row.credits
