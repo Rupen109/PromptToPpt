@@ -6,11 +6,13 @@ import { nanoid } from 'nanoid'
 import { z } from 'zod'
 import { db } from '../db/index.ts'
 import { draftAttachment, promptDraft } from '../db/schema.ts'
-import { clientIp, rateLimit } from '../middleware/rate-limit.ts'
+import { byUser, clientIp, rateLimit } from '../middleware/rate-limit.ts'
 import { requireAuth, type AppEnv } from '../middleware/session.ts'
 import { pageReader } from '../ai/linked-pages.ts'
-import { BlockedUrlError, FILE_MAX_BYTES, fromFile, type Extracted } from '../sources/extract.ts'
-import { saveSource } from '../sources/store.ts'
+import { BlockedUrlError, FILE_MAX_BYTES, SourceError, type Extracted } from '../sources/extract.ts'
+import { BusyError, parseUpload } from '../sources/parse-pool.ts'
+import { busyAnswer, uploadGate } from '../middleware/upload-gate.ts'
+import { saveSource, type SourceType } from '../sources/store.ts'
 import { fileErrorMessage } from './sources.ts'
 
 const DRAFT_TTL_MS = 30 * 60 * 1000
@@ -46,7 +48,7 @@ export async function purgeExpiredDrafts(): Promise<void> {
   await db.delete(draftAttachment).where(lt(draftAttachment.expiresAt, new Date()))
 }
 
-async function storeAttachment(kind: 'pdf' | 'pptx' | 'text' | 'url', ex: Extracted, url?: string) {
+export async function storeAttachment(kind: SourceType, ex: Extracted, url?: string) {
   const id = nanoid(24)
   const chars = ex.parts.reduce((n, p) => n + p.text.length, 0)
   await db.delete(draftAttachment).where(lt(draftAttachment.expiresAt, new Date())) // opportunistic purge of expired rows
@@ -55,13 +57,14 @@ async function storeAttachment(kind: 'pdf' | 'pptx' | 'text' | 'url', ex: Extrac
 }
 
 /** Public: a file the visitor attached on the landing page (PDF, PowerPoint .pptx, .txt/.md). Parsed now so a bad file is reported immediately. */
-drafts.post('/attachments', attachLimit, dailyAttachLimit, bodyLimit({ maxSize: FILE_MAX_BYTES + 64 * 1024, onError: (c) => err(c, 413, 'TOO_LARGE', 'That file is too large (PDF up to 10 MB, PowerPoint up to 15 MB, text up to 1 MB)') }), async (c) => {
+drafts.post('/attachments', uploadGate, attachLimit, dailyAttachLimit, bodyLimit({ maxSize: FILE_MAX_BYTES + 64 * 1024, onError: (c) => err(c, 413, 'TOO_LARGE', 'That file is too large (up to 15 MB, text up to 1 MB)') }), async (c) => {
   const file = (await c.req.parseBody())['file']
   if (!(file instanceof File)) return err(c, 400, 'NO_FILE', 'Attach a file as "file"')
   try {
-    const { kind, extracted } = await fromFile(new Uint8Array(await file.arrayBuffer()), file.name)
+    const { kind, extracted } = await parseUpload(new Uint8Array(await file.arrayBuffer()), file.name)
     return c.json({ success: true, data: await storeAttachment(kind, extracted) }, 201)
   } catch (e) {
+    if (e instanceof BusyError) return busyAnswer(c)
     return err(c, 422, 'PARSE_FAILED', fileErrorMessage(e))
   }
 })
@@ -71,9 +74,10 @@ drafts.post('/attachments/link', attachLimit, dailyAttachLimit, zValidator('json
   const { url } = c.req.valid('json')
   try {
     const ex = await pageReader.read(url)
-    return c.json({ success: true, data: await storeAttachment('url', ex, url) }, 201)
+    return c.json({ success: true, data: await storeAttachment(ex.kind ?? 'url', ex, url) }, 201)
   } catch (e) {
     if (e instanceof BlockedUrlError) return err(c, 400, 'URL_NOT_ALLOWED', e.message)
+    if (e instanceof SourceError) return err(c, 422, 'FETCH_FAILED', e.message)
     const m = (e as Error).message
     return err(c, 422, 'FETCH_FAILED', /^(Could not|The page|That URL|Page is)/.test(m) ? m : 'Could not read that page')
   }
@@ -109,7 +113,7 @@ async function materialise(draftId: string, userId: string) {
       out.push({ id: a.sourceId, type: a.kind, title: a.title, chunks: 0 })
       continue
     }
-    const saved = await saveSource(userId, a.kind as 'pdf' | 'pptx' | 'text' | 'url', { title: a.title, parts: a.parts }, a.url ?? undefined)
+    const saved = await saveSource(userId, a.kind as SourceType, { title: a.title, parts: a.parts }, a.url ?? undefined)
     const [won] = await db.update(draftAttachment).set({ sourceId: saved.id }).where(and(eq(draftAttachment.id, a.id), isNull(draftAttachment.sourceId))).returning({ id: draftAttachment.id })
     if (won) out.push(saved)
     else out.push({ id: (await db.select({ s: draftAttachment.sourceId }).from(draftAttachment).where(eq(draftAttachment.id, a.id)))[0]!.s!, type: a.kind, title: a.title, chunks: 0 })
@@ -122,7 +126,7 @@ async function materialise(draftId: string, userId: string) {
  * against double-claim, expiry, and claiming someone else's already-claimed draft.
  * Re-claiming by the same user is idempotent so a page refresh doesn't lose the prompt.
  */
-drafts.post('/:id/claim', requireAuth, async (c) => {
+drafts.post('/:id/claim', requireAuth, rateLimit({ windowMs: 60_000, max: 30, key: byUser('claim') }), async (c) => {
   const userId = c.get('session')!.user.id
   const id = c.req.param('id')
 

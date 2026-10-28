@@ -232,6 +232,19 @@ export default async function () {
     await p.keyboard.press('Escape'); await p.waitForURL(/\/edit\//, { timeout: 5000 })
   })
 
+  // Present mode plays entrance animations, whose transform used to throw an animated + tilted element (the polaroid photo) to the slide's top-left corner.
+  const polaroidDeck = await fresh('strategy-annual-review')
+  await s.check('present mode: the tilted photo of a polaroid slide sits in its frame (not in the slide corner), same place as in the editor', p, async () => {
+    const where = async (url, scope) => {
+      await p.goto(url, { waitUntil: 'networkidle' }); await p.locator(scope).first().waitFor({ timeout: 15000 }); await settle(2500) // let the entrance animations finish
+      return p.evaluate((sel) => { const root = document.querySelector(sel); const img = root.querySelector('img'); const ratio = (r) => r.width / r.height; /* the slide itself is the biggest 16:9 box (present mode letterboxes it inside the screen) */ const slide = [root, ...root.querySelectorAll('div')].filter((d) => Math.abs(ratio(d.getBoundingClientRect()) - 16 / 9) < 0.02 && d.contains(img)).sort((a, b) => b.getBoundingClientRect().width - a.getBoundingClientRect().width)[0]; const sb = slide.getBoundingClientRect(), ib = img.getBoundingClientRect(); return { left: (ib.left - sb.left) / sb.width, top: (ib.top - sb.top) / sb.height } }, scope)
+    }
+    const present = await where(`${EDITOR}/present/${polaroidDeck}`, '[data-testid="present"]')
+    const editor = await where(`${EDITOR}/edit/${polaroidDeck}`, '[data-testid="stage"]')
+    expect(present.left > 0.4, `photo is at ${(present.left * 100).toFixed(0)}% from the left in present mode (should be about 51%)`)
+    expect(Math.abs(present.left - editor.left) < 0.03 && Math.abs(present.top - editor.top) < 0.03, `present (${present.left.toFixed(2)},${present.top.toFixed(2)}) vs editor (${editor.left.toFixed(2)},${editor.top.toFixed(2)})`)
+  })
+
   // ── delete a deck from the editor
   await s.check('more menu: Delete presentation removes it and returns home', p, async () => {
     await open(await fresh('pitch-launchpad'))

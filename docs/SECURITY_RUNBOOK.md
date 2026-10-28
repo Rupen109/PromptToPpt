@@ -1,5 +1,7 @@
 # Security runbook — deploy, monitor, respond
 
+> The consolidated go-live list (this runbook's must-haves plus billing, pictures, performance, legal) is [`PRODUCTION_RELEASE_CHECKLIST.md`](./PRODUCTION_RELEASE_CHECKLIST.md).
+
 ## 1. Production must-haves (the API refuses to boot without the first group)
 | Setting | Why |
 |---|---|
@@ -8,6 +10,7 @@
 | `AUTH_SECRET` from `openssl rand -base64 48` | placeholders are rejected at boot |
 | `AI_PROVIDER` ≠ `mock`; `ASSET_STORAGE=s3`; HTTPS URLs + `COOKIE_DOMAIN` | |
 | `AI_BUDGET_USD_HOUR`, `AI_BUDGET_USD_DAY`, `AI_USER_USD_DAY` | the spend circuit breaker: your cloud bill has a ceiling |
+| `LIVE_BUS=pg` (default in production) | live editing events reach every API task |
 | `TURNSTILE_SECRET_KEY` (+ `NEXT_PUBLIC_TURNSTILE_SITE_KEY` in the web build) | CAPTCHA on sign-up and after repeated sign-in failures |
 | Razorpay live keys + `RAZORPAY_WEBHOOK_SECRET` | webhook HMAC |
 

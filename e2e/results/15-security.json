@@ -4,70 +4,70 @@
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 161
+    "ms": 701
   },
   {
     "title": "anonymous: every costly endpoint answers 401",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 30
+    "ms": 18
   },
   {
     "title": "there is no way to change your own plan (dev/set-plan is gone)",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 116
+    "ms": 104
   },
   {
     "title": "cross-site writes are refused (foreign Origin / Sec-Fetch-Site)",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 72
+    "ms": 73
   },
   {
     "title": "IDOR: another account cannot read, change, export or delete my deck / job / source",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 158
+    "ms": 162
   },
   {
     "title": "SSRF: internal / metadata / obfuscated URLs are refused when adding a source",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 84
+    "ms": 93
   },
   {
     "title": "stored XSS: javascript: links and data: backgrounds cannot be saved in a deck",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 77
+    "ms": 445
   },
   {
     "title": "body limits: 1 MB JSON to a normal endpoint → 413; 100 KB sign-up → 413",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 70
+    "ms": 103
   },
   {
     "title": "sign-up abuse: disposable domains and gmail aliases are refused",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 593
+    "ms": 613
   },
   {
     "title": "credential stuffing: 5 wrong passwords lock the account for everyone (429), correct password included",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 377
+    "ms": 426
   },
   {
     "title": "payments: unsigned / forged webhooks are rejected; oversized ones too",
@@ -81,6 +81,6 @@
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 553
+    "ms": 583
   }
 ]

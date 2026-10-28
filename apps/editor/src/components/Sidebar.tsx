@@ -12,6 +12,22 @@ import { Logo } from '@prompttoppt/ui/logo'
 const item = 'flex items-center gap-3 px-3 py-2.5 rounded-lg text-[15px] hover:bg-black/5'
 const active = 'bg-black/5 font-medium'
 
+/** 20px stroke icons (Lucide-style paths, inlined: no icon library in this app). Decorative: the label next to each one names the item. */
+const ICONS = {
+  home: <><path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V20h5v-6h4v6h5V9.5" /></>,
+  created: <><rect x="3" y="4" width="18" height="13" rx="2" /><path d="M8 21h8M12 17v4" /><path d="m9 12 2-2 2 2 2-3" /></>,
+  templates: <><rect x="3" y="3" width="8" height="8" rx="1.5" /><rect x="13" y="3" width="8" height="5" rx="1.5" /><rect x="13" y="10" width="8" height="11" rx="1.5" /><rect x="3" y="13" width="8" height="8" rx="1.5" /></>,
+  shared: <><circle cx="9" cy="8" r="3.2" /><path d="M3 20c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5" /><path d="M16 5.2a3.2 3.2 0 0 1 0 5.6M18 14.8c1.8.7 3 2.4 3 5.2" /></>,
+  billing: <><rect x="2.5" y="5" width="19" height="14" rx="2.5" /><path d="M2.5 10h19M6.5 15h4" /></>,
+  folder: <path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />,
+  plus: <path d="M12 5v14M5 12h14" />,
+  admin: <><path d="M12 3 4.5 6v5.5c0 4.5 3.2 8 7.5 9.5 4.3-1.5 7.5-5 7.5-9.5V6z" /><path d="m9 12 2 2 4-4" /></>,
+  logout: <><path d="M9 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h3" /><path d="M16 8l4 4-4 4M20 12H9" /></>,
+} as const
+function Icon({ name }: { name: keyof typeof ICONS }) {
+  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="shrink-0 text-slate-500">{ICONS[name]}</svg>
+}
+
 function Badge({ children, title }: { children: string; title?: string }) {
   return <span title={title} className="text-[10px] font-bold text-primary bg-primary/10 rounded-full px-2 py-0.5">{children}</span>
 }
@@ -87,19 +103,24 @@ export function Sidebar() {
       <Link to="/" aria-label="promptToPpt home" className="px-2 pt-2 pb-3"><Logo size={30} /></Link>
       <div className="flex items-center gap-2 px-2 py-3 mb-2 border-t border-border">
         <div className="w-8 h-8 rounded-md bg-accent text-white grid place-items-center font-bold">{user.name.charAt(0).toUpperCase()}</div>
-        <span className="font-semibold truncate">{user.name}</span>
+        <div className="min-w-0">
+          <div className="font-semibold truncate">{user.name}</div>
+          <div className="text-xs text-slate-500 truncate" title={user.email}>{user.email}</div>
+        </div>
       </div>
       <nav className="flex-1 space-y-1 overflow-y-auto" aria-label="Main">
-        <NavLink to="/" end className={({ isActive }) => `${item} ${isActive ? active : ''}`}>Home</NavLink>
-        <NavLink to="/created" className={({ isActive }) => `${item} ${isActive ? active : ''}`}>Created by me</NavLink>
-        <NavLink to="/templates" className={({ isActive }) => `${item} ${isActive ? active : ''}`}>Templates</NavLink>
+        <NavLink to="/" end className={({ isActive }) => `${item} ${isActive ? active : ''}`}><Icon name="home" />Home</NavLink>
+        <NavLink to="/created" className={({ isActive }) => `${item} ${isActive ? active : ''}`}><Icon name="created" />Created by me</NavLink>
+        <NavLink to="/templates" className={({ isActive }) => `${item} ${isActive ? active : ''}`}><Icon name="templates" />Templates</NavLink>
+        <NavLink to="/shared" className={({ isActive }) => `${item} ${isActive ? active : ''}`}><Icon name="shared" />Shared with me</NavLink>
+        <NavLink to="/billing" className={({ isActive }) => `${item} ${isActive ? active : ''}`}><Icon name="billing" />Billing</NavLink>
 
         <div className="pt-4 px-3 flex items-center justify-between text-sm text-slate-500">
           <span>Projects</span>
         </div>
         {projects.map((p) => (
           <NavLink key={p.id} to={`/projects/${p.id}`} className={({ isActive }) => `${item} ${isActive ? active : ''}`}>
-            <span className="truncate flex-1">📁 {p.name}</span>
+            <Icon name="folder" /><span className="truncate flex-1">{p.name}</span>
             <span className="text-xs text-slate-500">{p.decks}</span>
           </NavLink>
         ))}
@@ -107,17 +128,10 @@ export function Sidebar() {
           onClick={() => (canProjects ? setNewProject(true) : upgrade.show('Projects are available on the Pro plan.'))}
           className={`${item} w-full text-left`}
         >
-          ＋ Create project {ent && !canProjects && <Badge>PRO</Badge>}
+          <Icon name="plus" />Create project {ent && !canProjects && <Badge>PRO</Badge>}
         </button>
-        {user.role === 'admin' && <Link to="/admin" className={`${item} text-primary font-medium`}>Owner dashboard</Link>}
+        {user.role === 'admin' && <Link to="/admin" className={`${item} text-primary font-medium`}><Icon name="admin" />Owner dashboard</Link>}
       </nav>
-      {ent && (
-        <div className="mx-1 mb-3 rounded-xl border border-border p-3 text-sm" aria-label="Plan and credits">
-          <div className="flex items-center justify-between"><span className="font-semibold">{ent.plan.name}</span><span className="flex gap-3">{ent.plan.id !== 'gold' && <button onClick={() => upgrade.show()} className="text-primary text-xs font-semibold">Upgrade</button>}<Link to="/billing" className="text-slate-500 text-xs">Billing</Link></span></div>
-          <div className="text-slate-600 mt-1">{ent.credits.balance.toLocaleString()} <span className="text-slate-500">/ {ent.credits.monthlyAllowance.toLocaleString()} credits</span></div>
-          <div className="h-1.5 rounded-full bg-slate-200 mt-2 overflow-hidden"><div className="h-full bg-primary" style={{ width: `${Math.min(100, (ent.credits.balance / ent.credits.monthlyAllowance) * 100)}%` }} /></div>
-        </div>
-      )}
       <button
         onClick={async () => {
           await api.auth.signOut()
@@ -125,7 +139,7 @@ export function Sidebar() {
         }}
         className={`${item} text-left`}
       >
-        Log out
+        <Icon name="logout" />Log out
       </button>
     </>
   )

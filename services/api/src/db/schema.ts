@@ -365,6 +365,24 @@ export const subscription = pgTable(
 )
 
 /**
+ * The payment session most recently opened for a person and exact terms. Clicking "Upgrade" again within the window hands back the same
+ * provider subscription instead of creating another one, so a double click (or a script) cannot pile up provider subscriptions.
+ */
+export const checkoutAttempt = pgTable(
+  'checkout_attempt',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+    planId: text('plan_id').notNull(),
+    interval: text('interval').notNull(),
+    currency: text('currency').notNull(),
+    providerRef: text('provider_ref').notNull(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('checkout_attempt_terms_uq').on(t.userId, t.planId, t.interval, t.currency)],
+)
+
+/**
  * Money that actually moved (or failed to), written by verified payment webhooks / the verify endpoint. One row per
  * provider payment id, so replays are no-ops. Feeds the owner Sales/Margin sections; amounts are minor units (paise/cents).
  */
@@ -569,4 +587,166 @@ export const authAttempt = pgTable(
     createdAt: timestamp('created_at').notNull().defaultNow(),
   },
   (t) => [index('auth_attempt_ip_idx').on(t.kind, t.ip, t.createdAt), index('auth_attempt_subject_idx').on(t.kind, t.subject, t.createdAt)],
+)
+
+/**
+ * View-only share links. The token IS the capability (192 random bits, never listed or guessable); revoking sets `revokedAt` and the link stops
+ * working at once. At most one live link per presentation (partial unique index) so "Share" is idempotent.
+ */
+export const shareLink = pgTable(
+  'share_link',
+  {
+    id: text('id').primaryKey(),
+    presentationId: text('presentation_id').notNull().references(() => presentation.id, { onDelete: 'cascade' }),
+    createdBy: text('created_by').notNull().references(() => user.id, { onDelete: 'cascade' }),
+    token: text('token').notNull().unique(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    revokedAt: timestamp('revoked_at'),
+    /** Pro / Gold: scrypt hash (`salt:hash`, hex) of the password viewers must enter; null = open link */
+    passwordHash: text('password_hash'),
+    /** Pro / Gold: the link stops working at this moment; null = never */
+    expiresAt: timestamp('expires_at'),
+  },
+  (t) => [uniqueIndex('share_link_live_uq').on(t.presentationId).where(sql`${t.revokedAt} is null`)],
+)
+
+/**
+ * Collaborators on a presentation (Pro / Gold). An invitation is a row addressed to an EMAIL (canonical form); it becomes active when a signed-in,
+ * verified account with that same mailbox accepts it. Collaborators edit the deck; everything they spend (AI edits, pictures) is charged to the OWNER.
+ */
+export const presentationMember = pgTable(
+  'presentation_member',
+  {
+    id: text('id').primaryKey(),
+    presentationId: text('presentation_id').notNull().references(() => presentation.id, { onDelete: 'cascade' }),
+    email: text('email').notNull(),
+    emailCanonical: text('email_canonical').notNull(),
+    userId: text('user_id').references(() => user.id, { onDelete: 'cascade' }),
+    role: text('role').$type<'editor'>().notNull().default('editor'),
+    status: text('status').$type<'pending' | 'active'>().notNull().default('pending'),
+    token: text('token').notNull().unique(),
+    invitedBy: text('invited_by').notNull().references(() => user.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    acceptedAt: timestamp('accepted_at'),
+    expiresAt: timestamp('expires_at').notNull(),
+  },
+  (t) => [uniqueIndex('presentation_member_email_uq').on(t.presentationId, t.emailCanonical), index('presentation_member_user_idx').on(t.userId, t.status)],
+)
+
+/**
+ * A company's brand kit (Pro: 1, Gold: 5): the colours, fonts and logo that "Apply brand" puts on a deck and that new decks can be
+ * built in. One kit per user is the default. Pictures (logo, extra brand images) are generated_asset rows of kind logo / brand.
+ */
+export const brandKit = pgTable(
+  'brand_kit',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    primaryColor: text('primary_color'),
+    accentColor: text('accent_color'),
+    /** other brand colours worth keeping (hex), shown as swatches */
+    extraColors: jsonb('extra_colors').$type<string[]>().notNull().default([]),
+    headingFont: text('heading_font'),
+    bodyFont: text('body_font'),
+    logoAssetId: text('logo_asset_id'),
+    /** logo width ÷ height */
+    logoAspect: numeric('logo_aspect', { precision: 8, scale: 3 }),
+    sourceUrl: text('source_url'),
+    isDefault: boolean('is_default').notNull().default(false),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [index('brand_kit_user_idx').on(t.userId), uniqueIndex('brand_kit_default_uq').on(t.userId).where(sql`${t.isDefault}`)],
+)
+
+/** Extra brand pictures in a kit (illustrations, icons, product shots) that can be dropped onto any slide. */
+export const brandKitImage = pgTable(
+  'brand_kit_image',
+  {
+    id: text('id').primaryKey(),
+    kitId: text('kit_id').notNull().references(() => brandKit.id, { onDelete: 'cascade' }),
+    userId: text('user_id').notNull(),
+    assetId: text('asset_id').notNull(),
+    name: text('name').notNull(),
+    /** width ÷ height */
+    aspect: numeric('aspect', { precision: 8, scale: 3 }).notNull(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [index('brand_kit_image_kit_idx').on(t.kitId)],
+)
+
+/**
+ * Comments (C6): working notes on a slide, kept apart from the deck document on purpose (so they never reach exports, Present mode, share
+ * links, versions or the revision counter). A thread belongs to a deck and a slide id (+ an optional pin position 0..1); it opens with its first comment.
+ */
+export const commentThread = pgTable(
+  'comment_thread',
+  {
+    id: text('id').primaryKey(),
+    presentationId: text('presentation_id').notNull().references(() => presentation.id, { onDelete: 'cascade' }),
+    slideId: text('slide_id').notNull(),
+    /** pin position as a fraction of the slide (both set or both null) */
+    x: numeric('x', { precision: 6, scale: 5 }),
+    y: numeric('y', { precision: 6, scale: 5 }),
+    status: text('status').$type<'open' | 'resolved'>().notNull().default('open'),
+    createdBy: text('created_by').notNull().references(() => user.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    resolvedBy: text('resolved_by').references(() => user.id, { onDelete: 'set null' }),
+    resolvedAt: timestamp('resolved_at'),
+  },
+  (t) => [index('comment_thread_deck_idx').on(t.presentationId, t.status)],
+)
+
+export const comment = pgTable(
+  'comment',
+  {
+    id: text('id').primaryKey(),
+    threadId: text('thread_id').notNull().references(() => commentThread.id, { onDelete: 'cascade' }),
+    authorId: text('author_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+    /** plain text; a mention is stored as `@{userId}` and shown with the person's current name */
+    body: text('body').notNull(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    editedAt: timestamp('edited_at'),
+  },
+  (t) => [index('comment_thread_idx').on(t.threadId, t.createdAt)],
+)
+
+/** When a person last opened a deck's comments (unread = comments by others after this) and when they were last emailed about a mention there. */
+export const commentSeen = pgTable(
+  'comment_seen',
+  {
+    userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+    presentationId: text('presentation_id').notNull().references(() => presentation.id, { onDelete: 'cascade' }),
+    seenAt: timestamp('seen_at').notNull().defaultNow(),
+    lastMentionMailAt: timestamp('last_mention_mail_at'),
+  },
+  (t) => [uniqueIndex('comment_seen_uq').on(t.userId, t.presentationId)],
+)
+
+/**
+ * Share-link analytics (C7): one row per visit to a view-only link. No IP, no user-agent text, no cookie: the visitor is a one-way hash of a random id the
+ * browser keeps (different for every presentation), the device is a coarse class, the source is a host name, the country comes from the hosting network when
+ * it provides one. Time per slide is kept as slide id → milliseconds.
+ */
+export const shareView = pgTable(
+  'share_view',
+  {
+    id: text('id').primaryKey(),
+    presentationId: text('presentation_id').notNull().references(() => presentation.id, { onDelete: 'cascade' }),
+    linkId: text('link_id').notNull().references(() => shareLink.id, { onDelete: 'cascade' }),
+    visitorHash: text('visitor_hash').notNull(),
+    startedAt: timestamp('started_at').notNull().defaultNow(),
+    lastSeenAt: timestamp('last_seen_at').notNull().defaultNow(),
+    durationMs: integer('duration_ms').notNull().default(0),
+    /** furthest slide reached (0-based) and the deck's slide count when last reported */
+    maxSlide: integer('max_slide').notNull().default(0),
+    slideCount: integer('slide_count').notNull().default(0),
+    completed: boolean('completed').notNull().default(false),
+    slideMs: jsonb('slide_ms').$type<Record<string, number>>().notNull().default({}),
+    device: text('device').$type<'phone' | 'tablet' | 'computer'>().notNull().default('computer'),
+    country: text('country'),
+    referrerHost: text('referrer_host'),
+  },
+  (t) => [index('share_view_deck_idx').on(t.presentationId, t.startedAt), index('share_view_visitor_idx').on(t.linkId, t.visitorHash, t.lastSeenAt)],
 )

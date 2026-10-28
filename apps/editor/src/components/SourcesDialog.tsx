@@ -9,7 +9,7 @@ const MAX_SOURCES = 10
 
 /** Attach reference material: pasted text, a web page, or a PDF. Each becomes a server-side source with page/section locators. */
 export function SourcesDialog({ count, onAdd, onClose }: { count: number; onAdd: (s: SourceSummary) => void; onClose: () => void }) {
-  const [tab, setTab] = useState<Tab>('link')
+  const [tab, setTab] = useState<Tab>('file')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const file = useRef<HTMLInputElement>(null)
@@ -49,16 +49,17 @@ export function SourcesDialog({ count, onAdd, onClose }: { count: number; onAdd:
           <button onClick={onClose} aria-label="Close" className="text-slate-500 hover:text-slate-800 text-xl leading-none">×</button>
         </div>
         <div role="tablist" className="flex gap-2 mb-4">
-          {([['link', 'Website link'], ['file', 'File'], ['text', 'Paste text']] as const).map(([t, label]) => (
+          {([['file', 'Upload file'], ['link', 'Website link'], ['text', 'Paste text']] as const).map(([t, label]) => (
             <button key={t} role="tab" aria-selected={tab === t} onClick={() => { setTab(t); setError(null) }} className={`px-3 py-1.5 rounded-full text-sm font-medium ${tab === t ? 'bg-foreground text-white' : 'bg-slate-100 text-slate-700'}`}>{label}</button>
           ))}
         </div>
         <form onSubmit={submit} className="space-y-3">
-          {tab === 'link' && <input name="url" type="url" required placeholder="https://example.com/article" aria-label="Page URL" className={input} />}
+          {tab === 'link' && <input name="url" type="url" required placeholder="https://example.com/article or a Google Doc link" aria-label="Page URL" className={input} />}
+          {tab === 'link' && <p className="text-xs text-slate-500">Websites, or a Google Doc, Sheet or Slides shared with “Anyone with the link”.</p>}
           {tab === 'file' && (
             <>
-              <input ref={file} type="file" accept=".pdf,.pptx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,text/markdown" aria-label="File" className={input} />
-              <p className="text-xs text-slate-500">PDF (up to 10 MB), PowerPoint .pptx (up to 15 MB) or text/Markdown. Old .ppt files: save as .pptx first.</p>
+              <input ref={file} type="file" accept=".pdf,.docx,.docm,.pptx,.xlsx,.xlsm,.csv,.tsv,.eml,.txt,.md" aria-label="File" className={input} />
+              <p className="text-xs text-slate-500">PDF, Word (.docx), PowerPoint (.pptx), Excel (.xlsx), CSV, email (.eml) or text/Markdown — up to 15 MB. Old .doc / .xls / .ppt files: save them in the newer format first.</p>
             </>
           )}
           {tab === 'text' && (

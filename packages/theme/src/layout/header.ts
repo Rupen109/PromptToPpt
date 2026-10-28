@@ -1,4 +1,4 @@
-import { type Ctx, deco, emphasised, pal, rect, shape, text, para } from './primitives'
+import { type Ctx, deco, duo, emphasised, pal, rect, shape, text, para } from './primitives'
 import { contrastRatio, mix } from '../color'
 
 /**
@@ -39,6 +39,13 @@ export function header(c: Ctx, title: string, o: { width?: number; size?: number
       const col = [k.accent, k.primary, k.secondary].find((x) => contrastRatio(x, c.bodyBg) >= 3) ?? k.textPrimary
       rect(c, mix(k.textSecondary, c.bodyBg, 0.8), 0, M * 0.5, c.W, 2)
       text(c, 'title', [emphasised(title, col)], x, M + 8, w, 150, size, { valign: 'middle', min: 34 })
+      return M + 8 + 150 + 20
+    }
+    case 'duo': {
+      // editorial: a hairline across the top, then a title whose closing words are italic and coloured
+      const col = [k.accent, k.primary, k.secondary].find((x) => contrastRatio(x, c.bodyBg) >= 3) ?? k.textPrimary
+      rect(c, mix(k.textSecondary, c.bodyBg, 0.8), x, M * 0.55, w, 2)
+      text(c, 'title', [duo(title, col)], x, M + 8, w, 150, size, { valign: 'middle', min: 34 })
       return M + 8 + 150 + 20
     }
     case 'italic': {

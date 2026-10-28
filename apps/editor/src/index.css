@@ -28,3 +28,35 @@ body {
 @keyframes pt-pulse-soft { 0%, 100% { box-shadow: 0 0 0 0 rgba(11, 61, 208, 0.28); } 50% { box-shadow: 0 0 0 8px rgba(11, 61, 208, 0); } }
 .animate-pulse-soft { animation: pt-pulse-soft 1.6s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .animate-pulse-soft { animation: none; } }
+
+/* ── AI "thinking" / generating animations (CreatePage) ───────────────────────────────────────────── */
+@keyframes pt-spin { to { transform: rotate(360deg); } }
+@keyframes pt-ripple { 0% { transform: scale(0.9); opacity: 0.5; } 100% { transform: scale(1.8); opacity: 0; } }
+@keyframes pt-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.08); } }
+@keyframes pt-sheen { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+@keyframes pt-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes pt-bounce { 0%, 80%, 100% { transform: translateY(0); opacity: 0.35; } 40% { transform: translateY(-5px); opacity: 1; } }
+@keyframes pt-stripes { to { background-position: 40px 0; } }
+
+/* the orb: a slowly turning gradient with a soft breathing core and two expanding rings */
+.pt-orb { --s: 28px; position: relative; width: var(--s); height: var(--s); flex: none; }
+.pt-orb::before, .pt-orb::after { content: ''; position: absolute; inset: 0; border-radius: 9999px; border: 1.5px solid rgba(11, 61, 208, 0.45); animation: pt-ripple 2.4s ease-out infinite; }
+.pt-orb::after { animation-delay: 1.2s; }
+.pt-orb > i { position: absolute; inset: 0; border-radius: 9999px; background: conic-gradient(from 0deg, #0b3dd0, #7c3aed, #f97316, #0b3dd0); animation: pt-spin 3.2s linear infinite; filter: blur(0.3px); }
+.pt-orb > b { position: absolute; inset: calc(var(--s) * 0.12); border-radius: 9999px; background: radial-gradient(circle at 35% 30%, #ffffff 0%, #eef2ff 45%, #c7d2fe 100%); animation: pt-breathe 2.4s ease-in-out infinite; box-shadow: inset 0 0 6px rgba(11, 61, 208, 0.25); }
+
+.pt-shimmer { background: linear-gradient(100deg, #475569 30%, #0b3dd0 45%, #7c3aed 50%, #0b3dd0 55%, #475569 70%); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: pt-sheen 2.8s linear infinite; }
+.pt-rise { animation: pt-rise 0.45s ease-out both; }
+.pt-dots span { display: inline-block; width: 4px; height: 4px; margin-left: 3px; border-radius: 9999px; background: #0b3dd0; animation: pt-bounce 1.2s ease-in-out infinite; }
+.pt-dots span:nth-child(2) { animation-delay: 0.15s; }
+.pt-dots span:nth-child(3) { animation-delay: 0.3s; }
+
+/* progress bar with a moving highlight, and the step dots */
+.pt-bar { background-image: linear-gradient(90deg, #0b3dd0, #7c3aed); position: relative; overflow: hidden; }
+.pt-bar::after { content: ''; position: absolute; inset: 0; background-image: repeating-linear-gradient(115deg, rgba(255,255,255,0.28) 0 10px, transparent 10px 20px); background-size: 40px 100%; animation: pt-stripes 0.9s linear infinite; }
+.pt-step-now { animation: pt-pulse-soft 1.6s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pt-orb::before, .pt-orb::after, .pt-orb > i, .pt-orb > b, .pt-shimmer, .pt-rise, .pt-dots span, .pt-bar::after, .pt-step-now { animation: none !important; }
+  .pt-shimmer { color: #475569; background: none; }
+}

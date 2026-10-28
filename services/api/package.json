@@ -14,6 +14,7 @@
     "db:local": "tsx scripts/dev-db.ts",
     "clean": "rimraf dist",
     "ai:check": "tsx --env-file-if-exists=.env scripts/ai-check.ts",
+    "catalog:vertex": "tsx --env-file-if-exists=.env scripts/catalog-vertex-prices.ts",
     "catalog:sync": "tsx --env-file-if-exists=.env scripts/catalog-sync.ts",
     "make-admin": "tsx --env-file-if-exists=.env scripts/make-admin.ts",
     "db:reset": "tsx --env-file-if-exists=.env scripts/db-reset.ts",

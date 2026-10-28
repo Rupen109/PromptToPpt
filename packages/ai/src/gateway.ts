@@ -221,6 +221,7 @@ export class AIGateway {
           prompt = `${input.prompt}\n\nYour previous reply was rejected: ${err.message}\nReply again with ONLY a valid JSON document that satisfies the requested shape.`
           continue
         }
+        if (input.signal?.aborted) throw err // the caller gave up (a hedged duplicate that lost, a cancelled job): retrying an aborted call only logs more failures
         if (err.retryable && attempt < retries) {
           await sleep(Math.min(8000, 500 * 2 ** attempt) + Math.floor(Math.random() * 250))
           continue

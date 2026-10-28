@@ -2,11 +2,15 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError, isGateError } from '@prompttoppt/api-client'
 import type { Presentation } from '@prompttoppt/validation'
 import { api } from '@/lib/api'
+import { mergeDocs } from './docdiff'
+import { useLive, othersOf } from './live'
 import { useDoc } from './store'
 
 export type SaveStatus = 'saved' | 'dirty' | 'saving' | 'offline' | 'conflict' | 'error'
 
 const DEBOUNCE_MS = 1500
+const LIVE_DEBOUNCE_MS = 700 // somebody is watching: publish sooner (still under the 120 saves/min limit)
+const MAX_REBASES = 8
 const backupKey = (id: string) => `prompttoppt:draft:${id}`
 
 interface Backup {
@@ -50,10 +54,18 @@ export function useAutosave(id: string, onAdopt: (doc: Presentation, revision: n
   const savedSeq = useRef(useDoc.getState().seq)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const inflight = useRef(false)
+  /** per deck id: the revision the server last confirmed and the last edit count it holds — read when leaving a deck (the editor has cleared the store by then, and this hook is reused when you move to another deck) */
+  const deckState = useRef(new Map<string, { revision: number; savedSeq: number }>())
   const failures = useRef(0)
   const statusRef = useRef<SaveStatus>('saved')
   const channel = useRef<BroadcastChannel | null>(null)
   const scheduleRef = useRef<(ms?: number) => void>(() => {})
+  /** the deck exactly as the server last confirmed it (loaded or saved): the common ancestor for three-way merges with collaborators */
+  const synced = useRef<Presentation | null>(useDoc.getState().doc)
+  const pulling = useRef(false)
+  const pullAgain = useRef(false)
+  const pullRef = useRef<(force?: boolean) => Promise<void>>(async () => {})
+  const rebases = useRef(0)
   const adopt = useRef(onAdopt)
   useEffect(() => {
     adopt.current = onAdopt
@@ -75,6 +87,9 @@ export function useAutosave(id: string, onAdopt: (doc: Presentation, revision: n
         const res = await api.savePresentation(id, revision, doc, snapshot)
         failures.current = 0
         useDoc.getState().setRevision(res.revision)
+        deckState.current.set(id, { revision: res.revision, savedSeq: seq })
+        synced.current = doc
+        rebases.current = 0
         savedSeq.current = seq
         channel.current?.postMessage({ type: 'saved', revision: res.revision })
         if (useDoc.getState().seq !== seq) {
@@ -85,7 +100,11 @@ export function useAutosave(id: string, onAdopt: (doc: Presentation, revision: n
           set('saved')
         }
       } catch (e) {
-        if (e instanceof ApiError && e.code === 'CONFLICT') set('conflict', 'This presentation was changed in another tab or device.')
+        if (e instanceof ApiError && e.code === 'CONFLICT') {
+          // someone saved first: merge their version with my unsaved edits and save again; only ask the user if that keeps failing
+          if (++rebases.current > MAX_REBASES) set('conflict', 'This presentation keeps changing in another tab or device.')
+          else { set('dirty'); void pullRef.current(true) }
+        }
         else if (isGateError(e)) set('error', e.message) // e.g. slide cap / premium theme: server said no — keep edits, tell the user
         else if (e instanceof ApiError && e.status >= 400 && e.status < 500) set('error', e.message)
         else {
@@ -95,36 +114,76 @@ export function useAutosave(id: string, onAdopt: (doc: Presentation, revision: n
         }
       } finally {
         inflight.current = false
+        if (pullAgain.current) { pullAgain.current = false; void pullRef.current() }
       }
     },
     [id],
   )
 
+  /**
+   * A collaborator (or another tab) saved a newer revision. Nothing unsaved here → just adopt it. Unsaved edits here → three-way merge
+   * (their version + what I changed since my last sync) and save the result on top. History is kept: undo only ever reverts MY changes.
+   */
+  const pull = useCallback(async (force = false) => {
+    if (pulling.current || inflight.current) { pullAgain.current = true; return }
+    pulling.current = true
+    try {
+      const latest = await api.getPresentation(id)
+      const st = useDoc.getState()
+      if (!st.doc || (!force && latest.revision <= st.revision)) return
+      const dirty = st.seq !== savedSeq.current
+      if (!dirty) {
+        useDoc.getState().adoptRemote(latest.document, latest.revision)
+        synced.current = latest.document
+        savedSeq.current = useDoc.getState().seq
+        if (statusRef.current !== 'conflict') set('saved')
+        return
+      }
+      const merged = mergeDocs(synced.current ?? latest.document, st.doc, latest.document)
+      synced.current = latest.document
+      useDoc.getState().mergeRemote(merged, latest.revision) // bumps seq: the merged deck still has to be saved
+      if (statusRef.current === 'conflict') set('dirty')
+      scheduleRef.current(150)
+    } catch {
+      /* offline or transient: the next event or save retries */
+    } finally {
+      pulling.current = false
+      if (pullAgain.current && !inflight.current) { pullAgain.current = false; void pullRef.current() }
+    }
+  }, [id])
+  useEffect(() => { pullRef.current = pull }, [pull])
+
   useEffect(() => {
     const schedule = (ms = DEBOUNCE_MS) => {
       if (timer.current) clearTimeout(timer.current)
-      timer.current = setTimeout(() => void save(), ms)
+      const live = othersOf(useLive.getState().peers, useLive.getState().you?.userId).length > 0
+      timer.current = setTimeout(() => void save(), live ? Math.min(ms, LIVE_DEBOUNCE_MS) : ms)
     }
     scheduleRef.current = schedule
     savedSeq.current = useDoc.getState().seq
     const ch = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel(`prompttoppt:deck:${id}`) : null
     channel.current = ch
     if (ch) {
-      ch.onmessage = async (ev: MessageEvent<{ type: string; revision: number }>) => {
-        if (ev.data?.type !== 'saved' || ev.data.revision <= useDoc.getState().revision) return
-        if (statusRef.current === 'saved') {
-          try {
-            const latest = await api.getPresentation(id) // idle tab: quietly adopt the other tab's work
-            adopt.current(latest.document, latest.revision)
-            savedSeq.current = useDoc.getState().seq
-          } catch {
-            /* next save will surface any problem */
-          }
-        } else set('conflict', 'This presentation was changed in another tab.')
+      ch.onmessage = (ev: MessageEvent<{ type: string; revision: number }>) => {
+        if (ev.data?.type === 'saved' && ev.data.revision > useDoc.getState().revision) void pullRef.current() // another tab of mine saved: merge it in
       }
     }
 
+    const last: { doc: Presentation | null; revision: number; seq: number } = { doc: useDoc.getState().doc, revision: useDoc.getState().revision, seq: useDoc.getState().seq }
     const unsub = useDoc.subscribe((s, prev) => {
+      if (s.doc) {
+        last.doc = s.doc; last.revision = s.revision; last.seq = s.seq
+        const known = deckState.current.get(id)
+        deckState.current.set(id, { revision: s.revision, savedSeq: s.seq === 0 ? 0 : (known?.savedSeq ?? 0) })
+      }
+      if (s.doc && s.doc !== prev.doc && s.seq === 0) {
+        // a fresh load (another deck, or a reload): this is exactly what the server holds, and the edit counter starts again at 0.
+        // The saved-edit marker must restart too: left over from the previous deck it made the first edit here look "already saved",
+        // so the edit was never sent and the status stayed "Unsaved changes…" forever.
+        synced.current = s.doc
+        savedSeq.current = 0
+        return
+      }
       if (s.seq === prev.seq || !s.doc) return
       if (statusRef.current !== 'conflict') set(statusRef.current === 'saving' ? 'saving' : 'dirty')
       writeBackup(id, { doc: s.doc, revision: s.revision })
@@ -146,6 +205,18 @@ export function useAutosave(id: string, onAdopt: (doc: Presentation, revision: n
     window.addEventListener('online', onOnline)
     return () => {
       unsub()
+      // Leaving this deck (another deck, Home, Back) with an edit still waiting for the debounce: send it instead of dropping it.
+      // By now the editor has already cleared the open deck from the store, so the last state seen here is what gets saved.
+      const snap = { ...last }
+      const unsent = statusRef.current !== 'saved' && statusRef.current !== 'conflict' && snap.doc && snap.seq !== (deckState.current.get(id)?.savedSeq ?? 0)
+      if (unsent) {
+        void (async () => {
+          for (let i = 0; i < 40 && inflight.current; i++) await new Promise((r) => setTimeout(r, 100)) // a save is already on its way: let it land first
+          const st = deckState.current.get(id)
+          if (!snap.doc || snap.seq === (st?.savedSeq ?? 0)) return // that save already carried this edit
+          try { await api.savePresentation(id, st?.revision ?? snap.revision, snap.doc, false) } catch { /* the local backup keeps the edit if this fails */ }
+        })()
+      }
       if (timer.current) clearTimeout(timer.current)
       document.removeEventListener('visibilitychange', onHide)
       window.removeEventListener('beforeunload', onUnload)
@@ -160,6 +231,7 @@ export function useAutosave(id: string, onAdopt: (doc: Presentation, revision: n
       const latest = await api.getPresentation(id)
       if (how === 'reload') {
         useDoc.getState().load(latest.document, latest.revision)
+        synced.current = latest.document
         savedSeq.current = 0
         clearBackup(id)
         adopt.current(latest.document, latest.revision)
@@ -173,5 +245,5 @@ export function useAutosave(id: string, onAdopt: (doc: Presentation, revision: n
     [id, save],
   )
 
-  return { status, message, saveNow: (snapshot = false) => save(snapshot), resolve }
+  return { status, message, saveNow: (snapshot = false) => save(snapshot), resolve, pull: useCallback(() => void pullRef.current(), []) }
 }

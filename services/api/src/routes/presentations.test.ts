@@ -151,3 +151,19 @@ describe('AI edit', () => {
     expect((await api(other.cookie, 'POST', `/presentations/${id}/ai-edit`, body(doc.slides[1]!.id))).status).toBe(404)
   })
 })
+
+describe('assistant chat keeps the undo record with the message', () => {
+  it('saves it (and which undo records were later put back) and returns it on reload', async () => {
+    const u = await signUp('chat')
+    const { id } = await makeDeck(u.id)
+    const undo = JSON.stringify({ id: 'u1', theme: null, contents: { s1: { layout: 'title', title: 'Old', speakerNotes: '', sources: [] } }, added: [], summary: ['Rewrote slide 1'] })
+    const save = await api(u.cookie, 'POST', `/presentations/${id}/chat`, { messages: [{ role: 'user', text: 'shorten slide 1' }, { role: 'ai', reply: 'Done', applied: ['Rewrote slide 1'], notes: [], credits: 2, undo }, { role: 'ai', reply: 'Put back', applied: ['Put back my earlier change'], notes: [], credits: 0, revertedUndo: ['u1'] }] })
+    expect(save.status).toBe(200)
+    const rows = (await json(await api(u.cookie, 'GET', `/presentations/${id}/chat`))).data
+    expect(rows).toHaveLength(3)
+    expect(JSON.parse(rows[1].undo).id).toBe('u1')
+    expect(rows[2].revertedUndo).toEqual(['u1'])
+    const tooBig = await api(u.cookie, 'POST', `/presentations/${id}/chat`, { messages: [{ role: 'ai', reply: 'x', undo: 'x'.repeat(100_001) }] })
+    expect(tooBig.status).toBe(400)
+  })
+})

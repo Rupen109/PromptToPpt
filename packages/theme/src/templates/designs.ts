@@ -19,6 +19,9 @@ export const DESIGN_ROWS: Record<CategoryId, Row[]> = {
     ['Moonshot', 'Dramatic gradient for deep-tech ambitions', '#6D28D9', '#FB923C', 'dark', '-', 'grotesk', 'splitDark', 'zoom', { style: { decor: 'contours',card:'shadow',photo: 'wash' } }],
     ['Blueprint', 'Engineering-grade grid for technical pitches', '#2563EB', '#FDE047', 'light', 'cool', 'plex', 'frameGrid', 'rise', { style: { decor:'blueprint',card:'outline',photo:'frame',header:'rule' } }],
     ['Northstar', 'Deep navy with a single rose accent', '#1D4ED8', '#F43F5E', 'light', 'cool', 'raleway', 'stackTint', 'drop', { style: { decor:'corner',card:'tint',photo:'arch', diagram: 'editorial', header: 'accent' } }],
+    ['Term Sheet', 'Sharp white investor deck with an electric-blue edge', '#1D4ED8', '#F43F5E', 'light', 'white', 'grotesk', 'minimalGrid', 'rise', { seed: 4, style: { decor: 'rules', header: 'duo', card: 'outline', photo: 'banner', diagram: 'editorial' } }],
+    ['Investor Letter', 'A warm, literary pitch that reads like a founder letter', '#1E3A34', '#B45309', 'light', 'warm', 'fraunces', 'serifFrame', 'blur', { seed: 7, style: { decor: 'rules', header: 'duo', card: 'paper', photo: 'arch', diagram: 'editorial' } }],
+    ['Demo Day', 'Dark graphite stage deck with a lime signal colour', '#A3E635', '#22D3EE', 'dark', '#101214', 'sora', 'splitDark', 'zoom', { seed: 9, style: { decor: 'window', header: 'accent', card: 'outline', photo: 'wash', diagram: 'editorial' } }],
   ],
   sales: [
     ['Closer', 'Direct, high-contrast deck built to win the room', '#FB923C', '#FACC15', 'dark', '-', 'montserrat', 'bandBar', 'slide', { style: { decor: 'contours',card:'accent-left',photo: 'wash' } }],
@@ -33,6 +36,9 @@ export const DESIGN_ROWS: Record<CategoryId, Row[]> = {
     ['Pricing Playbook', 'Tiered, tidy pricing and packaging narrative', '#2DD4BF', '#FACC15', 'dark', '-', 'poppins', 'badgeStripes', 'pop', { style: { decor:'stripes',card:'paper',photo:'polaroid' } }],
     ['Renewal Review', 'Reassuring, evidence-led renewal conversations', '#166534', '#F59E0B', 'light', 'warm', 'merri', 'serifFrame', 'rise', { style: { decor:'corner',card:'flat',photo:'arch',header:'italic' } }],
     ['Sales Kickoff', 'Loud, celebratory SKO energy', '#E11D48', '#FDE047', 'dark', '-', 'bebas', 'stackLight', 'wipe', { style: { decor:'confetti',card:'sticker',photo:'diagonal' } }],
+    ['Proposal Letter', 'Editorial proposal in teal ink with amber italics', '#0F766E', '#D97706', 'light', 'white', 'lora', 'minimalGrid', 'rise', { seed: 3, style: { decor: 'rules', header: 'duo', card: 'outline', photo: 'banner', diagram: 'editorial' } }],
+    ['Deal Desk', 'Tidy navy-and-orange commercial deck for fast deals', '#1E3A8A', '#EA580C', 'light', 'cool', 'manrope', 'bandSide', 'push', { seed: 6, style: { decor: 'rules', header: 'accent', card: 'accent-left', photo: 'split', diagram: 'editorial' } }],
+    ['Closing Room', 'Deep-green negotiation deck with champagne highlights', '#E8D9A8', '#C9A24B', 'dark', '#0B2E2A', 'dmserif', 'serifFrame', 'blur', { seed: 9, style: { decor: 'rules', header: 'duo', card: 'outline', photo: 'frame', diagram: 'editorial' } }],
   ],
   marketing: [
     ['Campaign Pop', 'Playful colour blocks for campaign readouts', '#DB2777', '#FACC15', 'dark', '-', 'poppins', 'badgeGlow', 'pop', { style: { decor:'confetti',card:'sticker',photo:'polaroid' } }],
@@ -47,6 +53,9 @@ export const DESIGN_ROWS: Record<CategoryId, Row[]> = {
     ['Creative Brief', 'Moodboard-ready brief with room to breathe', '#A21CAF', '#F97316', 'light', 'warm', 'dmserif', 'serifFrame', 'blur', { style: { decor:'organic',card:'paper',photo:'arch',header:'italic' } }],
     ['Brand Story', 'Cinematic storytelling for brand narratives', '#4338CA', '#FB923C', 'dark', '-', 'playfair', 'centerRings', 'blur', { style: { decor: 'blobs',card:'flat',photo: 'wash' } }],
     ['Influencer Kit', 'Media-kit deck with friendly rounded cards', '#EA580C', '#8B5CF6', 'light', 'warm', 'nunito', 'badgeStripes', 'pop', { radius: 26, style: { decor:'confetti',card:'sticker',photo:'circle',header:'dot' } }],
+    ['Editorial Calendar', 'Magazine-style planning deck in magenta ink', '#BE185D', '#0F172A', 'light', 'warm', 'fraunces', 'minimalGrid', 'rise', { seed: 2, style: { decor: 'rules', header: 'duo', card: 'outline', photo: 'banner', diagram: 'editorial' } }],
+    ['Poster Wall', 'Loud black-on-white campaign poster type', '#111111', '#FF3D71', 'light', 'white', 'oswald', 'stackBold', 'pop', { seed: 5, style: { decor: 'none', header: 'bar', card: 'outline', photo: 'full', diagram: 'editorial' } }],
+    ['After Dark', 'Midnight campaign deck with an orange-to-pink glow', '#FB7185', '#FB923C', 'dark', '-', 'montserrat', 'badgeGlow', 'zoom', { seed: 8, style: { decor: 'blobs', header: 'accent', card: 'tint', photo: 'wash', diagram: 'editorial' } }],
   ],
   strategy: [
     ['Vision 2030', 'Forward-looking dark deck for long-range vision', '#3B82F6', '#F59E0B', 'dark', '-', 'raleway', 'centerRings', 'blur', { seed: 0, style: { decor: 'contours',card:'flat',photo: 'wash', diagram: 'editorial', header: 'accent' } }],
@@ -63,6 +72,9 @@ export const DESIGN_ROWS: Record<CategoryId, Row[]> = {
     ['OKR Cycle', 'Quarterly objectives in a crisp, accountable format', '#4F46E5', '#10B981', 'light', 'white', 'jakarta', 'classicBar', 'rise', { seed: 10, style: { decor:'axis',card:'tint',photo:'frame',header:'underline' } }],
     ['Risk Register', 'Matrix-friendly risk and mitigation deck', '#F43F5E', '#FBBF24', 'dark', '-', 'worksans', 'bandBar', 'slide', { seed: 11, style: { decor:'stripes',card:'accent-left',photo:'split' } }],
     ['Town Hall', 'Warm, open all-staff strategy session', '#B45309', '#0EA5E9', 'light', 'warm', 'nunito', 'centerDot', 'rise', { seed: 12, style: { decor:'organic',card:'tint',photo:'circle',header:'dot' } }],
+    ['Case Method', 'Business-school case brief in ink, cream and red italics', '#1B2A49', '#B3202A', 'light', 'warm', 'playfair', 'minimalGrid', 'rise', { seed: 3, style: { decor: 'rules', header: 'duo', card: 'outline', photo: 'banner', diagram: 'editorial' } }],
+    ['Ledger', 'Numbers-first brief with a ledger-green accounting feel', '#14532D', '#CA8A04', 'light', 'cool', 'mono', 'minimalGrid', 'rise', { seed: 7, style: { decor: 'rules', header: 'duo', card: 'outline', photo: 'banner', diagram: 'editorial' } }],
+    ['Boardroom Noir', 'Black-and-gold board deck with a serif voice', '#D4A017', '#F5E6B3', 'dark', '#0E0E10', 'dmserif', 'centerMono', 'blur', { seed: 6, style: { decor: 'rules', header: 'duo', card: 'outline', photo: 'full', diagram: 'editorial' } }],
   ],
   product: [
     ['Product Launch', 'Launch-day deck with big-reveal energy', '#2563EB', '#F472B6', 'dark', '-', 'sora', 'orbSplit', 'zoom', { style: { decor: 'contours',card:'shadow',photo: 'wash', diagram: 'editorial', header: 'accent' } }],
@@ -119,6 +131,9 @@ export const DESIGN_ROWS: Record<CategoryId, Row[]> = {
     ['Thesis Defense', 'Dignified academic defense deck', '#A5B4FC', '#F59E0B', 'dark', '-', 'playfair', 'frameGrid', 'rise', { style: { decor: 'hexgrid', header: 'italic', photo: 'hex' } }],
     ['Webinar', 'Presenter-led webinar with app-window chrome', '#DB2777', '#22D3EE', 'dark', '-', 'sora', 'orbSplit', 'zoom', { style: { decor: 'window', card: 'shadow', photo: 'wash', diagram: 'editorial', header: 'accent' } }],
     ['Academy', 'Premium corporate academy with graduated rings', '#1E40AF', '#38BDF8', 'dark', '-', 'raleway', 'diagGradient', 'push', { style: { decor: 'contours', header: 'accent', photo: 'wash', diagram: 'editorial' } }],
+    ['Recitation', 'Crisp STEM lecture deck with a crimson italic voice', '#B3202A', '#111827', 'light', 'white', 'playfair', 'minimalGrid', 'rise', { seed: 2, style: { decor: 'rules', header: 'duo', card: 'outline', photo: 'banner', diagram: 'editorial' } }],
+    ['Studio Practicum', 'Hands-on skills training with a big editorial headline', '#1F2937', '#EA580C', 'light', 'cool', 'dmserif', 'splitSide', 'wipe', { seed: 5, style: { decor: 'rules', header: 'duo', card: 'accent-top', photo: 'frame', diagram: 'editorial' } }],
+    ['Safety Briefing', 'High-visibility training deck with hazard-tape edges', '#FACC15', '#FACC15', 'dark', '#121212', 'oswald', 'stackBold', 'slide', { seed: 8, style: { decor: 'hazard', header: 'bar', card: 'outline', photo: 'banner', diagram: 'editorial' } }],
   ],
   'case-studies': [
     ['Client Story', 'Editorial customer story with a hero metric', '#FB923C', '#14B8A6', 'dark', '-', 'playfair', 'serifFrame', 'rise', { style: { decor:'brackets',card:'flat',photo: 'wash',header:'italic' } }],

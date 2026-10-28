@@ -1,92 +1,73 @@
 [
   {
     "title": "menu: Export lists PPTX, PDF, PNG, JPG, HTML (Pro: no PRO badges)",
-    "ok": false,
-    "error": "Pro user sees PRO badges",
+    "ok": true,
+    "error": "",
     "noise": [],
-    "ms": 236,
-    "shot": "06-export-0.png"
+    "ms": 294
   },
   {
     "title": "PPTX: downloads a valid .pptx named after the deck",
-    "ok": false,
-    "error": "locator.click: Timeout 30000ms exceeded. ⏎   - waiting for getByRole('menuitem', { name: /^PPTX/ })",
+    "ok": true,
+    "error": "",
     "noise": [],
-    "ms": 30232,
-    "shot": "06-export-1.png"
+    "ms": 285
   },
   {
     "title": "PPTX: 11 slides, speaker notes, embedded pictures, native chart, editable text, correct size",
-    "ok": false,
-    "error": "Cannot read properties of undefined (reading 'buf')",
+    "ok": true,
+    "error": "",
     "noise": [],
-    "ms": 181,
-    "shot": "06-export-2.png"
+    "ms": 28
   },
   {
     "title": "PPTX: text colours/fonts come from the theme (heading font present, theme colours used)",
-    "ok": false,
-    "error": "Cannot read properties of undefined (reading 'buf')",
+    "ok": true,
+    "error": "",
     "noise": [],
-    "ms": 172,
-    "shot": "06-export-3.png"
+    "ms": 24
   },
   {
     "title": "PPTX: 4:3 and square decks export at the right slide size",
-    "ok": false,
-    "error": "page.waitForEvent: Timeout 120000ms exceeded while waiting for event \"download\" ⏎ =========================== logs =========================== ⏎ waiting for event \"download\" ⏎ ============================================================",
-    "noise": [
-      "http 403: POST http://localhost:4000/api/v1/exports",
-      "console: Failed to load resource: the server responded with a status of 403 (Forbidden)"
-    ],
-    "ms": 121867,
-    "shot": "06-export-4.png"
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 3780
   },
   {
     "title": "PDF: one page per slide, real file",
-    "ok": false,
-    "error": "page.waitForEvent: Timeout 120000ms exceeded while waiting for event \"download\" ⏎ =========================== logs =========================== ⏎ waiting for event \"download\" ⏎ ============================================================",
-    "noise": [
-      "http 403: POST http://localhost:4000/api/v1/exports",
-      "console: Failed to load resource: the server responded with a status of 403 (Forbidden)"
-    ],
-    "ms": 120145,
-    "shot": "06-export-5.png"
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 2830
   },
   {
     "title": "PNG: zip of 11 PNGs at 1920×1080",
-    "ok": false,
-    "error": "locator.click: Timeout 30000ms exceeded. ⏎   - waiting for getByRole('button', { name: /^Export/ }) ⏎     - locator resolved to <button aria-haspopup=\"menu\" aria-expanded=\"false\" class=\"h-9 px-4 rounded-lg text-sm font-semibold bg-foreground text-white disabled:opacity-60\">Export</button> ⏎   - attempting click action",
+    "ok": true,
+    "error": "",
     "noise": [],
-    "ms": 30120,
-    "shot": "06-export-6.png"
+    "ms": 2600
   },
   {
     "title": "JPG: zip of 11 JPEGs",
-    "ok": false,
-    "error": "locator.click: Timeout 30000ms exceeded. ⏎   - waiting for getByRole('button', { name: /^Export/ }) ⏎     - locator resolved to <button aria-haspopup=\"menu\" aria-expanded=\"false\" class=\"h-9 px-4 rounded-lg text-sm font-semibold bg-foreground text-white disabled:opacity-60\">Export</button> ⏎   - attempting click action",
+    "ok": true,
+    "error": "",
     "noise": [],
-    "ms": 30122,
-    "shot": "06-export-7.png"
+    "ms": 2073
   },
   {
     "title": "HTML: self-contained deck that navigates with the keyboard",
-    "ok": false,
-    "error": "locator.click: Timeout 30000ms exceeded. ⏎   - waiting for getByRole('button', { name: /^Export/ }) ⏎     - locator resolved to <button aria-haspopup=\"menu\" aria-expanded=\"false\" class=\"h-9 px-4 rounded-lg text-sm font-semibold bg-foreground text-white disabled:opacity-60\">Export</button> ⏎   - attempting click action",
+    "ok": true,
+    "error": "",
     "noise": [],
-    "ms": 30125,
-    "shot": "06-export-8.png"
+    "ms": 1432
   },
   {
     "title": "export keeps the latest edits (unsaved changes are flushed first)",
-    "ok": false,
-    "error": "page.waitForEvent: Timeout 120000ms exceeded while waiting for event \"download\" ⏎ =========================== logs =========================== ⏎ waiting for event \"download\" ⏎ ============================================================",
-    "noise": [
-      "http 403: POST http://localhost:4000/api/v1/exports",
-      "console: Failed to load resource: the server responded with a status of 403 (Forbidden)"
-    ],
-    "ms": 121906,
-    "shot": "06-export-9.png"
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1980
   },
   {
     "title": "starter: every format is refused by the SERVER (403 UPGRADE_REQUIRED) and the UI shows the upgrade prompt",
@@ -106,7 +87,7 @@
       "http 403: POST http://localhost:4000/api/v1/exports",
       "console: Failed to load resource: the server responded with a status of 403 (Forbidden)"
     ],
-    "ms": 4003
+    "ms": 4475
   },
   {
     "title": "security: another user cannot export my deck (404) and anonymous gets 401",
@@ -116,6 +97,6 @@
       "http 403: POST http://localhost:4000/api/v1/exports",
       "console: Failed to load resource: the server responded with a status of 403 (Forbidden)"
     ],
-    "ms": 66
+    "ms": 35
   }
 ]

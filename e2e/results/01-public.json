@@ -4,63 +4,63 @@
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 2102
+    "ms": 1858
   },
   {
     "title": "/ renders @768px without overflow or errors",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 1662
+    "ms": 1632
   },
   {
     "title": "/ renders @1440px without overflow or errors",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 1640
+    "ms": 1637
   },
   {
     "title": "/pricing renders @390px without overflow or errors",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 1596
+    "ms": 1567
   },
   {
     "title": "/pricing renders @768px without overflow or errors",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 1546
+    "ms": 1534
   },
   {
     "title": "/pricing renders @1440px without overflow or errors",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 1596
+    "ms": 1535
   },
   {
     "title": "/templates renders @390px without overflow or errors",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 1652
+    "ms": 1650
   },
   {
     "title": "/templates renders @768px without overflow or errors",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 2186
+    "ms": 3369
   },
   {
     "title": "/templates renders @1440px without overflow or errors",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 1986
+    "ms": 1951
   },
   {
     "title": "/ai-ppt-maker renders @390px without overflow or errors",
@@ -74,112 +74,112 @@
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 1474
+    "ms": 1489
   },
   {
     "title": "/ai-ppt-maker renders @1440px without overflow or errors",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 1477
+    "ms": 1483
   },
   {
     "title": "/login renders @390px without overflow or errors",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 1482
+    "ms": 1492
   },
   {
     "title": "/login renders @768px without overflow or errors",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 1529
+    "ms": 1494
   },
   {
     "title": "/login renders @1440px without overflow or errors",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 1475
+    "ms": 1494
   },
   {
     "title": "/signup renders @390px without overflow or errors",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 1470
+    "ms": 1493
   },
   {
     "title": "/signup renders @768px without overflow or errors",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 1512
+    "ms": 1505
   },
   {
     "title": "/signup renders @1440px without overflow or errors",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 1511
+    "ms": 1497
   },
   {
     "title": "/templates/pitch-launchpad renders @390px without overflow or errors",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 1656
+    "ms": 1620
   },
   {
     "title": "/templates/pitch-launchpad renders @768px without overflow or errors",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 1787
+    "ms": 1600
   },
   {
     "title": "/templates/pitch-launchpad renders @1440px without overflow or errors",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 1674
+    "ms": 1627
   },
   {
     "title": "every link on every public page resolves (no 404, no empty href)",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 9190
+    "ms": 9590
   },
   {
     "title": "header nav: each item scrolls to its section / navigates",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 28
+    "ms": 31
   },
   {
     "title": "hero: example chips fill the prompt box",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 19
+    "ms": 25
   },
   {
     "title": "hero: typing in the prompt box works and Generate is enabled",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 133
+    "ms": 36
   },
   {
     "title": "hero: attach a .txt file → chip appears → can be removed",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 413
+    "ms": 365
   },
   {
     "title": "hero: unsupported file type is refused with a clear message",
@@ -189,7 +189,7 @@
       "http 422: POST http://localhost:4000/api/v1/drafts/attachments",
       "console: Failed to load resource: the server responded with a status of 422 (Unprocessable Entity)"
     ],
-    "ms": 42
+    "ms": 28
   },
   {
     "title": "hero: add website link → chip; invalid link is refused with a message",
@@ -199,7 +199,7 @@
       "http 400: POST http://localhost:4000/api/v1/drafts/attachments/link",
       "console: Failed to load resource: the server responded with a status of 400 (Bad Request)"
     ],
-    "ms": 100
+    "ms": 102
   },
   {
     "title": "hero: Generate while signed out hands off to sign-up/login with the prompt kept",
@@ -209,51 +209,51 @@
       "http 422: POST http://localhost:4000/api/v1/drafts/attachments/link",
       "console: Failed to load resource: the server responded with a status of 422 (Unprocessable Entity)"
     ],
-    "ms": 625
+    "ms": 1080
   },
   {
     "title": "pricing: monthly/annual toggle changes prices",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 494
+    "ms": 476
   },
   {
     "title": "pricing: plan buttons point to signup / billing",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 14
+    "ms": 22
   },
   {
     "title": "FAQ: items open and close",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 1375
+    "ms": 1415
   },
   {
     "title": "templates: category tabs filter, search filters, card opens detail page",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 1838
+    "ms": 1840
   },
   {
     "title": "template detail: next/prev/play/thumbnails work, Use-this-template targets the editor",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 2425
+    "ms": 2488
   },
   {
     "title": "template detail: unknown id → 404 page, not a crash",
     "ok": true,
     "error": "",
     "noise": [
-      "http 404: GET http://localhost:3000/templates/does-not-exist",
+      "http 404: GET http://localhost:3100/templates/does-not-exist",
       "console: Failed to load resource: the server responded with a status of 404 (Not Found)"
     ],
-    "ms": 89
+    "ms": 68
   }
 ]

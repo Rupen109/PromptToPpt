@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto'
-import { and, desc, eq, isNull } from 'drizzle-orm'
+import { and, desc, eq, gt, isNull, sql } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import type { Currency, SubscriptionSummary } from '@prompttoppt/validation'
 import { db } from '../db/index.ts'
-import { payment, plan, planPrice, subscription, user, webhookEvent } from '../db/schema.ts'
+import { checkoutAttempt, payment, plan, planPrice, subscription, user, webhookEvent } from '../db/schema.ts'
 import { env } from '../env.ts'
 import { audit } from '../lib/audit.ts'
 import { clawbackCredits } from './credits.ts'
@@ -19,6 +19,9 @@ const PERIOD: Record<Interval, 'monthly' | 'yearly'> = { month: 'monthly', year:
 const PERIOD_MS: Record<Interval, number> = { month: 31 * 864e5, year: 366 * 864e5 }
 /** access states: the subscription row keeps the user on the plan until currentPeriodEnd */
 const LIVE = ['active', 'trialing', 'past_due']
+
+/** A payment session that nobody has paid for is handed out again for this long; after that a click opens a fresh one. */
+const CHECKOUT_REUSE_MS = 15 * 60_000
 
 const priceId = (planId: string, currency: string, interval: string) => `${planId}-${currency}-${interval}`
 
@@ -57,7 +60,19 @@ export async function startCheckout(userId: string, planId: PaidPlan, interval: 
   }
   const { providerPlanId, amountMinor, planName } = await ensureProviderPlan(planId, currency, interval)
   try {
-    const sub = await razorpay.createSubscription({ planId: providerPlanId, totalCount: TOTAL_COUNT[interval], notes: { userId, planId, interval, currency } })
+    // One person opens one payment session at a time: the per-person lock makes a double click (or a script, or two tabs, even on two servers)
+    // wait its turn, and the second caller is handed the session the first one just opened instead of creating another with the provider.
+    const sub = await db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`checkout:${userId}`}))`)
+      const [recent] = await tx.select().from(checkoutAttempt).where(and(eq(checkoutAttempt.userId, userId), eq(checkoutAttempt.planId, planId), eq(checkoutAttempt.interval, interval), eq(checkoutAttempt.currency, currency), gt(checkoutAttempt.createdAt, new Date(Date.now() - CHECKOUT_REUSE_MS))))
+      if (recent) {
+        const known = await razorpay.fetchSubscription(recent.providerRef).catch(() => null)
+        if (known && known.status === 'created' && known.plan_id === providerPlanId) return known // still unpaid and for exactly these terms: reuse
+      }
+      const fresh = await razorpay.createSubscription({ planId: providerPlanId, totalCount: TOTAL_COUNT[interval], notes: { userId, planId, interval, currency } })
+      await tx.insert(checkoutAttempt).values({ id: nanoid(), userId, planId, interval, currency, providerRef: fresh.id }).onConflictDoUpdate({ target: [checkoutAttempt.userId, checkoutAttempt.planId, checkoutAttempt.interval, checkoutAttempt.currency], set: { providerRef: fresh.id, createdAt: new Date() } })
+      return fresh
+    })
     return { keyId: env.RAZORPAY_KEY_ID!, subscriptionId: sub.id, currency, amountMinor, planName, interval, testMode: razorpayTestMode() }
   } catch (e) {
     if (e instanceof RazorpayApiError) throw new BillingError('PROVIDER_ERROR', `The payment provider refused the request: ${e.message}`, 502)
@@ -91,6 +106,9 @@ export async function applySubscription(entity: RzpSubscription, opts: { paidCon
   if (entity.status === 'authenticated' && !opts.paidConfirmed) return 'ignored' // mandate set up, first charge pending
   if (existing && !sameSub && terminal) return 'ignored' // news about an old, already-replaced subscription
   if (!existing && terminal) return 'ignored' // a cancelled/completed subscription we never saw paid must never grant a period of access
+  // A subscription that is over for us (refunded, charged back, ended) never comes back: buying again makes a NEW provider subscription. Without this, the
+  // "cancelled" event the provider sends after we cancel a refunded subscription (it still carries the old, future period end) would hand the access back.
+  if (existing && sameSub && existing.status === 'cancelled' && existing.currentPeriodEnd <= now) return 'ignored'
 
   const start = unix(entity.current_start) ?? (sameSub ? existing!.currentPeriodStart : now)
   const end = unix(entity.current_end) ?? (sameSub ? existing!.currentPeriodEnd : new Date(now.getTime() + PERIOD_MS[interval]))

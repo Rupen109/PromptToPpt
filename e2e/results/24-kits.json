@@ -1,0 +1,164 @@
+[
+  {
+    "title": "A1 Starter: the Brand tab explains the feature and offers the upgrade; nothing can be created (UI and API)",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1698
+  },
+  {
+    "title": "A2 Pro: one kit; \"New brand kit\" is then off with the limit explained; the API refuses a second",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 907
+  },
+  {
+    "title": "B1 + B2 a kit keeps name, colours and fonts across a reload; Save is on only when something changed; Apply is off while unsaved",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1551
+  },
+  {
+    "title": "B3 empty name, a 60+ character name, and HTML in the name: a sensible default / a limit / shown as plain text",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 3629
+  },
+  {
+    "title": "B5 colours the API must refuse: red, #12, javascript:, 8-digit, with spaces",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 59
+  },
+  {
+    "title": "B6 two tabs: a change made in tab 1 shows in tab 2 after a reload, and other fields are not overwritten",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 2531
+  },
+  {
+    "title": "B7 a double click on Save and on Delete does one save and one delete (no error)",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 864
+  },
+  {
+    "title": "C1 + C3 upload a PNG, then a JPEG-as-replacement, then remove: shown in the kit, stored on our side, gone after Remove",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 976
+  },
+  {
+    "title": "C4 + C5 wrong files and sizes are refused with a plain message and nothing is stored: text named .png, HTML named .png, SVG, GIF, WebP, 20 px, 1200×50, over 2 MB",
+    "ok": true,
+    "error": "",
+    "noise": [
+      "http 422: POST http://localhost:4000/api/v1/brand/kits/yYKlpZBNUfyjKFOj/logo",
+      "console: Failed to load resource: the server responded with a status of 422 (Unprocessable Entity)"
+    ],
+    "ms": 1421
+  },
+  {
+    "title": "D1 + D3 pictures: add up to 20 (counter follows), the 21st is refused with a message, remove works",
+    "ok": true,
+    "error": "",
+    "noise": [
+      "http 429: POST http://localhost:4000/api/v1/brand/kits/yYKlpZBNUfyjKFOj/images",
+      "console: Failed to load resource: the server responded with a status of 429 (Too Many Requests)"
+    ],
+    "ms": 1510
+  },
+  {
+    "title": "D2 + D4 insert a picture on the open slide as ONE undo step; a text file / over-size picture is refused",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 2288
+  },
+  {
+    "title": "G1–G4 deleting a kit: cancel keeps it; confirming removes files nothing uses; a logo that a deck shows survives, also after undo / an older version",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 7004
+  },
+  {
+    "title": "A3 Gold: five kits are allowed, the sixth is refused in the API and \"New brand kit\" is off in the page",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1565
+  },
+  {
+    "title": "A4 Gold → Pro with 5 kits: the kits stay and still apply, a new one is refused, nothing is deleted behind the user's back",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1549
+  },
+  {
+    "title": "F1 the first kit is the default; making another the default moves it; deleting the default hands over; there is exactly one default",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 3818
+  },
+  {
+    "title": "H1 another person cannot read, change, delete, or upload into my kit, and cannot see it in their list",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 781
+  },
+  {
+    "title": "H3 + H4 a file that is HTML but named .png is refused by content; a request from another site (wrong Origin) is refused; signed-out gets 401",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 17
+  },
+  {
+    "title": "A6 a person invited to edit a deck sees the logo on it, but never the owner's kits",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 7058
+  },
+  {
+    "title": "I1 + I4 phone width (390 px): the Brand tab fits with a very long kit name and many colours; no sideways scroll; Save / Apply reachable",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 1957
+  },
+  {
+    "title": "I2 every control in the Brand tab has a name and the tab key reaches Save / Apply / Delete",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 772
+  },
+  {
+    "title": "I3 the API is unreachable: saving shows a message and the page is usable again (no frozen screen)",
+    "ok": true,
+    "error": "",
+    "noise": [
+      "console: Failed to load resource: net::ERR_FAILED"
+    ],
+    "ms": 794
+  },
+  {
+    "title": "H5 + a11y scan: the Brand tab has no serious accessibility violations",
+    "ok": true,
+    "error": "",
+    "noise": [],
+    "ms": 771
+  }
+]

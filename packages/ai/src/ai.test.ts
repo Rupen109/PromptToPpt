@@ -56,6 +56,15 @@ describe('AIGateway', () => {
     expect(t.ledger.map((l) => l.status)).toEqual(['error', 'error', 'success'])
   })
 
+  it('does not keep retrying a call its caller has already given up on', async () => {
+    const ac = new AbortController()
+    const t = setup((_r, n) => { if (n === 1) ac.abort(); throw new ProviderError('timed out', 'timeout', true) })
+    const provider = t.provider
+    const gateway = new AIGateway({ providers: { gemini: provider }, registry: new ModelRegistry(), recordUsage: async (r) => void t.ledger.push(r), sleep: async () => {}, retriesPerModel: 2 })
+    await expect(gateway.run({ route: 'quality', requestType: 'outline_generation', system: 's', prompt: 'p', schema, signal: ac.signal })).rejects.toThrow()
+    expect(t.ledger).toHaveLength(1) // one attempt, then it stops — it does not log two more failures against an abandoned request
+  })
+
   it('falls back to the next model and reports it; failures are all in the ledger', async () => {
     const t = setup((req) => {
       if (req.model === 'gemini-3.6-flash') throw new ProviderError('quota', 'http_429', true, 429)

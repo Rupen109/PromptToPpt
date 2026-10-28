@@ -42,11 +42,13 @@ export function planHighlights(plan: PlanView, previous?: PlanView): { lead: str
   items.push(`Up to ${plan.maxImagesPerPresentation} AI images per presentation`)
   items.push(f.watermark ? 'Watermark on presentations' : 'No watermark')
   items.push(f.exportFormats.length ? `Export in ${f.exportFormats.map((x) => FORMATS[x] ?? x).join(', ')}` : 'No export — upgrade to export')
-  items.push(f.advancedSharing ? 'Password-protected & expiring share links' : 'Share view-only links')
+  items.push(f.advancedSharing ? `Edit together: invite up to ${plan.id === 'gold' ? 10 : 3} people per presentation` : 'Share view-only links')
+  if (f.advancedSharing) items.push('Password-protected & expiring share links')
   if (f.advancedEditor) items.push('Advanced editor')
   if (f.aiEdits) items.push('AI edits')
-  if (f.brandKit) items.push('Advanced brand customization')
-  if (f.knowledgeBase) items.push('Shared knowledge base')
+  // brand kits: Pro 1, Gold 5 (the server's limit is MAX_KITS in services/api/src/brand/kits.ts). The shared knowledge base is not built yet, so it is not advertised.
+  const kits = plan.id === 'gold' ? 5 : plan.id === 'pro' ? 1 : 0
+  if (kits) items.push(kits === 1 ? 'Brand kit: your logo, colours and fonts' : `Up to ${kits} brand kits (logo, colours, fonts)`)
   if (f.speed !== 'standard') items.push(`Generation speed: ${f.speed}`)
   if (f.support === 'whatsapp') items.push('24/7 support · WhatsApp')
 

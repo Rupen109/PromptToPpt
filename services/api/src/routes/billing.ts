@@ -13,7 +13,7 @@ import { plan, planPrice, subscription } from '../db/schema.ts'
 import { env } from '../env.ts'
 import { audit, ipOf } from '../lib/audit.ts'
 import { countryFromHeaders } from '../lib/country.ts'
-import { rateLimit } from '../middleware/rate-limit.ts'
+import { byUser, rateLimit } from '../middleware/rate-limit.ts'
 import { requireAuth, type AppEnv } from '../middleware/session.ts'
 
 export const billing = new Hono<AppEnv>()
@@ -49,7 +49,7 @@ billing.get('/me/entitlements', requireAuth, async (c) => {
 // ─── payments (Razorpay) ────────────────────────────────────────────────────
 
 /** Starts a checkout. Plan price and currency are resolved server-side; the browser only names plan + interval. */
-billing.post('/billing/checkout', requireAuth, rateLimit({ windowMs: 60_000, max: 10 }), zValidator('json', z.object({ planId: z.enum(['pro', 'gold']), interval: z.enum(['month', 'year']) })), async (c) => {
+billing.post('/billing/checkout', requireAuth, rateLimit({ windowMs: 60_000, max: 10, key: byUser('checkout') }), zValidator('json', z.object({ planId: z.enum(['pro', 'gold']), interval: z.enum(['month', 'year']) })), async (c) => {
   const { user } = c.get('session')!
   const { planId, interval } = c.req.valid('json')
   const session = await startCheckout(user.id, planId, interval, detectCurrency(c.req.raw.headers).currency)
@@ -58,7 +58,7 @@ billing.post('/billing/checkout', requireAuth, rateLimit({ windowMs: 60_000, max
 
 /** Checkout finished in the browser: verify Razorpay's signature, then activate. (The webhook does the same independently.) */
 billing.post(
-  '/billing/verify', requireAuth, rateLimit({ windowMs: 60_000, max: 20 }),
+  '/billing/verify', requireAuth, rateLimit({ windowMs: 60_000, max: 20, key: byUser('verify') }),
   zValidator('json', z.object({ razorpay_payment_id: z.string().min(5).max(64), razorpay_subscription_id: z.string().min(5).max(64), razorpay_signature: z.string().min(32).max(128) })),
   async (c) => {
     const b = c.req.valid('json')
@@ -71,7 +71,7 @@ billing.post(
 
 billing.get('/billing/subscription', requireAuth, async (c) => c.json({ success: true, data: { ...(await subscriptionSummary(c.get('session')!.user.id)), billingEnabled: razorpayEnabled(), testMode: razorpayTestMode() } }))
 
-billing.post('/billing/cancel', requireAuth, async (c) => {
+billing.post('/billing/cancel', requireAuth, rateLimit({ windowMs: 60_000, max: 10, key: byUser('cancel') }), async (c) => {
   const userId = c.get('session')!.user.id
   await cancelAtPeriodEnd(userId)
   void audit(userId, 'billing.cancel_requested', {}, ipOf(c.req.raw.headers))

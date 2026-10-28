@@ -11,11 +11,22 @@ export const lookOf = (raw: Theme) => {
   return JSON.stringify([t.colors, t.fonts, t.radius, t.style ?? null, t.motion ?? null])
 }
 
+/**
+ * The DESIGN (layout kit + photo frame + ornament + card style + motion + corner radius), without colours or fonts. Colour palettes and fonts are free for everyone, so a
+ * premium design in a different palette must still count as that premium design.
+ */
+export const designKey = (raw: Theme) => {
+  const t = themeSchema.safeParse(raw).data ?? raw
+  return JSON.stringify([t.radius, t.style ?? null, t.motion ?? null])
+}
+
 let premium: Set<string> | null = null
-const premiumLooks = () => (premium ??= new Set([
-  ...DESIGNS.filter((d) => d.premium).map((d) => lookOf(d.theme)),
-  ...THEMES.filter((t) => PREMIUM_THEME_IDS.includes(t.id)).map((t) => lookOf(t)),
-]))
+const premiumLooks = () => {
+  if (premium) return premium
+  // a design whose kit is identical to a FREE design's is free: only designs unique to the paid catalogue are protected
+  const free = new Set([...DESIGNS.filter((d) => !d.premium).map((d) => designKey(d.theme)), ...THEMES.filter((t) => !PREMIUM_THEME_IDS.includes(t.id)).map((t) => designKey(t))])
+  return (premium = new Set([...DESIGNS.filter((d) => d.premium).map((d) => designKey(d.theme)), ...THEMES.filter((t) => PREMIUM_THEME_IDS.includes(t.id)).map((t) => designKey(t))].filter((k) => !free.has(k))))
+}
 
 export const isPremiumTheme = (t: Theme): boolean =>
-  PREMIUM_THEME_IDS.includes(t.id) || !!(t.templateId && DESIGNS.find((d) => d.id === t.templateId)?.premium) || premiumLooks().has(lookOf(t))
+  PREMIUM_THEME_IDS.includes(t.id) || !!(t.templateId && DESIGNS.find((d) => d.id === t.templateId)?.premium) || premiumLooks().has(designKey(t))

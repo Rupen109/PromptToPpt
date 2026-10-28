@@ -2,12 +2,12 @@ import PptxGenJS from 'pptxgenjs'
 import { resolveColor } from '@prompttoppt/theme'
 import { CANVAS, type Presentation, type Slide, type SlideElement, type TextElement, type Theme } from '@prompttoppt/validation'
 import { gradientPng, imageSize, parseColor } from './png.ts'
+import { NAME_PREFIX, hasEntrance, injectMotion, type SlideMotion } from './motion.ts'
 import { and, eq, isNull } from 'drizzle-orm'
-import { fetch as undiciFetch } from 'undici'
 import { db } from '../db/index.ts'
 import { generatedAsset } from '../db/schema.ts'
 import { env } from '../env.ts'
-import { assertPublicUrl, ssrfSafeAgent } from '../sources/ssrf.ts'
+import { assertPublicUrl, safeFetch } from '../sources/ssrf.ts'
 import { getStorage } from '../storage/index.ts'
 
 /** 1920 px canvas = 13.333 in → 144 px per inch; 1 pt = 2 px. */
@@ -22,6 +22,8 @@ export type ImageLoader = (url: string) => Promise<ImageData | null>
 
 const HEADING_ROLES = new Set<TextElement['role']>(['title', 'heading', 'metric', 'subtitle'])
 const SKIP = new Set(['footer'])
+/** Every exported object carries its element id in its name, so the animation step can find it in the finished file. */
+const named = (el: { id: string }) => ({ objectName: `${NAME_PREFIX}${el.id}` })
 
 const MAX_EXPORT_IMAGES = 40
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024
@@ -73,7 +75,7 @@ export const fetchImageLoader = (opts: { timeoutMs?: number; maxBytes?: number; 
       } else {
         let cur = assertPublicUrl(url)
         for (let hop = 0; hop <= MAX_IMAGE_REDIRECTS && !buf; hop++) {
-          const res = (await undiciFetch(cur.toString(), { dispatcher: ssrfSafeAgent, redirect: 'manual', signal: AbortSignal.timeout(opts.timeoutMs ?? 10_000), headers: { Accept: 'image/png,image/jpeg,image/gif' } })) as unknown as Response
+          const res = (await safeFetch(cur.toString(), { redirect: 'manual', signal: AbortSignal.timeout(opts.timeoutMs ?? 10_000), headers: { Accept: 'image/png,image/jpeg,image/gif' } })) as unknown as Response
           if (res.status >= 300 && res.status < 400) {
             const loc = res.headers.get('location')
             if (!loc) return null
@@ -116,7 +118,7 @@ function addText(slide: PptxGenJS.Slide, el: TextElement, theme: Theme, sl: Slid
     })
   })
   slide.addText(runs, {
-    x: inch(el.x), y: inch(el.y), w: inch(el.width), h: inch(el.height), margin: 0, fontFace: font, fontSize: size, color,
+    ...named(el), x: inch(el.x), y: inch(el.y), w: inch(el.width), h: inch(el.height), margin: 0, fontFace: font, fontSize: size, color,
     align: el.align, valign: el.valign === 'middle' ? 'middle' : el.valign, lineSpacingMultiple: el.lineHeight ?? 1.2,
     ...(el.letterSpacing ? { charSpacing: Math.round((el.letterSpacing / 2) * 10) / 10 } : {}), rotate: el.rotation || 0,
     ...(el.opacity < 1 ? { transparency: transparency(el.opacity) } : {}), wrap: true, fit: 'none',
@@ -124,7 +126,7 @@ function addText(slide: PptxGenJS.Slide, el: TextElement, theme: Theme, sl: Slid
 }
 
 function addShape(pptx: PptxGenJS, slide: PptxGenJS.Slide, el: Extract<SlideElement, { type: 'shape' }>, theme: Theme, sl: Slide) {
-  const pos = { x: inch(el.x), y: inch(el.y), w: inch(el.width), h: inch(el.height), rotate: el.rotation || 0 }
+  const pos = { ...named(el), x: inch(el.x), y: inch(el.y), w: inch(el.width), h: inch(el.height), rotate: el.rotation || 0 }
   const line = el.stroke ? { color: hex6(resolveColor(el.stroke, theme, sl)), width: pt(el.strokeWidth ?? 3), transparency: transparency(el.opacity) } : { type: 'none' as const }
   const T = pptx.ShapeType
   if (el.gradient && el.shape !== 'line' && el.shape !== 'ring') {
@@ -146,7 +148,7 @@ function addShape(pptx: PptxGenJS, slide: PptxGenJS.Slide, el: Extract<SlideElem
 }
 
 async function addImageEl(pptx: PptxGenJS, slide: PptxGenJS.Slide, el: Extract<SlideElement, { type: 'image' }>, load: ImageLoader) {
-  const pos = { x: inch(el.x), y: inch(el.y), w: inch(el.width), h: inch(el.height), rotate: el.rotation || 0 }
+  const pos = { ...named(el), x: inch(el.x), y: inch(el.y), w: inch(el.width), h: inch(el.height), rotate: el.rotation || 0 }
   const img = el.src ? await load(el.src) : null
   if (!img) {
     slide.addShape(pptx.ShapeType.rect, { ...pos, fill: { color: 'E5E7EB' }, line: { type: 'none' } })
@@ -170,7 +172,7 @@ function addChartEl(slide: PptxGenJS.Slide, el: Extract<SlideElement, { type: 'c
   const type = el.chartType
   const circular = el.chartType === 'pie' || el.chartType === 'doughnut'
   slide.addChart(type, data, {
-    x: inch(el.x), y: inch(el.y), w: inch(el.width), h: inch(el.height),
+    ...named(el), x: inch(el.x), y: inch(el.y), w: inch(el.width), h: inch(el.height),
     chartColors: circular ? el.labels.map((_, i) => palette[i % palette.length]!) : palette.slice(0, el.series.length),
     showLegend: el.series.length > 1 || circular, legendPos: 'b', legendFontFace: theme.fonts.body, legendFontSize: 12, legendColor: hex6(k.textSecondary),
     catAxisLabelFontFace: theme.fonts.body, catAxisLabelFontSize: 12, catAxisLabelColor: hex6(k.textSecondary),
@@ -187,12 +189,12 @@ function addTableEl(slide: PptxGenJS.Slide, el: Extract<SlideElement, { type: 't
   const cell = (text: string, head: boolean, i: number): PptxGenJS.TableCell => ({
     text, options: { bold: head, fontFace: head ? theme.fonts.heading : theme.fonts.body, fontSize: pt(head ? 26 : 24), color: hex6(head ? k.onPrimary : k.textPrimary), fill: { color: hex6(head ? k.primary : i % 2 ? k.surface : k.background) }, valign: 'middle', margin: [0.06, 0.1, 0.06, 0.1], border: { type: 'solid', pt: 0.5, color: hex6(mixHex(k.textSecondary, k.background, 0.75)) } },
   })
-  slide.addTable([el.header.map((h) => cell(h, true, 0)), ...el.rows.map((r, i) => el.header.map((_, c) => cell(r[c] ?? '', false, i)))], { x: inch(el.x), y: inch(el.y), w: inch(el.width) })
+  slide.addTable([el.header.map((h) => cell(h, true, 0)), ...el.rows.map((r, i) => el.header.map((_, c) => cell(r[c] ?? '', false, i)))], { ...named(el), x: inch(el.x), y: inch(el.y), w: inch(el.width) })
 }
 
 const sortByZ = (els: SlideElement[]) => [...els].sort((a, b) => a.zIndex - b.zIndex)
 
-/** Presentation JSON → .pptx (editable text, native charts/tables, embedded pictures, speaker notes). Animations and transitions are not carried over (PowerPoint's file format needs per-element timing XML). */
+/** Presentation JSON → .pptx (editable text, native charts/tables, embedded pictures, speaker notes, slide transitions and entrance animations — see motion.ts). */
 export async function buildPptx(doc: Presentation, load: ImageLoader): Promise<Buffer> {
   const pptx = new PptxGenJS()
   const { width, height } = CANVAS[doc.aspectRatio]
@@ -202,8 +204,11 @@ export async function buildPptx(doc: Presentation, load: ImageLoader): Promise<B
   pptx.company = 'promptToPpt'
   pptx.theme = { headFontFace: doc.theme.fonts.heading, bodyFontFace: doc.theme.fonts.body }
 
+  const motion: SlideMotion[] = []
   for (const sl of doc.slides) {
     const slide = pptx.addSlide()
+    const m: SlideMotion = { transition: sl.transition ?? { type: doc.theme.motion?.transition ?? 'none', duration: doc.theme.motion?.duration ?? 500 }, targets: [] }
+    motion.push(m)
     const bg = sl.background
     if (bg?.type === 'gradient' && bg.gradient) slide.background = { data: gradientPng(bg.gradient.from, bg.gradient.to, bg.gradient.angle) }
     else if (bg?.type === 'image') { const img = await load(bg.value); slide.background = img ? { data: img.data } : { color: hex6(doc.theme.colors.background) } }
@@ -211,17 +216,18 @@ export async function buildPptx(doc: Presentation, load: ImageLoader): Promise<B
 
     for (const el of sortByZ(sl.elements)) {
       if (SKIP.has(el.type)) continue
+      if (hasEntrance(el.animation)) m.targets.push({ elementId: el.id, animation: el.animation, paragraphs: el.type === 'text' ? el.paragraphs.length : 1 })
       switch (el.type) {
         case 'text': addText(slide, el, doc.theme, sl); break
         case 'shape': addShape(pptx, slide, el, doc.theme, sl); break
         case 'image': await addImageEl(pptx, slide, el, load); break
         case 'chart': addChartEl(slide, el, doc.theme); break
         case 'table': addTableEl(slide, el, doc.theme); break
-        case 'icon': slide.addText(el.name, { x: inch(el.x), y: inch(el.y), w: inch(el.width), h: inch(el.height), fontSize: pt(el.height * 0.7), align: 'center', valign: 'middle', margin: 0, rotate: el.rotation || 0 }); break
+        case 'icon': slide.addText(el.name, { ...named(el), x: inch(el.x), y: inch(el.y), w: inch(el.width), h: inch(el.height), fontSize: pt(el.height * 0.7), align: 'center', valign: 'middle', margin: 0, rotate: el.rotation || 0 }); break
         default: break // diagram: not generated by any layout yet
       }
     }
     if (sl.speakerNotes) slide.addNotes(sl.speakerNotes)
   }
-  return (await pptx.write({ outputType: 'nodebuffer' })) as Buffer
+  return injectMotion((await pptx.write({ outputType: 'nodebuffer' })) as Buffer, motion)
 }

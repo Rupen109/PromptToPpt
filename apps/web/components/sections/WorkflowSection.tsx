@@ -5,7 +5,7 @@ const STEPS: { n: string; tag: string; title: string; tone: CardTone; tile: 'yel
   {
     n: '01', tag: 'INPUT STAGE', title: 'Feed Any Raw Source', tone: 'cream', tile: 'yellow', tagText: 'text-foreground',
     body: 'Drop in a PDF, a PowerPoint, your notes or a web link — or simply type your vision. The AI reads your sources and pulls out the points that matter.',
-    chip: 'Accepts PDF, PowerPoint, text files & web links',
+    chip: 'Accepts PDF, Word, Excel, PowerPoint, email, text files & web links',
   },
   {
     n: '02', tag: 'AGENT SYNTHESIS', title: 'AI Builds High-Impact Story', tone: 'peach', tile: 'accent', tagText: 'text-[#b02f00]',

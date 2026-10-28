@@ -93,3 +93,22 @@ describe('free plan cannot reach paid features', () => {
     }
   })
 })
+
+describe('palettes and fonts are free, premium designs are not', () => {
+  it('a premium design recoloured with any palette is still refused on Starter', async () => {
+    const u = await newUser()
+    const mine = (await json(await api(u.cookie, 'POST', '/presentations', { templateId: free.id }))).data
+    const g = (await json(await api(u.cookie, 'GET', `/presentations/${mine.id}`))).data
+    const recoloured = { ...premium.theme, id: `x-${rid()}`, colors: { ...premium.theme.colors, primary: '#ff0000', accent: '#00ff00' }, fonts: { heading: 'Inter', body: 'Inter' } }
+    const r = await api(u.cookie, 'PUT', `/presentations/${mine.id}`, { baseRevision: g.revision, document: { ...g.document, theme: recoloured } })
+    expect(r.status).toBe(403)
+  })
+  it('a FREE design in a different palette and font is allowed', async () => {
+    const u = await newUser()
+    const mine = (await json(await api(u.cookie, 'POST', '/presentations', { templateId: free.id }))).data
+    const g = (await json(await api(u.cookie, 'GET', `/presentations/${mine.id}`))).data
+    const themed = { ...g.document.theme, colors: { ...g.document.theme.colors, primary: '#7C3AED', accent: '#F472B6' }, fonts: { heading: 'Georgia', body: 'Arial' } }
+    const r = await api(u.cookie, 'PUT', `/presentations/${mine.id}`, { baseRevision: g.revision, document: { ...g.document, theme: themed } })
+    expect(r.status).toBe(200)
+  })
+})

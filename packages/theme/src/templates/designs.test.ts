@@ -10,25 +10,27 @@ import { FONT_WIDTH } from '../text-metrics'
 import { SUPPORTED_FONTS } from '../themes'
 
 describe('template design catalogue', () => {
-  it('has 12 designs in each category (14 in Business & Strategy): 122 total', () => {
-    expect(DESIGNS).toHaveLength(122)
-    for (const c of CATEGORIES) expect(DESIGNS.filter((d) => d.category === c.id), c.id).toHaveLength(c.id === 'strategy' ? 14 : 12)
+  /** Pitch, Sales, Marketing and Education each gained 3 editorial designs, Business & Strategy gained 3 on top of its 14. */
+  const COUNTS: Record<string, number> = { pitch: 15, sales: 15, marketing: 15, education: 15, strategy: 17 }
+  it('has the expected number of designs per category (12 each, 15 in Pitch / Sales / Marketing / Education, 17 in Business & Strategy): 137 total', () => {
+    expect(DESIGNS).toHaveLength(137)
+    for (const c of CATEGORIES) expect(DESIGNS.filter((d) => d.category === c.id), c.id).toHaveLength(COUNTS[c.id] ?? 12)
   })
 
-  it('every category is half light, half dark (6 + 6; 7 + 7 in Business & Strategy), and its dark designs span different hues', () => {
+  it('every category is balanced between light and dark (within one design of half and half), and its dark designs span different hues', () => {
     for (const cat of new Set(DESIGNS.map((d) => d.category))) {
       const ds = DESIGNS.filter((d) => d.category === cat)
       const dark = ds.filter((d) => parseInt(d.theme.colors.background.slice(1, 3), 16) < 128)
-      expect(dark.length, `${cat}: ${dark.length} dark of ${ds.length}`).toBe(ds.length / 2)
+      expect(Math.abs(dark.length - (ds.length - dark.length)), `${cat}: ${dark.length} dark of ${ds.length}`).toBeLessThanOrEqual(1)
       expect(new Set(dark.map((d) => d.theme.colors.background)).size, `${cat}: dark backgrounds should differ`).toBeGreaterThanOrEqual(5)
     }
   })
 
   it('ids and names are unique; no two designs are the same look (kit + colours + fonts + motion + mode + signature style)', () => {
-    expect(new Set(DESIGNS.map((d) => d.id)).size).toBe(122)
-    expect(new Set(DESIGNS.map((d) => `${d.category}/${d.name}`)).size).toBe(122)
+    expect(new Set(DESIGNS.map((d) => d.id)).size).toBe(137)
+    expect(new Set(DESIGNS.map((d) => `${d.category}/${d.name}`)).size).toBe(137)
     const looks = new Set(DESIGNS.map((d) => [d.kit, d.theme.colors.primary, d.theme.colors.accent, d.theme.fonts.heading, d.motion, d.theme.colors.background, JSON.stringify(d.theme.style)].join('|')))
-    expect(looks.size).toBe(122)
+    expect(looks.size).toBe(137)
     // visual diversity across the whole catalogue, not just uniqueness
     expect(new Set(DESIGNS.map((d) => d.kit)).size).toBeGreaterThanOrEqual(22)
     expect(new Set(DESIGNS.map((d) => d.theme.fonts.heading)).size).toBeGreaterThanOrEqual(18)

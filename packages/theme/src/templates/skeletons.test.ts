@@ -33,7 +33,7 @@ describe('category starter decks', () => {
     }
   })
 
-  it('all 122 designs compose their category deck clean (no overflow/contrast errors) at 16:9; every 4th also at 4:3 and 1:1', () => {
+  it('all 137 designs compose their category deck clean (no overflow/contrast errors) at 16:9; every 4th also at 4:3 and 1:1', () => {
     for (const [i, d] of DESIGNS.entries()) {
       for (const aspect of i % 4 === 0 ? ASPECT_RATIOS : (['16:9'] as const)) {
         let n = 0

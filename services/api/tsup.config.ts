@@ -1,7 +1,8 @@
 import { defineConfig } from 'tsup'
 
 export default defineConfig({
-  entry: ['src/index.ts'],
+  // the file-reading worker (src/sources/parse-worker.ts) is its own entry: dist/parse-worker.js sits next to dist/index.js, where the pool looks for it
+  entry: { index: 'src/index.ts', 'parse-worker': 'src/sources/parse-worker.ts' },
   format: ['esm'],
   target: 'node22',
   clean: true,

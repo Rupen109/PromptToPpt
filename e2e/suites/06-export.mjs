@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { unzipSync, strFromU8 } from 'fflate'
-import { API, EDITOR, PASSWORD, RESULTS, expect, launch, suite, uniqueEmail } from '../lib.mjs'
+import { API, EDITOR, PASSWORD, RESULTS, expect, launch, suite, uniqueEmail, WEB } from '../lib.mjs'
 import { STATE } from './02-auth.mjs'
 
 const OUT = join(RESULTS, 'exports')
@@ -98,7 +98,7 @@ export default async function () {
   const c2 = await b.newContext({ viewport: { width: 1600, height: 1000 } }); const q = await c2.newPage()
   await s.check('starter: every format is refused by the SERVER (403 UPGRADE_REQUIRED) and the UI shows the upgrade prompt', q, async () => {
     const email = uniqueEmail('starter')
-    await q.goto(EDITOR.replace('3001', '3000') + '/signup', { waitUntil: 'networkidle' })
+    await q.goto(WEB + '/signup', { waitUntil: 'networkidle' })
     await q.locator('input[name=name]').fill('Starter QA'); await q.locator('input[name=email]').fill(email); await q.locator('input[name=password]').fill(PASSWORD)
     await q.getByRole('button', { name: 'Sign up free' }).click(); await q.waitForURL(/localhost:3001/, { timeout: 20000 })
     const id = await q.evaluate(async () => { const r = await fetch('http://localhost:4000/api/v1/presentations', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ templateId: 'pitch-launchpad' }) }); return (await r.json()).data.id })

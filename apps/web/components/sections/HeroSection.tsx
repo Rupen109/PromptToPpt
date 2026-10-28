@@ -13,8 +13,8 @@ const QUICK_PROMPTS = [
 ] as const
 
 const MAX_ATTACHMENTS = 5
-const ACCEPT = '.pdf,.pptx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,text/markdown'
-const KIND_ICON = { pdf: '📄', pptx: '📊', text: '📝', url: '🔗' } as const
+const ACCEPT = '.pdf,.docx,.docm,.pptx,.xlsx,.xlsm,.csv,.tsv,.eml,.txt,.md'
+const KIND_ICON = { pdf: '📄', pptx: '📊', docx: '📘', xlsx: '📈', csv: '🧮', email: '✉️', text: '📝', url: '🔗' } as const
 
 /** A source the visitor attached: uploaded + read by the server immediately, so problems are reported while they're still here. */
 interface Attachment {
@@ -178,7 +178,7 @@ export function HeroSection() {
               <div className="mt-3 flex items-center justify-between gap-3 flex-wrap">
                 <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
                   <input ref={fileInput} type="file" multiple accept={ACCEPT} className="hidden" aria-label="Attach files" onChange={(e) => { void addFiles([...(e.target.files ?? [])]); e.target.value = '' }} />
-                  <Button size="sm" variant="white" onClick={() => fileInput.current?.click()} disabled={room() <= 0} title="PDF, PowerPoint (.pptx), text or Markdown">📎 Attach files</Button>
+                  <Button size="sm" variant="white" onClick={() => fileInput.current?.click()} disabled={room() <= 0} title="PDF, Word, PowerPoint, Excel, CSV, email (.eml), text or Markdown">📎 Attach files</Button>
                   <Button size="sm" variant="white" onClick={() => { setLinkOpen((v) => !v); setTimeout(() => linkInput.current?.focus(), 0) }} disabled={room() <= 0}>🔗 Add website link</Button>
                   <span className="hidden lg:inline text-[11px] font-heading font-bold text-slate-500">PDF · PPTX · TXT · MD</span>
                 </div>

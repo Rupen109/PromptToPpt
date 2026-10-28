@@ -57,6 +57,65 @@ export default async function () {
     await p.keyboard.press('Escape'); await settle(300)
   })
 
+  await s.check('home: the dialog opens on "Upload file" first, then "Website link", then "Paste text"', p, async () => {
+    await p.goto(EDITOR + '/', { waitUntil: 'networkidle' })
+    await p.getByRole('button', { name: /Upload files, or links/ }).click()
+    const tabs = p.getByRole('dialog').getByRole('tab')
+    expect((await tabs.allInnerTexts()).join('|') === 'Upload file|Website link|Paste text', `tab order: ${(await tabs.allInnerTexts()).join('|')}`)
+    expect(await tabs.first().getAttribute('aria-selected') === 'true', 'Upload file is not the opening tab')
+    expect(await p.getByRole('dialog').locator('input[type=file]').count() === 1, 'no file input on the first tab')
+    await p.keyboard.press('Escape'); await settle(200)
+  })
+
+  await s.check('home: pasting a file or a link into the prompt bar attaches it (chip, nothing typed); other text pastes normally; pictures are refused clearly', p, async () => {
+    await p.goto(EDITOR + '/', { waitUntil: 'networkidle' })
+    const box = p.getByLabel('Presentation prompt')
+    const size = await box.evaluate((el) => parseFloat(getComputedStyle(el).fontSize)); expect(size <= 18, `prompt text is ${size}px`)
+    const paste = (kind) => box.evaluate((el, kind) => {
+      const dt = new DataTransfer()
+      if (kind === 'file') dt.items.add(new File(['Quarterly notes. '.repeat(20)], 'paste-notes.txt', { type: 'text/plain' }))
+      else if (kind === 'image') dt.items.add(new File([new Uint8Array([137, 80, 78, 71])], 'shot.png', { type: 'image/png' }))
+      else dt.setData('text', kind)
+      el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }))
+    }, kind)
+    await paste('file')
+    await p.waitForFunction(() => /paste-notes/.test(document.body.innerText), null, { timeout: 15000 })
+    expect(await box.inputValue() === '', 'the pasted file leaked into the text box')
+    await paste('https://example.com/')
+    await p.getByRole('button', { name: /^Remove (example\.com|Example Domain)/ }).waitFor({ timeout: 3000 }) // the link is a chip at once…
+    expect(!/Reading/.test(await p.locator('main').innerText()) && await p.locator('.animate-spin').count() === 0, '…with no "Reading" text or spinner')
+    await p.waitForFunction(() => /Example Domain/.test(document.body.innerText), null, { timeout: 30000 })
+    expect(await box.inputValue() === '', 'the pasted link leaked into the text box')
+    expect(await p.getByRole('button', { name: /^Remove / }).count() === 2, 'expected two attachment chips')
+    await paste('shot')
+    await paste('image')
+    expect(/Pictures can.t be used as a source/.test(await p.locator('[role=alert]').first().innerText()), 'no clear message for a pasted picture')
+    await box.fill('Make a deck about coffee '); await box.evaluate((el) => { const dt = new DataTransfer(); dt.setData('text', 'and tea'); el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })) })
+    expect(await p.getByRole('button', { name: /^Remove / }).count() === 2, 'plain text paste changed the attachments')
+    while (await p.getByRole('button', { name: /^Remove / }).count()) { await p.getByRole('button', { name: /^Remove / }).first().click(); await settle(150) }
+  })
+
+  await s.check('home: attachments alone do not enable Create — typed text does; the placeholder types example prompts; idea chips fill the box', p, async () => {
+    await p.goto(EDITOR + '/', { waitUntil: 'networkidle' })
+    const box = p.getByLabel('Presentation prompt'), btn = p.getByRole('button', { name: 'Create Presentation' })
+    const ph = () => box.getAttribute('placeholder')
+    const seen = new Set([await ph()]); for (let i = 0; i < 12; i++) { await settle(250); seen.add(await ph()) }
+    expect(seen.size >= 4, `placeholder is not animating (${[...seen].join(' | ')})`)
+    expect((await ph() ?? '').length <= 70, 'placeholder text is too long')
+    expect(await btn.isDisabled(), 'enabled with nothing')
+    await box.evaluate((el) => { const dt = new DataTransfer(); dt.setData('text', 'https://example.com/'); el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })) })
+    await p.getByRole('button', { name: /^Remove / }).first().waitFor({ timeout: 3000 })
+    expect(await btn.isDisabled(), 'an attachment alone must not enable Create')
+    expect(/Add a line about what the presentation should be/.test(await p.locator('main').innerText()), 'no hint about typing a line')
+    await box.fill('Summarise this page for investors'); expect(await btn.isEnabled(), 'typing did not enable Create')
+    await box.fill('   '); expect(await btn.isDisabled(), 'spaces alone enabled Create')
+    await box.fill('')
+    while (await p.getByRole('button', { name: /^Remove / }).count()) { await p.getByRole('button', { name: /^Remove / }).first().click(); await settle(150) }
+    await p.getByRole('button', { name: 'Startup pitch deck' }).click()
+    expect((await box.inputValue()).startsWith('Startup pitch deck'), 'idea chip did not fill the box')
+    await box.fill('')
+  })
+
   // ── template → deck
   await s.check('templates: open a free design, change shape, create → lands in the editor with 11 slides', p, async () => {
     await p.goto(EDITOR + '/templates', { waitUntil: 'networkidle' })
@@ -86,9 +145,9 @@ export default async function () {
   await s.check('templates: category tabs + search + empty state', p, async () => {
     await p.goto(EDITOR + '/templates', { waitUntil: 'networkidle' })
     const count = () => p.locator('ul > li button[aria-label*="—"]').count()
-    const all = await count(); expect(all === 122, `expected 122 templates, got ${all}`)
+    const all = await count(); expect(all === 137, `expected 137 templates, got ${all}`)
     await p.getByRole('tab', { name: 'Education' }).click(); await settle(400)
-    expect(await count() === 12, 'category filter wrong')
+    { const edu = await count(); expect(edu === 15, `category filter wrong: Education shows ${edu}`) }
     await p.getByLabel('Search templates').fill('qqqq'); await settle(300)
     expect(/No templates match/.test(await p.locator('main').innerText()), 'empty state missing')
   })

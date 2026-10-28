@@ -15,6 +15,7 @@ export default defineConfig(({ mode }) => {
   server: { headers }, preview: { headers },
   plugins: [react()],
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
-  build: { sourcemap: true },
+  // the original source (admin screens included) must not be downloadable by every visitor; upload maps privately to an error tracker if one is added
+  build: { sourcemap: false },
   }
 })

@@ -18,6 +18,8 @@
     "@prompttoppt/ui": "workspace:*",
     "@prompttoppt/validation": "workspace:*",
     "next": "16.3.8",
+    "pdfjs-dist": "^6.4.299",
+    "pptxgenjs": "^4.0.1",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },

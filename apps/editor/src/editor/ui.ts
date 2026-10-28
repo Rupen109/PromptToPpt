@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { SlideElement } from '@prompttoppt/validation'
+import { editorOf, useLive } from './live'
 
 export interface ImageDialogRequest {
   prompt?: string
@@ -15,7 +16,7 @@ interface UiState {
   activeSlideId: string | null
   selection: string[]
   editingId: string | null
-  drawer: 'style' | 'ai' | null
+  drawer: 'style' | 'ai' | 'comments' | null
   notesOpen: boolean
   clipboard: SlideElement[]
   setActiveSlide: (id: string | null) => void
@@ -38,7 +39,12 @@ export const useUi = create<UiState>((set) => ({
   clipboard: [],
   setActiveSlide: (id) => set({ activeSlideId: id, selection: [], editingId: null }),
   select: (ids, additive) => set((s) => ({ selection: additive ? [...new Set([...s.selection, ...ids])] : ids, editingId: null })),
-  edit: (id) => set({ editingId: id, ...(id ? { selection: [id] } : {}) }),
+  edit: (id) => {
+    // two people typing into the same text box would overwrite each other: while a collaborator is editing it, it is theirs
+    const other = id ? editorOf(id) : null
+    if (other) { useLive.setState({ notice: `${other.name} is editing this text right now.` }); return }
+    set({ editingId: id, ...(id ? { selection: [id] } : {}) })
+  },
   setDrawer: (drawer) => set((s) => ({ drawer: s.drawer === drawer ? null : drawer })),
   toggleNotes: (open) => set((s) => ({ notesOpen: open ?? !s.notesOpen })),
   setClipboard: (clipboard) => set({ clipboard }),

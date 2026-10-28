@@ -1,5 +1,5 @@
 import { current, isDraft, type Draft } from 'immer'
-import { IMAGE_BG_LAYOUTS, PHOTO_LAYOUTS, composeSlide, getTheme, makeColors } from '@prompttoppt/theme'
+import { IMAGE_BG_LAYOUTS, PHOTO_LAYOUTS, applyBrandToTheme, brandLogoElements, composeSlide, isDark, designById, getTheme, makeColors, recolor } from '@prompttoppt/theme'
 import { CANVAS, elementSchema, type AspectRatio, type LayoutId, type Presentation, type Slide, type SlideContent, type SlideElement, type TextElement, type Theme } from '@prompttoppt/validation'
 
 /**
@@ -82,9 +82,9 @@ export function toggleLock(d: D, slideId: string, elId: string) {
 const photoOf = (s: Draft<Slide> | Slide): string | undefined => (s.background?.type === 'image' ? s.background.value : undefined)
 
 /** The catalogue/generated picture a photo-styled slide shows (kept across theme / content re-composition). */
-const slidePhoto = (s: Draft<Slide> | Slide) => {
+export const slidePhoto = (s: Draft<Slide> | Slide) => {
   if (!(PHOTO_LAYOUTS as readonly string[]).includes(s.layoutId)) return undefined
-  const im = s.elements.find((e) => e.type === 'image' && e.src)
+  const im = s.elements.find((e) => e.type === 'image' && e.src && !e.decorative) // the company logo is a decorative image: never mistake it for the slide's picture
   return im && im.type === 'image' && im.src ? { src: im.src, alt: im.alt } : undefined
 }
 
@@ -225,9 +225,24 @@ export function setThemeMode(d: D, mode: 'light' | 'dark') {
   applyThemeObject(d, { ...t, colors: makeColors({ primary: t.colors.primary, accent: t.colors.accent, mode, bg: 'white' }) })
 }
 
-/** Swaps the deck's whole design (colours, fonts, style kit, motion) and re-composes every slide that wasn't hand-edited. */
-export function applyThemeObject(d: D, next: Theme) {
+/** Switches the deck to one of the catalogue designs (colours, fonts, style kit, motion); untouched slides are re-composed, hand-edited ones keep their content. */
+export function applyDesign(d: D, designId: string) {
+  const design = designById(designId)
+  if (design) applyThemeObject(d, design.theme)
+}
+
+/** New colour palette on the current design (any palette works on any design). */
+export function applyPalette(d: D, seed: { primary: string; accent: string }) {
+  applyThemeObject(d, recolor(d.theme as Theme, seed))
+}
+
+/**
+ * Swaps the deck's whole design (colours, fonts, style kit, motion) and re-composes every slide that wasn't hand-edited.
+ * The company brand (logo) belongs to the deck, not to a template, so it stays unless `keepBrand` is false.
+ */
+export function applyThemeObject(d: D, incoming: Theme, opts: { keepBrand?: boolean } = {}) {
   const old = d.theme as Theme
+  const next: Theme = opts.keepBrand !== false && old.brand && !incoming.brand ? { ...incoming, brand: old.brand } : incoming
   d.theme = next as Draft<Theme>
   const aspect = d.aspectRatio
   for (const s of d.slides) {
@@ -236,11 +251,47 @@ export function applyThemeObject(d: D, next: Theme) {
       s.elements = fresh.elements as Draft<Slide>['elements']
       s.background = fresh.background
       s.transition = fresh.transition as Draft<Slide>['transition']
-    } else if (s.background?.type === 'color') {
-      const k = colorKey(old, s.background.value)
-      if (k) s.background = { type: 'color', value: next.colors[k] }
+    } else {
+      if (s.background?.type === 'color') {
+        const k = colorKey(old, s.background.value)
+        if (k) s.background = { type: 'color', value: next.colors[k] }
+      }
+      // A hand-edited slide is never redrawn from its content, so its logo is swapped directly: the old one (and plate) out, the new one in.
+      s.elements = s.elements.filter((e) => !e.brand) as Draft<Slide>['elements']
+      if (next.brand?.logo) {
+        const top = s.elements.reduce((m, e) => Math.max(m, e.zIndex), 0)
+        const dark = s.background?.type === 'image' || isDark((s.background?.value as string | undefined) ?? next.colors.background)
+        brandLogoElements(next, aspect, dark, newId).forEach((e, i) => s.elements.push({ ...e, zIndex: top + 1 + i } as Draft<Slide>['elements'][number]))
+      }
     }
   }
+}
+
+/** A brand to apply: what "use my brand" found on a website, or a saved brand kit. */
+export interface BrandProfileLike {
+  name: string | null
+  colors: { primary: string | null; accent: string | null }
+  fonts: { heading: { family: string } | null; body: { family: string } | null }
+  logo: { url: string; aspect: number } | null
+}
+
+/** Applies the chosen parts of a brand to the whole deck in one step: colours (mode and layout stay), fonts, and the logo on every slide. */
+export function applyBrand(d: D, brand: BrandProfileLike, pick: { colors: boolean; fonts: boolean; logo: boolean }) {
+  applyThemeObject(d, applyBrandToTheme(structuredClone(plain(d.theme)) as Theme, { primary: brand.colors.primary, accent: brand.colors.accent, headingFont: brand.fonts.heading?.family, bodyFont: brand.fonts.body?.family, name: brand.name, logo: brand.logo }, pick))
+}
+
+/** Drops one of the brand kit's pictures onto a slide (centred, kept in proportion). */
+export function addBrandImage(d: D, slideId: string, img: { url: string; name: string; aspect: number }) {
+  const { width: W, height: H } = CANVAS[d.aspectRatio]
+  const w = Math.round(Math.min(W * 0.28, H * 0.5 * img.aspect))
+  const h = Math.round(w / img.aspect)
+  addElement(d, slideId, makeElement({ type: 'image', id: newId(), x: Math.round((W - w) / 2), y: Math.round((H - h) / 2), width: w, height: h, rotation: 0, locked: false, zIndex: 0, opacity: 1, src: img.url, alt: img.name, fit: 'contain', clip: 'none' }))
+}
+
+/** Takes the company logo off every slide (colours and fonts stay as they are). */
+export function removeBrandLogo(d: D) {
+  const { brand: _gone, ...rest } = plain(d.theme) as Theme
+  applyThemeObject(d, rest as Theme, { keepBrand: false })
 }
 
 /** One AI-assistant answer = one undo step: optional new theme, then validated slide rewrites (already checked server-side). */
@@ -249,9 +300,52 @@ export function addSources(d: D, list: { id: string; type: 'pdf' | 'url' | 'text
   for (const src of list) if (!d.sources.some((x) => x.id === src.id)) d.sources.push(src)
 }
 
-export function applyAssist(d: D, r: { theme: Theme | null; edits: { slideId: string; content: SlideContent }[]; sources?: { id: string; type: 'pdf' | 'url' | 'text'; title: string; url?: string }[] | undefined }) {
+export function applyAssist(d: D, r: { theme: Theme | null; edits: { slideId: string; content: SlideContent }[]; additions?: { afterSlideId: string | null; content: SlideContent }[] | undefined; sources?: { id: string; type: 'pdf' | 'url' | 'text'; title: string; url?: string }[] | undefined }) {
   if (r.theme) applyThemeObject(d, r.theme)
   for (const e of r.edits) replaceContent(d, e.slideId, e.content)
+  for (const a of r.additions ?? []) {
+    const at = a.afterSlideId ? d.slides.findIndex((s) => s.id === a.afterSlideId) : -1
+    const slide: Slide = { id: newId(), locked: false, validation: { status: 'pending', issues: [] }, ...composeSlide(a.content, d.theme as Theme, d.aspectRatio, newId) }
+    addSlideAt(d, at >= 0 ? at + 1 : d.slides.length, slide)
+  }
+}
+
+/**
+ * What is needed to put one assistant change back, small enough to be saved with the chat (so it still works after the panel was
+ * closed or the page reloaded): the design as it was (only if the change touched it), the text of each slide the change rewrote,
+ * and the ids of slides it added. Layouts are recomposed from this, never copied.
+ */
+export interface AssistUndo {
+  id: string
+  theme: Theme | null
+  contents: Record<string, SlideContent>
+  added: string[]
+  /** what the change did, in words (also shown to the model as context) */
+  summary: string[]
+}
+
+/** Records what an assistant answer changed (call with the deck from BEFORE and AFTER applying it). */
+export function snapshotAssist(before: Presentation, after: Presentation, themeChanged: boolean, summary: string[], id: string = newId()): AssistUndo {
+  const had = new Set(before.slides.map((s) => s.id))
+  const contents: Record<string, SlideContent> = {}
+  for (const s of before.slides) {
+    const now = after.slides.find((x) => x.id === s.id)
+    if (s.content && now && JSON.stringify(now.content) !== JSON.stringify(s.content)) contents[s.id] = structuredClone(s.content) as SlideContent
+  }
+  return { id, theme: themeChanged ? (structuredClone(before.theme) as Theme) : null, contents, added: after.slides.filter((s) => !had.has(s.id)).map((s) => s.id), summary }
+}
+/** Ids of every slide the change touched (rewritten or added). */
+export const undoSlideIds = (u: AssistUndo) => [...Object.keys(u.contents), ...u.added]
+
+/** Puts back (all of, or part of) an assistant change. Slides first (added ones are removed), then the design so everything is recomposed together. */
+export function revertAssist(d: D, undo: AssistUndo, part: 'all' | 'theme' | 'slide', slideId?: string) {
+  const ids = part === 'theme' ? [] : part === 'slide' ? (slideId ? [slideId] : []) : undoSlideIds(undo)
+  for (const id of ids) {
+    if (undo.added.includes(id)) { const i = d.slides.findIndex((s) => s.id === id); if (i >= 0 && !d.slides[i]!.locked) d.slides.splice(i, 1); continue }
+    const old = undo.contents[id]
+    if (old) replaceContent(d, id, old)
+  }
+  if ((part === 'theme' || part === 'all') && undo.theme) applyThemeObject(d, structuredClone(undo.theme))
 }
 
 /** Per-deck typography override (token values stay; only font families change). */

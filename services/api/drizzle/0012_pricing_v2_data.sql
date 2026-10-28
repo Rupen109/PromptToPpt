@@ -1,5 +1,5 @@
 -- Pricing v2 (2026-10-02): owner-confirmed prices, re-balanced credits/tiers, image limits.
--- Seeds are insert-if-missing, so existing databases need this one-time data migration (fresh databases get the same values from the seed).
+-- Seeds are insert-if-missing, so existing databases need this one-time data migration (fresh databases get the same values from the seed; every statement here must therefore also run cleanly on an EMPTY database).
 
 UPDATE plan SET monthly_credits = 100,  max_slides = 20, max_presentations_per_month = NULL, max_images_per_presentation = 3,  max_images_per_month = 6,
   features = features || '{"aiEdits": true, "advancedSharing": false}'::jsonb WHERE id = 'starter';
@@ -10,13 +10,16 @@ UPDATE plan SET monthly_credits = 3000, max_slides = 40, max_presentations_per_m
 UPDATE plan SET monthly_credits = 12000, max_slides = 60, max_presentations_per_month = NULL, max_images_per_presentation = 20, max_images_per_month = 100,
   features = features || '{"advancedSharing": true}'::jsonb WHERE id = 'gold';
 --> statement-breakpoint
-INSERT INTO plan_price (id, plan_id, currency, interval, amount_minor, is_active) VALUES
+INSERT INTO plan_price (id, plan_id, currency, interval, amount_minor, is_active)
+SELECT v.id, v.plan_id, v.currency, v.interval, v.amount_minor, v.is_active FROM (VALUES
   ('starter-USD-month','starter','USD','month',0,true), ('starter-USD-year','starter','USD','year',0,true),
   ('starter-INR-month','starter','INR','month',0,true), ('starter-INR-year','starter','INR','year',0,true),
   ('pro-USD-month','pro','USD','month',1500,true),      ('pro-USD-year','pro','USD','year',14400,true),
   ('pro-INR-month','pro','INR','month',49900,true),     ('pro-INR-year','pro','INR','year',479000,true),
   ('gold-USD-month','gold','USD','month',3000,true),    ('gold-USD-year','gold','USD','year',28800,true),
   ('gold-INR-month','gold','INR','month',120000,true),  ('gold-INR-year','gold','INR','year',1152000,true)
+) AS v(id, plan_id, currency, interval, amount_minor, is_active)
+WHERE EXISTS (SELECT 1 FROM plan p WHERE p.id = v.plan_id) -- a fresh database has no plans yet when migrations run (the seed creates them, with these same prices)
 ON CONFLICT (plan_id, currency, interval) DO UPDATE SET amount_minor = EXCLUDED.amount_minor, is_active = true;
 --> statement-breakpoint
 INSERT INTO credit_cost (id, action, tier, credits) VALUES

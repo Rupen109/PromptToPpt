@@ -5,7 +5,11 @@ import * as C from '@/editor/commands'
 import { useDoc } from '@/editor/store'
 import { useUi } from '@/editor/ui'
 import { ElementView, backgroundCss } from '@prompttoppt/ui'
+import { pointer } from '@/editor/live'
 import { FormatBar } from './FormatBar'
+import { useComments } from '@/editor/comments'
+import { CommentPins } from './CommentPins'
+import { PeerLayer } from './PeerLayer'
 
 const HANDLES: C.Handle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']
 const CURSOR: Record<C.Handle, string> = { nw: 'nwse-resize', se: 'nwse-resize', ne: 'nesw-resize', sw: 'nesw-resize', n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize' }
@@ -88,6 +92,7 @@ export function EditorCanvas({ slide, theme, aspect, watermark, requireAdvanced 
   const apply = useDoc((s) => s.apply)
   const { selection, editingId, select, edit } = useUi()
   const { width: W, height: H } = CANVAS[aspect]
+  const placing = useComments((c) => c.placing)
   const [wrap, width] = useFitWidth(1100)
   const scale = width / W || 1
   const [drag, setDrag] = useState<{ ids: string[]; dx: number; dy: number; guides: C.Guide[] } | null>(null)
@@ -154,7 +159,11 @@ export function EditorCanvas({ slide, theme, aspect, watermark, requireAdvanced 
   return (
     <div ref={wrap} style={{ width: '100%' }}>
       {width > 0 && (
-        <div style={{ position: 'relative', width, height: H * scale }} data-testid="stage" data-scale={scale}>
+        <div
+          style={{ position: 'relative', width, height: H * scale }} data-testid="stage" data-scale={scale}
+          onPointerMove={(e) => { const r = e.currentTarget.getBoundingClientRect(); pointer.current = { x: (e.clientX - r.left) / scale, y: (e.clientY - r.top) / scale }; pointer.poke() }}
+          onPointerLeave={() => { pointer.current = null; pointer.poke() }}
+        >
           {/* rendered slide: clipped to the slide rectangle */}
           <div style={{ width, height: H * scale, overflow: 'hidden', position: 'relative', background: bg, borderRadius: 4, boxShadow: '0 4px 24px rgba(0,0,0,0.12)' }} onPointerDown={() => { select([]); edit(null) }}>
             <div style={{ width: W, height: H, transform: `scale(${scale})`, transformOrigin: 'top left', position: 'absolute', left: 0, top: 0 }}>
@@ -195,6 +204,8 @@ export function EditorCanvas({ slide, theme, aspect, watermark, requireAdvanced 
                   />
                 )
               })}
+              <PeerLayer slideId={slide.id} elements={slide.elements} scale={scale} />
+              <CommentPins slideId={slide.id} W={W} H={H} scale={scale} />
               {drag?.guides.map((g) => (
                 <div key={`${g.axis}${g.at}`} aria-hidden style={{ position: 'absolute', zIndex: 9500, background: '#ec4899', pointerEvents: 'none', ...(g.axis === 'x' ? { left: g.at, top: 0, width: Math.max(1, 1.5 / scale), height: H } : { top: g.at, left: 0, height: Math.max(1, 1.5 / scale), width: W }) }} />
               ))}
@@ -213,6 +224,12 @@ export function EditorCanvas({ slide, theme, aspect, watermark, requireAdvanced 
                 ))}
             </div>
           </div>
+          {placing && (
+            <div data-testid="pin-overlay" aria-label="Click to place the comment" role="button" tabIndex={0}
+              style={{ position: 'absolute', left: 0, top: 0, width, height: H * scale, zIndex: 50, cursor: 'crosshair', outline: '3px dashed #2563eb', outlineOffset: -3, background: 'rgba(37,99,235,.06)' }}
+              onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); useComments.getState().setPending({ slideId: slide.id, x: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), y: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)) }) }}
+              onKeyDown={(e) => { if (e.key === 'Escape') useComments.getState().setPlacing(false) }} />
+          )}
           {primary && !editingId && !drag && !resize && <FormatBar el={primary} slideId={slide.id} scale={scale} stageWidth={width} theme={theme} requireAdvanced={requireAdvanced} />}
         </div>
       )}

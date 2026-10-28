@@ -4,41 +4,42 @@
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 1626
+    "ms": 1448
   },
   {
     "title": "\"Skip\" closes the popup, keeps the sample, and the popup does not return on reload",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 1898
+    "ms": 1938
   },
   {
     "title": "brief → every slide is rewritten from the user's details (not the sample), same design, with pictures",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 77698
+    "ms": 36775
   },
   {
     "title": "pictures: none are broken or empty frames; a slide without a matching picture is a clean text slide (a missing picture beats a wrong one)",
-    "ok": true,
-    "error": "",
+    "ok": false,
+    "error": "broken pictures: 1: ocalhost:3000/template-assets/tech-1.jpg",
     "noise": [],
-    "ms": 6026
+    "ms": 6139,
+    "shot": "11-rewrite-3.png"
   },
   {
     "title": "the previous version is kept in Version history (restore possible)",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 147
+    "ms": 158
   },
   {
     "title": "AI assistant: \"update all slides with my content\" rebuilds the WHOLE deck (not just slide 1)",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 71999
+    "ms": 37083
   }
 ]

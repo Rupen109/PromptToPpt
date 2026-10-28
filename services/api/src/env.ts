@@ -33,6 +33,10 @@ const schema = z
     RAZORPAY_KEY_SECRET: optional(z.string().min(8)),
     RAZORPAY_WEBHOOK_SECRET: optional(z.string().min(16, 'use a long random string (openssl rand -hex 24)')),
     /** USD checkout needs international payments enabled on the Razorpay account */
+    /** the secret our CDN adds to every forwarded request (X-Origin-Verify); country headers are believed only with it, so nobody can pick the cheaper regional price by calling the origin directly */
+    EDGE_SHARED_SECRET: z.string().min(24).optional(),
+    /** test-only: a stand-in Razorpay for black-box payment tests (ignored with live keys and in production, see billing/razorpay.ts) */
+    RAZORPAY_API_BASE: z.string().url().optional(),
     RAZORPAY_INTERNATIONAL: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
     /** dev/testing: bill in this currency regardless of the visitor's country */
     /** FX used ONLY for owner revenue-vs-cost reporting (provider costs are USD, Razorpay INR test payments are paise) */
@@ -42,6 +46,10 @@ const schema = z
     GCP_SERVICE_ACCOUNT_JSON: optional(z.string()),
     /** free key from pexels.com/api — enables relevant stock pictures for generated decks (without it the tagged library is used) */
     PEXELS_API_KEY: optional(z.string().min(10)),
+    /** the hourly request limit of OUR Unsplash key: 50 for a demo app, 1000 once Unsplash approves Production access. Our own guard stops a little below it. */
+    UNSPLASH_HOURLY_LIMIT: z.coerce.number().int().min(10).default(50),
+    /** stock searches one user may cause per hour (so one account cannot spend everyone's quota) */
+    STOCK_USER_HOURLY: z.coerce.number().int().min(1).default(30),
     /** Unsplash API "Access Key" (search needs only this one; the secret key is not used). `UNPLASH_*` is accepted too — that is how the keys were first named. */
     UNSPLASH_ACCESS_KEY: optional(z.string().min(10)),
     UNPLASH_ACCESS_KEY: optional(z.string().min(10)),
@@ -54,7 +62,24 @@ const schema = z
     ASSET_REGION: optional(z.string()),
     /** kill switch: set false to stop all picture generation instantly (cost control) */
     IMAGES_ENABLED: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
+    /** live-editing event bus: `memory` (one API process) or `pg` (Postgres LISTEN/NOTIFY — use whenever more than one API task runs). */
+    LIVE_BUS: z.enum(['memory', 'pg']).default(PROD ? 'pg' : 'memory'),
+    // ── reading uploaded files (Word / Excel / CSV / email / PDF / PowerPoint) happens in short-lived worker threads so a heavy or hostile file cannot freeze or exhaust the API ──
+    /** `worker` (default) or `inline` (same thread; for debugging only) */
+    SOURCE_PARSE_MODE: z.enum(['worker', 'inline']).default('worker'),
+    /** files read at the same time (each in its own worker), the waiting line behind them, the time and memory one file may use, and how many uploads may be in flight at all */
+    SOURCE_PARSE_CONCURRENCY: z.coerce.number().int().min(1).max(16).default(1),
+    SOURCE_PARSE_QUEUE: z.coerce.number().int().min(0).max(128).default(24),
+    SOURCE_PARSE_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(25_000),
+    /** measured: the heaviest file the readers accept needs under 192 MB, so 256 leaves margin; one worker reading the heaviest allowed file peaks near 400 MB (heap + the unpacked file), so memory is bounded by CONCURRENCY × ~400 MB: the default of 1 suits a 1 GB container, 2–3 suit 2 GB+ */
+    SOURCE_PARSE_HEAP_MB: z.coerce.number().int().min(64).max(2048).default(256),
+    /** uploads are admitted by the memory they will hold (their declared size; each is held ~3× while read: measured peak ≈ 3 × budget): at most this many MB in flight at once (default 96 = six 15 MB files), and at most this many uploads */
+    SOURCE_UPLOAD_BUDGET_MB: z.coerce.number().int().min(16).max(4096).default(96),
+    SOURCE_UPLOAD_INFLIGHT: z.coerce.number().int().min(1).max(256).default(32),
     // ── spend circuit breaker (USD, from the usage ledger) ──
+    /** Public free tools (no login): the most they may spend in any rolling 24h, and the per-visitor daily cap. Past either, they pause; paying users are unaffected. */
+    FREE_TOOLS_USD_DAY: z.coerce.number().positive().default(3),
+    FREE_TOOLS_IP_DAY: z.coerce.number().int().min(1).default(20),
     AI_BUDGET_USD_HOUR: z.coerce.number().positive().default(15),
     AI_BUDGET_USD_DAY: z.coerce.number().positive().default(75),
     /** per account, rolling 24 h: stops one abuser spending the shared budget */
@@ -88,6 +113,8 @@ const schema = z
   .refine((e) => e.NODE_ENV !== 'production' || !e.RAZORPAY_KEY_ID || (e.RAZORPAY_KEY_ID.startsWith('rzp_live_') === (e.APP_ENV === 'production')), {
     message: 'APP_ENV=production needs rzp_live_ keys, and non-production environments must use rzp_test_ keys',
   })
+  .refine((e) => e.NODE_ENV !== 'production' || !!e.EDGE_SHARED_SECRET, { message: 'production requires EDGE_SHARED_SECRET (the CDN adds it as X-Origin-Verify; without it anyone can spoof the country header and buy at the cheaper India price)' })
+  .refine((e) => e.NODE_ENV !== 'production' || !e.RAZORPAY_API_BASE, { message: 'RAZORPAY_API_BASE is a test-only setting and must not be set in production' })
   .refine((e) => e.NODE_ENV !== 'production' || !e.RAZORPAY_KEY_ID || !!e.RAZORPAY_WEBHOOK_SECRET, { message: 'production Razorpay requires RAZORPAY_WEBHOOK_SECRET' })
   .refine((e) => e.ASSET_STORAGE !== 's3' || (!!e.ASSET_BUCKET && !!e.ASSET_REGION), { message: 'ASSET_STORAGE=s3 requires ASSET_BUCKET and ASSET_REGION' })
   .refine((e) => e.NODE_ENV !== 'production' || e.ASSET_STORAGE === 's3', { message: 'production requires ASSET_STORAGE=s3 (local disk is lost on every deploy)' })

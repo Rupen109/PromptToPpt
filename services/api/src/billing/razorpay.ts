@@ -2,7 +2,12 @@ import { createHmac, timingSafeEqual } from 'node:crypto'
 import { env } from '../env.ts'
 import { BillingError } from './errors.ts'
 
-const API = 'https://api.razorpay.com/v1'
+const LIVE_API = 'https://api.razorpay.com/v1'
+/**
+ * Black-box payment tests point the server at a stand-in Razorpay. It is honoured ONLY with test-mode keys (rzp_test_) outside production,
+ * so no setting can ever redirect real money traffic (or the live secret) to another host.
+ */
+const apiBase = () => (env.RAZORPAY_API_BASE && razorpayTestMode() && env.NODE_ENV !== 'production' ? env.RAZORPAY_API_BASE : LIVE_API)
 
 export const razorpayEnabled = () => !!env.RAZORPAY_KEY_ID && !!env.RAZORPAY_KEY_SECRET
 export const razorpayTestMode = () => !!env.RAZORPAY_KEY_ID?.startsWith('rzp_test_')
@@ -42,7 +47,7 @@ export class RazorpayApiError extends Error {
 async function call<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
   if (!razorpayEnabled()) throw new BillingError('BILLING_DISABLED', 'Payments are not configured on this server.', 503)
   const auth = Buffer.from(`${env.RAZORPAY_KEY_ID}:${env.RAZORPAY_KEY_SECRET}`).toString('base64')
-  const res = await fetch(`${API}${path}`, {
+  const res = await fetch(`${apiBase()}${path}`, {
     method,
     headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/json' },
     ...(body ? { body: JSON.stringify(body) } : {}),

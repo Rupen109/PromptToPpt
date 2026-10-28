@@ -5,6 +5,13 @@ import { MOTION_CSS } from './animations.css'
 import { Chart } from './charts'
 import { ensureFonts } from './fonts'
 
+/**
+ * Draw the "Photo by … on Unsplash" label on slide pictures. OFF by owner decision (2026-10-09): the credit data is still saved on every
+ * picture. NOTE: Unsplash's API guidelines require crediting the photographer and Unsplash wherever their photos appear, and the
+ * Production-key application checks it — see docs/PRODUCTION_RELEASE_CHECKLIST.md before launch.
+ */
+export const SHOW_PHOTO_CREDIT = false
+
 const HEADING_ROLES = new Set<TextElement['role']>(['title', 'heading', 'metric', 'subtitle'])
 
 /** Injects the motion keyframes once per document. */
@@ -126,7 +133,7 @@ export function ElementView({ el, theme, slide, play = false }: { el: SlideEleme
     case 'image': {
       if (!el.src) {
         // Unresolved image: clearly a placeholder, never a broken image
-        return (
+        return wrap(
           <div role="img" aria-label={el.alt} style={{ ...base, borderRadius: theme.radius, background: `linear-gradient(135deg, ${colors['surface']}, ${colors['secondary']}33)`, border: `3px dashed ${colors['textSecondary']}55`, display: 'grid', placeItems: 'center', padding: 40, textAlign: 'center', color: colors['textSecondary'], fontFamily: theme.fonts.body, fontSize: 28 }}>
             <div>🖼<div style={{ marginTop: 12 }}>{el.alt}</div></div>
           </div>
@@ -137,19 +144,19 @@ export function ElementView({ el, theme, slide, play = false }: { el: SlideEleme
       const clipPath = el.clip === 'arch' ? arch : CLIP_PATH[el.clip]
       const ambient = el.animation?.type === 'kenburns'
       const wrapAnim = ambient || (clipPath && el.animation?.type === 'wipe') ? {} : a() // a clip-path wipe would erase the crop shape
-      return (
+      return wrap(
         <div {...(el.animation && play ? { 'data-pt-anim': '' } : {})} style={{ ...base, overflow: 'hidden', borderRadius: el.clip === 'circle' ? '50%' : (el.radius ?? theme.radius), clipPath, ...wrapAnim }}>
           <img src={el.src} alt={el.alt} referrerPolicy="no-referrer" loading="lazy" {...(ambient && play ? { 'data-pt-anim': '' } : {})} style={{ width: '100%', height: '100%', display: 'block', objectFit: el.fit, ...(ambient ? a() : {}) }} />
           {el.overlay && <div aria-hidden style={{ position: 'absolute', inset: 0, background: `linear-gradient(${el.overlay.angle}deg, ${el.overlay.from}, ${el.overlay.to})`, opacity: el.overlay.opacity }} />}
-          {/* stock photos must credit their photographer (Unsplash / Pexels licence terms) */}
-          {el.attribution && el.clip !== 'circle' && <div style={{ position: 'absolute', right: 10, bottom: 8, maxWidth: '90%', padding: '3px 9px', borderRadius: 6, background: 'rgba(0,0,0,0.5)', color: 'rgba(255,255,255,0.92)', fontFamily: theme.fonts.body, fontSize: 15, lineHeight: 1.25, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', pointerEvents: 'none' }}>{el.attribution.source}</div>}
+          {/* the photographer credit (Unsplash / Pexels) is stored with the picture; whether it is drawn on the slide is SHOW_PHOTO_CREDIT */}
+          {SHOW_PHOTO_CREDIT && el.attribution && el.clip !== 'circle' && <div style={{ position: 'absolute', right: 10, bottom: 8, maxWidth: '90%', padding: '3px 9px', borderRadius: 6, background: 'rgba(0,0,0,0.5)', color: 'rgba(255,255,255,0.92)', fontFamily: theme.fonts.body, fontSize: 15, lineHeight: 1.25, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', pointerEvents: 'none' }}>{el.attribution.source}</div>}
         </div>
       )
     }
     case 'chart':
-      return <div {...(el.animation && play ? { 'data-pt-anim': '' } : {})} style={{ ...base, ...a() }}><Chart chartType={el.chartType} labels={el.labels} series={el.series} unit={el.unit} width={el.width} height={el.height} theme={theme} /></div>
+      return wrap(<div {...(el.animation && play ? { 'data-pt-anim': '' } : {})} style={{ ...base, ...a() }}><Chart chartType={el.chartType} labels={el.labels} series={el.series} unit={el.unit} width={el.width} height={el.height} theme={theme} /></div>)
     case 'table':
-      return (
+      return wrap(
         <div {...(el.animation && play ? { 'data-pt-anim': '' } : {})} style={{ ...base, fontFamily: theme.fonts.body, fontSize: 30, ...a() }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', color: colors['textPrimary'] }}>
             <thead><tr>{el.header.map((h, i) => <th key={i} style={{ background: colors['primary'], color: colors['onPrimary'], textAlign: 'left', padding: '16px 20px', fontFamily: theme.fonts.heading }}>{h}</th>)}</tr></thead>
@@ -158,7 +165,7 @@ export function ElementView({ el, theme, slide, play = false }: { el: SlideEleme
         </div>
       )
     case 'icon': // stickers: an emoji glyph sized to its box
-      return <div role="img" aria-label="sticker" {...(el.animation && play ? { 'data-pt-anim': '' } : {})} style={{ ...base, display: 'grid', placeItems: 'center', fontSize: Math.min(el.width, el.height) * 0.78, lineHeight: 1, ...a() }}>{el.name}</div>
+      return wrap(<div role="img" aria-label="sticker" {...(el.animation && play ? { 'data-pt-anim': '' } : {})} style={{ ...base, display: 'grid', placeItems: 'center', fontSize: Math.min(el.width, el.height) * 0.78, lineHeight: 1, ...a() }}>{el.name}</div>)
     default:
       return null // diagram element: later
   }

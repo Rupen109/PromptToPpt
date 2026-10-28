@@ -1,13 +1,34 @@
 import { useState } from 'react'
 import type { LayoutId, Presentation, SlideElement } from '@prompttoppt/validation'
 import { SlideCanvas } from '@prompttoppt/ui'
+import { othersOf, useLive } from '@/editor/live'
 import * as C from '@/editor/commands'
 import { useDoc } from '@/editor/store'
+import { isUnread, useComments } from '@/editor/comments'
 import { useUi } from '@/editor/ui'
 import { ContextMenu, type MenuItem } from './ContextMenu'
 
 const STICKERS = ['⭐', '✅', '💡', '🚀', '⚠️', '❤️', '🎯', '📈']
 const LAYOUT_LABEL: Partial<Record<LayoutId, string>> = { 'title-body': 'Title + body', 'split-image-text': 'Image + text', comparison: 'Comparison', process: 'Process', timeline: 'Timeline', quote: 'Quote', table: 'Table', 'section-divider': 'Section divider', title: 'Title', 'thank-you': 'Thank you', agenda: 'Agenda', team: 'Team', matrix: '2×2 matrix', roadmap: 'Roadmap', architecture: 'Architecture', 'case-study': 'Case study', 'big-number': 'Big number' }
+
+/** A small speech bubble with the number of open comment threads on this slide (a red dot when some are unread). */
+function Bubble({ slideId, index }: { slideId: string; index: number }) {
+  const threads = useComments((c) => c.threads)
+  const seenAt = useComments((c) => c.seenAt)
+  const mine = threads.filter((t) => t.slideId === slideId && t.status === 'open')
+  if (!mine.length) return null
+  const unread = mine.some((t) => isUnread(t, seenAt))
+  return <span data-testid={`comment-badge-${index}`} aria-label={`${mine.length} open comment${mine.length > 1 ? 's' : ''}${unread ? ', some unread' : ''}`} className="absolute right-1.5 bottom-9 z-10 inline-flex items-center gap-0.5 rounded-full bg-primary text-white text-[11px] font-bold px-1.5 py-0.5 shadow">💬 {mine.length}{unread && <i aria-hidden className="w-1.5 h-1.5 rounded-full bg-red-400 ml-0.5" />}</span>
+}
+
+/** Coloured dots for the people currently looking at this slide. */
+function Here({ slideId }: { slideId: string }) {
+  const peers = useLive((st) => st.peers)
+  const me = useLive((st) => st.you?.userId)
+  const here = [...new Map(othersOf(peers, me).filter((p) => p.slideId === slideId).map((p) => [p.userId, p])).values()]
+  if (!here.length) return null
+  return <span className="absolute left-1.5 bottom-1.5 z-10 flex gap-0.5" aria-label={`${here.map((p) => p.name).join(', ')} viewing`}>{here.slice(0, 3).map((p) => <i key={p.userId} title={`${p.name} is here`} className="w-3 h-3 rounded-full border border-white" style={{ background: p.color }} />)}</span>
+}
 
 export function SlideRail({ doc, watermark }: { doc: Presentation; watermark: boolean }) {
   const apply = useDoc((s) => s.apply)
@@ -69,6 +90,8 @@ export function SlideRail({ doc, watermark }: { doc: Presentation; watermark: bo
             className={`relative block w-full rounded-md p-0.5 ${s.id === activeSlideId ? 'ring-2 ring-primary' : 'ring-1 ring-border hover:ring-slate-400'} ${dragFrom === i ? 'opacity-40' : ''}`}
           >
             <span className="absolute left-1.5 top-1.5 z-10 text-[11px] font-bold bg-black/60 text-white rounded px-1.5">{i + 1}</span>
+            <Here slideId={s.id} />
+            <Bubble slideId={s.id} index={i} />
             {s.locked && <span aria-label="Locked" className="absolute right-1.5 top-1.5 z-10 text-[11px]">🔒</span>}
             <SlideCanvas slide={s} theme={doc.theme} aspect={doc.aspectRatio} width={172} watermark={watermark} />
           </button>

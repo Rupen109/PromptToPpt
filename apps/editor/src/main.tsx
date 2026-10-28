@@ -14,6 +14,9 @@ import { BillingPage } from '@/pages/BillingPage'
 import { PresentPage } from '@/pages/PresentPage'
 import { CreatedPage } from '@/pages/CreatedPage'
 import { TemplatesPage } from '@/pages/TemplatesPage'
+import { InvitePage } from '@/pages/InvitePage'
+import { SharedPage } from '@/pages/SharedPage'
+import { SharedViewPage } from '@/pages/SharedViewPage'
 import './index.css'
 
 // Owner dashboard is its own chunk: regular users never download it (the API enforces admin-only regardless).
@@ -29,6 +32,7 @@ createRoot(document.getElementById('root')!).render(
     <BrowserRouter>
       <Routes>
         {/* Public routes live OUTSIDE the login wall (share links later; dev gallery only in dev). */}
+        <Route path="/s/:token" element={<SharedViewPage />} />
         {import.meta.env.DEV && <Route path="/dev/gallery" element={<DevGallery />} />}
         <Route path="/*" element={
       <RequireAuth>
@@ -43,6 +47,8 @@ createRoot(document.getElementById('root')!).render(
           <Route path="/created" element={<CreatedPage />} />
           <Route path="/projects/:projectId" element={<CreatedPage />} />
           <Route path="/templates" element={<TemplatesPage />} />
+          <Route path="/shared" element={<SharedPage />} />
+          <Route path="/invite/:token" element={<InvitePage />} />
           <Route path="/present/:id" element={<PresentPage />} />
           <Route path="/admin" element={<Suspense fallback={<div className="min-h-screen grid place-items-center text-muted">Loading…</div>}><AdminLayout /></Suspense>}>
             <Route index element={<Suspense fallback={null}><views.Overview /></Suspense>} />

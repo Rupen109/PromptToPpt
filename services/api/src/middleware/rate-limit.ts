@@ -25,6 +25,8 @@ interface Options {
   max: number
   /** bucket key; defaults to the client IP. Use the user id for authenticated, costly actions (one noisy IP can't starve others). */
   key?: (c: Context) => string
+  /** what the person sees when they hit the limit (default: a generic line) */
+  message?: string
 }
 
 /**
@@ -32,7 +34,7 @@ interface Options {
  * Per-instance only — fine for a single API task; swap the store for a shared one
  * (Redis/DynamoDB/WAF) before running multiple instances. Tracked in docs/adr.
  */
-export function rateLimit({ windowMs, max, key }: Options): MiddlewareHandler {
+export function rateLimit({ windowMs, max, key, message }: Options): MiddlewareHandler {
   const hits = new Map<string, { count: number; resetAt: number }>()
   setInterval(() => {
     const now = Date.now()
@@ -47,7 +49,7 @@ export function rateLimit({ windowMs, max, key }: Options): MiddlewareHandler {
       hits.set(ip, { count: 1, resetAt: now + windowMs })
     } else if (++entry.count > max) {
       c.header('Retry-After', String(Math.ceil((entry.resetAt - now) / 1000)))
-      return c.json({ success: false, error: { code: 'RATE_LIMITED', message: 'Too many requests' } }, 429)
+      return c.json({ success: false, error: { code: 'RATE_LIMITED', message: message ?? 'Too many requests' } }, 429)
     }
     await next()
   }

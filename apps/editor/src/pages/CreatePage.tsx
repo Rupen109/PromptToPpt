@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Navigate, useNavigate } from 'react-router'
-import { ApiError, isGateError, type AnalyzeResult, type JobStatus, type JobView, type ModelOption } from '@prompttoppt/api-client'
+import { ApiError, isGateError, type AnalyzeResult, type BrandKit, type JobStatus, type JobView, type ModelOption } from '@prompttoppt/api-client'
 import type { Direction } from '@prompttoppt/validation'
 import { BriefCard } from '@/components/BriefCard'
+import { ThinkingLoader } from '@/components/ThinkingLoader'
 import { ModelPicker } from '@/components/ModelPicker'
 import { api } from '@/lib/api'
 import { useEntitlements } from '@/lib/entitlements'
@@ -22,6 +23,9 @@ const STAGES: Record<JobStatus, string> = {
   rendering: 'Designing layouts…', validating: 'Checking quality…', completed: 'Done', failed: 'Failed', cancelled: 'Cancelled',
 }
 
+/** The visible steps of a generation, in order (queued shows none as active yet). */
+const STEPS: [JobStatus, string][] = [['analyzing', 'Understand'], ['outlining', 'Outline'], ['generating', 'Write slides'], ['rendering', 'Design'], ['validating', 'Check']]
+
 const errMessage = (e: unknown) =>
   e instanceof ApiError ? (e.code === 'LIMIT_REACHED' ? e.message : e.code === 'AI_NOT_CONFIGURED' ? 'AI is not configured on this server yet.' : e.message) : 'Something went wrong. Please try again.'
 
@@ -33,7 +37,7 @@ function Card({ children }: { children: ReactNode }) {
  * Step 2: understanding card → choose the LENGTH (just selects it, nothing starts) → choose an AI MODEL, which starts the build.
  * The model chooser is highlighted once a length is chosen, and the length buttons are highlighted if a model is clicked first.
  */
-function PickLength({ result, direction, models, modelId, lengths, perSlide, onStart }: { result: AnalyzeResult; direction?: Direction | undefined; models: ModelOption[]; modelId: string | null; lengths: readonly (readonly [string, number])[]; perSlide: number; onStart: (slides: number, model: string) => void }) {
+function PickLength({ result, direction, models, modelId, lengths, perSlide, onStart, brand }: { brand?: { kit: BrandKit; checked: boolean; onChange: (v: boolean) => void } | undefined; result: AnalyzeResult; direction?: Direction | undefined; models: ModelOption[]; modelId: string | null; lengths: readonly (readonly [string, number])[]; perSlide: number; onStart: (slides: number, model: string) => void }) {
   const [chosen, setChosen] = useState<number | null>(lengths.length === 1 ? lengths[0]![1] : null)
   const [nudge, setNudge] = useState(false)
   const fixed = !!result.analysis.slideCount
@@ -49,6 +53,14 @@ function PickLength({ result, direction, models, modelId, lengths, perSlide, onS
           </button>
         ))}
       </div>
+      {brand && (
+        <label className="mt-5 flex items-center gap-3 bg-white border border-border rounded-xl px-4 py-3 w-fit cursor-pointer">
+          <input type="checkbox" checked={brand.checked} onChange={(e) => brand.onChange(e.target.checked)} aria-label="Build it in my brand" />
+          <span className="text-sm">Build it in my brand: <b>{brand.kit.name}</b></span>
+          <span className="flex gap-1" aria-hidden>{[brand.kit.colors.primary, brand.kit.colors.accent].filter((c): c is string => !!c).map((c) => <span key={c} style={{ background: c }} className="w-4 h-4 rounded-full border border-border" />)}</span>
+          {brand.kit.logo && <img src={brand.kit.logo.url} alt="" className="h-5 max-w-[60px] object-contain" />}
+        </label>
+      )}
       {nudge && chosen === null && <p role="alert" className="mt-2 text-sm text-primary font-medium">Pick a length first, then choose the AI model to start.</p>}
       <ModelPicker
         models={models} value={modelId}
@@ -82,6 +94,10 @@ export function CreatePage() {
   }, [ent?.plan.id])
   const started = useRef(false)
   const idemKey = useRef(crypto.randomUUID())
+  /** the user's default brand kit (Pro/Gold): offered as "build it in my brand", on unless they turn it off */
+  const [defaultKit, setDefaultKit] = useState<BrandKit | null>(null)
+  const [useKit, setUseKit] = useState(true)
+  useEffect(() => { api.brandKits().then((r) => setDefaultKit(r.kits.find((k) => k.isDefault) ?? null)).catch(() => {}) }, [])
 
   const analyze = useCallback(async () => {
     if (!prompt) return
@@ -105,7 +121,7 @@ export function CreatePage() {
       if (!prompt) return
       setPhase({ kind: 'generating', job: null })
       try {
-        const job = await api.createJob({ prompt, analysis: result.analysis, slideCount, sourceIds: getPendingSources(), ...((modelOverride ?? modelId) ? { model: (modelOverride ?? modelId)! } : {}), ...(direction ? { direction } : {}), idempotencyKey: idemKey.current })
+        const job = await api.createJob({ prompt, analysis: result.analysis, slideCount, sourceIds: getPendingSources(), ...((modelOverride ?? modelId) ? { model: (modelOverride ?? modelId)! } : {}), ...(direction ? { direction } : {}), ...(defaultKit && useKit ? { brandKitId: defaultKit.id } : {}), idempotencyKey: idemKey.current })
         setPendingJob(job.id)
         setPhase({ kind: 'generating', job })
       } catch (e) {
@@ -117,7 +133,7 @@ export function CreatePage() {
         setPhase({ kind: 'error', message: errMessage(e), retry: { type: 'start', result, slideCount, direction } })
       }
     },
-    [prompt, upgrade, modelId],
+    [prompt, upgrade, modelId, defaultKit, useKit],
   )
 
   const onRetry = (r: Retry) => (r.type === 'analyze' ? void analyze() : r.type === 'start' ? void start(r.result, r.slideCount, r.direction) : navigate('/', { replace: true }))
@@ -170,7 +186,7 @@ export function CreatePage() {
       <main className="max-w-[820px] mx-auto pt-8 sm:pt-16 pb-16 sm:pb-24 px-4 sm:px-6">
         {prompt && <div className="ml-auto max-w-[85%] bg-[#ececec] rounded-2xl px-5 py-4 text-[17px] leading-relaxed whitespace-pre-wrap break-words">{prompt}</div>}
 
-        {phase.kind === 'analyzing' && <p className="mt-10 text-[15px] text-slate-500" role="status">Thinking…</p>}
+        {phase.kind === 'analyzing' && <ThinkingLoader messages={['Reading your request…', 'Working out the topic and audience…', 'Looking for the best angle…', 'Planning the story of your deck…']} />}
 
         {phase.kind === 'error' && (
           <Card>
@@ -203,20 +219,36 @@ export function CreatePage() {
             lengths={lengths(phase.result, phase.direction)}
             perSlide={models.find((m) => m.id === modelId)?.creditsPerSlide ?? 0}
             onStart={(n, model) => { setModelId(model); void start(phase.result, n, phase.direction, model) }}
+            brand={defaultKit ? { kit: defaultKit, checked: useKit, onChange: setUseKit } : undefined}
           />
         )}
 
         {phase.kind === 'generating' && (
           <Card>
-            <div className="flex items-center justify-between mb-3">
-              <p className="font-semibold" role="status">{phase.job ? STAGES[phase.job.status] : 'Starting…'}</p>
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="pt-orb" aria-hidden><i /><b /></span>
+                <p className="font-heading font-bold text-base truncate" role="status"><span className="pt-shimmer">{phase.job ? STAGES[phase.job.status] : 'Starting…'}</span></p>
+              </div>
               {phase.job && (
-                <button onClick={() => void api.cancelJob(phase.job!.id)} className="text-sm text-slate-500 underline">Cancel</button>
+                <button onClick={() => void api.cancelJob(phase.job!.id)} className="text-sm text-slate-500 underline shrink-0">Cancel</button>
               )}
             </div>
-            <div className="h-2 rounded-full bg-slate-200 overflow-hidden" role="progressbar" aria-valuenow={phase.job?.progress ?? 0} aria-valuemin={0} aria-valuemax={100}>
-              <div className="h-full bg-primary transition-all duration-700" style={{ width: `${Math.max(4, phase.job?.progress ?? 0)}%` }} />
+            <div className="h-2.5 rounded-full bg-slate-200 overflow-hidden" role="progressbar" aria-valuenow={phase.job?.progress ?? 0} aria-valuemin={0} aria-valuemax={100}>
+              <div className="h-full pt-bar rounded-full transition-all duration-700" style={{ width: `${Math.max(4, phase.job?.progress ?? 0)}%` }} />
             </div>
+            <ol className="mt-5 grid grid-cols-5 gap-1 text-center" aria-label="Steps">
+              {STEPS.map(([status, label], n) => {
+                const at = phase.job ? STEPS.findIndex(([k]) => k === phase.job!.status) : -1
+                const state = n < at ? 'done' : n === at ? 'now' : 'next'
+                return (
+                  <li key={status} className="flex flex-col items-center gap-1.5" aria-current={state === 'now' ? 'step' : undefined}>
+                    <span className={`w-6 h-6 rounded-full grid place-items-center text-[11px] font-bold transition-colors ${state === 'done' ? 'bg-primary text-white' : state === 'now' ? 'bg-white text-primary border-2 border-primary pt-step-now' : 'bg-slate-100 text-slate-400'}`}>{state === 'done' ? '✓' : n + 1}</span>
+                    <span className={`text-[11px] sm:text-xs leading-tight ${state === 'next' ? 'text-slate-400' : 'text-slate-700 font-medium'}`}>{label}</span>
+                  </li>
+                )
+              })}
+            </ol>
           </Card>
         )}
       </main>

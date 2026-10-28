@@ -5,13 +5,13 @@ import { findUrls, themeSchema, type Entitlements, type Presentation, type Slide
 import { db } from '../db/index.ts'
 import { creditBalance, generatedAsset } from '../db/schema.ts'
 import { api, json, makeDeck, rid, setPlan, signUp } from '../test-utils.ts'
-import { compileAssist, type AiAssistOutput } from './ai-assist.ts'
+import { aiAssistOutput, aiAssistPrompt, compileAssist, keepShape, type AiAssistOutput } from './ai-assist.ts'
 import { pageReader } from './linked-pages.ts'
 
 const balance = async (id: string) => (await db.select().from(creditBalance).where(eq(creditBalance.userId, id)))[0]!.balance
 const ask = (cookie: string, deckId: string, instruction: string, extra: object = {}) => api(cookie, 'POST', `/presentations/${deckId}/ai-assist`, { instruction, requestId: `req-${rid()}-${rid()}`, ...extra })
 const free = { features: { premiumTemplates: false } } as unknown as Entitlements
-const out = (o: Partial<AiAssistOutput>): AiAssistOutput => ({ reply: 'ok', operations: [], unsupported: [], ...o })
+const out = (o: Partial<AiAssistOutput>): AiAssistOutput => ({ reply: 'ok', operations: [], unsupported: [], onTopic: true, ...o })
 
 describe('POST /presentations/:id/ai-assist', () => {
   it('animates the deck: one charge (2× an edit on the starter tier), a valid full theme comes back', async () => {
@@ -196,6 +196,56 @@ describe('compileAssist (the trust boundary between model output and the deck)',
     expect(r.applied).toHaveLength(2)
   })
 
+  it('edit_slide keeps the slide\'s structure: optional blocks stay, no new ones, card lists keep their length, bullets may change', () => {
+    const prev = { layout: 'process', title: 'How it works', steps: [{ title: 'One', description: 'a' }, { title: 'Two', description: 'b' }, { title: 'Three', description: 'c' }], speakerNotes: '', sources: [] } as unknown as SlideContent
+    const model = { layout: 'process', title: 'How we work', steps: [{ title: 'First', description: 'x' }, { title: 'Second', description: 'y' }, { title: 'Third', description: 'z' }, { title: 'Fourth', description: 'w' }], extra: 'x', speakerNotes: 'n', sources: [] } as unknown as SlideContent
+    const k = keepShape(prev, model) as unknown as { steps: { title: string }[]; title: string; extra?: string; speakerNotes: string }
+    expect(k.steps.map((x) => x.title)).toEqual(['First', 'Second', 'Third'])
+    expect(k.title).toBe('How we work'); expect(k.extra).toBeUndefined(); expect(k.speakerNotes).toBe('n')
+    const a = { layout: 'title', title: 'Hello', subtitle: 'Sub', speakerNotes: '', sources: [] } as SlideContent
+    expect(keepShape(a, { layout: 'title', title: 'Hi', speakerNotes: '', sources: [] } as SlideContent)).toMatchObject({ title: 'Hi', subtitle: 'Sub' })
+    const b = { layout: 'title', title: 'Hello', speakerNotes: '', sources: [] } as SlideContent
+    expect(keepShape(b, { layout: 'title', title: 'Hi', subtitle: 'New', speakerNotes: '', sources: [] } as SlideContent)).not.toHaveProperty('subtitle')
+    const t = { layout: 'title-body', title: 'T', bullets: ['a', 'b'], speakerNotes: '', sources: [] } as SlideContent
+    expect(keepShape(t, { layout: 'title-body', title: 'T2', bullets: ['a', 'b', 'c', 'd'], speakerNotes: '', sources: [] } as SlideContent)).toMatchObject({ bullets: ['a', 'b', 'c', 'd'] })
+  })
+
+  it('the recent conversation reaches the model as data, in order, and is absent when there is none', () => {
+    const d = withSlides([{ id: 's1', layoutId: 'title-body', locked: false, manual: false, content }])
+    const withChat = aiAssistPrompt({ instruction: 'revert it please', scope: 'deck', focusSlideId: undefined, doc: d, conversation: [{ role: 'user', text: 'make theme light' }, { role: 'assistant', text: 'Done. Changes made: New light colour scheme' }] })
+    expect(withChat.prompt).toMatch(/<conversation>\nuser: make theme light\nassistant: Done\. Changes made: New light colour scheme\n<\/conversation>/)
+    expect(withChat.prompt.indexOf('<conversation>')).toBeLessThan(withChat.prompt.indexOf('<instruction>'))
+    expect(withChat.system).toMatch(/UNDO \/ REVERT/)
+    expect(aiAssistPrompt({ instruction: 'hi', scope: 'deck', focusSlideId: undefined, doc: d }).prompt).not.toContain('<conversation>')
+  })
+
+  it('revert: puts back a recorded change (all / theme / one slide) and refuses what was never changed', () => {
+    const d = withSlides([{ id: 's1', layoutId: 'title-body', locked: false, manual: false, content }, { id: 's2', layoutId: 'title-body', locked: false, manual: false, content }])
+    const recent = [{ theme: true, slideIds: ['s1'], summary: ['Applied the "Cobalt" template'] }, { theme: false, slideIds: ['s2'], summary: ['Rewrote slide 2'] }]
+    const ok = compileAssist(d, out({ operations: [{ op: 'revert', change: 0, part: 'theme' }, { op: 'revert', change: 1, part: 'slide', slideId: 's2' }] }), free, 'deck', undefined, [], recent)
+    expect(ok.reverts).toEqual([{ change: 0, part: 'theme' }, { change: 1, part: 'slide', slideId: 's2' }])
+    expect(ok.applied).toHaveLength(2)
+    const bad = compileAssist(d, out({ operations: [{ op: 'revert', change: 3, part: 'all' }, { op: 'revert', change: 1, part: 'slide', slideId: 's1' }, { op: 'revert', change: 1, part: 'theme' }] }), free, 'deck', undefined, [], recent)
+    expect(bad.notes).toHaveLength(2) // unknown change, slide not touched by it
+    expect(bad.reverts).toEqual([{ change: 1, part: 'all' }]) // a theme revert of a change that had no theme part falls back to "all"
+    expect(compileAssist(d, out({ operations: [{ op: 'revert', change: 0, part: 'all' }] }), free, 'deck').reverts).toEqual([]) // nothing recorded → nothing to put back
+    expect(compileAssist(d, out({ operations: [{ op: 'revert', change: 0, part: 'all' }] }), free, 'slide', 's1', [], recent).reverts).toHaveLength(1) // allowed in slide scope too
+  })
+
+  it('add_slide: a thank-you slide goes at the end or after a given slide; unknown anchors fall back to the end; capped at 5', () => {
+    const d = withSlides([{ id: 's1', layoutId: 'title-body', locked: false, manual: false, content }, { id: 's2', layoutId: 'title-body', locked: false, manual: false, content }])
+    const thanks = { layout: 'thank-you', title: 'Thank you', subtitle: 'Questions?', speakerNotes: '', sources: [] } as SlideContent
+    const r = compileAssist(d, out({ operations: [{ op: 'add_slide', afterSlideId: null, content: thanks }, { op: 'add_slide', afterSlideId: 's1', content: thanks }, { op: 'add_slide', afterSlideId: 'ghost', content: thanks }] }), free, 'deck')
+    expect(r.additions.map((a) => a.afterSlideId)).toEqual([null, 's1', null])
+    expect(r.additions[0]!.content).toMatchObject({ layout: 'thank-you', title: 'Thank you' })
+    expect(r.applied).toHaveLength(3)
+    expect(r.notes).toHaveLength(1)
+    const many = compileAssist(d, out({ operations: Array.from({ length: 7 }, () => ({ op: 'add_slide' as const, content: thanks })) }), free, 'deck')
+    expect(many.additions).toHaveLength(5)
+    // also allowed when only one slide is selected
+    expect(compileAssist(d, out({ operations: [{ op: 'add_slide', content: thanks }] }), free, 'slide', 's1').additions).toHaveLength(1)
+  })
+
   it('"none" turns motion off; unsupported items always surface as notes', () => {
     const r = compileAssist(doc, out({ operations: [{ op: 'set_motion', preset: 'none' }], unsupported: ['no images'] }), free, 'deck')
     expect(r.theme!.motion).toMatchObject({ transition: 'none', entrance: 'none' })
@@ -222,5 +272,13 @@ describe('compileAssist (the trust boundary between model output and the deck)',
     const d = withSlides([{ id: 'a', layoutId: 'title', locked: false, manual: false, content }, { id: 'b', layoutId: 'title', locked: false, manual: false, content }])
     const r = compileAssist(d, out({ operations: [{ op: 'add_image', slideId: 'b', placement: 'background', prompt: 'x y z' }, { op: 'add_image', slideId: 'a', placement: 'background', prompt: 'x y z' }] }), free, 'slide', 'a')
     expect(r.images.map((i) => i.slideId)).toEqual(['a'])
+  })
+})
+
+describe('model output: null means "not used"', () => {
+  it('a model that writes null for optional fields (ask, reply, unsupported) is accepted instead of failing the whole request', () => {
+    const r = aiAssistOutput.safeParse({ reply: null, operations: [], unsupported: null, onTopic: true, ask: null })
+    expect(r.success).toBe(true)
+    if (r.success) { expect(r.data.ask).toBeUndefined(); expect(r.data.reply).toBe(''); expect(r.data.unsupported).toEqual([]) }
   })
 })

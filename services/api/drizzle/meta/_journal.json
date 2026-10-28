@@ -162,6 +162,48 @@
       "when": 1791116961388,
       "tag": "0022_sleepy_peter_parker",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1791191282634,
+      "tag": "0023_outstanding_nebula",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1791192915783,
+      "tag": "0024_tough_lady_mastermind",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1791580209438,
+      "tag": "0025_omniscient_tiger_shark",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1792093788632,
+      "tag": "0026_sour_chronomancer",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1792392917117,
+      "tag": "0027_stormy_silvermane",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1792999246574,
+      "tag": "0028_checkout_attempt",
+      "breakpoints": true
     }
   ]
 }

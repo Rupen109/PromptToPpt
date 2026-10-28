@@ -1,13 +1,13 @@
-import { applyPatches, enablePatches, produceWithPatches, type Draft, type Patch } from 'immer'
+import { produce, type Draft } from 'immer'
 import { create } from 'zustand'
 import type { Presentation } from '@prompttoppt/validation'
+import { applyDiff, diffDocs } from './docdiff'
 
-enablePatches()
-
+/** One undo step = the deck before and after (they share almost all their memory). The change itself is derived by id on demand, so history survives collaborators' edits. */
 interface Entry {
   label: string
-  patches: Patch[]
-  inverse: Patch[]
+  before: Presentation
+  after: Presentation
   mergeKey?: string | undefined
   at: number
 }
@@ -27,6 +27,10 @@ interface DocState {
   setRevision: (revision: number) => void
   /** replace the document without touching history (used when adopting a restored/recovered copy) */
   replaceDoc: (doc: Presentation, revision: number) => void
+  /** a collaborator's saved version replaced mine and I had nothing unsaved: not a local change (no seq bump → nothing to autosave), history kept */
+  adoptRemote: (doc: Presentation, revision: number) => void
+  /** their version merged with my unsaved edits: a local change that still has to be saved on top of their revision */
+  mergeRemote: (doc: Presentation, revision: number) => void
 }
 
 const MAX_HISTORY = 200
@@ -46,19 +50,20 @@ export const useDoc = create<DocState>((set, get) => ({
   load: (doc, revision) => set({ doc, revision, past: [], future: [], seq: 0 }),
   replaceDoc: (doc, revision) => set((s) => ({ doc, revision, seq: s.seq + 1 })),
   setRevision: (revision) => set({ revision }),
+  adoptRemote: (doc, revision) => set({ doc, revision }),
+  mergeRemote: (doc, revision) => set((s) => ({ doc, revision, seq: s.seq + 1 })),
   apply: (label, recipe, opts) => {
     const { doc, past } = get()
     if (!doc) return
-    const [next, patches, inverse] = produceWithPatches(doc, recipe)
-    if (patches.length === 0) return
+    const next = produce(doc, recipe)
+    if (next === doc) return
     const now = Date.now()
     const last = past[past.length - 1]
     let nextPast: Entry[]
     if (opts?.mergeKey && last?.mergeKey === opts.mergeKey && now - last.at < MERGE_WINDOW_MS) {
-      // inverse of (A then B) = inverse(B) then inverse(A)
-      nextPast = [...past.slice(0, -1), { ...last, patches: [...last.patches, ...patches], inverse: [...inverse, ...last.inverse], at: now }]
+      nextPast = [...past.slice(0, -1), { ...last, after: next, at: now }] // typing / nudging collapses into one step: first "before", latest "after"
     } else {
-      nextPast = [...past, { label, patches, inverse, mergeKey: opts?.mergeKey, at: now }].slice(-MAX_HISTORY)
+      nextPast = [...past, { label, before: doc, after: next, mergeKey: opts?.mergeKey, at: now }].slice(-MAX_HISTORY)
     }
     set((s) => ({ doc: next, past: nextPast, future: [], seq: s.seq + 1 }))
   },
@@ -66,13 +71,13 @@ export const useDoc = create<DocState>((set, get) => ({
     const { doc, past, future } = get()
     const entry = past[past.length - 1]
     if (!doc || !entry) return
-    set((s) => ({ doc: applyPatches(doc, entry.inverse), past: past.slice(0, -1), future: [...future, entry], seq: s.seq + 1 }))
+    set((s) => ({ doc: applyDiff(doc, diffDocs(entry.before, entry.after), 'backward', true), past: past.slice(0, -1), future: [...future, entry], seq: s.seq + 1 }))
   },
   redo: () => {
     const { doc, past, future } = get()
     const entry = future[future.length - 1]
     if (!doc || !entry) return
-    set((s) => ({ doc: applyPatches(doc, entry.patches), past: [...past, { ...entry, mergeKey: undefined }], future: future.slice(0, -1), seq: s.seq + 1 }))
+    set((s) => ({ doc: applyDiff(doc, diffDocs(entry.before, entry.after), 'forward', true), past: [...past, { ...entry, mergeKey: undefined }], future: future.slice(0, -1), seq: s.seq + 1 }))
   },
 }))
 

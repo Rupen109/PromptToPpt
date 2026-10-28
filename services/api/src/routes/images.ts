@@ -7,6 +7,7 @@ import { AIUnavailableError, ProviderError } from '@prompttoppt/ai'
 import type { AccessTier } from '@prompttoppt/validation'
 import { aiConfigured, catalog, gateway } from '../ai/gateway.ts'
 import { creditPrice, refundCredits, reserveCredits } from '../billing/credits.ts'
+import { resolveAccess } from '../collab/access.ts'
 import { assertImagesEnabled, assertModelTier, countsTowardQuota, getEntitlements } from '../billing/entitlements.ts'
 import { GateError } from '../billing/errors.ts'
 import { db } from '../db/index.ts'
@@ -55,8 +56,10 @@ async function usageFor(userId: string, presentationId: string, periodStart: Dat
 
 /** How many pictures this deck / this month may still get, plus what one costs — so the UI can show it BEFORE the user clicks. */
 images.get('/presentations/:id/images/usage', requireAuth, async (c) => {
-  const userId = c.get('session')!.user.id
   const id = c.req.param('id')
+  const access = await resolveAccess(id, c.get('session')!.user.id)
+  if (!access) return err(c, 404, 'NOT_FOUND', 'Presentation not found')
+  const userId = access.ownerId // pictures count against, and are paid by, the deck's owner
   const [p] = await db.select({ id: presentation.id }).from(presentation).where(and(eq(presentation.id, id), eq(presentation.userId, userId), isNull(presentation.deletedAt)))
   if (!p) return err(c, 404, 'NOT_FOUND', 'Presentation not found')
   const ent = await getEntitlements(userId)
@@ -73,10 +76,12 @@ images.get('/presentations/:id/images/usage', requireAuth, async (c) => {
 images.post('/presentations/:id/images', requireAuth, rateLimit({ windowMs: 60_000, max: 10, key: (c) => `img:${(c.get('session') as { user: { id: string } }).user.id}` }), zValidator('json', imageInput), async (c) => {
   if (!env.IMAGES_ENABLED) return err(c, 503, 'IMAGES_DISABLED', 'Picture generation is temporarily switched off. Please try again later.')
   if (!aiConfigured) return err(c, 503, 'AI_NOT_CONFIGURED', 'AI is not configured on this server')
-  const userId = c.get('session')!.user.id
+  const deckId = c.req.param('id')
+  const access = await resolveAccess(deckId, c.get('session')!.user.id)
+  if (!access) return err(c, 404, 'NOT_FOUND', 'Presentation not found')
+  const userId = access.ownerId // a collaborator's picture is generated, stored and charged under the OWNER
   const off = await refuseIfOff('image_generation', c, userId) // owner kill-switch: before any slot or credit is reserved
   if (off) return off
-  const deckId = c.req.param('id')
   const input = c.req.valid('json')
 
   const [existing] = await db.select().from(generatedAsset).where(and(eq(generatedAsset.userId, userId), eq(generatedAsset.requestId, input.requestId)))

@@ -108,6 +108,24 @@ export function decor(c: Ctx, dark: boolean, kind = c.style.decor, tone?: string
       for (let i = 1; i < 6; i++) deco(c, a, M * 0.9, H * 0.12 + i * (H * 0.152), W - M * 1.4, 1, { opacity: dark ? 0.07 : 0.06 })
       break
     }
+    case 'rules': {
+      // editorial hairlines: one under the top margin, one above the bottom margin, with a short heavier mark at the start of each
+      const ink = dark ? k.onPrimary : k.textPrimary
+      deco(c, ink, M, M * 0.5, W - 2 * M, 2, { opacity: dark ? 0.35 : 0.3 })
+      deco(c, ink, M, H - M * 0.5, W - 2 * M, 2, { opacity: dark ? 0.35 : 0.3 })
+      deco(c, k.accent, M, M * 0.5 - 2, 56, 6, { opacity: 0.95 })
+      deco(c, k.accent, W - M - 56, H - M * 0.5 - 2, 56, 6, { opacity: 0.95 })
+      break
+    }
+    case 'hazard': {
+      // safety tape: a solid band along the top and bottom edges with a dense row of near-black chevrons, the way warning tape reads
+      const bandH = Math.round(M * 0.46)
+      for (const y of [0, H - bandH]) {
+        deco(c, k.accent, 0, y, W, bandH, { opacity: 1 })
+        for (let x = bandH * 0.3; x < W; x += bandH * 2.1) deco(c, '#111111', x, y + bandH * 0.08, bandH * 0.84, bandH * 0.84, { shape: 'chevron', opacity: 0.92 }) // spaced out: a slide may carry at most ~60 ornaments
+      }
+      break
+    }
     case 'brackets': {
       // editorial corner brackets
       const t = 5, l = H * 0.12

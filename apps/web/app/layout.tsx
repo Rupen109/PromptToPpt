@@ -143,7 +143,8 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body>
+      {/* Browser extensions (ColorZilla's cz-shortcut-listen, Grammarly…) add attributes to <body> before React loads; that is not our markup, so don't warn about it. */}
+      <body suppressHydrationWarning>
         {children}
       </body>
     </html>

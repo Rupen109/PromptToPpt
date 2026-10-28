@@ -85,7 +85,7 @@ export type Motion = z.infer<typeof motionSchema>
 // ─── Style kit (what makes one template look different from another beyond its colours) ───
 
 export const TITLE_STYLES = ['bar', 'split', 'center', 'band', 'frame', 'diagonal', 'minimal', 'badge', 'stack'] as const
-export const HEADER_STYLES = ['bar', 'underline', 'rule', 'side', 'dot', 'none', 'italic', 'accent'] as const
+export const HEADER_STYLES = ['bar', 'underline', 'rule', 'side', 'dot', 'none', 'italic', 'accent', 'duo'] as const
 export const CARD_STYLES = ['flat', 'outline', 'shadow', 'tint', 'accent-top', 'accent-left', 'paper', 'sticker'] as const
 // wash = full-bleed photo under a two-colour gradient; banner = rounded photo band across the top; hex = hexagon crop
 export const PHOTO_STYLES = ['none', 'full', 'split', 'circle', 'arch', 'diagonal', 'frame', 'polaroid', 'wash', 'banner', 'hex'] as const
@@ -95,6 +95,8 @@ export const DECOR_STYLES = [
   'ruled-paper', 'chalk', 'blueprint', 'circuit', 'confetti', 'halftone', 'axis', 'brackets', 'chevrons', 'organic', 'window',
   // line-art contours (cover ornament), hexagon lattice, flat geometric shapes (playful covers)
   'contours', 'hexgrid', 'shapes',
+  // editorial hairlines top and bottom of every slide; hazard-tape bands (safety / training)
+  'rules', 'hazard',
 ] as const
 export const BULLET_GLYPHS = ['•', '–', '▪', '✓', '→', '●'] as const
 
@@ -140,6 +142,11 @@ export const themeSchema = z.object({
   motion: motionSchema.optional(),
   /** template this design came from, if any */
   templateId: z.string().max(80).optional(),
+  /** the company's brand (from "use my brand"): its logo is drawn on every slide by the layout engine, and it survives template and palette changes */
+  brand: z.object({
+    name: z.string().max(80).optional(),
+    logo: z.object({ src: httpUrl, /** width ÷ height */ aspect: z.number().min(0.2).max(6) }).optional(),
+  }).optional(),
 })
 export type Theme = z.infer<typeof themeSchema>
 
@@ -157,6 +164,8 @@ const box = {
   opacity: z.number().min(0).max(1).default(1),
   /** background ornament added by the layout engine: not meant to be edited/selected, skipped by validators */
   decorative: z.boolean().optional(),
+  /** drawn by the company-logo feature (the logo and its plate): replaced when the brand changes, removed with it — even on hand-edited slides */
+  brand: z.boolean().optional(),
   animation: animationSchema.optional(),
 }
 
@@ -491,6 +500,8 @@ export const outlineSchema = z.object({
         needsVisual: z.boolean().default(false),
         /** what the picture on this slide should SHOW, in plain words (drives picture search + the match check); empty = no picture */
         imageIntent: z.string().max(200).optional(),
+        /** what to type into a stock-photo search box to find that picture: 2–4 plain, commonly tagged words (no jargon or brand names) */
+        imageQuery: z.string().max(80).optional(),
       }),
     )
     .min(3)

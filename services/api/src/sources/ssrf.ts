@@ -1,6 +1,6 @@
 import { lookup } from 'node:dns'
 import { isIP } from 'node:net'
-import { Agent } from 'undici'
+import { Agent, fetch as undiciFetch, type Dispatcher } from 'undici'
 
 /**
  * SSRF guard for user-supplied URLs (spec §18). The API server can reach things users can't — cloud metadata
@@ -97,3 +97,14 @@ export const ssrfSafeAgent = new Agent({
       }),
   },
 })
+
+/**
+ * Every request the server makes to an address a USER supplied (pages, stylesheets, logos, pictures) goes through here.
+ * - The connection is checked against private addresses (see ssrfSafeAgent).
+ * - `Accept-Encoding` is spelled out WITHOUT zstd. By default the HTTP client advertises zstd; a site that answers in zstd on a runtime
+ *   that cannot decode it (older Node) made the client throw an error nobody could catch, which took the whole API process down.
+ */
+export const OUTBOUND_ENCODING = 'gzip, deflate, br'
+export function safeFetch(url: string, init: { redirect: 'manual'; signal: AbortSignal; headers?: Record<string, string> }, dispatcher: Dispatcher = ssrfSafeAgent): Promise<Response> {
+  return undiciFetch(url, { ...init, headers: { ...(init.headers ?? {}), 'Accept-Encoding': OUTBOUND_ENCODING }, dispatcher }) as unknown as Promise<Response>
+}

@@ -19,6 +19,48 @@ const saved = { ...env }
 beforeEach(() => { env.TRUSTED_PROXY_HOPS = 1 })
 afterEach(() => { Object.assign(env, saved); setCaptchaVerifier(verifyTurnstile) })
 
+describe('parallel bursts cannot outrun the counters', () => {
+  it('30 sign-ups fired at the same instant from one address: no more than the allowance get through', async () => {
+    env.AUTH_SIGNUPS_PER_IP_HOUR = 4
+    const ip = ipv4()
+    const rs = await Promise.all(Array.from({ length: 30 }, () => signUp(`burst-${rid()}@example.com`, ip)))
+    expect(rs.filter((r) => r.status === 200).length).toBeLessThanOrEqual(4)
+    // a burst this size is turned away whole (everyone in it sees the whole burst in the count): safe, and nobody outside the burst is affected
+    expect((await signUp(`after-burst-${rid()}@example.com`, ip)).status).toBe(200)
+    expect(rs.every((r) => r.status === 200 || r.status === 429)).toBe(true)
+  })
+  it('40 password guesses at the same instant against one account: only the first few are even tried, then it is locked', async () => {
+    env.AUTH_SIGNIN_FAILS_PER_EMAIL = 5
+    const email = `guess-${rid()}@example.com`
+    expect((await signUp(email, ipv4())).status).toBe(200)
+    const ip = ipv4()
+    const rs = await Promise.all(Array.from({ length: 40 }, (_, i) => signIn(email, `Wrong-guess-${i}!`, ip)))
+    const tried = rs.filter((r) => r.status === 401 || r.status === 400).length
+    expect(tried).toBeLessThanOrEqual(env.AUTH_SIGNIN_FAILS_PER_EMAIL)
+    expect(rs.filter((r) => r.status === 429).length).toBeGreaterThanOrEqual(40 - env.AUTH_SIGNIN_FAILS_PER_EMAIL)
+    // five sequential wrong guesses then lock the account, even against the right password
+    for (let i = 0; i < env.AUTH_SIGNIN_FAILS_PER_EMAIL; i++) await signIn(email, `Wrong-again-${i}!`, ipv4())
+    expect((await signIn(email, 'a-long-password-1', ipv4())).status).toBe(429)
+  })
+  it('a successful sign-in does not count against the account (a real user signing in many times is never locked)', async () => {
+    env.AUTH_SIGNIN_FAILS_PER_EMAIL = 3
+    const email = `ok-${rid()}@example.com`
+    expect((await signUp(email, ipv4())).status).toBe(200)
+    for (let i = 0; i < env.AUTH_SIGNIN_FAILS_PER_EMAIL + 1; i++) expect((await signIn(email, 'a-long-password-1', ipv4())).status).toBe(200)
+  }, 60_000)
+  it('20 reset mails requested at once for one victim: only the hourly allowance is sent', async () => {
+    env.AUTH_RESET_PER_EMAIL_HOUR = 3
+    env.AUTH_RESET_PER_IP_HOUR = 1000
+    const { mailOutbox } = await import('../lib/mailer.ts')
+    const email = `victim-${rid()}@example.com`
+    expect((await signUp(email, ipv4())).status).toBe(200)
+    const before = mailOutbox.length
+    const rs = await Promise.all(Array.from({ length: 20 }, () => post('/api/auth/request-password-reset', { email, redirectTo: `${origin}/reset` }, ipv4())))
+    expect(rs.filter((r) => r.status === 429).length).toBeGreaterThanOrEqual(20 - env.AUTH_RESET_PER_EMAIL_HOUR)
+    expect(mailOutbox.length - before).toBeLessThanOrEqual(env.AUTH_RESET_PER_EMAIL_HOUR)
+  })
+})
+
 describe('sign-up abuse', () => {
   it('one address cannot create accounts in bulk: the per-hour cap answers 429 with Retry-After', async () => {
     env.AUTH_SIGNUPS_PER_IP_HOUR = 3

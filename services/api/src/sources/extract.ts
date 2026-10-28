@@ -1,21 +1,28 @@
 import { Readability } from '@mozilla/readability'
 import { parseHTML } from 'linkedom'
 import { extractText, getDocumentProxy } from 'unpdf'
-import { fetch as undiciFetch } from 'undici'
 import { unzipSync } from 'fflate'
-import { assertPublicUrl, BlockedUrlError, ssrfSafeAgent } from './ssrf.ts'
+import { CSV_MAX_BYTES, fromCsv } from './csv.ts'
+import { DOCX_MAX_BYTES, fromDocx } from './docx.ts'
+import { EML_MAX_BYTES, fromEml } from './eml.ts'
+import { SourceError } from './errors.ts'
+import { clean, MAX_TEXT_CHARS } from './limits.ts'
+import { XLSX_MAX_BYTES, fromXlsx } from './xlsx.ts'
+import { isEncryptedOffice, isOle, isZip, zipNames } from './zip.ts'
+import { assertPublicUrl, BlockedUrlError, safeFetch } from './ssrf.ts'
 
 export interface Extracted {
   title: string
   /** locator → text; locator is what citations show ("p. 4", "section 2") */
   parts: { locator: string | null; text: string }[]
+  /** set when the text came from a Google document: what kind of file it was exported as (decides the icon) */
+  kind?: 'docx' | 'xlsx' | 'pptx'
 }
 
 export const MAX_FETCH_BYTES = 2 * 1024 * 1024
-export const MAX_TEXT_CHARS = 200_000
+export { MAX_TEXT_CHARS }
 const MAX_REDIRECTS = 3
 
-const clean = (s: string) => s.replace(/\r/g, '').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
 
 /** Chunk on paragraph boundaries (~1500 chars) so citations point at a small, findable region. */
 export function chunkText(parts: Extracted['parts'], target = 1500): { locator: string | null; text: string }[] {
@@ -53,7 +60,7 @@ type FetchLike = (url: string, init: { redirect: 'manual'; signal: AbortSignal; 
 
 /** Fetch a public web page: validated URL, validated redirects, size + time caps, text/html only. */
 export async function fetchPage(rawUrl: string, fetchImpl?: FetchLike): Promise<Extracted> {
-  const doFetch: FetchLike = fetchImpl ?? ((u, init) => undiciFetch(u, { ...init, dispatcher: ssrfSafeAgent }) as unknown as Promise<Response>)
+  const doFetch: FetchLike = fetchImpl ?? ((u, init) => safeFetch(u, init))
   let url = assertPublicUrl(rawUrl)
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
     const res = await doFetch(url.toString(), { redirect: 'manual', signal: AbortSignal.timeout(10_000), headers: { 'User-Agent': 'promptToPpt-bot/1.0', Accept: 'text/html,text/plain' } })
@@ -184,22 +191,42 @@ export function fromTextFile(bytes: Uint8Array, filename: string): Extracted {
   return fromText(filename.replace(/\.(txt|md|markdown)$/i, ''), text)
 }
 
-export type FileKind = 'pdf' | 'pptx' | 'text'
-export const FILE_MAX_BYTES = Math.max(PDF_MAX_BYTES, PPTX_MAX_BYTES)
+export type FileKind = 'pdf' | 'pptx' | 'docx' | 'xlsx' | 'csv' | 'email' | 'text'
+export const FILE_MAX_BYTES = Math.max(PDF_MAX_BYTES, PPTX_MAX_BYTES, DOCX_MAX_BYTES, XLSX_MAX_BYTES, CSV_MAX_BYTES)
+export const FILE_TYPES_HELP = 'PDF, Word (.docx), PowerPoint (.pptx), Excel (.xlsx), CSV, email (.eml), or text/Markdown'
 
-/** Decides what an upload is from its CONTENT (magic bytes), never from the name or declared type; extension only separates text from garbage. */
+const ext = (name: string) => /\.([a-z0-9]+)$/i.exec(name)?.[1]?.toLowerCase() ?? ''
+const tooBig = (kind: string, max: number, n: number) => { if (n > max) throw new SourceError(`That ${kind} is larger than ${Math.round(max / 1024 / 1024)} MB`) }
+
+/** Decides what an upload is from its CONTENT (magic bytes, and for zip files the names inside), never from the file name or declared type; the extension only separates the plain-text kinds. */
 export async function fromFile(bytes: Uint8Array, filename: string): Promise<{ kind: FileKind; extracted: Extracted }> {
   const head = Buffer.from(bytes.subarray(0, 5)).toString('latin1')
+  const e = ext(filename)
   if (head === '%PDF-') {
     if (bytes.length > PDF_MAX_BYTES) throw new Error('PDF is larger than 10 MB')
     return { kind: 'pdf', extracted: await fromPdf(bytes, filename) }
   }
-  if (head.startsWith('PK') || Buffer.from(bytes.subarray(0, 4)).equals(Buffer.from([0xd0, 0xcf, 0x11, 0xe0]))) {
-    if (bytes.length > PPTX_MAX_BYTES) throw new Error('PowerPoint files can be up to 15 MB')
-    return { kind: 'pptx', extracted: fromPptx(bytes, filename) }
+  if (isEncryptedOffice(bytes)) throw new SourceError('That file is password-protected. Remove the password in Word, Excel or PowerPoint, save it, and upload it again.')
+  if (isOle(bytes)) {
+    if (e === 'msg') return { kind: 'email', extracted: fromEml(bytes, filename) } // throws the .msg hint
+    if (e === 'doc' || e === 'dot' || e === 'rtf') throw new SourceError('Old .doc files are not supported — open it in Word and save as .docx')
+    if (e === 'xls' || e === 'xlt') throw new SourceError('Old .xls files are not supported — open it in Excel and save as .xlsx (or CSV)')
+    if (e === 'ppt' || e === 'pps') throw new SourceError('Old .ppt files are not supported — open it in PowerPoint and save as .pptx')
+    throw new SourceError(`Unsupported file type — upload ${FILE_TYPES_HELP}`)
   }
-  if (!/\.(txt|md|markdown|text)$/i.test(filename)) throw new Error('Unsupported file type — upload a PDF, PowerPoint (.pptx) or text (.txt/.md) file')
+  if (isZip(bytes)) {
+    const names = zipNames(bytes)
+    if (names.includes('word/document.xml')) { tooBig('Word file', DOCX_MAX_BYTES, bytes.length); return { kind: 'docx', extracted: fromDocx(bytes, filename) } }
+    if (names.includes('xl/workbook.xml')) { tooBig('workbook', XLSX_MAX_BYTES, bytes.length); return { kind: 'xlsx', extracted: fromXlsx(bytes, filename) } }
+    if (names.includes('xl/workbook.bin')) throw new SourceError('.xlsb workbooks are not supported — open it in Excel and save as .xlsx (or CSV)')
+    if (names.some((n) => n.startsWith('ppt/slides/') || n === 'ppt/presentation.xml')) { tooBig('PowerPoint file', PPTX_MAX_BYTES, bytes.length); return { kind: 'pptx', extracted: fromPptx(bytes, filename) } }
+    throw new SourceError(`Unsupported file type — upload ${FILE_TYPES_HELP}`)
+  }
+  if (e === 'csv' || e === 'tsv') { tooBig('file', CSV_MAX_BYTES, bytes.length); return { kind: 'csv', extracted: fromCsv(bytes, filename) } }
+  if (e === 'eml') { tooBig('email', EML_MAX_BYTES, bytes.length); return { kind: 'email', extracted: fromEml(bytes, filename) } }
+  if (e === 'doc' || e === 'xls' || e === 'ppt' || e === 'docx' || e === 'xlsx' || e === 'pptx') throw new SourceError('That file is not a valid Office document — it may be damaged or renamed from another type')
+  if (!/\.(txt|md|markdown|text)$/i.test(filename)) throw new SourceError(`Unsupported file type — upload ${FILE_TYPES_HELP}`)
   return { kind: 'text', extracted: fromTextFile(bytes, filename) }
 }
 
-export { BlockedUrlError }
+export { BlockedUrlError, SourceError }

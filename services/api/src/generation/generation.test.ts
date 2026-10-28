@@ -103,6 +103,24 @@ describe('generation job', () => {
     expect((await app.request(`/api/v1/presentations/${view.data.presentationId}`, { headers: { Cookie: other.cookie } })).status).toBe(404)
   })
 
+  it('a 12-slide deck (three batches generated side by side) keeps the outline order and makes exactly one slide_content call per batch', async () => {
+    const u = await signUp()
+    await setPlan(u.id, 'pro')
+    const created = await post('/jobs', u.cookie, { prompt: 'Create a 12 slide overview of our onboarding process for new customers', slideCount: 12, idempotencyKey: `key-${rid()}-${rid()}` })
+    const jobId = (await j(created)).data.id
+    expect((await drain(jobId)).status).toBe('completed')
+    const [job] = await db.select().from(generationJob).where(eq(generationJob.id, jobId))
+    const cp = job!.checkpoint as { outline: { slides: { title: string }[] }; contents: { title?: string }[] }
+    expect(cp.contents).toHaveLength(12)
+    // slide i of the finished work is the one written for outline entry i, whichever batch finished first
+    cp.contents.forEach((c, i) => { if (c.title) expect(c.title).toBe(cp.outline.slides[i]!.title) })
+    const calls = (await ledgerFor(u.id)).filter((e) => e.jobId === jobId && e.requestType === 'slide_content')
+    expect(calls).toHaveLength(3) // 12 slides ÷ batches of 4 — parallel batches do not add model calls
+    const view = await j(await app.request(`/api/v1/generation/jobs/${jobId}`, { headers: { Cookie: u.cookie } }))
+    const deck = await j(await app.request(`/api/v1/presentations/${view.data.presentationId}`, { headers: { Cookie: u.cookie } }))
+    expect(deck.data.document.slides).toHaveLength(12)
+  })
+
   it('numeric layouts are never produced without numbers in the request', async () => {
     const u = await signUp()
     await setPlan(u.id, 'pro')

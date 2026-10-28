@@ -3,7 +3,7 @@ import { decor } from './decor'
 import { header } from './header'
 import { clipFor } from './photoKit'
 import { animationFor, card, cardBgHex, deco, grid, onBg, pal, para, rect, shape, stopsOf, text, type Ctx } from './primitives'
-import { contrastRatio, mix, readableOn } from '../color'
+import { contrastRatio, hexToHsl, mix, readableOn } from '../color'
 
 type C<L extends SlideContent['layout']> = Extract<SlideContent, { layout: L }>
 const inner = (c: Ctx) => c.W - 2 * c.M
@@ -12,6 +12,25 @@ const inner = (c: Ctx) => c.W - 2 * c.M
 const cardText = (c: Ctx, tone: 'primary' | 'accent' | 'secondary' = 'primary') => readableOn(cardBgHex(c, tone), [pal(c).textPrimary, '#FFFFFF', '#111111'], 4.5)
 const cardMuted = (c: Ctx, tone: 'primary' | 'accent' | 'secondary' = 'primary') => readableOn(cardBgHex(c, tone), [pal(c).textSecondary, pal(c).textPrimary, '#FFFFFF', '#111111'], 4.5)
 const tones = ['primary', 'accent', 'secondary'] as const
+
+/**
+ * Colours for a progression (roadmap phases, architecture layers, process steps).
+ * Blending primary into accent only looks good when their hues are close; when they are far apart (saffron + green, orange + blue)
+ * the middle steps pass through a dull olive or grey. Then the whole progression stays in the primary hue, from a softened
+ * shade up to the full colour, and cards keep one tone, so the slide reads as one palette instead of two clashing ones.
+ */
+export function huesClash(primary: string, accent: string): boolean {
+  const [h1, s1] = hexToHsl(primary), [h2, s2] = hexToHsl(accent)
+  if (s1 < 0.2 || s2 < 0.2) return false // a near-grey colour has no hue to clash with
+  const d = Math.abs(h1 - h2)
+  return Math.min(d, 360 - d) > 50
+}
+const clashes = (c: Ctx) => huesClash(pal(c).primary, pal(c).accent)
+export function stepFill(c: Ctx, i: number, n: number): string {
+  const k = pal(c)
+  const t = n <= 1 ? 0 : i / (n - 1)
+  return clashes(c) ? mix(mix(k.primary, c.bodyBg, 0.5), k.primary, t) : mix(k.primary, k.accent, t)
+}
 
 /**
  * Plain title + bullets, in rotating editorial looks so neighbouring slides never match:
@@ -265,7 +284,7 @@ export function roadmap(c: Ctx, s: C<'roadmap'>) {
   const gap = 14
   const k = pal(c)
   const cw = (inner(c) - gap * (n - 1)) / n
-  const fillFor = (i: number) => mix(k.primary, k.accent, n === 1 ? 0 : i / (n - 1))
+  const fillFor = (i: number) => stepFill(c, i, n)
 
   if (cw < 230) {
     // narrow canvas (e.g. 1:1 with many phases): stack the phases as rows — a chevron label on the left, the card on the right
@@ -278,7 +297,7 @@ export function roadmap(c: Ctx, s: C<'roadmap'>) {
       shape(c, fill, c.M, ry, lw + 22, rh, { shape: 'chevron', animate: 'card' })
       text(c, 'metric', [para(p.label)], c.M + 22, ry, lw - 34, rh, 24, { color: onBg(c, fill), valign: 'middle', align: 'center', min: 12, animate: false, weight: 800 })
       const x = c.M + lw + 36
-      const tone = i % 2 ? 'accent' : 'primary'
+      const tone = i % 2 && !clashes(c) ? 'accent' : 'primary'
       const pad = card(c, x, ry, inner(c) - lw - 36, rh, { tone })
       const w = inner(c) - lw - 36 - 2 * pad
       text(c, 'heading', [para(p.heading)], x + pad, ry + 8, w, rh * 0.36, 26, { min: 13, color: cardText(c, tone), animate: false, valign: 'middle' })
@@ -294,7 +313,7 @@ export function roadmap(c: Ctx, s: C<'roadmap'>) {
     shape(c, fill, x, y, cw + (i < n - 1 ? 26 : 0), chevH, { shape: 'chevron', animate: 'card' })
     text(c, 'metric', [para(p.label)], x + 40, y, cw - 66, chevH, 30, { color: onBg(c, fill), valign: 'middle', align: 'center', min: 14, animate: false, weight: 800 })
     const cy = y + chevH + 28
-    const tone = i % 2 ? 'accent' : 'primary'
+    const tone = i % 2 && !clashes(c) ? 'accent' : 'primary'
     const pad = card(c, x, cy, cw, c.bottom - cy, { tone })
     text(c, 'heading', [para(p.heading)], x + pad, cy + 24, cw - 2 * pad, 80, 32, { min: 16, color: cardText(c, tone), animate: false })
     text(c, 'body', p.bullets.map((b) => para(b, 'bullet')), x + pad, cy + 112, cw - 2 * pad, c.bottom - cy - 132, 26, { min: 14, color: cardMuted(c, tone), byParagraph: true })
@@ -311,7 +330,7 @@ export function architecture(c: Ctx, s: C<'architecture'>) {
   const labelW = Math.min(360, inner(c) * 0.24)
   s.layers.forEach((layer, i) => {
     const ly = y + i * (lh + gap)
-    const fill = mix(k.primary, k.accent, n === 1 ? 0 : i / (n - 1))
+    const fill = stepFill(c, i, n)
     rect(c, cardBgHex(c) , c.M, ly, inner(c), lh, { radius: c.theme.radius, animate: 'card', ...(c.style.card === 'outline' ? { stroke: mix(k.textSecondary, c.bodyBg, 0.55), strokeWidth: 3 } : {}) })
     rect(c, fill, c.M, ly, labelW, lh, { radius: c.theme.radius })
     text(c, 'heading', [para(layer.name)], c.M + 24, ly, labelW - 48, lh, 32, { color: onBg(c, fill), valign: 'middle', min: 16, animate: false })
@@ -395,7 +414,7 @@ export function stepsChevrons(c: Ctx, s: C<'process'> | C<'timeline'>) {
   const top = y + (c.bottom - y) * 0.12
   s.steps.forEach((st, i) => {
     const x = c.M + i * (cw + gap)
-    const col = mix(k.primary, k.accent, n > 1 ? i / (n - 1) : 0)
+    const col = stepFill(c, i, n)
     for (let q = 0; q < 3; q++) shape(c, mix(col, c.bodyBg, [0, 0.12, 0.3][q]!), x + cw / 2 - 66 + q * 44, top, 64, 56, { shape: 'chevron', animate: i === 0 && q === 0 ? 'card' : false })
     rect(c, hairline(c), x + cw / 2 - 1, top + 76, 2, 54)
     text(c, 'heading', [para(st.label)], x, top + 142, cw, 90, 40, { align: 'center', valign: 'top', min: 20 })

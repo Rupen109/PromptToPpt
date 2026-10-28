@@ -6,6 +6,7 @@ import { db } from '../db/index.ts'
 import { generationJob } from '../db/schema.ts'
 import { processOne } from '../generation/worker.ts'
 import { assertPublicUrl, BlockedUrlError, isBlockedIp } from './ssrf.ts'
+import { tinyPdf } from '../test-pdf.ts'
 import { chunkText, fetchPage, fromHtml, fromPdf } from './extract.ts'
 
 const origin = process.env['WEB_URL'] ?? 'http://localhost:3000'
@@ -15,23 +16,6 @@ async function signUp() {
   return res.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ')
 }
 
-function tinyPdf(pages: string[]): Uint8Array {
-  const objs: string[] = ['<</Type/Catalog/Pages 2 0 R>>', `<</Type/Pages/Kids[${pages.map((_, i) => `${3 + i * 2} 0 R`).join(' ')}]/Count ${pages.length}>>`]
-  pages.forEach((t, i) => {
-    const content = `BT /F1 24 Tf 72 700 Td (${t}) Tj ET`
-    objs.push(`<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents ${4 + i * 2} 0 R/Resources<</Font<</F1 ${3 + pages.length * 2} 0 R>>>>>>`, `<</Length ${content.length}>>\nstream\n${content}\nendstream`)
-  })
-  objs.push('<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>')
-  let out = '%PDF-1.4\n'
-  const offsets = objs.map((o, i) => {
-    const at = out.length
-    out += `${i + 1} 0 obj\n${o}\nendobj\n`
-    return at
-  })
-  const xref = out.length
-  out += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n${offsets.map((o) => `${String(o).padStart(10, '0')} 00000 n \n`).join('')}trailer\n<</Size ${objs.length + 1}/Root 1 0 R>>\nstartxref\n${xref}\n%%EOF`
-  return new TextEncoder().encode(out)
-}
 
 describe('SSRF guard', () => {
   it.each(['127.0.0.1', '10.1.2.3', '172.16.0.1', '172.31.255.255', '192.168.1.1', '169.254.169.254', '100.64.0.1', '0.0.0.0', '::1', 'fd00::1', 'fe80::1', '::ffff:127.0.0.1', '224.0.0.1'])('blocks %s', (ip) => expect(isBlockedIp(ip)).toBe(true))

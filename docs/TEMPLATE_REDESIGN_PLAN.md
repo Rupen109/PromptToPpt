@@ -168,3 +168,24 @@ rewritten, photos present, screenshots reviewed, tests green.
 4. W7: finish photography (reword blocked prompts; add category-specific sets).
 5. W6 pass 2: replace remaining repeated palettes/fonts; move Town Hall → Team etc.
 6. W8: style filter chips; W9: e2e + full regression.
+
+## Round 2 — editorial templates (2026-10-08)
+
+Owner request: 3 more templates in each of Education, Business, Pitch Deck, Sales and Marketing, in the style of MagicSlides' editorial templates (serif headlines with a coloured italic phrase, hairline rules, restrained colour, a few bold exceptions such as hazard-tape safety training). **15 new designs, appended after the existing ones, so they are Pro and the three free designs per category are unchanged.** Catalogue: 122 → **137**.
+
+New engine options (additive; nothing existing changes):
+- header **`duo`** — hairline across the top; the closing ~40% of the title is italic and in a brand colour that reads on the slide. Also applied to photo covers and plain covers.
+- decor **`rules`** — editorial hairlines under the top margin and above the bottom margin, with a short accent mark at each start.
+- decor **`hazard`** — warning-tape bands (yellow with near-black chevrons) along the top and bottom edges.
+
+| Category | New designs (mode) |
+|---|---|
+| Education | Recitation (light), Studio Practicum (light), Safety Briefing (dark, hazard tape) |
+| Business & Strategy | Case Method (light), Ledger (light, monospace), Boardroom Noir (dark) |
+| Pitch Deck | Term Sheet (light), Investor Letter (light), Demo Day (dark) |
+| Sales | Proposal Letter (light), Deal Desk (light), Closing Room (dark) |
+| Marketing | Editorial Calendar (light), Poster Wall (light), After Dark (dark) |
+
+Light/dark balance is now "within one of half and half" per category (Pitch / Sales / Marketing / Education 8 + 7, Business & Strategy 9 + 8; the other five categories stay 6 + 6). The reference templates were only visible for Education (the MagicSlides dashboard needs a login), so the other four categories follow the same editorial language rather than specific reference slides.
+
+Checked: all 137 designs compose with no overflow or contrast errors (theme tests), contact sheets reviewed for each new design.

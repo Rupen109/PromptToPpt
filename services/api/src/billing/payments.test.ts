@@ -61,6 +61,26 @@ describe('signature verification', () => {
 describe('POST /billing/checkout', () => {
   beforeEach(() => {
     vi.spyOn(razorpay, 'createSubscription').mockImplementation(async (p) => ({ id: 'sub_new', plan_id: p.planId, status: 'created', current_start: null, current_end: null, notes: p.notes }))
+    vi.spyOn(razorpay, 'fetchSubscription').mockImplementation(async (id) => ({ id, plan_id: 'plan_pro_m', status: 'created', current_start: null, current_end: null, notes: {} }))
+  })
+
+  it('clicking Upgrade many times (even at once) opens ONE payment session; after it is paid, or for other terms, a new one opens', async () => {
+    const u = await signUp('co')
+    let n = 0
+    const create = vi.spyOn(razorpay, 'createSubscription').mockImplementation(async (p) => ({ id: `sub_click_${rid()}_${n++}`, plan_id: p.planId, status: 'created', current_start: null, current_end: null, notes: p.notes }))
+    const go = (planId = 'pro', interval = 'month') => app.request('/api/v1/billing/checkout', { method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: u.cookie, 'x-debug-country': 'IN' }, body: JSON.stringify({ planId, interval }) })
+    const ids = new Set<string>()
+    for (const r of await Promise.all(Array.from({ length: 6 }, () => go()))) { expect(r.status).toBe(200); ids.add((await json(r)).data.subscriptionId) }
+    expect(ids.size).toBe(1)
+    expect(create).toHaveBeenCalledTimes(1)
+    expect((await json(await go())).data.subscriptionId).toBe([...ids][0]) // a later click: the same unpaid session
+    expect(create).toHaveBeenCalledTimes(1)
+    await go('pro', 'year') // other terms: its own session
+    expect(create).toHaveBeenCalledTimes(2)
+    // the first session gets paid: the provider no longer calls it "created", so the next click opens a fresh one
+    vi.spyOn(razorpay, 'fetchSubscription').mockImplementation(async (id) => ({ id, plan_id: 'plan_pro_m', status: 'active', current_start: null, current_end: null, notes: {} }))
+    await go()
+    expect(create).toHaveBeenCalledTimes(3)
   })
 
   it('requires login', async () => {
@@ -321,6 +341,20 @@ describe('money going back revokes access (security S28/S29)', () => {
     const ent = await getEntitlements(u.id)
     expect(ent.plan.id).toBe('starter')
     expect((await db.select().from(payment).where(eq(payment.providerPaymentId, pay.id)))[0]!.status).toBe('refunded')
+  })
+
+  it('events that arrive after a refund (the provider\'s own "cancelled", a late "activated", a repeated confirm) cannot bring the access back', async () => {
+    const u = await signUp('rf')
+    const { sub, pay } = await activate(u.id)
+    await webhook('refund.processed', { refund: { entity: { id: `rfnd_${rid()}`, payment_id: pay.id, amount: pay.amount } } })
+    expect((await getEntitlements(u.id)).plan.id).toBe('starter')
+    // the provider still reports the paid period it was never told to shorten
+    await subEvent('subscription.cancelled', { ...sub, status: 'cancelled' })
+    expect((await getEntitlements(u.id)).plan.id).toBe('starter')
+    await subEvent('subscription.activated', sub, pay)
+    await subEvent('subscription.charged', sub, pay)
+    expect((await getEntitlements(u.id)).plan.id).toBe('starter')
+    expect((await subRow(u.id))!.status).toBe('cancelled')
   })
 
   it('a dispute (chargeback) revokes immediately, and replaying the event changes nothing', async () => {

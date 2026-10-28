@@ -3,6 +3,7 @@ import { api } from '@/lib/api'
 import { int, pct } from '@/lib/format'
 import { Badge, DataTable, EmptyNote, ErrorBox, Panel, SectionPage, Stat, Stats, dateTime, useSection } from '../ui'
 import { useAsync } from '../useUsage'
+import CloudActivity from './CloudActivity'
 
 interface Checkin { id: string; amount: number; kind: string; readAt: string; note: string | null }
 interface Win { from: string; to: string; providerBurnInr: number; ledgerInr: number; unexplainedInr: number; coverage: number | null; calls: number; images: number }
@@ -108,6 +109,8 @@ export default function Cloud() {
           </Panel>
         </>
       )}
+
+      <CloudActivity rev={rev} />
 
       <Panel title="Live from Google (billing export)" note="Reads Google's own billing export in BigQuery: what Vertex / Gemini actually cost each day, with credits applied. Google publishes it a few hours behind real time.">
         {billed.error && <ErrorBox message={billed.error} />}

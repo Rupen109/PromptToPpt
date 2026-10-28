@@ -7,7 +7,7 @@ import { GateError } from './errors.ts'
 /** A picture counts once it exists — or while its model call is still running (a reserved slot), but not forever if the server died mid-call. */
 export const PENDING_SLOT_MS = 5 * 60_000
 /** Stock photos chosen for generated decks are free pictures, not AI-image spend — only AI-generated pictures count toward the plan's image limits. */
-export const countsTowardQuota = () => sql`(${generatedAsset.kind} <> 'stock' and (${generatedAsset.status} = 'ready' or ${generatedAsset.createdAt} > now() - interval '5 minutes'))`
+export const countsTowardQuota = () => sql`(${generatedAsset.kind} not in ('stock', 'logo', 'brand') and (${generatedAsset.status} = 'ready' or ${generatedAsset.createdAt} > now() - interval '5 minutes'))`
 
 const startOfMonthUtc = (d: Date) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1))
 const startOfNextMonthUtc = (d: Date) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1))

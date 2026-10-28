@@ -1,3 +1,4 @@
+import { getKit, MAX_KITS } from '../brand/kits.ts'
 import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import { and, count, eq, gte, inArray, isNull, notInArray, sql } from 'drizzle-orm'
@@ -78,6 +79,10 @@ const createJob = z.object({
   picturesOnly: z.boolean().default(false),
   /** catalog id the user picked (GET /models); omitted → the plan's default model */
   model: z.string().max(120).optional(),
+  /** remix this deck of yours into a NEW deck (Pro/Gold): same look and format, content taken from the deck's text source (see POST /presentations/:id/remix-source) */
+  remixOf: z.string().max(64).optional(),
+  /** build a new deck in this brand kit (Pro/Gold); ignored when rewriting an existing deck */
+  brandKitId: z.string().max(32).optional(),
   sourceIds,
   /** generated once per user action in the client; retries of the same action reuse it */
   idempotencyKey: z.string().min(8).max(64),
@@ -118,6 +123,19 @@ generation.post('/jobs', rateLimit({ windowMs: 60_000, max: 10, key: byUser('job
   const design = body.designId ? designById(body.designId) : undefined
   if (body.designId && !design) return c.json(err('INVALID_TEMPLATE', 'Unknown template'), 400)
   if (design?.premium && !ent.features.premiumTemplates) throw new GateError('UPGRADE_REQUIRED', `"${design.name}" is a Pro template.`, 403, { feature: 'premiumTemplates' })
+  let remixAspect: string | undefined
+  if (body.remixOf) {
+    if (body.targetPresentationId) return c.json(err('INVALID_REQUEST', 'Choose either remix or rewrite'), 400)
+    if (!body.sourceIds || body.sourceIds.length === 0) return c.json(err('REMIX_NEEDS_SOURCE', 'A remix needs the presentation text it is built from. Start the remix again.'), 400) // without it the model would invent content
+    if (ent.plan.id === 'starter') throw new GateError('UPGRADE_REQUIRED', 'Remixing a presentation is available on Pro and Gold.', 403, { feature: 'remix' })
+    const [orig] = await db.select({ aspectRatio: presentation.aspectRatio }).from(presentation).where(and(eq(presentation.id, body.remixOf), eq(presentation.userId, userId), isNull(presentation.deletedAt)))
+    if (!orig) return c.json(err('NOT_FOUND', 'Presentation not found'), 404)
+    remixAspect = orig.aspectRatio
+  }
+  if (body.brandKitId) {
+    if ((MAX_KITS[ent.plan.id] ?? 0) === 0) throw new GateError('UPGRADE_REQUIRED', 'Brand kits are available on Pro and Gold.', 403, { feature: 'brand' })
+    if (!(await getKit(userId, body.brandKitId))) return c.json(err('INVALID_BRAND_KIT', 'Unknown brand kit'), 400)
+  }
   let target: { aspectRatio: string; slideCount: number } | undefined
   if (body.targetPresentationId) {
     const [t] = await db.select({ aspectRatio: presentation.aspectRatio, v: presentation.latestVersion }).from(presentation).where(and(eq(presentation.id, body.targetPresentationId), eq(presentation.userId, userId), isNull(presentation.deletedAt)))
@@ -141,7 +159,7 @@ generation.post('/jobs', rateLimit({ windowMs: 60_000, max: 10, key: byUser('job
   const id = nanoid()
   await reserveCredits(userId, estimate, 'job', id) // throws INSUFFICIENT_CREDITS (402) before any job exists
   const { prompt, idempotencyKey, ...rest } = body
-  const options = { ...rest, slideCount, tier, model: picked.id, creditsReserved: estimate, premiumTemplates: ent.features.premiumTemplates, ...(target ? { aspectRatio: target.aspectRatio } : {}) }
+  const options = { ...rest, slideCount, tier, model: picked.id, creditsReserved: estimate, premiumTemplates: ent.features.premiumTemplates, ...(target ? { aspectRatio: target.aspectRatio } : remixAspect ? { aspectRatio: remixAspect } : {}) }
   const [created] = await db.insert(generationJob).values({ id, userId, prompt, options, idempotencyKey }).onConflictDoNothing().returning()
   if (!created) {
     // lost a race with a concurrent identical request: give the credits back, return the winner

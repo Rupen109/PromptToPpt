@@ -1,3 +1,4 @@
+import { brandLogo } from './brand'
 import { CANVAS, type AspectRatio, type Slide, type SlideContent, type Theme } from '@prompttoppt/validation'
 import { mix } from '../color'
 import * as L from './content'
@@ -31,6 +32,7 @@ export function composeSlide(content: SlideContent, theme: Theme, aspect: Aspect
   const k = pal(c)
   if (opts.backgroundImage && (IMAGE_BG_LAYOUTS as readonly string[]).includes(content.layout)) {
     photoSlide(c, content)
+    brandLogo(c, true)
     const tr = c.motion.transition
     return {
       layoutId: content.layout, background: { type: 'image', value: opts.backgroundImage }, elements: c.els, speakerNotes: content.speakerNotes, sources: content.sources, content,
@@ -40,6 +42,7 @@ export function composeSlide(content: SlideContent, theme: Theme, aspect: Aspect
   if (opts.photo && c.style.photo !== 'none' && (PHOTO_LAYOUTS as readonly string[]).includes(content.layout)) {
     if (!['wash', 'banner', 'hex'].includes(c.style.photo)) decor(c, isDark(groundOf(c))) // the design's signature motif sits behind the photograph composition too (the cover styles place it themselves, above the picture)
     const bg = content.layout === 'quote' ? photoQuote(c, content, opts.photo) : content.layout === 'big-number' ? photoNumber(c, content, opts.photo) : photoTitle(c, content as { title: string; subtitle?: string }, content.layout as 'title' | 'section-divider' | 'thank-you', opts.photo)
+    brandLogo(c, true)
     const tr = c.motion.transition
     return {
       layoutId: content.layout, background: { type: 'color', value: bg.value }, elements: c.els, speakerNotes: content.speakerNotes, sources: content.sources, content,
@@ -81,6 +84,7 @@ export function composeSlide(content: SlideContent, theme: Theme, aspect: Aspect
     }
   }
 
+  brandLogo(c, isTitleKind ? isDark(background?.value ?? c.bodyBg) : isDark(c.bodyBg))
   const tr = c.motion.transition
   return {
     layoutId: content.layout,
@@ -94,4 +98,5 @@ export function composeSlide(content: SlideContent, theme: Theme, aspect: Aspect
 }
 
 export { PHOTO_LAYOUTS, type Photo } from './photoKit'
+export { brandLogoElements } from './brand'
 export { CANVAS, header, rect, text, para, IMAGE_BG_LAYOUTS }

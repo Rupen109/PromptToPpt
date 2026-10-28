@@ -26,6 +26,13 @@ export function mockRespond(req: TextRequest): string {
       requiredSections: [], specificity: n > 12 ? 'detailed' : 'broad_topic', missing: n > 12 ? [] : ['audience', 'objective'],
     })
   }
+  if (task === 'free_outline') {
+    const n: number = p['slides'] ?? 8
+    return JSON.stringify({ title: words(req.prompt).slice(0, 100) || 'Untitled', slides: Array.from({ length: n }, (_, i) => ({ title: `Point ${i + 1}`, points: ['First idea', 'Second idea', 'Third idea'] })) })
+  }
+  if (task === 'free_pdf') {
+    return JSON.stringify({ title: 'Mock document', summary: 'A short mock summary.', keyPoints: ['One', 'Two', 'Three', 'Four'], slides: Array.from({ length: 6 }, (_, i) => ({ title: `Part ${i + 1}`, points: ['Alpha', 'Beta', 'Gamma'] })) })
+  }
   if (task === 'critic') return JSON.stringify({ defects: [] })
   if (task === 'picture_query') return JSON.stringify({ queries: [String(p['topic'] ?? p['intent'] ?? 'business meeting').slice(0, 60)] })
   if (task === 'picture_verify') return JSON.stringify({ score: 4, reason: 'mock' })

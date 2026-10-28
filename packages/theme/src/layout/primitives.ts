@@ -13,6 +13,17 @@ export function emphasised(title: string, color: string, words = 0) {
   return { runs: [{ text: w.slice(0, -n).join(' ') + ' ' }, { text: w.slice(-n).join(' '), color }] }
 }
 
+/**
+ * The 'duo' title: the closing words (about 40%) are set in italic AND in a colour, the rest plain — the editorial look of "Gauss's Law, *felt from the inside of a charged sphere.*".
+ * One-word titles stay plain. `color` should already be chosen to read on the slide's background.
+ */
+export function duo(title: string, color: string) {
+  const w = title.trim().split(/\s+/)
+  if (w.length < 2) return { runs: [{ text: title }] }
+  const n = Math.max(1, Math.round(w.length * 0.4))
+  return { runs: [{ text: w.slice(0, -n).join(' ') + ' ' }, { text: w.slice(-n).join(' '), italic: true, color }] }
+}
+
 export const para = (t: string, list?: 'bullet' | 'number'): Para[number] => ({ runs: [{ text: t }], ...(list ? { list } : {}) })
 
 /** Decks made before design-system v2 have no style/motion → the classic look with no animation. */

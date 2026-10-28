@@ -8,17 +8,20 @@ import { sourceDocument } from '../db/schema.ts'
 import { GateError } from '../billing/errors.ts'
 import { byUser, rateLimit } from '../middleware/rate-limit.ts'
 import { requireAuth, type AppEnv } from '../middleware/session.ts'
-import { BlockedUrlError, fetchPage, fromFile, fromPdf, fromText, FILE_MAX_BYTES, PDF_MAX_BYTES } from '../sources/extract.ts'
+import { BlockedUrlError, SourceError, fromText, FILE_MAX_BYTES, PDF_MAX_BYTES } from '../sources/extract.ts'
+import { BusyError, parseUpload } from '../sources/parse-pool.ts'
+import { busyAnswer, uploadGate } from '../middleware/upload-gate.ts'
+import { readLink } from '../sources/link.ts'
 import { saveSource } from '../sources/store.ts'
 
 export const sources = new Hono<AppEnv>()
 sources.use('*', requireAuth)
-sources.use('*', rateLimit({ windowMs: 60_000, max: 20, key: byUser('sources') }))
+sources.use('*', rateLimit({ windowMs: 60_000, max: 20, key: byUser('sources'), message: 'You are adding sources very quickly. Wait a moment and try again.' }))
 
 /** Our own extractor errors are written for users; anything else (parser internals) is replaced by a generic line. */
 export const fileErrorMessage = (e: unknown) => {
   const m = (e as Error).message ?? ''
-  return /^(That file|PDF |No text|Old \.ppt|No slides|That PowerPoint|That presentation|Text files|Unsupported file|PowerPoint files|That file has)/.test(m) ? m : 'Could not read that file'
+  return e instanceof SourceError || /^(That file|PDF |No text|Old \.ppt|No slides|That PowerPoint|That presentation|Text files|Unsupported file|PowerPoint files|That file has)/.test(m) ? m : 'Could not read that file'
 }
 const fail = (c: any, status: 400 | 413 | 422, code: string, message: string) => c.json({ success: false, error: { code, message } }, status)
 
@@ -42,37 +45,41 @@ sources.post('/text', zValidator('json', z.object({ title: z.string().trim().max
 sources.post('/url', zValidator('json', z.object({ url: z.string().trim().max(2000) })), async (c) => {
   const { url } = c.req.valid('json')
   try {
-    const ex = await fetchPage(url)
-    return c.json({ success: true, data: await save(c.get('session')!.user.id, 'url', ex, url) }, 201)
+    const ex = await readLink(url)
+    return c.json({ success: true, data: await save(c.get('session')!.user.id, ex.kind ?? 'url', ex, url) }, 201)
   } catch (e) {
     if (e instanceof BlockedUrlError) return fail(c, 400, 'URL_NOT_ALLOWED', e.message)
+    if (e instanceof SourceError) return fail(c, 422, 'FETCH_FAILED', e.message)
     console.warn('[sources] url fetch failed:', (e as Error).message)
     return fail(c, 422, 'FETCH_FAILED', (e as Error).message.startsWith('Could not') || (e as Error).message.startsWith('The page') || (e as Error).message.startsWith('That URL') || (e as Error).message.startsWith('Page is') ? (e as Error).message : 'Could not read that page')
   }
 })
 
-sources.post('/pdf', bodyLimit({ maxSize: PDF_MAX_BYTES + 64 * 1024, onError: (c) => fail(c, 413, 'TOO_LARGE', 'PDF is larger than 10 MB') }), async (c) => {
+sources.post('/pdf', uploadGate, bodyLimit({ maxSize: PDF_MAX_BYTES + 64 * 1024, onError: (c) => fail(c, 413, 'TOO_LARGE', 'PDF is larger than 10 MB') }), async (c) => {
   const form = await c.req.parseBody()
   const file = form['file']
   if (!(file instanceof File)) return fail(c, 400, 'NO_FILE', 'Attach a PDF as "file"')
   if (file.size > PDF_MAX_BYTES) return fail(c, 413, 'TOO_LARGE', 'PDF is larger than 10 MB')
   try {
-    // Raw bytes are parsed in memory and discarded. Private S3 retention lands with the storage task.
-    const ex = await fromPdf(new Uint8Array(await file.arrayBuffer()), file.name)
-    return c.json({ success: true, data: await save(c.get('session')!.user.id, 'pdf', ex) }, 201)
+    // Raw bytes are parsed in a worker and discarded. Private S3 retention lands with the storage task.
+    const parsed = await parseUpload(new Uint8Array(await file.arrayBuffer()), file.name)
+    if (parsed.kind !== 'pdf') return fail(c, 422, 'PARSE_FAILED', 'That file is not a PDF')
+    return c.json({ success: true, data: await save(c.get('session')!.user.id, 'pdf', parsed.extracted) }, 201)
   } catch (e) {
+    if (e instanceof BusyError) return busyAnswer(c)
     return fail(c, 422, 'PARSE_FAILED', (e as Error).message.startsWith('That file') || (e as Error).message.startsWith('PDF has') || (e as Error).message.startsWith('No text') ? (e as Error).message : 'Could not read that PDF')
   }
 })
 
 /** One upload endpoint for PDF, PowerPoint (.pptx) and text (.txt/.md): the type is decided from the file's content, not its name. */
-sources.post('/file', bodyLimit({ maxSize: FILE_MAX_BYTES + 64 * 1024, onError: (c) => fail(c, 413, 'TOO_LARGE', 'That file is too large (PDF up to 10 MB, PowerPoint up to 15 MB, text up to 1 MB)') }), async (c) => {
+sources.post('/file', uploadGate, bodyLimit({ maxSize: FILE_MAX_BYTES + 64 * 1024, onError: (c) => fail(c, 413, 'TOO_LARGE', 'That file is too large (up to 15 MB; text files up to 1 MB)') }), async (c) => {
   const file = (await c.req.parseBody())['file']
   if (!(file instanceof File)) return fail(c, 400, 'NO_FILE', 'Attach a file as "file"')
   try {
-    const { kind, extracted } = await fromFile(new Uint8Array(await file.arrayBuffer()), file.name)
+    const { kind, extracted } = await parseUpload(new Uint8Array(await file.arrayBuffer()), file.name)
     return c.json({ success: true, data: await save(c.get('session')!.user.id, kind === 'text' ? 'text' : kind, extracted) }, 201)
   } catch (e) {
+    if (e instanceof BusyError) return busyAnswer(c)
     return fail(c, 422, 'PARSE_FAILED', fileErrorMessage(e))
   }
 })

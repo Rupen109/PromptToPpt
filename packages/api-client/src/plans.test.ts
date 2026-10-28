@@ -12,12 +12,13 @@ describe('pricing copy is derived from plan data', () => {
     expect(planHighlights(starter).items).toEqual(['100 credits / month', 'Starter AI model and agent', 'Up to 20 slides per presentation', 'Up to 3 AI images per presentation', 'Watermark on presentations', 'No export — upgrade to export', 'Share view-only links', 'AI edits'])
   })
   it('Pro lists the agreed features', () => {
-    expect(planHighlights(pro).items).toEqual(expect.arrayContaining(['3,000 credits / month', '50 presentations / month', 'Premium templates', 'No watermark', 'Export in PPTX, PDF, PNG, JPG, HTML', 'Advanced editor', 'AI edits', 'Premium AI models', 'Up to 10 AI images per presentation', 'Password-protected & expiring share links', '24/7 support · WhatsApp']))
+    expect(planHighlights(pro).items).toEqual(expect.arrayContaining(['3,000 credits / month', '50 presentations / month', 'Premium templates', 'No watermark', 'Export in PPTX, PDF, PNG, JPG, HTML', 'Advanced editor', 'AI edits', 'Premium AI models', 'Up to 10 AI images per presentation', 'Edit together: invite up to 3 people per presentation', 'Password-protected & expiring share links', '24/7 support · WhatsApp']))
   })
   it('Gold shows only what is new over Pro', () => {
     const h = planHighlights(gold, pro)
     expect(h.lead).toBe('All Pro features, plus:')
-    expect(h.items).toEqual(expect.arrayContaining(['Frontier AI models and agents', 'Advanced brand customization', 'Shared knowledge base', 'Generation speed: ultra']))
+    expect(h.items).not.toContain('Shared knowledge base') // not built: not advertised
+    expect(h.items).toEqual(expect.arrayContaining(['Frontier AI models and agents', 'Up to 5 brand kits (logo, colours, fonts)', 'Generation speed: ultra']))
     expect(h.items).not.toContain('AI edits')
   })
   it('formats money per locale', () => {

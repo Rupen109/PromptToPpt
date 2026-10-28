@@ -122,6 +122,8 @@ export type AIRequestType =
   | 'deck_critic'
   | 'ai_assist'
   | 'source_analysis'
+  | 'free_outline'
+  | 'free_pdf'
   | 'validation'
 
 export interface AIUsageEvent {

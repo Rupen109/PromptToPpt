@@ -12,8 +12,10 @@ export default async function setup() {
   if (!process.env['TEST_DATABASE_URL']) {
     const admin = new pg.Client({ connectionString: process.env['DATABASE_URL'] })
     await admin.connect()
-    const exists = await admin.query('select 1 from pg_database where datname = $1', [name])
-    if (exists.rowCount === 0) await admin.query(`create database ${name}`)
+    // A fresh database every run. The usage ledger and payments are append-only, so rows from earlier runs can never be deleted, and tests that measure "a private time window"
+    // (admin cost/margin/product) would eventually land on a day an old run already used and fail for no reason. `name` is our own fixed test database, never user input.
+    await admin.query(`drop database if exists ${name} with (force)`)
+    await admin.query(`create database ${name}`)
     await admin.end()
     url.pathname = `/${name}`
   }

@@ -3,15 +3,21 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { ApiError, isGateError } from '@prompttoppt/api-client'
 import type { ExportFormat, SlideElement } from '@prompttoppt/validation'
 import { AiPanel } from '@/components/editor/AiPanel'
+import { CommentsPanel } from '@/components/editor/CommentsPanel'
 import { ImageDialog } from '@/components/editor/ImageDialog'
 import { ContextMenu, type MenuItem } from '@/components/editor/ContextMenu'
 import { DeckRewriteDialog } from '@/components/editor/DeckRewriteDialog'
 import { EditorCanvas } from '@/components/editor/EditorCanvas'
+import { PeerAvatars } from '@/components/editor/PeerAvatars'
+import { RemixDialog } from '@/components/editor/RemixDialog'
+import { ShareDialog } from '@/components/editor/ShareDialog'
 import { SlideRail } from '@/components/editor/SlideRail'
 import { StyleDrawer } from '@/components/editor/StyleDrawer'
 import { VersionsDialog } from '@/components/editor/VersionsDialog'
 import { readBackup, useAutosave, type SaveStatus } from '@/editor/autosave'
 import * as C from '@/editor/commands'
+import { openCount, unreadCount, useComments } from '@/editor/comments'
+import { useLive, useLiveSync } from '@/editor/live'
 import { useDoc } from '@/editor/store'
 import { useUi } from '@/editor/ui'
 import { api } from '@/lib/api'
@@ -42,8 +48,11 @@ export function EditorPage() {
   const [load, setLoad] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading')
   const [toast, setToast] = useState<string | null>(null)
   const [menu, setMenu] = useState<{ x: number; y: number; kind: 'insert' | 'more' } | null>(null)
+  const [remix, setRemix] = useState(false)
   const [versions, setVersions] = useState(false)
   const [exportMenu, setExportMenu] = useState(false)
+  const [role, setRole] = useState<'owner' | 'editor'>('owner')
+  const [shareOpen, setShareOpen] = useState(false)
   const [searchParams, setSearchParams] = useSearchParams()
   // `?new=1` (just created from a template) opens the "tell me what to put in your slides" dialog once; the assistant can also request a full rewrite
   const [rewrite, setRewrite] = useState<{ brief?: string; picturesOnly?: boolean } | null>(() => (searchParams.get('new') === '1' ? {} : null))
@@ -69,6 +78,7 @@ export function EditorPage() {
     let off = false
     api.getPresentation(id).then((p) => {
       if (off) return
+      setRole(p.role ?? 'owner')
       useDoc.getState().load(p.document, p.revision)
       const backup = readBackup(id)
       if (backup && backup.revision === p.revision && JSON.stringify(backup.doc) !== JSON.stringify(p.document)) {
@@ -85,6 +95,33 @@ export function EditorPage() {
   }, [id, setActiveSlide, flash])
 
   const autosave = useAutosave(id, (d, r) => useDoc.getState().load(d, r))
+  // live editing: presence + "someone saved" nudges. Works for the owner too, whenever anyone else is in the deck.
+  useLiveSync(id, load === 'ready', autosave.pull)
+  const liveEnded = useLive((s) => s.ended)
+  // comments: read when the deck opens, again when the tab regains focus and every minute (the live channel makes it instant while it is connected)
+  useEffect(() => {
+    if (load !== 'ready') return
+    useComments.getState().start(id)
+    const again = () => useComments.getState().refresh()
+    const iv = setInterval(again, 60_000); window.addEventListener('focus', again)
+    return () => { clearInterval(iv); window.removeEventListener('focus', again); useComments.getState().stop() }
+  }, [id, load])
+  const cThreads = useComments((s) => s.threads)
+  const cSeen = useComments((s) => s.seenAt)
+  useEffect(() => useLive.subscribe((s) => { if (s.notice) { flash(s.notice); useLive.setState({ notice: null }) } }), [flash])
+  // after a collaborator's version is merged in, drop selection / text editing of things that no longer exist
+  useEffect(() => {
+    const unsub = useDoc.subscribe((s, prev) => {
+      if (s.doc === prev.doc || !s.doc) return
+      const ui = useUi.getState()
+      const sl = s.doc.slides.find((x) => x.id === ui.activeSlideId)
+      if (!sl) return
+      const ids = new Set(sl.elements.map((e) => e.id))
+      if (ui.editingId && !ids.has(ui.editingId)) useUi.getState().edit(null)
+      if (ui.selection.some((x) => !ids.has(x))) useUi.getState().select(ui.selection.filter((x) => ids.has(x)))
+    })
+    return unsub
+  }, [])
 
   const slide = useMemo(() => doc?.slides.find((s) => s.id === activeSlideId) ?? doc?.slides[0] ?? null, [doc, activeSlideId])
   useEffect(() => {
@@ -159,6 +196,9 @@ export function EditorPage() {
     { label: 'Save version', hint: '⌘S', onClick: () => { void autosave.saveNow(true); flash('Version saved.') } },
     { label: 'Version history…', onClick: () => setVersions(true) },
     { type: 'divider' },
+    ...(role === 'owner' ? [{ label: 'Duplicate presentation', onClick: () => { void autosave.saveNow(false).catch(() => {}).then(() => api.duplicatePresentation(id)).then((r) => { navigate(`/edit/${r.id}`); flash('Copy created.') }).catch((e) => (isGateError(e) ? upgrade.show(e.message) : flash(e instanceof ApiError ? e.message : 'Could not copy the presentation.'))) } },
+    { label: 'Remix this presentation…', onClick: () => setRemix(true) }] as MenuItem[] : []),
+    { type: 'divider' },
     { label: 'Delete presentation', danger: true, onClick: () => { if (confirm(`Delete "${doc.title}"? This can't be undone.`)) void api.deletePresentation(id).then(() => navigate('/')) } },
   ]
 
@@ -192,7 +232,10 @@ export function EditorPage() {
         <span role="status" aria-live="polite" title={autosave.message ?? undefined} className={`hidden sm:inline text-xs shrink-0 ${st.cls}`}>{st.text}</span>
         <div className="ml-auto flex items-center gap-2">
           <button onClick={() => { void autosave.saveNow(); navigate(`/present/${id}`) }} className="h-9 px-3 rounded-lg text-sm border border-border hover:bg-slate-50 whitespace-nowrap">▷<span className="max-sm:sr-only"> Present</span></button>
-          <div className="relative" data-export-menu>
+          <PeerAvatars />
+          {role === 'owner' && <button onClick={() => setShareOpen(true)} className="h-9 px-3 rounded-lg text-sm font-semibold border border-border hover:bg-slate-50 whitespace-nowrap"><span aria-hidden>👥</span><span className="max-sm:sr-only"> Share</span></button>}
+          {role === 'editor' && <span title="You were invited to edit this presentation. The AI uses the owner's credits; only the owner can export or share." className="hidden sm:inline text-xs rounded-full bg-amber-100 text-amber-900 px-2.5 py-1 whitespace-nowrap">Collaborating</span>}
+          {role === 'owner' && <div className="relative" data-export-menu>
             <button onClick={() => setExportMenu((v) => !v)} aria-haspopup="menu" aria-expanded={exportMenu} disabled={!!exporting} className="h-9 px-4 rounded-lg text-sm font-semibold bg-foreground text-white disabled:opacity-60">{exporting ? 'Exporting…' : 'Export'}</button>
             {exportMenu && (
               <div role="menu" className="absolute right-0 mt-2 w-44 bg-white border border-border rounded-xl shadow-lg p-1 z-30">
@@ -201,7 +244,7 @@ export function EditorPage() {
                 ))}
               </div>
             )}
-          </div>
+          </div>}
         </div>
       </header>
 
@@ -217,6 +260,12 @@ export function EditorPage() {
         </div>
       )}
 
+      {liveEnded && (
+        <div role="alert" className="px-4 py-2 text-sm bg-red-50 text-red-800 flex items-center gap-3">
+          <span className="flex-1">Your access to this presentation has ended. Your last changes are saved.</span>
+          <Link to="/" className="font-semibold underline">Back to my presentations</Link>
+        </div>
+      )}
       <div className="flex-1 flex max-md:flex-col min-h-0 relative">
         <SlideRail doc={doc} watermark={watermark} />
         <main className="flex-1 min-w-0 flex flex-col relative">
@@ -239,12 +288,14 @@ export function EditorPage() {
             <button className={tb} aria-haspopup="menu" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu({ x: r.left, y: r.top - 330, kind: 'insert' }) }}>＋<span className="max-sm:sr-only"> Insert</span></button>
             <button className={`${tb} ${drawer === 'style' ? 'bg-slate-100' : ''}`} aria-pressed={drawer === 'style'} onClick={() => setDrawer('style')}>🎨<span className="max-sm:sr-only"> Style</span></button>
             <button className={`${tb} ${drawer === 'ai' ? 'bg-slate-100' : ''}`} aria-pressed={drawer === 'ai'} onClick={() => setDrawer('ai')}>✨<span className="max-sm:sr-only"> Edit with AI</span></button>
+            <button className={`${tb} relative ${drawer === 'comments' ? 'bg-slate-100' : ''}`} aria-pressed={drawer === 'comments'} aria-label={`Comments${openCount(cThreads) ? `, ${openCount(cThreads)} open` : ''}${unreadCount(cThreads, cSeen) ? ', unread' : ''}`} onClick={() => setDrawer('comments')}>💬<span className="max-sm:sr-only"> Comments</span>{openCount(cThreads) > 0 && <span data-testid="comments-count" className="ml-1 text-[11px] font-bold bg-primary text-white rounded-full px-1.5">{openCount(cThreads)}</span>}{unreadCount(cThreads, cSeen) > 0 && drawer !== 'comments' && <i data-testid="comments-unread" aria-hidden className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-500" />}</button>
             <button className={tb} aria-label="More" aria-haspopup="menu" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu({ x: r.left, y: r.top - 300, kind: 'more' }) }}>⋮</button>
             <span className="w-px h-6 bg-border mx-1" />
             <button className={tb} aria-label="Undo" disabled={!canUndo} onClick={() => useDoc.getState().undo()}>↶</button>
             <button className={tb} aria-label="Redo" disabled={!canRedo} onClick={() => useDoc.getState().redo()}>↷</button>
           </div>
         </main>
+        {drawer === 'comments' && <CommentsPanel doc={doc} slideId={slide.id} deckId={id} role={role} onClose={() => setDrawer('comments')} />}
         {drawer === 'style' && <StyleDrawer doc={doc} slide={slide} onClose={() => setDrawer('style')} />}
         {drawer === 'ai' && !aiAvailable && (
           <aside aria-label="AI assistant" className="w-[360px] max-lg:fixed max-lg:z-40 max-lg:right-0 max-lg:top-14 max-lg:bottom-0 max-lg:shadow-2xl max-md:left-0 max-md:top-auto max-md:h-[60vh] max-md:rounded-t-2xl max-md:border-t max-lg:max-w-full shrink-0 bg-white border-l border-border p-5 text-sm">
@@ -255,6 +306,7 @@ export function EditorPage() {
         {drawer === 'ai' && aiAvailable && <AiPanel doc={doc} slide={slide} presentationId={id} onRewrite={(brief, picturesOnly) => setRewrite({ brief, ...(picturesOnly ? { picturesOnly } : {}) })} onClose={() => setDrawer('ai')} onBeforeSend={() => autosave.saveNow(false)} />}
       </div>
 
+      {shareOpen && role === 'owner' && <ShareDialog deckId={id} onClose={() => setShareOpen(false)} />}
       {rewrite && load === 'ready' && (
         <DeckRewriteDialog
           presentationId={id} slideCount={doc.slides.length} autoBrief={rewrite.brief} picturesOnly={rewrite.picturesOnly}
@@ -268,6 +320,7 @@ export function EditorPage() {
         />
       )}
       {imageDialog && <ImageDialog key={imageDialog.elementId ?? 'new'} doc={doc} slide={slide} presentationId={id} request={imageDialog} onClose={closeImageDialog} />}
+      {remix && <RemixDialog presentationId={id} title={doc.title} slideCount={doc.slides.length} handEdited={doc.slides.filter((x) => x.manual).length} beforeStart={() => autosave.saveNow(false)} onClose={() => setRemix(false)} />}
       {menu && <ContextMenu x={menu.x} y={Math.max(8, menu.y)} items={menu.kind === 'insert' ? insertItems : moreItems} onClose={() => setMenu(null)} />}
       {versions && <VersionsDialog id={id} revision={revision} onClose={() => setVersions(false)} onRestored={(d, r) => { useDoc.getState().load(d, r); setActiveSlide(d.slides[0]!.id) }} />}
       {exporting && <div role="status" className="fixed bottom-6 left-6 bg-foreground text-white px-4 py-2 rounded-lg text-sm shadow-lg z-50">{exporting}</div>}

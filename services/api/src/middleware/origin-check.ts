@@ -12,10 +12,9 @@ const SAFE = new Set(['GET', 'HEAD', 'OPTIONS'])
 export const originCheck: MiddlewareHandler = async (c, next) => {
   if (SAFE.has(c.req.method)) return next()
   const origin = c.req.header('origin')
-  if (origin) {
-    if (!ALLOWED.has(origin)) return c.json({ success: false, error: { code: 'FORBIDDEN_ORIGIN', message: 'Cross-site request refused' } }, 403)
-  } else if (c.req.header('sec-fetch-site') === 'cross-site') {
-    return c.json({ success: false, error: { code: 'FORBIDDEN_ORIGIN', message: 'Cross-site request refused' } }, 403)
-  }
+  const refuse = () => c.json({ success: false, error: { code: 'FORBIDDEN_ORIGIN', message: 'Cross-site request refused' } }, 403)
+  // Our websites and this API are always same-site (sub-domains of one domain), so a browser that labels the request "cross-site" is being used by ANOTHER site: refused whatever Origin says
+  if (c.req.header('sec-fetch-site') === 'cross-site') return refuse()
+  if (origin && !ALLOWED.has(origin)) return refuse()
   return next()
 }

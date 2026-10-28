@@ -11,8 +11,30 @@ import { useUi } from '@/editor/ui'
 
 type Msg =
   | { role: 'user'; text: string }
-  | { role: 'ai'; reply: string; applied: string[]; notes: string[]; credits: number; images?: AiImageProposal[] }
+  | { role: 'ai'; reply: string; applied: string[]; notes: string[]; credits: number; images?: AiImageProposal[]; askAbout?: string; undo?: string; revertedUndo?: string[] }
   | { role: 'error'; text: string }
+
+/** What the assistant changed (newest last), per presentation, kept for the whole page session so closing the panel does not lose it; rebuilt from the saved chat after a reload. */
+const UNDO_STACKS = new Map<string, C.AssistUndo[]>()
+const MAX_UNDO = 5
+const MAX_UNDO_JSON = 90_000 // saved with the chat message; bigger than this is kept in memory only
+
+/** The undo records still available, from the saved conversation: every change that was not later put back. */
+function rebuildUndo(rows: Msg[]): C.AssistUndo[] {
+  let live: C.AssistUndo[] = []
+  for (const m of rows) {
+    if (m.role !== 'ai') continue
+    if (m.revertedUndo?.length) live = live.filter((u) => !m.revertedUndo!.includes(u.id))
+    if (m.undo) { try { live.push(JSON.parse(m.undo) as C.AssistUndo) } catch { /* unreadable: skip */ } }
+  }
+  return live.slice(-MAX_UNDO)
+}
+/** The last few turns, in words, so "revert it", "again" or "the same for slide 3" can be understood. */
+function conversationOf(msgs: Msg[]) {
+  return msgs.filter((m) => m.role !== 'error').slice(-8).map((m) => (m.role === 'user'
+    ? { role: 'user' as const, text: m.text.slice(0, 500) }
+    : { role: 'assistant' as const, text: [m.reply, m.applied.length ? `Changes made: ${m.applied.join('; ')}` : '', ...m.notes].filter(Boolean).join(' ').slice(0, 500) }))
+}
 
 const SOURCE_SUGGESTION = 'Add more content to every slide from my attached sources'
 const SUGGESTIONS = {
@@ -41,6 +63,7 @@ export function AiPanel({ doc, slide, presentationId, onClose, onBeforeSend, onR
   const [sourcesOpen, setSourcesOpen] = useState(false)
   const [historyLoaded, setHistoryLoaded] = useState(false)
   const endRef = useRef<HTMLDivElement>(null)
+  const undoStack = () => UNDO_STACKS.get(presentationId) ?? []
   const allowed = models.filter((m) => m.allowed)
   const current = models.find((m) => m.id === model)
   const links = findUrls(text)
@@ -61,7 +84,7 @@ export function AiPanel({ doc, slide, presentationId, onClose, onBeforeSend, onR
   // the conversation is kept per presentation: reopen the panel (or reload, or switch device) and it is all still here
   useEffect(() => {
     let off = false
-    api.aiChat(presentationId).then((rows) => { if (!off) { setMsgs(rows as unknown as Msg[]); setHistoryLoaded(true) } }).catch(() => !off && setHistoryLoaded(true))
+    api.aiChat(presentationId).then((rows) => { if (!off) { setMsgs(rows as unknown as Msg[]); if (!UNDO_STACKS.has(presentationId)) UNDO_STACKS.set(presentationId, rebuildUndo(rows as unknown as Msg[])); setHistoryLoaded(true) } }).catch(() => !off && setHistoryLoaded(true))
     return () => { off = true }
   }, [presentationId])
   /** best-effort: never blocks or fails the conversation. Picture proposals are not saved (they are one-off buttons). */
@@ -86,11 +109,31 @@ export function AiPanel({ doc, slide, presentationId, onClose, onBeforeSend, onR
     setPending(true)
     try {
       await onBeforeSend().catch(() => {}) // the server reads the saved deck, so save what's on screen first
-      const res = await api.aiAssist(presentationId, { instruction: t, scope, ...(scope === 'slide' ? { slideId: slide.id } : {}), ...(model ? { model } : {}), requestId: crypto.randomUUID(), ...(attached.length ? { sourceIds: attached.map((a) => a.id) } : {}) })
+      const res = await api.aiAssist(presentationId, { instruction: t, scope, ...(scope === 'slide' ? { slideId: slide.id } : {}), activeSlideId: slide.id, ...(model ? { model } : {}), requestId: crypto.randomUUID(), ...(attached.length ? { sourceIds: attached.map((a) => a.id) } : {}), ...(undoStack().length ? { recent: [...undoStack()].reverse().map((u) => ({ theme: !!u.theme, slideIds: C.undoSlideIds(u), summary: u.summary })) } : {}), conversation: conversationOf(msgs) })
       setAttached([])
       if (res.sources?.length) apply('Attach sources', (d) => C.addSources(d, res.sources!))
-      if (res.applied.length) apply('AI assistant', (d) => C.applyAssist(d, res)) // live, one undo step
-      const aiMsg: Msg = { role: 'ai', reply: res.reply, applied: res.applied, notes: res.notes, credits: res.creditsCharged, images: res.images }
+      let undoInfo: { undo?: string; revertedUndo?: string[] } = {}
+      if (res.applied.length) {
+        const before = useDoc.getState().doc
+        const log = undoStack()
+        const reverted: string[] = []
+        apply('AI assistant', (d) => {
+          C.applyAssist(d, res)
+          for (const r of res.reverts ?? []) { const e = log[log.length - 1 - r.change]; if (e) { C.revertAssist(d, e, r.part, r.slideId); if (r.part === 'all') reverted.push(e.id) } }
+        }) // live, one undo step
+        const after = useDoc.getState().doc
+        const didEdit = !!res.theme || res.edits.length > 0 || (res.additions?.length ?? 0) > 0
+        let next = log.filter((u) => !reverted.includes(u.id))
+        if (before && after && didEdit) {
+          const u = C.snapshotAssist(before, after, !!res.theme, res.applied)
+          next = [...next, u]
+          const json = JSON.stringify(u)
+          if (json.length <= MAX_UNDO_JSON) undoInfo = { undo: json }
+        }
+        if (reverted.length) undoInfo = { ...undoInfo, revertedUndo: reverted }
+        UNDO_STACKS.set(presentationId, next.slice(-MAX_UNDO))
+      }
+      const aiMsg: Msg = { role: 'ai', reply: res.reply, applied: res.applied, notes: res.notes, credits: res.creditsCharged, images: res.images, ...(res.ask ? { askAbout: t } : {}), ...undoInfo }
       setMsgs((m) => [...m, aiMsg])
       remember(userMsg, aiMsg)
       void refresh()
@@ -163,11 +206,17 @@ export function AiPanel({ doc, slide, presentationId, onClose, onBeforeSend, onR
             <div key={i} role="alert" className="mr-4 bg-red-50 text-red-700 rounded-2xl px-3 py-2 text-sm">{m.text}</div>
           ) : (
             <div key={i} className="mr-4 bg-slate-100 rounded-2xl rounded-bl-sm px-3 py-2 text-sm space-y-2">
-              <p>{m.reply}</p>
+              <p className="whitespace-pre-line">{m.reply}</p>
               {m.applied.length > 0 && (
                 <ul className="text-xs text-green-800 space-y-0.5">{m.applied.map((a) => <li key={a}>✓ {a}</li>)}</ul>
               )}
               {m.notes.length > 0 && <ul className="text-xs text-amber-800 space-y-0.5">{m.notes.map((n) => <li key={n}>• {n}</li>)}</ul>}
+              {m.askAbout && i === msgs.length - 1 && !pending && (
+                <div className="flex flex-wrap gap-2" role="group" aria-label="Which slide?">
+                  <button onClick={() => void send(`${m.askAbout} (slide ${slideNo})`)} className="text-xs border border-primary text-primary rounded-full px-3 py-1 hover:bg-primary hover:text-white">Slide {slideNo} (this one)</button>
+                  <button onClick={() => void send(`${m.askAbout} (on every slide)`)} className="text-xs border border-border rounded-full px-3 py-1 hover:border-primary">All slides</button>
+                </div>
+              )}
               {m.images?.map((p, k) => <ProposalCard key={k} proposal={p} presentationId={presentationId} />)}
               {m.applied.length > 0 && (
                 <div className="flex items-center gap-3 text-xs text-slate-500">
@@ -175,7 +224,6 @@ export function AiPanel({ doc, slide, presentationId, onClose, onBeforeSend, onR
                   <span>{m.credits} credits</span>
                 </div>
               )}
-              {m.applied.length === 0 && <p className="text-xs text-slate-500">Nothing was changed, so nothing was charged.</p>}
             </div>
           ),
         )}

@@ -3,7 +3,7 @@ import { db } from '../db/index.ts'
 import { sourceChunk, sourceDocument } from '../db/schema.ts'
 import { chunkText, type Extracted } from './extract.ts'
 
-export type SourceType = 'text' | 'url' | 'pdf' | 'pptx'
+export type SourceType = 'text' | 'url' | 'pdf' | 'pptx' | 'docx' | 'xlsx' | 'csv' | 'email'
 
 /** Persists extracted text as a private source (+ chunks with citation locators). Shared by the sources API and draft hand-off. */
 export async function saveSource(userId: string, type: SourceType, ex: Extracted, url?: string) {

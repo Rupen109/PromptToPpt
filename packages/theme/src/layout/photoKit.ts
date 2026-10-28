@@ -1,7 +1,7 @@
 import type { SlideContent, SlideElement } from '@prompttoppt/validation'
 import { contrastRatio, mix } from '../color'
 import { decor, hexOutline } from './decor'
-import { type Ctx, deco, emphasised, isDark, pal, para, rect, text } from './primitives'
+import { type Ctx, deco, duo, emphasised, isDark, pal, para, rect, text } from './primitives'
 import type { Bg, TitleKind } from './title'
 
 /** A catalogue picture placed on a slide. */
@@ -59,7 +59,7 @@ export function photoTitle(c: Ctx, content: { title: string; subtitle?: string |
   const copy = (x: number, y: number, w: number, h: number, align: 'left' | 'center' = 'left') => {
     const subH = content.subtitle ? 130 : 0
     rect(c, accent, align === 'center' ? x + w / 2 - 60 : x, y, 120, 10, { radius: 5, animate: 'accent' })
-    text(c, 'title', [para(content.title)], x, y + 34, w, h - subH - 34, size, { color: 'textPrimary', valign: 'middle', min: 40, align })
+    text(c, 'title', [c.style.header === 'duo' ? duo(content.title, accent) : para(content.title)], x, y + 34, w, h - subH - 34, size, { color: 'textPrimary', valign: 'middle', min: 40, align })
     if (content.subtitle) text(c, 'subtitle', [para(content.subtitle)], x, y + h - subH + 6, w, subH - 6, 32, { color: 'textSecondary', min: 20, align, animate: 'body' })
   }
 
@@ -214,7 +214,7 @@ function bannerTitle(c: Ctx, content: { title: string; subtitle?: string | undef
   const size = kind === 'title' ? 76 : 68
   const subH = content.subtitle ? 110 : 0
   const hh = H - y - M * 0.9
-  text(c, 'title', [emphasised(content.title, accent)], M, y, W - 2 * M, hh - subH, size, { valign: 'top', min: 36 })
+  text(c, 'title', [c.style.header === 'duo' ? duo(content.title, accent) : emphasised(content.title, accent)], M, y, W - 2 * M, hh - subH, size, { valign: 'top', min: 36 })
   if (content.subtitle) text(c, 'subtitle', [para(content.subtitle)], M, y + hh - subH + 4, W - 2 * M, subH, 30, { color: 'textSecondary', min: 18, animate: 'body' })
   return { value: ink }
 }
@@ -236,11 +236,11 @@ function hexTitle(c: Ctx, content: { title: string; subtitle?: string | undefine
   const subH = content.subtitle ? 120 : 0
   if (wide) {
     rect(c, accent, M, H / 2 - 200, 110, 8, { radius: 4, animate: 'accent' })
-    text(c, 'title', [para(content.title)], M, H / 2 - 170, W - M * 2 - d - 60, 340 - subH, size, { valign: 'middle', min: 38 })
+    text(c, 'title', [c.style.header === 'duo' ? duo(content.title, accent) : para(content.title)], M, H / 2 - 170, W - M * 2 - d - 60, 340 - subH, size, { valign: 'middle', min: 38 })
     if (content.subtitle) text(c, 'subtitle', [para(content.subtitle)], M, H / 2 + 170 - subH, W - M * 2 - d - 60, subH, 30, { color: 'textSecondary', min: 18, animate: 'body' })
   } else {
     const y = py + d + 40
-    text(c, 'title', [para(content.title)], M, y, W - 2 * M, H - y - M - subH, size, { valign: 'middle', min: 34, align: 'center' })
+    text(c, 'title', [c.style.header === 'duo' ? duo(content.title, accent) : para(content.title)], M, y, W - 2 * M, H - y - M - subH, size, { valign: 'middle', min: 34, align: 'center' })
     if (content.subtitle) text(c, 'subtitle', [para(content.subtitle)], M, H - M - subH, W - 2 * M, subH, 28, { color: 'textSecondary', min: 18, align: 'center', animate: 'body' })
   }
   return { value: ink }

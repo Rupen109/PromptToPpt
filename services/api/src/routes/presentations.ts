@@ -11,6 +11,8 @@ import { aiAssistInput, aiAssistOutput, aiAssistPrompt, compileAssist } from '..
 import { readLinkedPages } from '../ai/linked-pages.ts'
 import { aiEditInput, aiEditOutput, aiEditPrompt } from '../ai/ai-edit.ts'
 import { aiConfigured, catalog, gateway } from '../ai/gateway.ts'
+import { resolveAccess } from '../collab/access.ts'
+import { publishRevision } from '../live/bus.ts'
 import { isPremiumTheme, lookOf } from '../billing/premium-look.ts'
 import { creditPrice, refundCredits, reserveCredits } from '../billing/credits.ts'
 import { assertAiEdits, assertModelTier, assertPresentationQuota, getEntitlements } from '../billing/entitlements.ts'
@@ -22,6 +24,8 @@ import { audit, ipOf } from '../lib/audit.ts'
 import { aiChatMessage, creditLedger, generationJob, presentation, presentationVersion, project } from '../db/schema.ts'
 import { hasNumbers, sanitizeContent } from '../generation/policy.ts'
 import { loadSources } from '../generation/sources.ts'
+import { describeDeck } from '../remix/describe.ts'
+import { saveSource } from '../sources/store.ts'
 import { enrichSlides, loadChunks } from '../ai/enrich.ts'
 import { byUser, rateLimit } from '../middleware/rate-limit.ts'
 import { requireAuth, type AppEnv } from '../middleware/session.ts'
@@ -34,6 +38,28 @@ presentations.use('*', requireAuth)
 const SNAPSHOT_EVERY_MS = 5 * 60_000
 const notFound = (c: any) => c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Presentation not found' } }, 404)
 const mine = (id: string, userId: string) => and(eq(presentation.id, id), eq(presentation.userId, userId), isNull(presentation.deletedAt))
+
+
+/**
+ * Saves a new deck for a user with every create-time limit applied: serialised per user (parallel requests cannot overshoot the monthly
+ * allowance), monthly presentations, and the cap on how many decks one account keeps. Used by "new from template" and "duplicate".
+ */
+async function insertDeck(userId: string, ent: Awaited<ReturnType<typeof getEntitlements>>, d: { id: string; title: string; aspectRatio: string; doc: Presentation; projectId?: string | null | undefined }) {
+  const { id, title, aspectRatio, doc, projectId } = d
+  const input = { aspectRatio, projectId }
+  await db.transaction(async (tx) => {
+    // Serialise a user's creates: without the lock, ten parallel requests all pass the monthly-deck check and overshoot the plan limit.
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`pres:${userId}`}))`)
+    // recount INSIDE the lock using this transaction's connection (a nested pool checkout while holding the lock would deadlock under load)
+    const [{ n: made } = { n: 0 }] = await tx.select({ n: sql<number>`count(*)::int` }).from(presentation).where(and(eq(presentation.userId, userId), gte(presentation.createdAt, ent.period.start)))
+    const [{ n: running } = { n: 0 }] = await tx.select({ n: sql<number>`count(*)::int` }).from(generationJob).where(and(eq(generationJob.userId, userId), notInArray(generationJob.status, ['completed', 'failed', 'cancelled']), gte(generationJob.createdAt, ent.period.start)))
+    assertPresentationQuota({ limits: ent.limits, plan: ent.plan, usage: { presentationsThisPeriod: made + running, imagesThisPeriod: 0 } })
+    const [{ n: live } = { n: 0 }] = await tx.select({ n: sql<number>`count(*)::int` }).from(presentation).where(and(eq(presentation.userId, userId), isNull(presentation.deletedAt)))
+    if (live >= MAX_LIVE_PRESENTATIONS) throw new GateError('LIMIT_REACHED', `You can keep up to ${MAX_LIVE_PRESENTATIONS} presentations. Delete some to create more.`, 429, { feature: 'presentations', limit: MAX_LIVE_PRESENTATIONS })
+    await tx.insert(presentation).values({ id, userId, title, aspectRatio: input.aspectRatio, latestVersion: 1, revision: 1, ...(projectId ? { projectId } : {}) })
+    await tx.insert(presentationVersion).values({ id: nanoid(), presentationId: id, version: 1, document: doc, createdBy: 'generation' })
+  })
+}
 
 presentations.get('/', async (c) => {
   const projectId = c.req.query('projectId')
@@ -81,19 +107,52 @@ presentations.post('/', rateLimit({ windowMs: 60_000, max: 20, key: (c) => `crea
     schemaVersion: 1, id, title, aspectRatio: input.aspectRatio, language: 'en', theme, sources: [],
     slides: slides.map((s) => ({ id: nanoid(12), locked: false, validation: { status: 'pending' as const, issues: [] }, ...s })),
   }
-  await db.transaction(async (tx) => {
-    // Serialise a user's creates: without the lock, ten parallel requests all pass the monthly-deck check and overshoot the plan limit.
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`pres:${userId}`}))`)
-    // recount INSIDE the lock using this transaction's connection (a nested pool checkout while holding the lock would deadlock under load)
-    const [{ n: made } = { n: 0 }] = await tx.select({ n: sql<number>`count(*)::int` }).from(presentation).where(and(eq(presentation.userId, userId), gte(presentation.createdAt, ent.period.start)))
-    const [{ n: running } = { n: 0 }] = await tx.select({ n: sql<number>`count(*)::int` }).from(generationJob).where(and(eq(generationJob.userId, userId), notInArray(generationJob.status, ['completed', 'failed', 'cancelled']), gte(generationJob.createdAt, ent.period.start)))
-    assertPresentationQuota({ limits: ent.limits, plan: ent.plan, usage: { presentationsThisPeriod: made + running, imagesThisPeriod: 0 } })
-    const [{ n: live } = { n: 0 }] = await tx.select({ n: sql<number>`count(*)::int` }).from(presentation).where(and(eq(presentation.userId, userId), isNull(presentation.deletedAt)))
-    if (live >= MAX_LIVE_PRESENTATIONS) throw new GateError('LIMIT_REACHED', `You can keep up to ${MAX_LIVE_PRESENTATIONS} presentations. Delete some to create more.`, 429, { feature: 'presentations', limit: MAX_LIVE_PRESENTATIONS })
-    await tx.insert(presentation).values({ id, userId, title, aspectRatio: input.aspectRatio, latestVersion: 1, revision: 1, ...(input.projectId ? { projectId: input.projectId } : {}) })
-    await tx.insert(presentationVersion).values({ id: nanoid(), presentationId: id, version: 1, document: doc, createdBy: 'generation' })
-  })
+  await insertDeck(userId, ent, { id, title, aspectRatio: input.aspectRatio, doc, projectId: input.projectId })
   return c.json({ success: true, data: { id } }, 201)
+})
+
+/** The saved (latest) document of one of YOUR decks, or why it cannot be used. */
+async function ownLatest(id: string, userId: string): Promise<{ doc: Presentation; projectId: string | null } | 'missing' | 'unreadable'> {
+  const [row] = await db.select({ v: presentationVersion.document, projectId: presentation.projectId }).from(presentation)
+    .innerJoin(presentationVersion, and(eq(presentationVersion.presentationId, presentation.id), eq(presentationVersion.version, presentation.latestVersion))).where(mine(id, userId))
+  if (!row) return 'missing'
+  const parsed = presentationSchema.safeParse(row.v)
+  return parsed.success ? { doc: parsed.data, projectId: row.projectId } : 'unreadable'
+}
+
+/** Exact copy of one of your decks as a NEW deck (its own history). Counts toward the monthly allowance like any new deck; no AI, no credits. */
+presentations.post('/:id/duplicate', rateLimit({ windowMs: 60_000, max: 10, key: byUser('dup') }), async (c) => {
+  const userId = c.get('session')!.user.id
+  const own = await ownLatest(c.req.param('id'), userId)
+  if (own === 'missing') return notFound(c)
+  if (own === 'unreadable') return c.json({ success: false, error: { code: 'UNREADABLE', message: 'This presentation could not be copied. Open it and try again.' } }, 422)
+  const ent = await getEntitlements(userId)
+  const id = nanoid()
+  const title = `Copy of ${own.doc.title}`.slice(0, 200)
+  if (own.doc.slides.length > ent.limits.maxSlides) throw new GateError('UPGRADE_REQUIRED', `The ${ent.plan.name} plan allows up to ${ent.limits.maxSlides} slides per presentation.`, 403, { feature: 'slides', limit: ent.limits.maxSlides })
+  await insertDeck(userId, ent, { id, title, aspectRatio: own.doc.aspectRatio, doc: { ...own.doc, id, title }, projectId: own.projectId })
+  return c.json({ success: true, data: { id, title } }, 201)
+})
+
+/**
+ * Step 1 of "Remix": turns one of your decks into a private text source the generator can read (every slide, with its figures),
+ * so a remix starts from your real content instead of a blank page. Step 2 is an ordinary generation job (with `remixOf`), which
+ * charges credits per slide like any new deck. Pro and Gold.
+ */
+const REMIX_SOURCES_KEPT = 20
+presentations.post('/:id/remix-source', rateLimit({ windowMs: 60_000, max: 10, key: byUser('remix') }), async (c) => {
+  const userId = c.get('session')!.user.id
+  const ent = await getEntitlements(userId)
+  if (ent.plan.id === 'starter') throw new GateError('UPGRADE_REQUIRED', 'Remixing a presentation is available on Pro and Gold.', 403, { feature: 'remix' })
+  const own = await ownLatest(c.req.param('id'), userId)
+  if (own === 'missing') return notFound(c)
+  if (own === 'unreadable') return c.json({ success: false, error: { code: 'UNREADABLE', message: 'This presentation could not be read. Open it and try again.' } }, 422)
+  const text = describeDeck(own.doc)
+  if (text.parts.length === 0) return c.json({ success: false, error: { code: 'NOTHING_TO_REMIX', message: 'This presentation has no slide text to remix.' } }, 422)
+  const src = await saveSource(userId, 'text', { title: `Remix source: ${own.doc.title}`.slice(0, 200), parts: text.parts })
+  // these are working copies: keep only the newest few so remixing never fills the user's source allowance (never one younger than an hour: a queued remix job may still need it)
+  await db.execute(sql`delete from source_document where user_id = ${userId} and title like 'Remix source: %' and created_at < now() - interval '1 hour' and id not in (select id from source_document where user_id = ${userId} and title like 'Remix source: %' order by created_at desc limit ${REMIX_SOURCES_KEPT})`)
+  return c.json({ success: true, data: { sourceId: src.id, title: own.doc.title, slideCount: own.doc.slides.length, aspectRatio: own.doc.aspectRatio, skipped: text.skipped } }, 201)
 })
 
 /** Move a deck into a project (or out: projectId null). Moving is never plan-gated. */
@@ -109,10 +168,12 @@ presentations.put('/:id/project', zValidator('json', z.object({ projectId: z.str
 })
 
 presentations.get('/:id', async (c) => {
-  const [p] = await db.select().from(presentation).where(mine(c.req.param('id'), c.get('session')!.user.id))
+  const access = await resolveAccess(c.req.param('id'), c.get('session')!.user.id)
+  if (!access) return notFound(c)
+  const [p] = await db.select().from(presentation).where(mine(c.req.param('id'), access.ownerId))
   if (!p) return notFound(c)
   const [v] = await db.select().from(presentationVersion).where(and(eq(presentationVersion.presentationId, p.id), eq(presentationVersion.version, p.latestVersion)))
-  return c.json({ success: true, data: { id: p.id, title: p.title, revision: p.revision, version: p.latestVersion, document: v!.document } })
+  return c.json({ success: true, data: { id: p.id, title: p.title, revision: p.revision, version: p.latestVersion, document: v!.document, role: access.role } })
 })
 
 /**
@@ -126,8 +187,11 @@ presentations.put(
   rateLimit({ windowMs: 60_000, max: 120, key: byUser('save') }),
   zValidator('json', z.object({ baseRevision: z.number().int().min(1), document: z.unknown(), snapshot: z.boolean().default(false) })),
   async (c) => {
-    const userId = c.get('session')!.user.id
     const id = c.req.param('id')
+    // collaborators save into the owner's deck under the owner's plan limits
+    const access = await resolveAccess(id, c.get('session')!.user.id)
+    if (!access) return notFound(c)
+    const userId = access.ownerId
     const body = c.req.valid('json')
     const parsed = presentationSchema.safeParse(body.document)
     if (!parsed.success) return c.json({ success: false, error: { code: 'INVALID_DOCUMENT', message: parsed.error.issues.slice(0, 3).map((i) => `${i.path.join('.')}: ${i.message}`).join('; ') } }, 400)
@@ -167,12 +231,15 @@ presentations.put(
       await tx.update(presentation).set({ title: doc.title, aspectRatio: doc.aspectRatio, latestVersion: version, revision, updatedAt: new Date() }).where(eq(presentation.id, id))
       return { revision, version }
     })
+    if (result) publishRevision(id, result.revision, c.get('session')!.user.id) // everyone else in the deck merges this revision live
     return result ? c.json({ success: true, data: result }) : notFound(c)
   },
 )
 
 presentations.get('/:id/versions', async (c) => {
-  const userId = c.get('session')!.user.id
+  const access = await resolveAccess(c.req.param('id'), c.get('session')!.user.id)
+  if (!access) return notFound(c)
+  const userId = access.ownerId
   const [p] = await db.select({ id: presentation.id }).from(presentation).where(mine(c.req.param('id'), userId))
   if (!p) return notFound(c)
   const rows = await db
@@ -185,9 +252,11 @@ presentations.get('/:id/versions', async (c) => {
 })
 
 /** Restoring never rewrites history: the old snapshot becomes a NEW latest version. */
-presentations.post('/:id/versions/:version/restore', zValidator('json', z.object({ baseRevision: z.number().int().min(1) })), async (c) => {
-  const userId = c.get('session')!.user.id
+presentations.post('/:id/versions/:version/restore', rateLimit({ windowMs: 60_000, max: 20, key: byUser('restore') }), zValidator('json', z.object({ baseRevision: z.number().int().min(1) })), async (c) => {
   const id = c.req.param('id')
+  const access = await resolveAccess(id, c.get('session')!.user.id)
+  if (!access) return notFound(c)
+  const userId = access.ownerId
   const target = Number(c.req.param('version'))
   if (!Number.isInteger(target) || target < 1 || target > 1_000_000) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Version not found' } }, 404)
   const ent = await getEntitlements(userId)
@@ -211,6 +280,7 @@ presentations.post('/:id/versions/:version/restore', zValidator('json', z.object
   })
   if (out === null) return notFound(c)
   if (out === undefined) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Version not found' } }, 404)
+  publishRevision(id, out.revision, c.get('session')!.user.id)
   return c.json({ success: true, data: out })
 })
 
@@ -228,8 +298,10 @@ presentations.delete('/:id', async (c) => {
  */
 presentations.post('/:id/ai-edit', rateLimit({ windowMs: 60_000, max: 20, key: byUser('aiedit') }), zValidator('json', aiEditInput), async (c) => {
   if (!aiConfigured) return c.json({ success: false, error: { code: 'AI_NOT_CONFIGURED', message: 'AI is not configured on this server' } }, 503)
-  const userId = c.get('session')!.user.id
   const id = c.req.param('id')
+  const access = await resolveAccess(id, c.get('session')!.user.id)
+  if (!access) return notFound(c)
+  const userId = access.ownerId // a collaborator's AI edit is charged to the OWNER: credits, model tiers and the usage ledger all use the owner
   const input = c.req.valid('json')
   const off = (await refuseIfOn('maintenance_mode', c, userId)) ?? (await refuseIfOff('ai_assistant', c, userId)) // before credits are reserved
   if (off) return off
@@ -283,10 +355,17 @@ presentations.post('/:id/ai-edit', rateLimit({ windowMs: 60_000, max: 20, key: b
 const replyFor = (changes: number, pictures: number) =>
   [changes > 0 ? `Done — ${changes === 1 ? 'one change' : `${changes} changes`} applied to your deck.` : '', pictures > 0 ? (changes > 0 ? 'I also prepared' : 'I prepared') + ` ${pictures === 1 ? 'a picture' : `${pictures} pictures`} for you to confirm below.` : ''].filter(Boolean).join(' ')
 
+/** Shown when no operation applied: lists what the assistant CAN do, so a greeting, a question or an unsupported ask is never met with a bare refusal. */
+export const CAPABILITIES_REPLY = 'Hey! Tell me what to update — slide text, add a slide, pictures, theme, colours, fonts or animation.\nFor example: "make slide 3 shorter".'
+const nothingAppliedReply = (notes: string[]) => (notes.length ? "I couldn't do that — see the note below." : CAPABILITIES_REPLY)
+
 presentations.post('/:id/ai-assist', rateLimit({ windowMs: 60_000, max: 15, key: (c) => `assist:${(c.get('session') as { user: { id: string } }).user.id}` }), zValidator('json', aiAssistInput), async (c) => {
   if (!aiConfigured) return c.json({ success: false, error: { code: 'AI_NOT_CONFIGURED', message: 'AI is not configured on this server' } }, 503)
-  const userId = c.get('session')!.user.id
   const id = c.req.param('id')
+  const access = await resolveAccess(id, c.get('session')!.user.id)
+  if (!access) return notFound(c)
+  const userId = access.ownerId // charged to the OWNER (see ai-edit)
+  const isOwner = access.role === 'owner'
   const input = c.req.valid('json')
   const off = (await refuseIfOn('maintenance_mode', c, userId)) ?? (await refuseIfOff('ai_assistant', c, userId)) // before credits are reserved
   if (off) return off
@@ -323,11 +402,16 @@ presentations.post('/:id/ai-assist', rateLimit({ windowMs: 60_000, max: 15, key:
     const promptSources = trimSources(sources, 30_000)
     const out = await gateway.run({
       route: 'quality', model: picked.id, requestType: 'ai_assist',
-      ...aiAssistPrompt({ instruction: input.instruction, scope: input.scope, focusSlideId: input.slideId, doc, pages, sources: promptSources }),
+      ...aiAssistPrompt({ conversation: input.conversation, activeSlideId: input.activeSlideId, recent: input.recent, instruction: input.instruction, scope: input.scope, focusSlideId: input.slideId, doc, pages, sources: promptSources }),
       schema: aiAssistOutput, ctx: { userId, presentationId: id },
     })
     let enrichCharged = 0
-    const result = compileAssist({ ...doc, sources: [...(doc.sources ?? []), ...added] }, out, ent, input.scope, input.slideId, [...pages.filter((p) => p.status === 'read').map((p) => p.text), ...sources.map((x) => x.text)])
+    const result = compileAssist({ ...doc, sources: [...(doc.sources ?? []), ...added] }, out, ent, input.scope, input.slideId, [...pages.filter((p) => p.status === 'read').map((p) => p.text), ...sources.map((x) => x.text)], input.recent)
+    if (!isOwner && result.rewrite) {
+      // rebuilding every slide runs as a separate generation job under the OWNER's account: collaborators edit slides, the owner rebuilds decks
+      await refundPlanning(userId, input.requestId)
+      return c.json({ success: true, data: { reply: 'Only the owner can rebuild the whole presentation. I can still change individual slides, colours and fonts for you.', theme: null, edits: [], additions: [], reverts: [], images: [], applied: [], notes: [], rewrite: null, creditsCharged: 0, model: picked.id, sources: [] } })
+    }
     // "add more content from my document": expanded per slide from its own excerpts (retrieval), verified to really differ from the old text
     if (result.enrich) {
       result.applied = result.applied.filter((a) => a !== 'Adding detail from your attached sources')
@@ -347,16 +431,27 @@ presentations.post('/:id/ai-assist', rateLimit({ windowMs: 60_000, max: 15, key:
       }
     }
     for (const p of pages) if (p.status === 'failed') result.notes.push(`Couldn't read ${p.url} — ${p.reason ?? 'unknown problem'}`)
+    if (result.applied.length === 0 && out.ask) {
+      // the request needs a slide (or a choice) the user didn't give: ask instead of guessing; nothing changed, nothing charged
+      await refundPlanning(userId, input.requestId)
+      return c.json({ success: true, data: { reply: out.ask, ask: true, theme: null, edits: [], additions: [], reverts: [], images: [], applied: [], notes: [], rewrite: null, creditsCharged: 0, model: picked.id, sources: added } })
+    }
     if (result.applied.length === 0) {
+      if (!out.onTopic) result.notes.length = 0 // not about the deck at all: the help list is the whole answer, never a made-up note
       await refundPlanning(userId, input.requestId) // nothing changed → nothing charged (within a daily allowance)
-      return c.json({ success: true, data: { reply: "I couldn't change anything for that request.", theme: null, edits: [], images: [], applied: [], notes: result.notes, rewrite: null, creditsCharged: 0, model: picked.id, sources: added } })
+      return c.json({ success: true, data: { reply: nothingAppliedReply(result.notes), theme: null, edits: [], additions: [], reverts: [], images: [], applied: [], notes: result.notes, rewrite: null, creditsCharged: 0, model: picked.id, sources: added } })
+    }
+    if (result.reverts.length > 0 && result.applied.length === result.reverts.length) {
+      // putting back a change the assistant made is free: the user is correcting us, not asking for new work
+      await refundPlanning(userId, input.requestId)
+      return c.json({ success: true, data: { reply: "Sorry about that — I've put it back the way it was.", theme: null, edits: [], additions: [], reverts: result.reverts, images: [], rewrite: null, applied: result.applied, notes: result.notes, creditsCharged: 0, model: picked.id, sources: added } })
     }
     if (result.rewrite && result.applied.length === 1) {
       // the full rewrite is charged by its own generation job (per slide), so the planning call costs the user nothing (within a daily allowance)
       await refundPlanning(userId, input.requestId)
-      return c.json({ success: true, data: { reply: result.rewrite.picturesOnly ? "On it — I'll pick new pictures that match each slide and keep your text." : "Got it — I'll rebuild every slide from your details, keeping this design.", theme: null, edits: [], images: [], rewrite: result.rewrite, applied: result.applied, notes: result.notes, creditsCharged: 0, model: picked.id, sources: added } })
+      return c.json({ success: true, data: { reply: result.rewrite.picturesOnly ? "On it — I'll pick new pictures that match each slide and keep your text." : "Got it — I'll rebuild every slide from your details, keeping this design.", theme: null, edits: [], additions: [], reverts: [], images: [], rewrite: result.rewrite, applied: result.applied, notes: result.notes, creditsCharged: 0, model: picked.id, sources: added } })
     }
-    return c.json({ success: true, data: { reply: replyFor(result.applied.length - result.images.length, result.images.length), theme: result.theme, edits: result.edits, images: result.images, rewrite: result.rewrite, applied: result.applied, notes: result.notes, creditsCharged: price + enrichCharged, model: picked.id, sources: added } })
+    return c.json({ success: true, data: { reply: replyFor(result.applied.length - result.images.length, result.images.length), theme: result.theme, edits: result.edits, additions: result.additions, reverts: result.reverts, images: result.images, rewrite: result.rewrite, applied: result.applied, notes: result.notes, creditsCharged: price + enrichCharged, model: picked.id, sources: added } })
   } catch (e) {
     await refundCredits(userId, 'ai_assist', input.requestId)
     if (e instanceof BillingError || e instanceof GateError) throw e
@@ -374,7 +469,7 @@ function trimSources(list: { id: string; title: string; text: string }[], budget
 }
 
 // ─── AI assistant conversation (persisted per presentation) ──────────────────────────────────────────────
-const chatBody = z.object({ role: z.enum(['user', 'ai', 'error']), text: z.string().max(4000).optional(), reply: z.string().max(4000).optional(), applied: z.array(z.string().max(300)).max(30).optional(), notes: z.array(z.string().max(400)).max(20).optional(), credits: z.number().optional(), images: z.array(z.record(z.string().max(40), z.union([z.string().max(600), z.number(), z.boolean(), z.null()])).refine((o) => Object.keys(o).length <= 12, 'too many fields')).max(6).optional() })
+const chatBody = z.object({ role: z.enum(['user', 'ai', 'error']), text: z.string().max(4000).optional(), reply: z.string().max(4000).optional(), applied: z.array(z.string().max(300)).max(30).optional(), notes: z.array(z.string().max(400)).max(20).optional(), credits: z.number().optional(), undo: z.string().max(100_000).optional(), revertedUndo: z.array(z.string().max(64)).max(10).optional(), images: z.array(z.record(z.string().max(40), z.union([z.string().max(600), z.number(), z.boolean(), z.null()])).refine((o) => Object.keys(o).length <= 12, 'too many fields')).max(6).optional() })
 const MAX_CHAT = 200
 const MAX_VERSIONS = 100
 const MAX_FREE_PLANNING_PER_DAY = 25
@@ -400,8 +495,10 @@ function allowSnapshot(userId: string): boolean {
 const MAX_LIVE_PRESENTATIONS = 500
 
 presentations.get('/:id/chat', async (c) => {
-  const userId = c.get('session')!.user.id
-  const [p] = await db.select({ id: presentation.id }).from(presentation).where(mine(c.req.param('id'), userId))
+  const userId = c.get('session')!.user.id // each person keeps their OWN assistant conversation, even on a shared deck
+  const access = await resolveAccess(c.req.param('id'), userId)
+  if (!access) return notFound(c)
+  const [p] = await db.select({ id: presentation.id }).from(presentation).where(mine(c.req.param('id'), access.ownerId))
   if (!p) return notFound(c)
   const rows = await db.select({ body: aiChatMessage.body }).from(aiChatMessage).where(and(eq(aiChatMessage.presentationId, p.id), eq(aiChatMessage.userId, userId))).orderBy(desc(aiChatMessage.createdAt)).limit(MAX_CHAT)
   return c.json({ success: true, data: rows.reverse().map((r) => r.body) })
@@ -409,7 +506,9 @@ presentations.get('/:id/chat', async (c) => {
 
 presentations.post('/:id/chat', rateLimit({ windowMs: 60_000, max: 60, key: byUser('chat') }), zValidator('json', z.object({ messages: z.array(chatBody).min(1).max(4) })), async (c) => {
   const userId = c.get('session')!.user.id
-  const [p] = await db.select({ id: presentation.id }).from(presentation).where(mine(c.req.param('id'), userId))
+  const access = await resolveAccess(c.req.param('id'), userId)
+  if (!access) return notFound(c)
+  const [p] = await db.select({ id: presentation.id }).from(presentation).where(mine(c.req.param('id'), access.ownerId))
   if (!p) return notFound(c)
   const base = Date.now()
   await db.insert(aiChatMessage).values(c.req.valid('json').messages.map((m, i) => ({ id: nanoid(), presentationId: p.id, userId, role: m.role, body: m, createdAt: new Date(base + i) })))
@@ -420,7 +519,9 @@ presentations.post('/:id/chat', rateLimit({ windowMs: 60_000, max: 60, key: byUs
 
 presentations.delete('/:id/chat', async (c) => {
   const userId = c.get('session')!.user.id
-  const [p] = await db.select({ id: presentation.id }).from(presentation).where(mine(c.req.param('id'), userId))
+  const access = await resolveAccess(c.req.param('id'), userId)
+  if (!access) return notFound(c)
+  const [p] = await db.select({ id: presentation.id }).from(presentation).where(mine(c.req.param('id'), access.ownerId))
   if (!p) return notFound(c)
   await db.delete(aiChatMessage).where(and(eq(aiChatMessage.presentationId, p.id), eq(aiChatMessage.userId, userId)))
   return c.json({ success: true, data: { cleared: true } })

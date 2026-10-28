@@ -1,80 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest'
+import { AVAILABLE_PHOTOS } from '@prompttoppt/theme'
 import { altOverlap, buildQueries, isStrongLibraryMatch, orientationFor, scoreLibrary, slotAspect, sniffImage, stem } from './helpers.ts'
 import { LIBRARY_TAGS } from './library-tags.ts'
-import { clearPictureCache, pickPictures, type PictureRequest, type PickerDeps, type PickerGateway } from './pick.ts'
+import { MAX_PICTURES_PER_DECK, clearPictureCache, openPictureSession, pickPictures, type PictureRequest, type PickerDeps, type PickerGateway } from './pick.ts'
 
 const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 16, 0x4a, 0x46, 0x49, 0x46, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0xff, 0xd9])
 const ctx = { userId: 'u1', jobId: 'j1' }
-const req = (o: Partial<PictureRequest> = {}): PictureRequest => ({ slideIndex: 0, layout: 'split', title: 'Our testing approach', text: 'Find defects early', intent: 'software testing bug report', topic: 'Quality assurance', category: 'tech', aspect: 'wide', ...o })
-
-const photo = (id: number, alt = 'a developer testing software on a laptop') => ({ id, url: `https://www.pexels.com/photo/${id}/`, photographer: 'Ann Lee', alt, src: { large2x: `https://images.pexels.com/photos/${id}/x.jpeg`, large: `https://images.pexels.com/photos/${id}/y.jpeg` } })
-
-interface Harness {
-  deps: Partial<PickerDeps>
-  calls: string[]
-  saved: { prompt: string; mime: string }[]
-  verifies: number
-  maxInFlight: number
-}
-function harness(o: {
-  pexels?: unknown[] | 'error' | 429
-  score?: (n: number) => number | Error
-  withGateway?: boolean
-  key?: string | undefined
-  hang?: boolean
-  timeoutMs?: number
-  queries?: string[]
-  hasText?: boolean
-  libraryDown?: boolean
-} = {}): Harness {
-  const h: Harness = { deps: {}, calls: [], saved: [], verifies: 0, maxInFlight: 0 }
-  let inFlight = 0
-  const fetchFake = (async (url: string | URL, init?: RequestInit) => {
-    const u = String(url)
-    h.calls.push(u)
-    inFlight++
-    h.maxInFlight = Math.max(h.maxInFlight, inFlight)
-    try {
-      if (o.hang) await new Promise((_, rej) => init?.signal?.addEventListener('abort', () => rej(new DOMException('aborted', 'AbortError'))))
-      await new Promise((r) => setTimeout(r, 5))
-      if (u.startsWith('https://api.pexels.com/')) {
-        if (o.pexels === 'error') throw new Error('network down')
-        if (o.pexels === 429) return new Response('slow down', { status: 429 })
-        return new Response(JSON.stringify({ photos: o.pexels ?? [photo(1)] }), { status: 200 })
-      }
-      if (u.includes('/template-assets/') && o.libraryDown) return new Response('no', { status: 500 })
-      return new Response(JPEG, { status: 200, headers: { 'content-type': 'image/jpeg' } })
-    } finally {
-      inFlight--
-    }
-  }) as typeof fetch
-  const gateway: PickerGateway = {
-    async run<T>(input: any): Promise<T> {
-      if (input.requestType === 'picture_query') return { queries: o.queries ?? ['team meeting'] } as T
-      h.verifies++
-      expect(input.route).toBe('fast')
-      expect(input.images?.[0]?.mimeType).toBe('image/jpeg')
-      const s = o.score ? o.score(h.verifies) : 5
-      if (s instanceof Error) throw s
-      return { score: s, reason: 'x', hasTextOrLogo: o.hasText ?? false } as T
-    },
-  }
-  h.deps = {
-    fetch: fetchFake,
-    gateway: o.withGateway === false ? null : gateway,
-    storage: {
-      async save(a) {
-        h.saved.push({ prompt: a.prompt, mime: a.mime })
-        const id = `asset${h.saved.length}`
-        return { id, url: `https://api.test/api/v1/assets/${id}` }
-      },
-    },
-    now: Date.now,
-    config: { pexelsKey: 'key' in o ? o.key : 'pexels-test-key', webUrl: 'https://web.test' },
-    timeoutMs: o.timeoutMs ?? 5000,
-  }
-  return h
-}
+const req = (o: Partial<PictureRequest> = {}): PictureRequest => ({ slideIndex: 0, layout: 'split-image-text', title: 'Our testing approach', text: 'Find defects early', intent: 'software testing bug report', topic: 'Quality assurance', category: 'tech', aspect: 'standard', ...o })
 
 describe('pure helpers', () => {
   it('builds short English queries from intent, then title + topic', () => {
@@ -93,6 +25,8 @@ describe('pure helpers', () => {
     expect(orientationFor('square')).toBe('square')
     expect(['tech-1', 'tech-3', 'tech-5', 'tech-7'].map(slotAspect)).toEqual(['wide', 'tall', 'square', 'standard'])
     expect(slotAspect('team-10')).toBe('standard')
+    // the shapes the template photo script generates for slots 11–16
+    expect([11, 12, 13, 14, 15, 16].map((n) => slotAspect(`pitch-${n}`))).toEqual(['wide', 'tall', 'square', 'standard', 'wide', 'tall'])
   })
   it('stems symmetrically and sniffs magic bytes', () => {
     expect(stem('testing')).toBe(stem('tests') === 'test' ? 'test' : stem('testing'))
@@ -117,204 +51,304 @@ describe('pure helpers', () => {
   })
 })
 
-describe('pickPictures', () => {
-  it('stock path: accepts a verified photo, stores it and fills attribution', async () => {
-    const h = harness()
-    const [p] = await pickPictures([req()], ctx, h.deps)
-    expect(p).toMatchObject({ source: 'stock', score: 5, src: 'https://api.test/api/v1/assets/asset1', attribution: { source: 'Photo by Ann Lee on Pexels', license: 'Pexels License', url: 'https://www.pexels.com/photo/1/' } })
-    expect(p!.alt).toMatch(/developer/)
-    expect(h.saved).toEqual([{ prompt: 'software testing bug report', mime: 'image/jpeg' }])
-    const search = new URL(h.calls.find((c) => c.includes('api.pexels.com'))!)
-    expect(search.searchParams.get('orientation')).toBe('landscape')
-    expect(search.searchParams.get('per_page')).toBe('8')
-  })
 
-  it('stock rejected by vision score falls through to the library (verified there)', async () => {
-    const h = harness({ score: (n) => (n <= 2 ? 2 : 5), pexels: [photo(1), photo(2)] })
-    const [p] = await pickPictures([req()], ctx, h.deps)
-    expect(h.saved).toHaveLength(0)
-    expect(p).toMatchObject({ source: 'library', src: 'https://web.test/template-assets/product-4.jpg', score: 5 })
-    expect(p!.attribution).toBeUndefined()
-  })
+// ─── the picker ───────────────────────────────────────────────────────────
+type Call = { url: string; auth: string | null }
+interface Setup {
+  /** Pexels results (ids) or an error status */
+  pexels?: number[] | number | 'down' | 'hang'
+  /** Unsplash results (ids with descriptions) or an error status */
+  unsplash?: { id: string; alt: string }[] | number | 'down' | 'hang'
+  keys?: { unsplash?: boolean; pexels?: boolean }
+  limits?: { total: number; perUser: number }
+  searchBudgetMs?: number
+  gateway?: PickerGateway | null
+}
+const pexelsPhoto = (id: number, alt = 'a developer testing software on a laptop') => ({ id, url: `https://www.pexels.com/photo/${id}/`, photographer: 'Ann Lee', alt, src: { large2x: `https://images.pexels.com/photos/${id}/x.jpeg` } })
+const unsplashPhoto = (id: string, alt: string) => ({ id, alt_description: alt, urls: { regular: `https://images.unsplash.com/photo-${id}?ixid=x`, full: `https://images.unsplash.com/photo-${id}-full` }, links: { html: `https://unsplash.com/photos/${id}`, download_location: `https://api.unsplash.com/photos/${id}/download?ixid=x` }, user: { name: 'Sam Park', links: { html: 'https://unsplash.com/@sam' } } })
 
-  it('rejects photos with text/logos even with a high score', async () => {
-    const h = harness({ hasText: true })
-    expect(await pickPictures([req()], ctx, h.deps)).toEqual([null])
-  })
-
-  it('no key: library only; Pexels is never called', async () => {
-    const h = harness({ key: undefined })
-    const [p] = await pickPictures([req()], ctx, h.deps)
-    expect(p?.source).toBe('library')
-    expect(h.calls.some((c) => c.includes('pexels'))).toBe(false)
-  })
-
-  it('429 / network errors from Pexels skip to the library', async () => {
-    for (const pexels of [429, 'error'] as const) {
-      const [p] = await pickPictures([req()], ctx, harness({ pexels }).deps)
-      expect(p?.source).toBe('library')
+function setup(o: Setup = {}) {
+  const calls: Call[] = []
+  const wait = (init?: RequestInit) => new Promise<Response>((_, rej) => init?.signal?.addEventListener('abort', () => rej(new DOMException('aborted', 'AbortError'))))
+  const fetchFake = (async (url: string | URL, init?: RequestInit) => {
+    const u = String(url)
+    calls.push({ url: u, auth: new Headers(init?.headers).get('authorization') })
+    if (u.startsWith('https://api.unsplash.com/search/photos')) {
+      const r = o.unsplash ?? []
+      if (r === 'hang') return wait(init)
+      if (r === 'down') throw new Error('network down')
+      if (typeof r === 'number') return new Response('no', { status: r })
+      return new Response(JSON.stringify({ results: r.map((x) => unsplashPhoto(x.id, x.alt)) }), { status: 200, headers: { 'x-ratelimit-remaining': '40' } })
     }
-  })
-
-  it('unrelated request gets no picture', async () => {
-    const h = harness({ pexels: [] })
-    const r = await pickPictures([req({ intent: 'medieval castle architecture', title: 'Castles', text: 'stone walls', topic: 'History' })], ctx, h.deps)
-    expect(r).toEqual([null])
-  })
-
-  it('without vision only strong keyword matches are accepted, capped at 4', async () => {
-    const strong = harness({ withGateway: false, key: undefined })
-    const [p] = await pickPictures([req()], ctx, strong.deps)
-    expect(p).toMatchObject({ source: 'library', score: 4 })
-    expect(strong.calls).toHaveLength(0) // no download needed without vision
-    const weak = harness({ withGateway: false, key: undefined })
-    expect(await pickPictures([req({ intent: 'software architecture', title: 'x', topic: '', text: '' })], ctx, weak.deps)).toEqual([null])
-    // stock without vision: strong alt overlap only
-    const s1 = harness({ withGateway: false, pexels: [photo(1, 'software testing and bug report on a screen')] })
-    expect((await pickPictures([req()], ctx, s1.deps))[0]).toMatchObject({ source: 'stock', score: 4 })
-    const s2 = harness({ withGateway: false, pexels: [photo(1, 'a sunset over the sea')] })
-    expect((await pickPictures([req({ intent: 'zzz qqq', title: 'zzz', topic: 'qqq', text: '' })], ctx, s2.deps))[0]).toBeNull()
-  })
-
-  it('a vision error degrades to the keyword rule instead of throwing', async () => {
-    const h = harness({ score: () => new Error('AI down'), key: undefined })
-    const [p] = await pickPictures([req()], ctx, h.deps)
-    expect(p).toMatchObject({ source: 'library', score: 4 })
-  })
-
-  it('never returns the same picture twice in one call', async () => {
-    const h = harness({ pexels: [photo(1), photo(2)] })
-    const r = await pickPictures([req({ slideIndex: 0 }), req({ slideIndex: 1 }), req({ slideIndex: 2 })], ctx, h.deps)
-    const srcs = r.map((x) => x?.src)
-    expect(srcs.every(Boolean)).toBe(true)
-    expect(new Set(srcs).size).toBe(3)
-    expect(r.filter((x) => x?.source === 'stock')).toHaveLength(2) // third slide is served by the library
-  })
-
-  it('uses English queries from the gateway for non-English slides', async () => {
-    const h = harness({ queries: ['software testing'] })
-    await pickPictures([req({ intent: 'prueba de software y errores', title: 'Pruebas' })], ctx, h.deps)
-    const search = new URL(h.calls.find((c) => c.includes('api.pexels.com'))!)
-    expect(search.searchParams.get('query')).toBe('software testing')
-  })
-
-  it('failures degrade to null without throwing', async () => {
-    const h = harness({ pexels: 'error', libraryDown: true })
-    await expect(pickPictures([req()], ctx, h.deps)).resolves.toEqual([null])
-    const bad = harness()
-    bad.deps.storage = { save: async () => { throw new Error('disk full') } }
-    bad.deps.config = { pexelsKey: 'k'.repeat(12), webUrl: 'https://web.test' }
-    const [p] = await pickPictures([req()], ctx, { ...bad.deps })
-    expect(p == null || p.source === 'library').toBe(true)
-  })
-
-  it('rejects non-image downloads and non-https stock urls', async () => {
-    const h = harness({ pexels: [{ ...photo(1), src: { large2x: 'http://images.pexels.com/a.jpg' } }, { ...photo(2), src: { large2x: 'https://evil.example.com/a.jpg' } }], key: 'k'.repeat(12) })
-    const r = await pickPictures([req()], ctx, h.deps)
-    expect(h.saved).toHaveLength(0)
-    expect(r[0]?.source).toBe('library')
-    const bytes = harness()
-    const orig = bytes.deps.fetch!
-    bytes.deps.fetch = (async (u: string, i: RequestInit) => (String(u).includes('images.pexels') ? new Response(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])) : orig(u, i))) as typeof fetch
-    expect((await pickPictures([req()], ctx, bytes.deps))[0]?.source).toBe('library')
-  })
-
-  it('handles at most 8 requests, never more than 3 in flight', async () => {
-    const h = harness({ pexels: Array.from({ length: 30 }, (_, i) => photo(i + 1)) })
-    const r = await pickPictures(Array.from({ length: 10 }, (_, i) => req({ slideIndex: i })), ctx, h.deps)
-    expect(r).toHaveLength(10)
-    expect(r.slice(8).every((x) => x === null)).toBe(true)
-    expect(r.slice(0, 8).every(Boolean)).toBe(true)
-    expect(h.maxInFlight).toBeLessThanOrEqual(3)
-    expect(h.maxInFlight).toBeGreaterThan(1)
-  })
-
-  it('stops at the overall timeout and returns nulls', async () => {
-    const h = harness({ hang: true, timeoutMs: 60 })
-    const t0 = Date.now()
-    const r = await pickPictures([req(), req({ slideIndex: 1 })], ctx, h.deps)
-    expect(r).toEqual([null, null])
-    expect(Date.now() - t0).toBeLessThan(1000)
-  })
-
-  it('returns an empty array for no requests', async () => {
-    expect(await pickPictures([], ctx, harness().deps)).toEqual([])
-  })
-})
-
-describe('Unsplash source', () => {
-  beforeEach(() => clearPictureCache()) // searches are cached in memory (50 requests/hour demo limit)
-  const uns = (id: string, alt = 'software tester at a desk with two monitors') => ({ id, alt_description: alt, urls: { regular: `https://images.unsplash.com/photo-${id}?ixid=x`, full: `https://images.unsplash.com/photo-${id}-full` }, links: { html: `https://unsplash.com/photos/${id}`, download_location: `https://api.unsplash.com/photos/${id}/download?ixid=x` }, user: { name: 'Sam Park', links: { html: 'https://unsplash.com/@sam' } } })
-  function run(o: { results?: unknown[]; status?: number; pexels?: boolean; score?: number } = {}) {
-    const calls: { url: string; auth?: string | null }[] = []
-    const saved: { provider?: string | undefined; prompt: string }[] = []
-    const fetchFake = (async (url: string | URL, init?: RequestInit) => {
-      const u = String(url)
-      calls.push({ url: u, auth: new Headers(init?.headers).get('authorization') })
-      if (u.startsWith('https://api.unsplash.com/search/photos')) return o.status && o.status !== 200 ? new Response('no', { status: o.status }) : new Response(JSON.stringify({ results: o.results ?? [uns('abc')] }), { status: 200 })
-      if (u.startsWith('https://api.unsplash.com/photos/')) return new Response('{}', { status: 200 })
-      if (u.startsWith('https://api.pexels.com/')) return new Response(JSON.stringify({ photos: [photo(7)] }), { status: 200 })
-      return new Response(JPEG, { status: 200, headers: { 'content-type': 'image/jpeg' } })
-    }) as typeof fetch
-    const gateway: PickerGateway = { async run<T>(input: any): Promise<T> { return (input.requestType === 'picture_query' ? { queries: ['x'] } : { score: o.score ?? 5, reason: 'ok', hasTextOrLogo: false }) as T } }
-    const deps: Partial<PickerDeps> = { fetch: fetchFake, gateway, storage: { async save(a) { saved.push({ provider: a.provider, prompt: a.prompt }); return { id: 'a1', url: 'https://api.test/api/v1/assets/a1' } } }, now: Date.now, config: { unsplashKey: 'unsplash-access-key', ...(o.pexels ? { pexelsKey: 'pexels-test-key' } : {}), webUrl: 'https://web.test' }, timeoutMs: 5000 }
-    return { calls, saved, deps }
+    if (u.startsWith('https://api.unsplash.com/photos/')) return new Response('{}', { status: 200 })
+    if (u.startsWith('https://api.pexels.com/')) {
+      const r = o.pexels ?? []
+      if (r === 'hang') return wait(init)
+      if (r === 'down') throw new Error('network down')
+      if (typeof r === 'number') return new Response('no', { status: r })
+      return new Response(JSON.stringify({ photos: r.map((id) => pexelsPhoto(id)) }), { status: 200 })
+    }
+    return new Response(JPEG, { status: 200, headers: { 'content-type': 'image/jpeg' } })
+  }) as typeof fetch
+  const modelCalls: unknown[] = []
+  const gateway: PickerGateway | null = o.gateway === undefined ? { async run<T>(input: unknown): Promise<T> { modelCalls.push(input); return { queries: ['translated query'] } as T } } : o.gateway
+  const keys = o.keys ?? { unsplash: o.unsplash !== undefined, pexels: o.pexels !== undefined }
+  const deps: Partial<PickerDeps> = {
+    fetch: fetchFake, gateway, now: Date.now, timeoutMs: 5000, ...(o.searchBudgetMs !== undefined ? { searchBudgetMs: o.searchBudgetMs } : {}),
+    config: { ...(keys.unsplash ? { unsplashKey: 'unsplash-access-key' } : {}), ...(keys.pexels ? { pexelsKey: 'pexels-test-key' } : {}), webUrl: 'https://web.test', stockLimits: o.limits ?? { total: 1000, perUser: 1000 } },
   }
+  const searches = (host: 'unsplash' | 'pexels') => calls.filter((c) => c.url.startsWith(host === 'unsplash' ? 'https://api.unsplash.com/search/photos' : 'https://api.pexels.com/'))
+  return { deps, calls, modelCalls, searches }
+}
 
-  it('searches with the Client-ID header and the right orientation, hotlinks it (never stores a copy), credits the photographer, pings the download endpoint', async () => {
-    const h = run()
-    const [p] = await pickPictures([req({ aspect: 'tall' })], ctx, h.deps)
-    expect(p).toMatchObject({ source: 'stock', score: 5, attribution: { source: 'Photo by Sam Park on Unsplash', license: 'Unsplash License' } })
-    expect(p!.attribution!.url).toContain('utm_source=promptToPpt')
-    const search = h.calls.find((c) => c.url.startsWith('https://api.unsplash.com/search/photos'))!
-    expect(search.auth).toBe('Client-ID unsplash-access-key')
-    expect(new URL(search.url).searchParams.get('orientation')).toBe('portrait')
-    expect(h.saved).toHaveLength(0) // Unsplash terms: no copies
-    expect(p!.src).toMatch(/^https:\/\/images\.unsplash\.com\//)
-    await new Promise((r) => setTimeout(r, 20))
-    expect(h.calls.some((c) => c.url.startsWith('https://api.unsplash.com/photos/abc/download'))).toBe(true) // download tracking (API guideline)
-    expect(h.calls.find((c) => c.url.includes('images.unsplash.com'))!.url).toContain('w=1920')
-  })
-  it('one user cannot burn the shared hourly stock quota: after 30 searches they fall back to the library without calling Unsplash (security S16)', async () => {
-    const h = run()
-    for (let i = 0; i < 36; i++) await pickPictures([req({ slideIndex: i, title: `Unique topic number ${i} ${Math.random().toString(36).slice(2)}`, intent: `distinct intent ${i} ${Math.random().toString(36).slice(2)}` })], ctx, h.deps)
-    const searches = h.calls.filter((c) => c.url.startsWith('https://api.unsplash.com/search/photos')).length
-    expect(searches).toBeLessThanOrEqual(30)
-    expect(searches).toBeGreaterThan(0)
-  })
-  it('rejects a photo the vision check scores low and falls through to Pexels', async () => {
-    const h = run({ score: 2, pexels: true })
-    const [p] = await pickPictures([req()], ctx, h.deps)
-    expect(p).toBeNull() // both sources scored < 4 → no picture rather than a wrong one
-    expect(h.calls.some((c) => c.url.startsWith('https://api.pexels.com/'))).toBe(true)
-  })
-  it('a rate-limited Unsplash (403/429) is skipped for the whole call and Pexels is used', async () => {
-    const h = run({ status: 403, pexels: true })
-    const out = await pickPictures([req(), req({ slideIndex: 1, title: 'Bug reports' })], ctx, h.deps)
-    expect(out.every((x) => x === null || x.source === 'library' || x.attribution?.license === 'Pexels License')).toBe(true) // never an Unsplash picture while rate-limited
-    expect(h.calls.filter((c) => c.url.startsWith('https://api.unsplash.com/search/photos')).length).toBeLessThanOrEqual(2)
-  })
-  it('only downloads images from unsplash.com hosts', async () => {
-    const h = run({ results: [{ ...uns('evil'), urls: { regular: 'https://evil.example/x.jpg' } }] })
-    const [p] = await pickPictures([req()], ctx, h.deps)
-    expect(p?.source).not.toBe('stock') // the foreign host was refused (the tagged library may still answer)
-    expect(h.calls.some((c) => c.url.includes('evil.example'))).toBe(false)
-  })
-})
+describe('picking pictures', () => {
+  beforeEach(() => clearPictureCache()) // searches are cached in memory
 
-describe('Unsplash search cache', () => {
-  it('serves an identical search from memory (saves the 50/hour demo quota)', async () => {
-    clearPictureCache()
-    let searches = 0
-    const fetchFake = (async (url: string | URL) => {
-      const u = String(url)
-      if (u.startsWith('https://api.unsplash.com/search/photos')) { searches++; return new Response(JSON.stringify({ results: [{ id: `p${searches}`, alt_description: 'software tester at a desk', urls: { regular: `https://images.unsplash.com/photo-${searches}` }, links: { html: 'https://unsplash.com/photos/x' }, user: { name: 'A' } }] }), { status: 200 }) }
-      return new Response(JPEG, { status: 200, headers: { 'content-type': 'image/jpeg' } })
-    }) as typeof fetch
-    const gateway: PickerGateway = { async run<T>(input: any): Promise<T> { return (input.requestType === 'picture_query' ? { queries: ['x'] } : { score: 5, reason: 'ok', hasTextOrLogo: false }) as T } }
-    const deps: Partial<PickerDeps> = { fetch: fetchFake, gateway, storage: { async save() { return { id: 'a', url: 'https://api.test/api/v1/assets/a' } } }, now: Date.now, config: { unsplashKey: 'unsplash-access-key', webUrl: 'https://web.test' }, timeoutMs: 5000 }
-    await pickPictures([req()], ctx, deps)
-    await pickPictures([req({ slideIndex: 3 })], ctx, deps) // same query + aspect, different slide
-    expect(searches).toBe(1)
+  describe('stock search', () => {
+    it('takes the best Pexels result straight away: nothing is downloaded and no model is asked', async () => {
+      const h = setup({ pexels: [1, 2, 3] })
+      const [p] = await pickPictures([req()], ctx, h.deps)
+      expect(p).toMatchObject({ source: 'stock', src: 'https://images.pexels.com/photos/1/x.jpeg', attribution: { source: 'Photo by Ann Lee on Pexels', license: 'Pexels License' } })
+      expect(h.calls.filter((c) => c.url.includes('images.pexels.com'))).toHaveLength(0) // no download
+      expect(h.modelCalls).toHaveLength(0) // no vision check, no translation
+    })
+
+    it('Unsplash: Client-ID header, the right orientation, hotlinked (never copied), photographer credited with tracking links, download endpoint pinged once', async () => {
+      const h = setup({ unsplash: [{ id: 'abc', alt: 'software tester at a desk' }] })
+      const [p] = await pickPictures([req({ aspect: 'tall' })], ctx, h.deps)
+      expect(p).toMatchObject({ source: 'stock', attribution: { source: 'Photo by Sam Park on Unsplash', license: 'Unsplash License' } })
+      expect(p!.attribution!.url).toContain('utm_source=promptToPpt')
+      expect(p!.src).toMatch(/^https:\/\/images\.unsplash\.com\//)
+      expect(p!.src).toContain('w=1920')
+      const search = h.searches('unsplash')[0]!
+      expect(search.auth).toBe('Client-ID unsplash-access-key')
+      expect(new URL(search.url).searchParams.get('orientation')).toBe('portrait')
+      await new Promise((r) => setTimeout(r, 20))
+      expect(h.calls.filter((c) => c.url.startsWith('https://api.unsplash.com/photos/abc/download'))).toHaveLength(1) // Unsplash API guideline
+      expect(h.calls.filter((c) => c.url.includes('images.unsplash.com'))).toHaveLength(0) // never fetched by us
+    })
+
+    it('squarish is what Unsplash calls a square', async () => {
+      const h = setup({ unsplash: [{ id: 'a', alt: 'x' }] })
+      await pickPictures([req({ aspect: 'square' })], ctx, h.deps)
+      expect(new URL(h.searches('unsplash')[0]!.url).searchParams.get('orientation')).toBe('squarish')
+    })
+
+    it("among the results, the photo whose own description matches the search words best wins (Unsplash's order breaks ties)", async () => {
+      const h = setup({ unsplash: [{ id: 'first', alt: 'a red train on tracks' }, { id: 'second', alt: 'software tester testing a bug report' }, { id: 'third', alt: 'a forest' }] })
+      const [p] = await pickPictures([req()], ctx, h.deps)
+      expect(p!.src).toContain('photo-second')
+    })
+
+    it('never puts the same photo twice in one deck', async () => {
+      const h = setup({ pexels: [1, 2, 3, 4] })
+      const r = await pickPictures([0, 1, 2, 3].map((i) => req({ slideIndex: i })), ctx, h.deps)
+      expect(new Set(r.map((x) => x?.src)).size).toBe(4)
+    })
+
+    it('uses the search words the outline wrote, first', async () => {
+      const h = setup({ pexels: [1] })
+      await pickPictures([req({ query: 'engineers laptop meeting' })], ctx, h.deps)
+      expect(new URL(h.searches('pexels')[0]!.url).searchParams.get('query')).toBe('engineers laptop meeting')
+    })
+
+    it("a photo whose own description shares nothing with a DERIVED search is not used: the slide takes a library photo instead of an unrelated stock one", async () => {
+      const h = setup({ unsplash: [{ id: 'x', alt: 'i hate nothing about u beside heart graphic' }] })
+      const [p] = await pickPictures([req()], ctx, h.deps) // no outline search words: searches are derived from the slide
+      expect(p?.source).toBe('library')
+    })
+
+    it("…but for the outline's own search words the top result is taken even if its description is sparse", async () => {
+      const h = setup({ unsplash: [{ id: 'x', alt: 'a blue thing' }] })
+      const [p] = await pickPictures([req({ query: 'electric car charging' })], ctx, h.deps)
+      expect(p?.source).toBe('stock')
+    })
+
+    it('a slide with no search words in another language gets English ones from ONE cheap model call; with search words, none is needed', async () => {
+      const h = setup({ pexels: [1] })
+      await pickPictures([req({ title: 'Nuestro enfoque de pruebas', intent: 'equipo revisando errores', topic: 'Calidad' })], ctx, h.deps)
+      expect(h.modelCalls).toHaveLength(1)
+      expect(new URL(h.searches('pexels')[0]!.url).searchParams.get('query')).toBe('translated query')
+      const h2 = setup({ pexels: [1] })
+      await pickPictures([req({ title: 'Nuestro enfoque', intent: 'equipo revisando errores', topic: 'Calidad', query: 'team reviewing bugs' })], ctx, h2.deps)
+      expect(h2.modelCalls).toHaveLength(0)
+    })
+  })
+
+  describe('library fallback', () => {
+    const libraryKey = (src: string) => src.replace('https://web.test/template-assets/', '').replace('.jpg', '')
+
+    it('no results → a photo from our own library, served from the website', async () => {
+      const h = setup({ unsplash: [] })
+      const [p] = await pickPictures([req({ intent: 'zzz qqq', title: 'zzz', topic: 'qqq', text: '' })], ctx, h.deps)
+      expect(p).toMatchObject({ source: 'library' })
+      expect(p!.src).toMatch(/^https:\/\/web\.test\/template-assets\/tech-\d+\.jpg$/) // the deck's category
+      expect(AVAILABLE_PHOTOS).toContain(libraryKey(p!.src))
+    })
+
+    it.each([
+      ['rate limited (403)', { unsplash: 403 as const }],
+      ['rate limited (429)', { unsplash: 429 as const }],
+      ['server error', { unsplash: 500 as const }],
+      ['network down', { unsplash: 'down' as const }],
+    ])('Unsplash %s → library photo, no waiting', async (_n, cfg) => {
+      const h = setup(cfg)
+      const [p] = await pickPictures([req({ intent: 'zzz qqq', title: 'zzz', topic: 'qqq', text: '' })], ctx, h.deps)
+      expect(p?.source).toBe('library')
+    })
+
+    it('a search that does not answer in time → library photo (the slide never waits for a slow source)', async () => {
+      const h = setup({ unsplash: 'hang', searchBudgetMs: 40 })
+      const t = Date.now()
+      const [p] = await pickPictures([req({ intent: 'zzz qqq', title: 'zzz', topic: 'qqq', text: '' })], ctx, h.deps)
+      expect(p?.source).toBe('library')
+      expect(Date.now() - t).toBeLessThan(1500)
+    })
+
+    it('Unsplash limited but Pexels available → Pexels is used before the library', async () => {
+      const h = setup({ unsplash: 403, pexels: [5] })
+      const [p] = await pickPictures([req()], ctx, h.deps)
+      expect(p).toMatchObject({ source: 'stock', attribution: { license: 'Pexels License' } })
+    })
+
+    it('after a rate limit, Unsplash is not asked again for the rest of the deck', async () => {
+      const h = setup({ unsplash: 403 })
+      const r = await pickPictures([0, 1, 2].map((i) => req({ slideIndex: i, title: `Topic ${i}`, intent: `distinct intent ${i}` })), ctx, h.deps)
+      expect(r.every((x) => x?.source === 'library')).toBe(true)
+      expect(h.searches('unsplash').length).toBeLessThanOrEqual(3)
+    })
+
+    it('no stock keys configured at all → library only, no network calls', async () => {
+      const h = setup({ keys: {} })
+      const r = await pickPictures([req(), req({ slideIndex: 1 })], ctx, h.deps)
+      expect(r.every((x) => x?.source === 'library')).toBe(true)
+      expect(h.calls).toHaveLength(0)
+    })
+
+    it('a tagged library match is preferred over a random one', async () => {
+      const h = setup({ keys: {} })
+      const best = scoreLibrary(req())[0]!
+      const [p] = await pickPictures([req()], ctx, h.deps)
+      expect(libraryKey(p!.src)).toBe(best.key)
+    })
+
+    it("never repeats a library picture within a deck, and still answers every slide of a long one", async () => {
+      const h = setup({ keys: {} })
+      const n = 12
+      const r = await pickPictures(Array.from({ length: n }, (_, i) => req({ slideIndex: i, intent: 'zzz qqq', title: 'zzz', topic: 'qqq', text: '' })), ctx, h.deps)
+      expect(r.every(Boolean)).toBe(true)
+      expect(new Set(r.map((x) => x!.src)).size).toBe(n)
+    })
+
+    it('prefers a picture of the right shape, and different decks start from different pictures', async () => {
+      const h = setup({ keys: {} })
+      const wide = (await pickPictures([req({ aspect: 'wide', intent: 'zzz qqq', title: 'zzz', topic: 'qqq', text: '' })], ctx, h.deps))[0]!
+      expect(slotAspect(libraryKey(wide.src))).toBe('wide')
+      const tall = (await pickPictures([req({ aspect: 'tall', intent: 'zzz qqq', title: 'zzz', topic: 'qqq', text: '' })], ctx, h.deps))[0]!
+      expect(slotAspect(libraryKey(tall.src))).toBe('tall')
+      const keys = new Set<string>()
+      for (const topic of ['alpha', 'bravo', 'charlie', 'delta', 'echo', 'foxtrot']) keys.add(libraryKey((await pickPictures([req({ topic, intent: 'zzz qqq', title: 'zzz', text: '', aspect: 'wide' })], ctx, h.deps))[0]!.src))
+      expect(keys.size).toBeGreaterThan(1)
+    })
+
+    it('an unknown category still gets a picture (from any category)', async () => {
+      const h = setup({ keys: {} })
+      const [p] = await pickPictures([req({ category: 'nonexistent', intent: 'zzz qqq', title: 'zzz', topic: 'qqq', text: '' })], ctx, h.deps)
+      expect(p?.source).toBe('library')
+    })
+  })
+
+  describe('limits', () => {
+    it('one user cannot spend the shared hourly stock quota: past their own limit they get library photos without calling Unsplash (security S16)', async () => {
+      const h = setup({ unsplash: [{ id: 'a', alt: 'software tester' }], limits: { total: 1000, perUser: 2 } })
+      const r = await pickPictures([0, 1, 2, 3].map((i) => req({ slideIndex: i, title: `Unique ${i}`, intent: `distinct intent number ${i}`, query: `unique search ${i}` })), ctx, h.deps)
+      expect(h.searches('unsplash')).toHaveLength(2)
+      expect(r.every(Boolean)).toBe(true)
+      expect(r.filter((x) => x!.source === 'library').length).toBeGreaterThanOrEqual(2)
+    })
+
+    it('the shared total is honoured across users', async () => {
+      const h = setup({ unsplash: [{ id: 'a', alt: 'software tester' }], limits: { total: 1, perUser: 1000 } })
+      await pickPictures([req({ query: 'first search' })], { userId: 'alice' }, h.deps)
+      await pickPictures([req({ query: 'second search' })], { userId: 'bob' }, h.deps)
+      expect(h.searches('unsplash')).toHaveLength(1) // bob went to the library instead
+    })
+
+    it('a deck gets at most MAX_PICTURES_PER_DECK pictures', async () => {
+      const h = setup({ keys: {} })
+      const r = await pickPictures(Array.from({ length: MAX_PICTURES_PER_DECK + 3 }, (_, i) => req({ slideIndex: i })), ctx, h.deps)
+      expect(r.slice(0, MAX_PICTURES_PER_DECK).every(Boolean)).toBe(true)
+    })
+
+    it('identical searches (same words and shape) are served from memory, also across decks', async () => {
+      const h = setup({ unsplash: [{ id: 'a', alt: 'software tester' }] })
+      await pickPictures([req()], ctx, h.deps)
+      await pickPictures([req({ slideIndex: 3 })], ctx, h.deps)
+      expect(h.searches('unsplash')).toHaveLength(1)
+    })
+  })
+
+  describe('picture session (lookups that run alongside the writing)', () => {
+    it('an unchanged request is not looked up again; a changed one replaces the old lookup', async () => {
+      const h = setup({ pexels: [1, 2, 3] })
+      const s = await openPictureSession(ctx, h.deps)
+      s.add(req({ slideIndex: 3 }))
+      s.add(req({ slideIndex: 3 }))
+      const first = await s.result(3)
+      expect(first).toBeTruthy()
+      s.add(req({ slideIndex: 3, text: 'Completely rewritten text about something else' }))
+      const second = await s.result(3)
+      expect(second).toBeTruthy()
+      expect(second!.src).not.toBe(first!.src) // the old pick stays reserved: no picture twice
+      s.close()
+    })
+
+    it('warm() does the main search early and the real lookup reuses it (one search in total)', async () => {
+      const h = setup({ pexels: [1, 2] })
+      const s = await openPictureSession(ctx, h.deps)
+      s.warm(req({ slideIndex: 0 }))
+      await new Promise((r) => setTimeout(r, 60))
+      expect(h.searches('pexels')).toHaveLength(1)
+      s.add(req({ slideIndex: 0 }))
+      expect(await s.result(0)).toBeTruthy()
+      expect(h.searches('pexels')).toHaveLength(1)
+      s.close()
+    })
+
+    it('slides added at different times all complete, never share a photo, and unknown slides are null', async () => {
+      const h = setup({ pexels: Array.from({ length: 12 }, (_, i) => i + 1) })
+      const s = await openPictureSession(ctx, h.deps)
+      s.add(req({ slideIndex: 0 }))
+      await new Promise((r) => setTimeout(r, 15))
+      s.add(req({ slideIndex: 5 }))
+      await new Promise((r) => setTimeout(r, 15))
+      s.add(req({ slideIndex: 11 }))
+      const r = await Promise.all([0, 5, 11].map((i) => s.result(i)))
+      expect(r.every(Boolean)).toBe(true)
+      expect(new Set(r.map((x) => x?.src)).size).toBe(3)
+      expect(await s.result(7)).toBeNull()
+      s.close()
+    })
+
+    it('counts the Unsplash API requests it really makes (searches AND download pings; a warmed search counts once) and reports a rate limit', async () => {
+      const h = setup({ unsplash: [{ id: 'abc', alt: 'software tester' }] })
+      const s = await openPictureSession(ctx, h.deps)
+      s.warm(req())
+      await new Promise((r) => setTimeout(r, 60))
+      s.add(req())
+      expect(await s.result(0)).toBeTruthy()
+      await new Promise((r) => setTimeout(r, 20))
+      expect(s.stats()).toEqual({ unsplashSearches: 1, unsplashPings: 1 })
+      expect(h.calls.filter((c) => c.url.startsWith('https://api.unsplash.com/')).length).toBe(2) // what the provider's quota actually saw
+      expect(s.blocked()).toEqual([])
+      s.close()
+      clearPictureCache()
+      const limited = setup({ unsplash: 403 })
+      const s2 = await openPictureSession(ctx, limited.deps)
+      s2.add(req())
+      await s2.result(0)
+      expect(s2.blocked()).toEqual(['unsplash'])
+      s2.close()
+    })
   })
 })

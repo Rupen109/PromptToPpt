@@ -4,6 +4,10 @@ import type { Direction, Entitlements, ExportFormat, PlanId, PlanView, Presentat
 export interface ApiClientConfig {
   /** e.g. https://api.prompttoppt.app */
   apiUrl: string
+  /** the account id this tab believes is signed in; sent on every write so the server can refuse it if another tab switched accounts */
+  sessionUser?: () => string | null
+  /** called when the server says the session changed under this tab (409 SESSION_CHANGED) */
+  onSessionChanged?: () => void
 }
 
 export interface CurrentUser {
@@ -60,6 +64,10 @@ export interface CreateJobInput {
   direction?: Direction
   slideCount?: number
   model?: string
+  /** build a new deck in this brand kit's colours, fonts and logo (Pro/Gold) */
+  brandKitId?: string
+  /** remix this deck of yours into a NEW deck with the same look (Pro/Gold); its text comes in as `sourceIds` from remixSource() */
+  remixOf?: string
   sourceIds?: string[]
   idempotencyKey: string
 }
@@ -86,7 +94,28 @@ export interface LoadedPresentation {
   revision: number
   version: number
   document: Presentation
+  /** `editor` = a collaborator on someone else's deck (no export / share / delete; AI is charged to the owner) */
+  role?: 'owner' | 'editor'
 }
+export interface MemberView { id: string; email: string; status: 'pending' | 'active'; role: 'editor'; createdAt: string; expiresAt: string | null }
+export interface InvitePreview { title: string; from: string; status: 'pending' | 'active'; forThisAccount: boolean; presentationId: string | null }
+export interface SharedDeck { id: string; title: string; updatedAt: string; aspectRatio: string; owner: string }
+export interface LivePeer { clientId: string; userId: string; name: string; color: string; slideId: string | null; selection: string[]; editing: string | null; cursor: { x: number; y: number } | null; at: number }
+export interface ShareLinkView { url: string | null; hasPassword: boolean; expiresAt: string | null; /** all-time visits recorded for the deck (every plan) and when the last one was */ views?: number; lastViewedAt?: string | null }
+/** Share-link analytics (C7). `detail: false` = a plan without the dashboard: only the total. */
+export interface ShareAnalyticsBasic { detail: false; totalViews: number; lastViewedAt: string | null }
+export interface ShareAnalyticsFull {
+  detail: true; days: 7 | 30 | 90; totalViews: number; lastViewedAt: string | null; capped: boolean
+  totals: { views: number; visitors: number; avgSeconds: number; completionPct: number; avgSlidesSeen: number }
+  daily: { date: string; views: number; visitors: number }[]
+  slides: { slideId: string; index: number; reachPct: number; avgSeconds: number; leftHerePct: number; views: number }[]
+  removedSlidesSeconds: number
+  devices: { name: string; views: number; pct: number }[]; sources: { name: string; views: number; pct: number }[]; countries: { name: string; views: number; pct: number }[]
+  recent: { at: string; device: 'phone' | 'tablet' | 'computer'; country: string | null; source: string; seconds: number; slidesReached: number; slideCount: number; completed: boolean }[]
+}
+export type ShareAnalytics = ShareAnalyticsBasic | ShareAnalyticsFull
+export type ShareExpiry = 1 | 7 | 30 | 90 | null
+export interface PublicDeck { title: string; document: Presentation; watermark: boolean }
 export interface SaveResult {
   revision: number
   version: number
@@ -110,6 +139,12 @@ export interface AiAssistResult {
   /** full replacement theme (null = unchanged) */
   theme: Theme | null
   edits: { slideId: string; content: SlideContent }[]
+  /** new slides to insert (afterSlideId null = at the end) */
+  additions?: { afterSlideId: string | null; content: SlideContent }[]
+  /** the assistant is asking which slide (or what) you mean; the reply is the question */
+  ask?: boolean
+  /** earlier assistant changes to put back (the editor holds the "before" of each) */
+  reverts?: { change: number; part: 'all' | 'theme' | 'slide'; slideId?: string }[]
   /** pictures the user can confirm (generation is a separate, explicitly-paid step) */
   images: { slideId: string; slideNumber: number; placement: 'background' | 'beside' | 'floating'; prompt: string; alt: string }[]
   /** what was actually changed, human-readable */
@@ -140,16 +175,25 @@ export interface GeneratedImage {
   usage: Omit<ImageUsage, 'enabled'>
 }
 
+export interface FreeOutline { title: string; slides: { title: string; points: string[] }[] }
+export interface FreePdfResult extends FreeOutline { summary: string; keyPoints: string[]; mode: string; pages: number; attachmentId: string; truncated: boolean }
+
 export interface DraftAttachment {
   id: string
-  kind: 'pdf' | 'pptx' | 'text' | 'url'
+  kind: 'pdf' | 'pptx' | 'docx' | 'xlsx' | 'csv' | 'email' | 'text' | 'url'
   title: string
   chars: number
 }
 
+/** Comments on slides (C6). */
+export interface CommentItem { id: string; authorId: string; authorName: string; body: string; createdAt: string; editedAt: string | null; mine: boolean }
+export interface CommentThread { id: string; slideId: string; x: number | null; y: number | null; status: 'open' | 'resolved'; createdAt: string; resolvedAt: string | null; resolvedByName: string | null; comments: CommentItem[] }
+export interface CommentPerson { id: string; name: string; role: 'owner' | 'editor' }
+export interface CommentsData { threads: CommentThread[]; people: CommentPerson[]; unread: number; seenAt: string }
+
 export interface SourceSummary {
   id: string
-  type: 'text' | 'url' | 'pdf' | 'pptx'
+  type: 'text' | 'url' | 'pdf' | 'pptx' | 'docx' | 'xlsx' | 'csv' | 'email'
   title: string
   chunks: number
 }
@@ -167,6 +211,40 @@ export interface CheckoutSession {
   prefill: { name: string; email: string }
 }
 export interface PaymentSummary { id: string; amountMinor: number; currency: string; status: string; paidAt: string; planId: string | null }
+/** What "use my brand" found on a company website. */
+export interface BrandProfile {
+  sourceUrl: string
+  name: string | null
+  colors: { primary: string | null; accent: string | null; accentDerived: boolean; palette: string[] }
+  fonts: { heading: { family: string; original: string; exact: boolean } | null; body: { family: string; original: string; exact: boolean } | null; detected: string[] }
+  /** saved on our side; width ÷ height */
+  logo: { url: string; aspect: number } | null
+  /** low = few brand signals on the page: check the result before applying */
+  confidence: 'high' | 'low'
+}
+/** A saved brand kit: colours, fonts, logo and pictures that "Apply" puts on a deck and new decks can be built in. */
+export interface BrandKit {
+  id: string
+  name: string
+  colors: { primary: string | null; accent: string | null; extra: string[] }
+  fonts: { heading: string | null; body: string | null }
+  logo: { url: string; aspect: number } | null
+  images: { id: string; name: string; url: string; aspect: number }[]
+  sourceUrl: string | null
+  isDefault: boolean
+  updatedAt: string
+}
+export interface BrandKitInput {
+  name?: string
+  primary?: string | null
+  accent?: string | null
+  extra?: string[]
+  headingFont?: string | null
+  bodyFont?: string | null
+  sourceUrl?: string | null
+  /** one of our own asset URLs, e.g. the logo a website lookup saved */
+  logoUrl?: string
+}
 export interface BillingOverview { subscription: SubscriptionSummary | null; payments: PaymentSummary[]; billingEnabled: boolean; testMode: boolean }
 export interface RazorpayResult { razorpay_payment_id: string; razorpay_subscription_id: string; razorpay_signature: string }
 export interface PlansResponse {
@@ -219,19 +297,22 @@ type Envelope<T> = { success: true; data: T } | { success: false; error: { code:
 /** Plan/credit refusals the UI should answer with an upgrade or top-up prompt. */
 export const isGateError = (e: unknown): e is ApiError => e instanceof ApiError && ['UPGRADE_REQUIRED', 'INSUFFICIENT_CREDITS', 'LIMIT_REACHED'].includes(e.code)
 
-export function createApiClient({ apiUrl }: ApiClientConfig) {
+export function createApiClient({ apiUrl, sessionUser, onSessionChanged }: ApiClientConfig) {
   const base = apiUrl.replace(/\/$/, '')
 
   async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+    const method = (init.method ?? 'GET').toUpperCase()
+    const expected = method === 'GET' || method === 'HEAD' ? null : (sessionUser?.() ?? null)
     const res = await fetch(`${base}${path}`, {
       ...init,
       credentials: 'include', // session cookie (httpOnly) travels cross-origin
       // FormData sets its own multipart boundary header; everything else is JSON
-      headers: { ...(init.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }), ...(init.headers as Record<string, string> | undefined) },
+      headers: { ...(init.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }), ...(expected ? { 'X-Session-User': expected } : {}), ...(init.headers as Record<string, string> | undefined) },
     })
     const body = (await res.json().catch(() => null)) as Envelope<T> | null
     if (!res.ok || !body || !body.success) {
       const err = body && !body.success ? body.error : { code: 'HTTP_ERROR', message: res.statusText }
+      if (err.code === 'SESSION_CHANGED') onSessionChanged?.()
       throw new ApiError(res.status, err.code, err.message, 'details' in err ? err.details : undefined)
     }
     return body.data
@@ -251,6 +332,15 @@ export function createApiClient({ apiUrl }: ApiClientConfig) {
       }
     },
 
+    /** Public free tools (no login; rate- and spend-limited server-side). */
+    freeOutline: (b: { topic: string; kind?: string; audience?: string; slides?: number }) =>
+      request<FreeOutline>('/api/v1/free-tools/outline', { method: 'POST', body: JSON.stringify(b) }),
+    freePdf: (file: File, mode: string) => {
+      const body = new FormData()
+      body.set('file', file)
+      body.set('mode', mode)
+      return request<FreePdfResult>('/api/v1/free-tools/pdf', { method: 'POST', body })
+    },
     /** Landing page → stores the prompt server-side; returns an opaque id to put in the redirect URL. */
     createDraft: (prompt: string, attachmentIds: string[] = []) =>
       request<{ id: string; expiresInSeconds: number }>('/api/v1/drafts', { method: 'POST', body: JSON.stringify({ prompt, attachmentIds }) }),
@@ -278,8 +368,45 @@ export function createApiClient({ apiUrl }: ApiClientConfig) {
     createProject: (name: string) => request<ProjectSummary>('/api/v1/projects', { method: 'POST', body: JSON.stringify({ name }) }),
     renameProject: (id: string, name: string) => request<{ id: string; name: string }>(`/api/v1/projects/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
     deleteProject: (id: string) => request<null>(`/api/v1/projects/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    /** Server-Sent Events URL for live editing of one deck (EventSource must be opened with `withCredentials`). */
+    liveUrl: (id: string, clientId: string) => `${base}/api/v1/presentations/${encodeURIComponent(id)}/live?client=${encodeURIComponent(clientId)}`,
+    sendPresence: (id: string, body: { clientId: string; slideId: string | null; selection: string[]; editing: string | null; cursor: { x: number; y: number } | null }) =>
+      request<{ ok: true }>(`/api/v1/presentations/${encodeURIComponent(id)}/live/presence`, { method: 'POST', body: JSON.stringify(body), keepalive: true }),
+    /** View-only link (any plan) and collaborators (Pro / Gold). Owner-only. */
+    getShareAnalytics: (id: string, days: 7 | 30 | 90 = 30) => request<ShareAnalytics>(`/api/v1/presentations/${encodeURIComponent(id)}/analytics?days=${days}`),
+    clearShareAnalytics: (id: string) => request<{ cleared: number }>(`/api/v1/presentations/${encodeURIComponent(id)}/analytics`, { method: 'DELETE' }),
+    /** viewer page: a visit began (never throws into the page: callers swallow errors) */
+    shareViewStart: (token: string, body: { vid: string; referrer?: string; vw?: number }, access?: string) => request<{ viewId: string | null; ignored?: string }>(`/api/v1/public/share/${encodeURIComponent(token)}/analytics/start`, { method: 'POST', body: JSON.stringify(body), ...(access ? { headers: { 'X-Share-Access': access } } : {}) }),
+    /** viewer page: seconds spent per slide since the last report; `keepalive` lets it finish while the tab closes */
+    shareViewPing: (token: string, body: { viewId: string; vid: string; slides: { id: string; ms: number }[] }, access?: string) => request<{ ok: boolean }>(`/api/v1/public/share/${encodeURIComponent(token)}/analytics/ping`, { method: 'POST', body: JSON.stringify(body), keepalive: true, ...(access ? { headers: { 'X-Share-Access': access } } : {}) }),
+    /** the last report of a visit, sent while the tab closes: a plain-text body needs no preflight, so the browser delivers it. Returns false when the browser would not queue it. */
+    shareViewBeacon: (token: string, body: { viewId: string; vid: string; slides: { id: string; ms: number }[]; access?: string }): boolean => {
+      try { return typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function' && navigator.sendBeacon(`${base}/api/v1/public/share/${encodeURIComponent(token)}/analytics/ping`, new Blob([JSON.stringify(body)], { type: 'text/plain;charset=UTF-8' })) } catch { return false }
+    },
+    getShareLink: (id: string) => request<ShareLinkView>(`/api/v1/presentations/${encodeURIComponent(id)}/share`),
+    createShareLink: (id: string, opts: { password?: string; expiresInDays?: ShareExpiry } = {}) => request<ShareLinkView>(`/api/v1/presentations/${encodeURIComponent(id)}/share`, { method: 'POST', body: JSON.stringify(opts) }),
+    /** Pro / Gold: set or remove the password (`null` removes), set or clear the expiry (`null` clears). */
+    updateShareLink: (id: string, body: { password?: string | null; expiresInDays?: ShareExpiry }) => request<ShareLinkView>(`/api/v1/presentations/${encodeURIComponent(id)}/share`, { method: 'PATCH', body: JSON.stringify(body) }),
+    revokeShareLink: (id: string) => request<ShareLinkView>(`/api/v1/presentations/${encodeURIComponent(id)}/share`, { method: 'DELETE' }),
+    listMembers: (id: string) => request<{ members: MemberView[]; limit: number }>(`/api/v1/presentations/${encodeURIComponent(id)}/members`),
+    inviteMember: (id: string, email: string) => request<MemberView>(`/api/v1/presentations/${encodeURIComponent(id)}/members`, { method: 'POST', body: JSON.stringify({ email }) }),
+    removeMember: (id: string, memberId: string) => request<unknown>(`/api/v1/presentations/${encodeURIComponent(id)}/members/${encodeURIComponent(memberId)}`, { method: 'DELETE' }),
+    leaveDeck: (id: string) => request<unknown>(`/api/v1/presentations/${encodeURIComponent(id)}/members/me`, { method: 'DELETE' }),
+    getInvite: (token: string) => request<InvitePreview>(`/api/v1/invites/${encodeURIComponent(token)}`),
+    acceptInvite: (token: string) => request<{ presentationId: string }>(`/api/v1/invites/${encodeURIComponent(token)}/accept`, { method: 'POST' }),
+    listShared: () => request<SharedDeck[]>('/api/v1/shared'),
+    /** Public (no login): what a share link shows. */
+    getPublicDeck: (token: string, access?: string) => request<PublicDeck>(`/api/v1/public/share/${encodeURIComponent(token)}`, access ? { headers: { 'X-Share-Access': access } } : {}),
+    unlockPublicDeck: (token: string, password: string) => request<{ access: string | null }>(`/api/v1/public/share/${encodeURIComponent(token)}/unlock`, { method: 'POST', body: JSON.stringify({ password }) }),
     getPresentation: (id: string) => request<LoadedPresentation>(`/api/v1/presentations/${encodeURIComponent(id)}`),
 
+    comments: (id: string) => request<CommentsData>(`/api/v1/presentations/${encodeURIComponent(id)}/comments`),
+    addComment: (id: string, body: { slideId: string; x?: number; y?: number; body: string }) => request<{ threadId: string; commentId: string }>(`/api/v1/presentations/${encodeURIComponent(id)}/comments`, { method: 'POST', body: JSON.stringify(body) }),
+    replyComment: (id: string, threadId: string, body: string) => request<{ commentId: string }>(`/api/v1/presentations/${encodeURIComponent(id)}/comments/${encodeURIComponent(threadId)}/replies`, { method: 'POST', body: JSON.stringify({ body }) }),
+    setThreadStatus: (id: string, threadId: string, status: 'open' | 'resolved') => request<{ status: string }>(`/api/v1/presentations/${encodeURIComponent(id)}/comments/${encodeURIComponent(threadId)}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+    editComment: (id: string, commentId: string, body: string) => request<{ ok: boolean }>(`/api/v1/presentations/${encodeURIComponent(id)}/comments/items/${encodeURIComponent(commentId)}`, { method: 'PATCH', body: JSON.stringify({ body }) }),
+    deleteComment: (id: string, commentId: string) => request<{ deleted: boolean }>(`/api/v1/presentations/${encodeURIComponent(id)}/comments/items/${encodeURIComponent(commentId)}`, { method: 'DELETE' }),
+    markCommentsSeen: (id: string) => request<{ seenAt: string }>(`/api/v1/presentations/${encodeURIComponent(id)}/comments/seen`, { method: 'POST', body: '{}' }),
     addTextSource: (text: string, title?: string) => request<SourceSummary>('/api/v1/sources/text', { method: 'POST', body: JSON.stringify({ text, ...(title ? { title } : {}) }) }),
     addUrlSource: (url: string) => request<SourceSummary>('/api/v1/sources/url', { method: 'POST', body: JSON.stringify({ url }) }),
     addPdfSource: (file: File) => {
@@ -287,7 +414,7 @@ export function createApiClient({ apiUrl }: ApiClientConfig) {
       body.set('file', file)
       return request<SourceSummary>('/api/v1/sources/pdf', { method: 'POST', body })
     },
-    /** PDF, PowerPoint (.pptx) or text (.txt/.md): the server decides by content, not file name. */
+    /** PDF, Word, PowerPoint, Excel, CSV, email (.eml) or text (.txt/.md): the server decides by content, not file name. */
     addFileSource: (file: File) => {
       const body = new FormData()
       body.set('file', file)
@@ -312,7 +439,7 @@ export function createApiClient({ apiUrl }: ApiClientConfig) {
     aiEdit: (id: string, body: { slideId: string; command: AiEditCommand; argument?: string; model?: string; requestId: string }) =>
       request<AiEditResult>(`/api/v1/presentations/${encodeURIComponent(id)}/ai-edit`, { method: 'POST', body: JSON.stringify(body) }),
     /** Chat-style assistant: free-form instruction → validated theme/animation/content changes to apply as ONE undoable step. */
-    aiAssist: (id: string, body: { instruction: string; scope: 'deck' | 'slide'; slideId?: string; model?: string; requestId: string; sourceIds?: string[] }) =>
+    aiAssist: (id: string, body: { instruction: string; scope: 'deck' | 'slide'; slideId?: string; activeSlideId?: string; model?: string; requestId: string; sourceIds?: string[]; recent?: { theme: boolean; slideIds: string[]; summary: string[] }[]; conversation?: { role: 'user' | 'assistant'; text: string }[] }) =>
       request<AiAssistResult>(`/api/v1/presentations/${encodeURIComponent(id)}/ai-assist`, { method: 'POST', body: JSON.stringify(body) }),
     /** The assistant conversation of this presentation (persisted server-side; survives reloads and devices). */
     aiChat: (id: string) => request<Record<string, unknown>[]>(`/api/v1/presentations/${encodeURIComponent(id)}/chat`),
@@ -344,6 +471,20 @@ export function createApiClient({ apiUrl }: ApiClientConfig) {
     /** Send Razorpay's success payload; the server verifies the signature before activating the plan. */
     verifyPayment: (r: RazorpayResult) => request<Entitlements>('/api/v1/billing/verify', { method: 'POST', body: JSON.stringify(r) }),
     billing: () => request<BillingOverview>('/api/v1/billing/subscription'),
+    /** Reads a website's colours, fonts and logo (Pro and Gold). */
+    /** An exact copy of one of your decks, saved as a new deck. */
+    duplicatePresentation: (id: string) => request<{ id: string; title: string }>(`/api/v1/presentations/${encodeURIComponent(id)}/duplicate`, { method: 'POST', body: '{}' }),
+    /** Step 1 of remix (Pro/Gold): your deck's text as a private source; then createJob({ remixOf, sourceIds: [sourceId], … }). */
+    remixSource: (id: string) => request<{ sourceId: string; title: string; slideCount: number; aspectRatio: string; skipped: number }>(`/api/v1/presentations/${encodeURIComponent(id)}/remix-source`, { method: 'POST', body: '{}' }),
+    /** Your brand kits and how many your plan allows (0 = not on your plan). */
+    brandKits: () => request<{ kits: BrandKit[]; limit: number }>('/api/v1/brand/kits'),
+    brandKitCreate: (body: BrandKitInput) => request<BrandKit>('/api/v1/brand/kits', { method: 'POST', body: JSON.stringify(body) }),
+    brandKitUpdate: (id: string, body: BrandKitInput & { isDefault?: boolean; removeLogo?: boolean }) => request<BrandKit>(`/api/v1/brand/kits/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    brandKitDelete: (id: string) => request<{ deleted: true }>(`/api/v1/brand/kits/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    brandKitLogo: (id: string, file: File) => { const f = new FormData(); f.append('file', file); return request<BrandKit>(`/api/v1/brand/kits/${encodeURIComponent(id)}/logo`, { method: 'POST', body: f }) },
+    brandKitImageAdd: (id: string, file: File, name?: string) => { const f = new FormData(); f.append('file', file); if (name) f.append('name', name); return request<BrandKit>(`/api/v1/brand/kits/${encodeURIComponent(id)}/images`, { method: 'POST', body: f }) },
+    brandKitImageRemove: (id: string, imageId: string) => request<BrandKit>(`/api/v1/brand/kits/${encodeURIComponent(id)}/images/${encodeURIComponent(imageId)}`, { method: 'DELETE' }),
+    brandExtract: (url: string) => request<BrandProfile>('/api/v1/brand/extract', { method: 'POST', body: JSON.stringify({ url }) }),
     cancelSubscription: () => request<Omit<BillingOverview, 'billingEnabled'>>('/api/v1/billing/cancel', { method: 'POST' }),
     /** Development/staging only (404 in production): switch plans without payment to exercise gating. */
 

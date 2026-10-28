@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { composeSlide, getTheme, validateSlide } from '@prompttoppt/theme'
 import { presentationSchema, type Presentation, type SlideContent, type TextElement } from '@prompttoppt/validation'
+import { DESIGNS } from '@prompttoppt/theme'
 import * as C from './commands'
+import { slidesInText } from '../components/editor/RemixDialog'
 import { useDoc } from './store'
 
 let n = 0
@@ -116,6 +118,121 @@ describe('slide commands', () => {
     apply('n', (d) => C.setSpeakerNotes(d, 's1', 'say this'))
     expect(doc().slides[1]!.speakerNotes).toBe('say this')
     expect(JSON.stringify(doc().slides[1]!.elements)).not.toContain('say this')
+  })
+})
+
+describe('assistant additions', () => {
+  it('applyAssist inserts a new composed slide after the anchor or at the end, as one undoable step', () => {
+    const thanks = { layout: 'thank-you', title: 'Thank you', subtitle: 'Questions?', speakerNotes: '', sources: [] } as never
+    const base = useDoc.getState().doc!
+    const first = base.slides[0]!.id, n = base.slides.length
+    useDoc.getState().apply('AI assistant', (d) => C.applyAssist(d, { theme: null, edits: [], additions: [{ afterSlideId: null, content: thanks }, { afterSlideId: first, content: thanks }] }))
+    const after = useDoc.getState().doc!
+    expect(after.slides).toHaveLength(n + 2)
+    expect(after.slides[1]!.layoutId).toBe('thank-you')
+    expect(after.slides[after.slides.length - 1]!.layoutId).toBe('thank-you')
+    useDoc.getState().undo()
+    expect(useDoc.getState().doc!.slides).toHaveLength(n)
+  })
+})
+
+describe('putting back assistant changes', () => {
+  const newContent = (c: SlideContent) => ({ ...c, title: 'AI changed this' }) as SlideContent
+  function runAssist() {
+    const before = structuredClone(useDoc.getState().doc!)
+    const id = before.slides.find((s) => s.content && 'title' in s.content)!.id
+    const next = getTheme('midnight') ?? getTheme('cobalt')
+    useDoc.getState().apply('AI assistant', (d) => C.applyAssist(d, { theme: next, edits: [{ slideId: id, content: newContent(before.slides.find((s) => s.id === id)!.content as SlideContent) }], additions: [{ afterSlideId: null, content: { layout: 'thank-you', title: 'Thanks', speakerNotes: '', sources: [] } as never }] }))
+    const after = useDoc.getState().doc!
+    return { before, id, undo: C.snapshotAssist(before, after, true, ['Applied a template', 'Rewrote a slide']) }
+  }
+  it('the undo record names what was touched (rewritten and added slides) and is small', () => {
+    const { undo, id } = runAssist()
+    expect(Object.keys(undo.contents)).toEqual([id])
+    expect(undo.added).toHaveLength(1)
+    expect(C.undoSlideIds(undo)).toHaveLength(2)
+    expect(undo.theme).not.toBeNull()
+    expect(JSON.stringify(undo).length).toBeLessThan(20_000) // it is saved with the chat message
+  })
+  it('part "slide" restores only that slide and keeps the new design; part "theme" restores only the design; "all" restores everything (and removes added slides)', () => {
+    const { undo, id, before } = runAssist()
+    const oldTitle = (before.slides.find((s) => s.id === id)!.content as { title: string }).title
+    const themeAfter = useDoc.getState().doc!.theme.id
+    useDoc.getState().apply('undo AI slide', (d) => C.revertAssist(d, undo, 'slide', id))
+    expect((useDoc.getState().doc!.slides.find((s) => s.id === id)!.content as { title: string }).title).toBe(oldTitle)
+    expect(useDoc.getState().doc!.theme.id).toBe(themeAfter)
+    useDoc.getState().apply('undo AI theme', (d) => C.revertAssist(d, undo, 'theme'))
+    expect(useDoc.getState().doc!.theme.id).toBe(before.theme.id)
+    expect((useDoc.getState().doc!.slides.find((s) => s.id === id)!.content as { title: string }).title).toBe(oldTitle)
+    useDoc.getState().apply('undo AI all', (d) => C.revertAssist(d, undo, 'all'))
+    expect(useDoc.getState().doc!.slides).toHaveLength(before.slides.length)
+  })
+  it('still works after being saved as text and loaded back (page reload / panel reopened)', () => {
+    const { undo, id, before } = runAssist()
+    const loaded = JSON.parse(JSON.stringify(undo)) as C.AssistUndo
+    useDoc.getState().apply('undo after reload', (d) => C.revertAssist(d, loaded, 'all'))
+    const d = useDoc.getState().doc!
+    expect(d.theme.id).toBe(before.theme.id)
+    expect(d.slides).toHaveLength(before.slides.length)
+    expect((d.slides.find((s) => s.id === id)!.content as { title: string }).title).toBe((before.slides.find((s) => s.id === id)!.content as { title: string }).title)
+  })
+})
+
+describe('brand from a website', () => {
+  const brand = { name: 'Acme Roasters', colors: { primary: '#E4572E', accent: '#17BEBB' }, fonts: { heading: { family: 'Playfair Display' }, body: { family: 'Inter' } }, logo: { url: 'https://api.example.com/api/v1/assets/abcdefghijklmnopqrstuvwxyz012345', aspect: 3 } }
+  const logos = () => doc().slides.flatMap((s) => s.elements).filter((e) => e.type === 'image' && /logo/i.test((e as { alt?: string }).alt ?? ''))
+  it('applies colours, fonts and the logo to every slide as ONE undo step, keeping layout and content', () => {
+    const before = structuredClone(doc())
+    apply('Apply brand', (d) => C.applyBrand(d, brand, { colors: true, fonts: true, logo: true }))
+    expect(doc().theme.fonts).toEqual({ heading: 'Playfair Display', body: 'Inter' })
+    expect(doc().theme.brand?.logo?.src).toBe(brand.logo.url)
+    expect(doc().theme.colors.primary.toLowerCase()).not.toBe(before.theme.colors.primary.toLowerCase())
+    expect(logos()).toHaveLength(doc().slides.filter((s) => !s.manual && s.content).length)
+    expect(doc().slides.map((s) => s.layoutId)).toEqual(before.slides.map((s) => s.layoutId))
+    useDoc.getState().undo()
+    expect(doc().theme.brand).toBeUndefined()
+    expect(doc().theme.fonts).toEqual(before.theme.fonts)
+    expect(logos()).toHaveLength(0)
+  })
+  it('applies only the parts that were ticked', () => {
+    const before = structuredClone(doc())
+    apply('Apply brand', (d) => C.applyBrand(d, brand, { colors: false, fonts: false, logo: true }))
+    expect(doc().theme.colors).toEqual(before.theme.colors)
+    expect(doc().theme.fonts).toEqual(before.theme.fonts)
+    expect(logos().length).toBeGreaterThan(0)
+  })
+  it('hand-edited slides get the logo too; changing the brand replaces it (never doubles it); removing the brand removes it everywhere', () => {
+    const edit = (i: number) => { const sl = doc().slides[i]!; const el = sl.elements.find((e) => e.type === 'text')! as TextElement; apply('hand edit', (d) => C.setText(d, sl.id, el.id, el.paragraphs)) }
+    edit(0); edit(1)
+    expect(doc().slides[0]!.manual && doc().slides[1]!.manual, 'slides must be hand-edited for this test').toBe(true)
+    const brandEls = (i: number) => doc().slides[i]!.elements.filter((e) => e.brand)
+    apply('Apply brand', (d) => C.applyBrand(d, brand, { colors: false, fonts: false, logo: true }))
+    for (let i = 0; i < doc().slides.length; i++) expect(brandEls(i).filter((e) => e.type === 'image'), `slide ${i + 1}`).toHaveLength(1) // manual or not
+    expect(doc().slides[0]!.elements.some((e) => e.type === 'text'), 'the hand-edited content is still there').toBe(true)
+    const top = (i: number) => Math.max(...doc().slides[i]!.elements.filter((e) => !e.brand).map((e) => e.zIndex))
+    for (const e of brandEls(0)) expect(e.zIndex, 'the logo is drawn above the slide\'s own elements').toBeGreaterThan(top(0))
+    const other = { ...brand, logo: { url: 'https://api.example.com/api/v1/assets/ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ', aspect: 2 } }
+    apply('Change brand', (d) => C.applyBrand(d, other, { colors: false, fonts: false, logo: true }))
+    for (let i = 0; i < doc().slides.length; i++) {
+      const imgs = brandEls(i).filter((e) => e.type === 'image') as { src: string }[]
+      expect(imgs, `slide ${i + 1} must have exactly one logo after the change`).toHaveLength(1)
+      expect(imgs[0]!.src).toBe(other.logo.url)
+    }
+    apply('remove', (d) => C.removeBrandLogo(d))
+    for (let i = 0; i < doc().slides.length; i++) expect(brandEls(i), `slide ${i + 1}`).toHaveLength(0)
+    expect(doc().slides[0]!.elements.some((e) => e.type === 'text'), 'removing the logo must not touch the slide\'s own content').toBe(true)
+  })
+  it('the logo stays through a template, palette or mode change, and can be removed', () => {
+    apply('Apply brand', (d) => C.applyBrand(d, brand, { colors: false, fonts: false, logo: true }))
+    const n = logos().length
+    apply('template', (d) => C.applyDesign(d, DESIGNS[3]!.id))
+    for (const s of doc().slides) expect(s.elements.filter((e) => e.type === 'image' && /logo/i.test((e as { alt?: string }).alt ?? '')), 'exactly one logo per slide; the logo is never used as the slide picture').toHaveLength(1)
+    expect(logos()).toHaveLength(n)
+    apply('palette', (d) => C.applyPalette(d, { primary: '#0B5FFF', accent: '#FFB300' })); expect(logos()).toHaveLength(n)
+    apply('mode', (d) => C.setThemeMode(d, 'dark')); expect(logos()).toHaveLength(n)
+    apply('remove', (d) => C.removeBrandLogo(d))
+    expect(doc().theme.brand).toBeUndefined(); expect(logos()).toHaveLength(0)
+    apply('template again', (d) => C.applyDesign(d, DESIGNS[4]!.id)); expect(logos()).toHaveLength(0) // removed means removed
   })
 })
 
@@ -297,5 +414,39 @@ describe('picture commands', () => {
     apply('lock', (d) => C.setSlideLocked(d, 's1', true))
     apply('float', (d) => { C.insertImageElement(d, 's1', img, gen) })
     expect(doc().slides[1]!.elements.some((x) => x.type === 'image')).toBe(false)
+  })
+})
+
+describe('style: templates and palettes', () => {
+  it('a palette recolours the whole deck, keeps the design and the mode, and is one undo step', () => {
+    const before = doc().theme
+    apply('palette', (d) => C.applyPalette(d, { primary: '#EA580C', accent: '#2563EB' }))
+    const after = doc().theme
+    expect(after.colors.primary).not.toBe(before.colors.primary)
+    expect(after.style).toEqual(before.style)
+    expect(after.fonts).toEqual(before.fonts)
+    expect(after.colors.background === before.colors.background || after.colors.background !== '').toBe(true)
+    useDoc.getState().undo()
+    expect(doc().theme.colors.primary).toBe(before.colors.primary)
+  })
+  it('applying a catalogue design swaps colours, fonts and style, re-composes untouched slides, and undoes cleanly', () => {
+    const before = doc().theme
+    const target = DESIGNS.find((d) => d.id !== before.templateId && d.theme.style?.decor === 'ruled-paper')!
+    apply('design', (d) => C.applyDesign(d, target.id))
+    expect(doc().theme.templateId).toBe(target.id)
+    expect(doc().theme.style?.decor).toBe('ruled-paper')
+    useDoc.getState().undo()
+    expect(doc().theme.templateId).toBe(before.templateId)
+  })
+})
+
+describe('remix: reading the slide count out of the instruction', () => {
+  it('finds "6 slides", "8-slide", "12 Slides" and ignores other numbers', () => {
+    expect(slidesInText('A 6 slides version')).toBe(6)
+    expect(slidesInText('make it an 8-slide summary')).toBe(8)
+    expect(slidesInText('Only 12 Slides please')).toBe(12)
+    expect(slidesInText('keep slide 3 and the Q3 numbers')).toBeNull()
+    expect(slidesInText('for our 2025 plan')).toBeNull()
+    expect(slidesInText('')).toBeNull()
   })
 })

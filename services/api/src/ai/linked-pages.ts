@@ -1,4 +1,5 @@
-import { BlockedUrlError, fetchPage, type Extracted } from '../sources/extract.ts'
+import { BlockedUrlError, SourceError, type Extracted } from '../sources/extract.ts'
+import { readLink } from '../sources/link.ts'
 
 export interface LinkedPage {
   id: string
@@ -12,7 +13,7 @@ export interface LinkedPage {
 }
 
 /** Indirection so tests can stub network reads. */
-export const pageReader = { read: (url: string): Promise<Extracted> => fetchPage(url) }
+export const pageReader = { read: (url: string): Promise<Extracted> => readLink(url) }
 
 const PER_PAGE_CHARS = 12_000
 
@@ -31,7 +32,7 @@ export async function readLinkedPages(urls: string[]): Promise<LinkedPage[]> {
         return { id, url, status: 'read', title: ex.title || url, text }
       } catch (e) {
         const msg = (e as Error).message
-        const safe = e instanceof BlockedUrlError || /^(Could not|The page|That URL|Page is|The page took)/.test(msg) ? msg : 'The page could not be read.'
+        const safe = e instanceof BlockedUrlError || e instanceof SourceError || /^(Could not|The page|That URL|Page is|The page took)/.test(msg) ? msg : 'The page could not be read.'
         return { id, url, status: 'failed', title: url, text: '', reason: safe }
       }
     }),
