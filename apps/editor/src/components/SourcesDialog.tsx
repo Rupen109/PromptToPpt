@@ -5,17 +5,20 @@ import { api } from '@/lib/api'
 import { useDialog } from '@/lib/useDialog'
 import { useEntitlements } from '@/lib/entitlements'
 
-type Tab = 'text' | 'link' | 'file' | 'research'
+type Tab = 'text' | 'link' | 'file' | 'research' | 'youtube'
+/** a youtube.com / youtu.be / shorts link: the server refuses to fetch these (YouTube does not hand captions to apps), so the dialog sends people to the transcript tab instead */
+export const isYouTubeLink = (u: string) => /^https?:\/\/(?:(?:www|m|music)\.)?(?:youtube\.com\/(?:watch\?[^#]*v=|shorts\/|embed\/|live\/)|youtu\.be\/)[A-Za-z0-9_-]{11}/i.test(u.trim())
 const MAX_SOURCES = 10
 /** shown to the person before they spend it; the server charges the price in its own table (credit_cost: web_research) */
 const WEB_CREDITS = 60
 
 /** Attach reference material: pasted text, a web page, or a PDF. Each becomes a server-side source with page/section locators. */
-export function SourcesDialog({ count, language, onAdd, onClose }: { count: number; language?: string; onAdd: (s: SourceSummary) => void; onClose: () => void }) {
+export function SourcesDialog({ count, language, initialTab, initialUrl, onAdd, onClose }: { count: number; language?: string; initialTab?: Tab; initialUrl?: string; onAdd: (s: SourceSummary) => void; onClose: () => void }) {
+  const [ytUrl, setYtUrl] = useState(initialUrl ?? '')
   const { ent, upgrade, refresh } = useEntitlements()
   const [mode, setMode] = useState<'wikipedia' | 'web'>('wikipedia')
   const requestId = useRef(crypto.randomUUID())
-  const [tab, setTab] = useState<Tab>('file')
+  const [tab, setTab] = useState<Tab>(initialTab ?? 'file')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const file = useRef<HTMLInputElement>(null)
@@ -61,10 +64,19 @@ export function SourcesDialog({ count, language, onAdd, onClose }: { count: numb
     e.preventDefault()
     const f = new FormData(e.currentTarget)
     if (tab === 'research') return void runResearch(String(f.get('query')).trim())
-    if (tab === 'link') return void run(() => api.addUrlSource(String(f.get('url'))))
+    if (tab === 'youtube') return void run(() => api.addTranscriptSource({ text: String(f.get('transcript')), ...(String(f.get('title') ?? '').trim() ? { title: String(f.get('title')).trim() } : {}), ...(ytUrl.trim() ? { url: ytUrl.trim() } : {}) }))
+    if (tab === 'link') {
+      const u = String(f.get('url'))
+      if (isYouTubeLink(u)) { setYtUrl(u.trim()); setTab('youtube'); return setError(null) } // YouTube links are handled with the transcript
+      return void run(() => api.addUrlSource(u))
+    }
     if (tab === 'text') return void run(() => api.addTextSource(String(f.get('text')), String(f.get('title') ?? '')))
     const picked = file.current?.files?.[0]
     if (!picked) return setError('Choose a file first.')
+    if (/\.(jpe?g|png|webp)$/i.test(picked.name)) {
+      if (picked.size > 8 * 1024 * 1024) return setError('That picture is larger than 8 MB. Save a smaller copy and try again.')
+      return void run(async () => { const s = await api.addImageSource(picked); void refresh(); return s }) // credits changed
+    }
     if (picked.size > 15 * 1024 * 1024) return setError('That file is larger than 15 MB.')
     void run(() => api.addFileSource(picked))
   }
@@ -77,12 +89,25 @@ export function SourcesDialog({ count, language, onAdd, onClose }: { count: numb
           <h2 className="font-heading font-bold text-xl">Add sources</h2>
           <button onClick={onClose} aria-label="Close" className="text-slate-500 hover:text-slate-800 text-xl leading-none">×</button>
         </div>
-        <div role="tablist" className="flex gap-2 mb-4">
-          {([['file', 'Upload file'], ['link', 'Website link'], ['text', 'Paste text'], ['research', 'Wikipedia & web']] as const).map(([t, label]) => (
+        <div role="tablist" className="flex flex-wrap gap-2 mb-4">
+          {([['file', 'Upload file'], ['link', 'Website link'], ['youtube', 'YouTube / captions'], ['text', 'Paste text'], ['research', 'Wikipedia & web']] as const).map(([t, label]) => (
             <button key={t} role="tab" aria-selected={tab === t} onClick={() => { setTab(t); setError(null) }} className={`px-3 py-1.5 rounded-full text-sm font-medium ${tab === t ? 'bg-foreground text-white' : 'bg-slate-100 text-slate-700'}`}>{label}</button>
           ))}
         </div>
         <form onSubmit={submit} className="space-y-3">
+          {tab === 'youtube' && (
+            <>
+              <input value={ytUrl} onChange={(e) => setYtUrl(e.target.value)} type="url" placeholder="YouTube link (optional, so slides can cite the video)" aria-label="YouTube link" className={input} />
+              <input name="title" maxLength={200} placeholder="Video title (optional)" aria-label="Video title" className={input} />
+              <textarea name="transcript" required minLength={20} maxLength={400000} rows={6} placeholder="Paste the transcript here" aria-label="Transcript" className={input} />
+              <ol className="text-xs text-slate-600 list-decimal pl-5 space-y-0.5">
+                <li>Open the video on YouTube and click <strong>⋯ More</strong> under it.</li>
+                <li>Choose <strong>Show transcript</strong>, then select all the text and copy it.</li>
+                <li>Paste it above. Time stamps are kept, so slides can point to the minute.</li>
+              </ol>
+              <p className="text-xs text-slate-500">YouTube does not let apps read captions automatically. You can also upload a caption file (.srt or .vtt) from the Upload file tab.</p>
+            </>
+          )}
           {tab === 'research' && (
             <>
               <input name="query" required minLength={3} maxLength={300} placeholder="A topic, e.g. Solar energy in India" aria-label="Topic to research" className={input} />
@@ -103,8 +128,8 @@ export function SourcesDialog({ count, language, onAdd, onClose }: { count: numb
           {tab === 'link' && <p className="text-xs text-slate-500">Websites, or a Google Doc, Sheet or Slides shared with “Anyone with the link”.</p>}
           {tab === 'file' && (
             <>
-              <input ref={file} type="file" accept=".pdf,.docx,.docm,.pptx,.xlsx,.xlsm,.csv,.tsv,.eml,.txt,.md" aria-label="File" className={input} />
-              <p className="text-xs text-slate-500">PDF, Word (.docx), PowerPoint (.pptx), Excel (.xlsx), CSV, email (.eml) or text/Markdown — up to 15 MB. Old .doc / .xls / .ppt files: save them in the newer format first.</p>
+              <input ref={file} type="file" accept=".pdf,.docx,.docm,.pptx,.xlsx,.xlsm,.csv,.tsv,.eml,.txt,.md,.jpg,.jpeg,.png,.webp,.srt,.vtt" aria-label="File" className={input} />
+              <p className="text-xs text-slate-500">PDF, Word (.docx), PowerPoint (.pptx), Excel (.xlsx), CSV, email (.eml) or text/Markdown — up to 15 MB. Video caption files (.srt, .vtt) work too. A JPG, PNG or WebP picture (notes, a whiteboard, a table, a chart, a screenshot — up to 8 MB) is read by AI for 4 credits. Old .doc / .xls / .ppt files: save them in the newer format first.</p>
             </>
           )}
           {tab === 'text' && (
@@ -115,7 +140,7 @@ export function SourcesDialog({ count, language, onAdd, onClose }: { count: numb
           )}
           {error && <p role="alert" className="text-sm font-semibold text-red-700">{error}</p>}
           <p className="text-xs text-slate-500">Sources are private to you. The AI treats them as reference data only and cites them on slides.</p>
-          <button type="submit" disabled={busy} className="w-full bg-primary text-white rounded-lg py-2.5 font-semibold disabled:opacity-60">{busy ? (tab === 'research' ? 'Searching…' : 'Reading…') : tab === 'research' ? 'Find facts' : 'Add source'}</button>
+          <button type="submit" disabled={busy} className="w-full bg-primary text-white rounded-lg py-2.5 font-semibold disabled:opacity-60">{busy ? (tab === 'research' ? 'Searching…' : 'Reading…') : tab === 'research' ? 'Find facts' : tab === 'youtube' ? 'Add transcript' : 'Add source'}</button>
         </form>
       </div>
     </div></Portal>

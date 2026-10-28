@@ -1,16 +1,16 @@
 ---
 name: prompttoppt-overview
-description: Orientation for the promptToPpt monorepo — what each app/package does, how the three apps share one login, the non-negotiable invariants, and the commands to run everything. Load first when starting any task in this repo.
+description: Orientation for the SlidesDone monorepo — what each app/package does, how the three apps share one login, the non-negotiable invariants, and the commands to run everything. Load first when starting any task in this repo.
 ---
 
-# promptToPpt — orientation
+# SlidesDone — orientation
 
 AI presentation SaaS: prompt → analysis → outline → slides → editor → export. pnpm + turbo monorepo, TypeScript strict.
 
 ## Layout
 | Path | What | Host (prod) |
 |---|---|---|
-| `apps/web` | Next.js 16 marketing/SEO site + `/login` `/signup` `/pricing` | `prompttoppt.app` |
+| `apps/web` | Next.js 16 marketing/SEO site + `/login` `/signup` `/pricing` | `slidesdone.app` |
 | `apps/editor` | Vite + React 19 SPA: create flow, deck viewer/editor, owner dashboard (`/admin`, lazy) | `app.` |
 | `services/api` | Hono API + Better Auth + Drizzle/Postgres + in-process generation worker | `api.` |
 | `packages/validation` | **Zod schemas = single source of truth**: presentation document, slide content, plans/entitlements | |

@@ -1,6 +1,6 @@
 ---
 name: slide-layouts-and-document
-description: The presentation document model, semantic slide content, deterministic layout engine and validators in promptToPpt — how to add a layout or element type, and how themes/aspect ratios/validation fit together. Use when changing slide rendering, layouts, themes, or the document schema.
+description: The presentation document model, semantic slide content, deterministic layout engine and validators in SlidesDone — how to add a layout or element type, and how themes/aspect ratios/validation fit together. Use when changing slide rendering, layouts, themes, or the document schema.
 ---
 
 # Document model & layout engine

@@ -59,7 +59,7 @@ ask OPENROUTER_API_KEY "OpenRouter API key" required "needed for AI in the test 
 ask RAZORPAY_KEY_ID "Razorpay key id (rzp_test_...)" required "TEST keys only for the test environment"
 ask RAZORPAY_KEY_SECRET "Razorpay key secret" required
 ask RESEND_API_KEY "Resend API key" optional "needed for sign-up and password emails; skip until you have one"
-ask EMAIL_FROM "Sender address, e.g. PromptToPpt <hello@yourdomain.com>" optional
+ask EMAIL_FROM "Sender address, e.g. SlidesDone <hello@yourdomain.com>" optional
 ask UNSPLASH_ACCESS_KEY "Unsplash access key" optional
 ask PEXELS_API_KEY "Pexels API key" optional
 ask TURNSTILE_SECRET_KEY "Cloudflare Turnstile secret" optional

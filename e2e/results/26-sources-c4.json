@@ -4,70 +4,73 @@
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 1237
+    "ms": 4946
   },
   {
     "title": "A1 + H2 + H4 \"Add sources\" → lighthouse-plan.docx: read, right icon and title, stored with the right type and locators; Remove deletes it",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 3520
+    "ms": 4011
   },
   {
     "title": "A1 + H2 + H4 \"Add sources\" → sales-2025.xlsx: read, right icon and title, stored with the right type and locators; Remove deletes it",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 3070
+    "ms": 3235
   },
   {
     "title": "A1 + H2 + H4 \"Add sources\" → stores.csv: read, right icon and title, stored with the right type and locators; Remove deletes it",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 3088
+    "ms": 3294
   },
   {
     "title": "A1 + H2 + H4 \"Add sources\" → q3-update.eml: read, right icon and title, stored with the right type and locators; Remove deletes it",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 3068
+    "ms": 3088
   },
   {
     "title": "A2 + H5 dropping each new file type on the prompt bar shows a chip with its icon and settles to the right type",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 3148
+    "ms": 3266
   },
   {
     "title": "A5 old .doc / .xls / .ppt / .msg and unknown files each get one plain sentence on the page and nothing is stored",
     "ok": true,
     "error": "",
-    "noise": [],
-    "ms": 1457
+    "noise": [
+      "http 422: POST http://localhost:4000/api/v1/sources/image",
+      "console: Failed to load resource: the server responded with a status of 422 (Unprocessable Entity)"
+    ],
+    "ms": 1489
   },
   {
     "title": "A5 (server side) the same files sent straight to the API: right messages; a text file named .docx, an exe named .docx, a zip named .xlsx, an encrypted file, a damaged file",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 1082
+    "ms": 1167
   },
   {
     "title": "G1 a Word file renamed .pdf / .xlsx / .txt and an Excel file renamed .docx are read as what they are",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 49
+    "ms": 46
   },
   {
     "title": "G4 + G6 a 15 MB workbook is read in a few seconds and other requests stay responsive meanwhile; one bigger than 15 MB is refused in plain words",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 474
+    "ms": 470
   },
   {
     "title": "E4 + E5 a private / unknown Google link says how to share it (page and API); a Drive file link, a Forms link and a malformed link each get a plain sentence",
@@ -83,14 +86,14 @@
       "http 422: POST http://localhost:4000/api/v1/sources/url",
       "console: Failed to load resource: the server responded with a status of 422 (Unprocessable Entity)"
     ],
-    "ms": 2667
+    "ms": 2580
   },
   {
     "title": "H3 phone width (390 px): the Add sources dialog fits, scrolls and its file list is reachable",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 2291
+    "ms": 2978
   },
   {
     "title": "A6 adding sources too fast gives a plain \"wait a moment\" message on the page (not \"Too many requests\"), and works again afterwards",
@@ -100,13 +103,13 @@
       "http 429: POST http://localhost:4000/api/v1/sources/text",
       "console: Failed to load resource: the server responded with a status of 429 (Too Many Requests)"
     ],
-    "ms": 125900
+    "ms": 125793
   },
   {
     "title": "A3 a visitor attaches a Word file on the landing page, signs up, and the file is waiting as a source",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 3747
+    "ms": 3662
   }
 ]

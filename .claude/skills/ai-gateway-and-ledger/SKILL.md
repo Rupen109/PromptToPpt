@@ -1,6 +1,6 @@
 ---
 name: ai-gateway-and-ledger
-description: Rules for calling AI models in promptToPpt — always via AIGateway, how routing/fallback/repair works, what the usage ledger records, how cost and tokens are measured, thinking-budget policy. Use when adding any feature that calls a model, or touching packages/ai or the usage ledger.
+description: Rules for calling AI models in SlidesDone — always via AIGateway, how routing/fallback/repair works, what the usage ledger records, how cost and tokens are measured, thinking-budget policy. Use when adding any feature that calls a model, or touching packages/ai or the usage ledger.
 ---
 
 # AI gateway & usage ledger

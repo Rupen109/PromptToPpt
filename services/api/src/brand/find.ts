@@ -24,7 +24,7 @@ const MAX_CSS_FILES = 4
 const MAX_LOGO_BYTES = 1.5 * 1024 * 1024
 const TOTAL_BUDGET_MS = 20_000
 /** a plain, honest browser-compatible identity: many sites refuse anything without "Mozilla/5.0" in it */
-const USER_AGENT = 'Mozilla/5.0 (compatible; promptToPpt-brand/1.0)'
+const USER_AGENT = 'Mozilla/5.0 (compatible; SlidesDone-brand/1.0)'
 
 /** Something went wrong reading the page that the user can act on; the message is safe to show as it is. */
 export class BrandReadError extends Error {}

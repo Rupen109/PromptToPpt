@@ -12,7 +12,7 @@ export function Footer() {
       <div className="max-w-[1200px] mx-auto">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-10 sm:gap-10 pb-12 border-b-2 border-[#f1f5f9]">
           <div className="flex flex-col gap-4 items-start col-span-2 lg:col-span-1">
-            <Link href="/" aria-label="promptToPpt home"><Logo size={32} /></Link>
+            <Link href="/" aria-label="SlidesDone home"><Logo size={32} /></Link>
             <p className="text-xs leading-5 text-[#475569] max-w-[270px]">Vibrant AI presentation maker for venture decks, executive board reviews and fast product storytelling.</p>
             <span className="inline-flex items-center gap-2 bg-highlight border border-foreground rounded-full px-3 py-[3px] font-heading font-bold text-[11px] leading-4 text-foreground"><i className="w-2 h-2 rounded-full bg-foreground" />Early access</span>
           </div>
@@ -31,7 +31,7 @@ export function Footer() {
           </div>
         </div>
         <div className="py-8 flex flex-col sm:flex-row items-center justify-between gap-3 font-heading font-bold text-xs text-[#475569]">
-          <span>© {new Date().getFullYear()} promptToPpt. All rights reserved.</span>
+          <span>© {new Date().getFullYear()} SlidesDone. All rights reserved.</span>
           <span className="flex gap-6"><Link href="/pricing" className="text-[#475569] hover:text-primary">Pricing</Link><Link href="/templates" className="text-[#475569] hover:text-primary">Templates</Link><Link href="/login" className="text-[#475569] hover:text-primary">Log in</Link></span>
         </div>
       </div>

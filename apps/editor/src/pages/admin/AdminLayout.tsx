@@ -37,7 +37,7 @@ export default function AdminLayout() {
         </select>
       </div>
       <aside className="hidden lg:block w-[220px] shrink-0 bg-white border-r border-border p-3 sticky top-0 h-screen overflow-y-auto">
-        <a href="/" className="block px-2 py-3 font-heading font-extrabold">promptToPpt <span className="text-xs font-semibold text-slate-500">Owner</span></a>
+        <a href="/" className="block px-2 py-3 font-heading font-extrabold">SlidesDone <span className="text-xs font-semibold text-slate-500">Owner</span></a>
         <nav aria-label="Owner dashboard" className="space-y-1 mt-2">
           {NAV.map(([group, items]) => (
             <div key={group}>

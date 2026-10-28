@@ -2,26 +2,26 @@
 
 > **Going live?** The full list of checks (blockers, security, billing, pictures, performance, legal, launch day) is in [`PRODUCTION_RELEASE_CHECKLIST.md`](./PRODUCTION_RELEASE_CHECKLIST.md). Note: the production AI provider is still an open decision there — the catalogue serves OpenRouter models in production, not Vertex.
 
-## Domains (example: `prompttoppt.app`)
+## Domains (example: `slidesdone.app`)
 
 | Host | App | Hosting | Notes |
 |---|---|---|---|
-| `prompttoppt.app` | `apps/web` (Next.js, `output: standalone`) | Container on ECS Fargate behind ALB + CloudFront | SSR/SSG, SEO |
-| `app.prompttoppt.app` | `apps/editor` (static SPA) | S3 + CloudFront | Needs SPA fallback: 403/404 → `/index.html` (200). Cheapest tier — no server |
-| `api.prompttoppt.app` | `services/api` (Hono) | Container on ECS Fargate behind ALB | Also hosts Better Auth at `/api/auth/*` |
+| `slidesdone.app` | `apps/web` (Next.js, `output: standalone`) | Container on ECS Fargate behind ALB + CloudFront | SSR/SSG, SEO |
+| `app.slidesdone.app` | `apps/editor` (static SPA) | S3 + CloudFront | Needs SPA fallback: 403/404 → `/index.html` (200). Cheapest tier — no server |
+| `api.slidesdone.app` | `services/api` (Hono) | Container on ECS Fargate behind ALB | Also hosts Better Auth at `/api/auth/*` |
 | — | Postgres | RDS PostgreSQL (start small, single-AZ → Multi-AZ at launch) | See ADR-004 caveats |
 
 One identity provider (the API). Web, editor and API are **same-site** (subdomains of one registrable domain), so a
-single session cookie scoped to `.prompttoppt.app` authenticates all three without tokens in `localStorage`.
+single session cookie scoped to `.slidesdone.app` authenticates all three without tokens in `localStorage`.
 
 ## Environment matrix
 
 | Var | Local | Production |
 |---|---|---|
-| `API_URL` | `http://localhost:4000` | `https://api.prompttoppt.app` |
-| `WEB_URL` | `http://localhost:3000` | `https://prompttoppt.app` |
-| `EDITOR_URL` | `http://localhost:3001` | `https://app.prompttoppt.app` |
-| `COOKIE_DOMAIN` | *(empty — cookies are shared across localhost ports)* | `.prompttoppt.app` (**required**; API refuses to boot without it) |
+| `API_URL` | `http://localhost:4000` | `https://api.slidesdone.app` |
+| `WEB_URL` | `http://localhost:3000` | `https://slidesdone.app` |
+| `EDITOR_URL` | `http://localhost:3001` | `https://app.slidesdone.app` |
+| `COOKIE_DOMAIN` | *(empty — cookies are shared across localhost ports)* | `.slidesdone.app` (**required**; API refuses to boot without it) |
 | `TRUSTED_PROXY_HOPS` | `0` | `2` (CloudFront + ALB) — otherwise rate limiting keys on the wrong IP |
 | `EDGE_SHARED_SECRET` | *(unset: only local development trusts country headers)* | **required** (≥24 chars): the same value CloudFront sends as the `X-Origin-Verify` origin header; without it anyone could spoof the country header and get the India price |
 | `AUTH_SECRET` | any ≥32 chars | unique, from Secrets Manager; never share between envs |

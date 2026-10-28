@@ -207,7 +207,7 @@ export async function buildPptx(doc: Presentation, load: ImageLoader): Promise<B
   pptx.defineLayout({ name: 'DECK', width: inch(width), height: inch(height) })
   pptx.layout = 'DECK'
   pptx.title = doc.title
-  pptx.company = 'promptToPpt'
+  pptx.company = 'SlidesDone'
   pptx.theme = { headFontFace: doc.theme.fonts.heading, bodyFontFace: doc.theme.fonts.body }
 
   const motion: SlideMotion[] = []

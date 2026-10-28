@@ -36,7 +36,7 @@ export default function StudioMockupSection() {
         size={48}
         badge={<Badge bg="bg-white" dot="#ff5722">Uncompromised granular control</Badge>}
         title="AI Built It, You Perfect It."
-        subtitle="Unlike static AI screenshot generators, PromptToPpt gives you a rich in-browser presentation studio with full layer, chart, and theme authority."
+        subtitle="Unlike static AI screenshot generators, SlidesDone gives you a rich in-browser presentation studio with full layer, chart, and theme authority."
       />
 
       {/* STUDIO CANVAS MOCKUP CONTAINER */}
@@ -132,7 +132,7 @@ export default function StudioMockupSection() {
 
               <div className="mt-4 pt-4 border-t flex flex-wrap justify-between gap-2 font-sans font-bold text-xs leading-4" style={{ borderColor: dark ? '#334155' : '#e2e8f0', color: m.muted }}>
                 <span>Project Zenith • Confidential Investor Series A Deck</span>
-                <span>PromptToPpt Precision Canvas</span>
+                <span>SlidesDone Precision Canvas</span>
               </div>
             </div>
 

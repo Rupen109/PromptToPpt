@@ -40,7 +40,7 @@ function openCheckout(s: CheckoutSession): Promise<RazorpayResult> {
     const rzp = new window.Razorpay!({
       key: s.keyId,
       subscription_id: s.subscriptionId,
-      name: 'promptToPpt',
+      name: 'SlidesDone',
       // test mode: the left panel of Razorpay's own window is the only place the user is guaranteed to look
       description: `${s.planName} · ${s.interval === 'month' ? 'monthly' : 'yearly'} subscription${s.testMode ? ' — TEST: use card 5267 3181 8797 5449' : ''}`,
       prefill: s.prefill,

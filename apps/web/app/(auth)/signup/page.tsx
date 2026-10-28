@@ -13,7 +13,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ n
   const { next, email } = await searchParams
   return (
     <main className="min-h-screen bg-gradient-to-b from-[#f8f9fc] to-[#f0f4f8] flex flex-col items-center justify-center gap-8 px-6 py-12">
-      <Link href="/" aria-label="promptToPpt home"><Logo size={44} /></Link>
+      <Link href="/" aria-label="SlidesDone home"><Logo size={44} /></Link>
       <AuthForm mode="signup" next={next} {...(email && email.length < 200 ? { defaultEmail: email } : {})} />
     </main>
   )

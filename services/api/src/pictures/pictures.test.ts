@@ -117,7 +117,7 @@ describe('picking pictures', () => {
       const h = setup({ unsplash: [{ id: 'abc', alt: 'software tester at a desk' }] })
       const [p] = await pickPictures([req({ aspect: 'tall' })], ctx, h.deps)
       expect(p).toMatchObject({ source: 'stock', attribution: { source: 'Photo by Sam Park on Unsplash', license: 'Unsplash License' } })
-      expect(p!.attribution!.url).toContain('utm_source=promptToPpt')
+      expect(p!.attribution!.url).toContain('utm_source=slidesdone')
       expect(p!.src).toMatch(/^https:\/\/images\.unsplash\.com\//)
       expect(p!.src).toContain('w=1920')
       const search = h.searches('unsplash')[0]!

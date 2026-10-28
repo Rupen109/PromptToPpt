@@ -14,7 +14,7 @@ const QUICK_PROMPTS = [
 
 const MAX_ATTACHMENTS = 5
 const ACCEPT = '.pdf,.docx,.docm,.pptx,.xlsx,.xlsm,.csv,.tsv,.eml,.txt,.md'
-const KIND_ICON = { pdf: '📄', pptx: '📊', docx: '📘', xlsx: '📈', csv: '🧮', email: '✉️', text: '📝', url: '🔗' } as const
+const KIND_ICON = { pdf: '📄', pptx: '📊', docx: '📘', xlsx: '📈', csv: '🧮', email: '✉️', text: '📝', url: '🔗', transcript: '🎬' } as const
 
 /** A source the visitor attached: uploaded + read by the server immediately, so problems are reported while they're still here. */
 interface Attachment {
@@ -48,8 +48,11 @@ export function HeroSection() {
     for (const f of take) {
       const key = `${Date.now()}-${Math.random().toString(36).slice(2)}`
       const tooBig = f.size > 15 * 1024 * 1024
-      setAtts((cur) => [...cur, { key, label: f.name, status: tooBig ? 'error' : 'uploading', ...(tooBig ? { error: 'Larger than 15 MB' } : {}) }])
-      if (tooBig) continue
+      // pictures are read by AI and cost credits, so they need an account: sign in, then add the picture on the home screen
+      const isPicture = /\.(jpe?g|png|webp|heic|heif|gif)$/i.test(f.name)
+      const refusal = isPicture ? 'Pictures need a free account — sign up, then add it on your home screen' : tooBig ? 'Larger than 15 MB' : null
+      setAtts((cur) => [...cur, { key, label: f.name, status: refusal ? 'error' : 'uploading', ...(refusal ? { error: refusal } : {}) }])
+      if (refusal) continue
       try {
         const a = await api.addDraftFile(f)
         patch(key, { status: 'ready', id: a.id, kind: a.kind, label: f.name })
@@ -109,7 +112,7 @@ export function HeroSection() {
       <h1 className="text-[1.9rem] min-[400px]:text-[2.15rem] sm:text-5xl lg:text-6xl leading-[1.18] sm:leading-tight mb-5 sm:mb-6 max-w-[900px] mx-auto font-heading font-extrabold text-balance">
         Turn Messy Documents into <br/>
         <span className="bg-secondary px-2 rounded-sm inline-block max-w-full -rotate-2 shadow-solid border-2 border-foreground my-1">Boardroom-Ready</span><br/>
-        Presentations in 45 Seconds.
+        Presentations in Seconds.
       </h1>
       
       <p className="text-base sm:text-lg md:text-xl max-w-[700px] mx-auto mb-8 sm:mb-12 text-slate-600">
@@ -119,8 +122,6 @@ export function HeroSection() {
       {/* Dynamic Prompt Builder */}
       <div className="relative max-w-[900px] mx-auto">
         <div className="absolute -top-[15px] left-0 right-0 flex justify-between px-4 sm:px-12 z-10 pointer-events-none">
-          <div className="bg-highlight text-foreground font-heading font-extrabold text-xs py-1 px-3 rounded-full border-2 border-foreground shadow-[2px_2px_0px_0px_var(--color-text-primary)] -rotate-3">⚙️ ZERO FLUFF ENGINE</div>
-          <div className="bg-accent text-white font-heading font-extrabold text-xs py-1 px-3 rounded-full border-2 border-foreground shadow-[2px_2px_0px_0px_var(--color-text-primary)] rotate-3">⏱ 45S RENDER</div>
         </div>
         
         <div className="bg-white border-[3px] sm:border-4 border-foreground rounded-2xl sm:rounded-3xl shadow-[5px_5px_0px_0px_var(--color-text-primary)] sm:shadow-[8px_8px_0px_0px_var(--color-text-primary)] text-left overflow-hidden">

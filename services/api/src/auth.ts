@@ -13,7 +13,7 @@ import { canonicalEmail } from './security/email.ts'
 /**
  * Single identity provider for web (Next.js) and editor (React).
  * Session cookie is httpOnly; in production it is scoped to COOKIE_DOMAIN
- * (e.g. .prompttoppt.app) so www/app/api subdomains share one login.
+ * (e.g. .slidesdone.app) so www/app/api subdomains share one login.
  */
 export const auth = betterAuth({
   baseURL: env.API_URL,
@@ -29,7 +29,7 @@ export const auth = betterAuth({
     autoSignIn: !env.REQUIRE_EMAIL_VERIFICATION,
     revokeSessionsOnPasswordReset: true, // a reset signs the attacker out too
     sendResetPassword: async ({ user, url }) => {
-      await sendMail({ to: user.email, subject: 'Reset your promptToPpt password', text: `Reset your password (link valid for one hour):\n${url}\n\nIf you did not ask for this, ignore this email.` })
+      await sendMail({ to: user.email, subject: 'Reset your SlidesDone password', text: `Reset your password (link valid for one hour):\n${url}\n\nIf you did not ask for this, ignore this email.` })
     },
   },
   emailVerification: {
@@ -37,7 +37,7 @@ export const auth = betterAuth({
     sendOnSignIn: env.REQUIRE_EMAIL_VERIFICATION,
     autoSignInAfterVerification: true,
     sendVerificationEmail: async ({ user, url }) => {
-      await sendMail({ to: user.email, subject: 'Confirm your email for promptToPpt', text: `Confirm your email address to start creating:\n${url}\n\nIf you did not sign up, ignore this email.` })
+      await sendMail({ to: user.email, subject: 'Confirm your email for SlidesDone', text: `Confirm your email address to start creating:\n${url}\n\nIf you did not sign up, ignore this email.` })
     },
   },
   // Better Auth's own limiter mis-buckets behind multi-hop proxies (one shared bucket for everyone); ours is database-backed, see security/auth-guard.ts

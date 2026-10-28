@@ -1,17 +1,17 @@
-# promptToPpt brand
+# SlidesDone brand
 
 ## The mark
-A bold **P** whose counter holds an **AI spark**, with an **orange cursor / slide-bar** under the bowl, on a **cobalt tile**. It reads as "prompt → presentation": the P is the prompt, the spark is the AI, the bar is the slide being written.
+A white **slide** (a heading bar and two text lines) on a **cobalt tile**, with a yellow **"done" check badge** on its corner. It reads as "the slide is finished": the product's promise in one picture.
 
 | Part | Colour | Token (`packages/theme/src/tokens.css`) |
 |---|---|---|
 | Tile | cobalt gradient `#2F63F5 → #0B3DD0 → #082A9A` | `--color-primary` |
-| P | white | — |
-| Spark | yellow `#FFDF00` | `--color-secondary` |
-| Cursor bar | orange `#FF5722` | `--color-accent` |
-| Wordmark | "gradient flow": light `prompt` in ink `#181B25` flowing into bold `ToPpt` that shifts from cobalt to orange (on dark: white `prompt`, lighter cobalt `#6C8FFF` → orange) | text / primary → accent |
+| Slide | white, with a cobalt heading bar and pale-blue text lines | — |
+| Check badge | yellow `#FFDF00` disc, cobalt ring and tick | `--color-secondary` |
+| Wordmark end | orange `#FF5722` (the end of the gradient) | `--color-accent` |
+| Wordmark | "gradient flow": light `Slides` in ink `#181B25` flowing into bold `Done` that shifts from cobalt to orange (on dark: white `Slides`, lighter cobalt `#6C8FFF` → orange) | text / primary / accent |
 
-Wordmark font: Sora — weight 300 for `prompt`, 800 for `ToPpt`, tracking −0.03em. The gradient uses brand colours only (`linear-gradient(90deg, cobalt 0–28%, orange 100%)`). Sora is loaded by the web app (`--font-logo`) and the editor (`index.html`). Always written `promptToPpt` (camel case), never "PromptToPPT" or "Prompt to PPT".
+Wordmark font: Sora — weight 300 for `Slides`, 800 for `Done`, tracking −0.03em. The gradient uses brand colours only (`linear-gradient(90deg, cobalt 0–28%, orange 100%)`). Sora is loaded by the web app (`--font-logo`) and the editor (`index.html`). Always written `SlidesDone` (camel case), never "PromptToPPT" or "Prompt to PPT".
 
 ## Use it in code
 ```tsx
@@ -28,11 +28,4 @@ Used in: website header, footer and login/signup; editor sidebar. Static files i
 - The tile is already high-contrast on both white and ink backgrounds; no separate "reversed" mark is needed.
 
 ## Regenerating the PNGs
-Sources are `scripts/brand/mark.svg` (rounded tile) and `mark-square.svg` (full-bleed, for the Apple touch icon). `scripts/brand/build.cjs` rasterises everything with Playwright (instructions in its header). If the mark changes, update `packages/ui/src/Logo.tsx`, both SVGs, regenerate, and replace the files in the two `public` folders.
-
-## Landing-page UI kit (write once, reuse)
-All motion lives in three components in `apps/web/components/ui/` — never hand-write button/card hover styles in a section:
-- **`<Button variant size depth arrow loading pill block href>`** — the only CTA. Hard ink shadow that grows as it lifts on hover and presses flat on click, a light sweep over filled variants, an arrow that glides forward. Variants: `accent` `primary` `ink` `dark` `white` `yellow` `lime` `ghost` `soft` `softActive`. Pass `href` for a link.
-- **`<Card tone shadow radius border hover reveal index>`** — the only card. Pastel tone (`white cream peach lavender mist yellow ink`), hard shadow, lift on hover, scroll-reveal with stagger (`index`). Put layout classes in `className`, layout of the reveal wrapper in `wrapperClassName`.
-- **`<Reveal>`** — the scroll-reveal itself (used by `Card` and `SectionHeader`). CSS is in `app/globals.css`; content is simply visible without JavaScript or with `prefers-reduced-motion`.
-Section-level pieces (`Section`, `Badge`, `Tag`, `Tile`, `SectionHeader`) are in `components/sections/ui.tsx`.
+The mark's source of truth is `packages/ui/src/Logo.tsx` (`apps/web/public/favicon.svg` is the same drawing). Everything else is generated from it by `node e2e/make-brand-assets.mjs` (Playwright; needs network for the Sora/Inter fonts): favicons (`.ico`, 16/32 px), app icons (180/192/512 px), the two logo lock-ups and the 1200×630 social card, written to `apps/web/public`, `apps/web/app/favicon.ico` and `apps/editor/public`. Change the mark in both places, run the script, commit the results.

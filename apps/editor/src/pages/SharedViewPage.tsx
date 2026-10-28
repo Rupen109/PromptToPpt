@@ -56,7 +56,7 @@ export function SharedViewPage() {
     window.addEventListener('keydown', key)
     return () => window.removeEventListener('keydown', key)
   }, [n])
-  useEffect(() => { if (deck) document.title = `${deck.title} — promptToPpt` }, [deck])
+  useEffect(() => { if (deck) document.title = `${deck.title} — SlidesDone` }, [deck])
   // analytics for the owner (see lib/shareTracking.ts): nothing personal, off with Do Not Track, never visible and never in the way
   const access = (() => { try { return sessionStorage.getItem(proofKey) ?? undefined } catch { return undefined } })()
   useShareTracking(token, !!deck, deck?.document.slides.map((s) => s.id) ?? [], i, access)
@@ -78,7 +78,7 @@ export function SharedViewPage() {
       <div>
         <p className="text-xl font-semibold mb-2">{failed === 'expired' ? 'This link has expired' : "This link isn't available"}</p>
         <p className="text-white/70 mb-5">{failed === 'expired' ? 'Ask the owner to send you a new link.' : 'It may have been turned off by its owner, or the address is wrong.'}</p>
-        <a href={WEB_URL} className="underline">Go to promptToPpt</a>
+        <a href={WEB_URL} className="underline">Go to SlidesDone</a>
       </div>
     </div>
   )
@@ -94,7 +94,7 @@ export function SharedViewPage() {
     <div className="fixed inset-0 bg-[#111] text-white flex flex-col select-none">
       <header className="h-12 shrink-0 flex items-center justify-between gap-3 px-4 border-b border-white/10">
         <h1 className="font-semibold truncate text-sm sm:text-base">{deck.title}</h1>
-        <a href={WEB_URL} className="text-xs text-white/70 hover:text-white whitespace-nowrap">Made with promptToPpt</a>
+        <a href={WEB_URL} className="text-xs text-white/70 hover:text-white whitespace-nowrap">Made with SlidesDone</a>
       </header>
       <main className="flex-1 min-h-0 grid place-items-center p-2" aria-label="Slide">
         <div key={slide.id} style={Object.keys(transitionStyle(slide, doc.theme.motion?.transition)).length ? transitionStyle(slide, doc.theme.motion?.transition) : { animation: 'deckFade 300ms ease' }}>

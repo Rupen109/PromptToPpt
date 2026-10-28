@@ -159,7 +159,7 @@ interface StockProvider {
   used?(p: StockPhoto, st: State): void
 }
 
-const UTM = 'utm_source=promptToPpt&utm_medium=referral'
+const UTM = 'utm_source=slidesdone&utm_medium=referral'
 const withUtm = (u?: string) => (u ? `${u}${u.includes('?') ? '&' : '?'}${UTM}` : undefined)
 
 interface UnsplashResult { id: string; alt_description?: string | null; description?: string | null; urls?: { regular?: string; full?: string }; links?: { html?: string; download_location?: string }; user?: { name?: string; links?: { html?: string } } }

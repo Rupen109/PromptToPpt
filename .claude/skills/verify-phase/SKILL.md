@@ -1,6 +1,6 @@
 ---
 name: verify-phase
-description: The definition-of-done checklist for any promptToPpt change or phase — typecheck, lint, tests, build, migrations, secret scan, real-browser E2E, and honest reporting. Use before declaring work finished or committing.
+description: The definition-of-done checklist for any SlidesDone change or phase — typecheck, lint, tests, build, migrations, secret scan, real-browser E2E, and honest reporting. Use before declaring work finished or committing.
 ---
 
 # Verify before you say "done"

@@ -1,6 +1,6 @@
 # Security plan & tracker
 
-Scope: the attacker's view of promptToPpt — people who want free AI decks, try to bypass plans, hammer sign-up/login, burn our Google Cloud
+Scope: the attacker's view of SlidesDone — people who want free AI decks, try to bypass plans, hammer sign-up/login, burn our Google Cloud
 credits, attack other users, or break in through uploads/links. Audited 2026-10-04 by five independent read-only reviews (auth & account abuse,
 plan/credit/billing enforcement, authorization & admin, input handling/SSRF/XSS, AI cost abuse). Every finding below has a file reference; the fix
 column says what we will build. Status: ☐ todo · ◐ in progress · ☑ done (with test).

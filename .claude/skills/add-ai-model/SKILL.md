@@ -1,6 +1,6 @@
 ---
 name: add-ai-model
-description: How to add, tier, price, enable or retire an AI model in promptToPpt's DB-driven model catalogue (local Vertex/Gemini vs production OpenRouter), including verification steps. Use when the owner asks for a new model or a pricing/plan-tier change for models.
+description: How to add, tier, price, enable or retire an AI model in SlidesDone's DB-driven model catalogue (local Vertex/Gemini vs production OpenRouter), including verification steps. Use when the owner asks for a new model or a pricing/plan-tier change for models.
 ---
 
 # Add or change a model

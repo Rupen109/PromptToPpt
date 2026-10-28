@@ -7,6 +7,7 @@ import { DOCX_MAX_BYTES, fromDocx } from './docx.ts'
 import { EML_MAX_BYTES, fromEml } from './eml.ts'
 import { SourceError } from './errors.ts'
 import { clean, MAX_TEXT_CHARS } from './limits.ts'
+import { fromTranscript } from './transcript.ts'
 import { XLSX_MAX_BYTES, fromXlsx } from './xlsx.ts'
 import { isEncryptedOffice, isOle, isZip, zipNames } from './zip.ts'
 import { assertPublicUrl, BlockedUrlError, safeFetch } from './ssrf.ts'
@@ -63,7 +64,7 @@ export async function fetchPage(rawUrl: string, fetchImpl?: FetchLike): Promise<
   const doFetch: FetchLike = fetchImpl ?? ((u, init) => safeFetch(u, init))
   let url = assertPublicUrl(rawUrl)
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-    const res = await doFetch(url.toString(), { redirect: 'manual', signal: AbortSignal.timeout(10_000), headers: { 'User-Agent': 'promptToPpt-bot/1.0', Accept: 'text/html,text/plain' } })
+    const res = await doFetch(url.toString(), { redirect: 'manual', signal: AbortSignal.timeout(10_000), headers: { 'User-Agent': 'SlidesDone-bot/1.0', Accept: 'text/html,text/plain' } })
     if (res.status >= 300 && res.status < 400) {
       const loc = res.headers.get('location')
       if (!loc) throw new Error('Bad redirect')
@@ -191,9 +192,9 @@ export function fromTextFile(bytes: Uint8Array, filename: string): Extracted {
   return fromText(filename.replace(/\.(txt|md|markdown)$/i, ''), text)
 }
 
-export type FileKind = 'pdf' | 'pptx' | 'docx' | 'xlsx' | 'csv' | 'email' | 'text'
+export type FileKind = 'pdf' | 'pptx' | 'docx' | 'xlsx' | 'csv' | 'email' | 'text' | 'transcript'
 export const FILE_MAX_BYTES = Math.max(PDF_MAX_BYTES, PPTX_MAX_BYTES, DOCX_MAX_BYTES, XLSX_MAX_BYTES, CSV_MAX_BYTES)
-export const FILE_TYPES_HELP = 'PDF, Word (.docx), PowerPoint (.pptx), Excel (.xlsx), CSV, email (.eml), or text/Markdown'
+export const FILE_TYPES_HELP = 'PDF, Word (.docx), PowerPoint (.pptx), Excel (.xlsx), CSV, email (.eml), caption files (.srt, .vtt), or text/Markdown'
 
 const ext = (name: string) => /\.([a-z0-9]+)$/i.exec(name)?.[1]?.toLowerCase() ?? ''
 const tooBig = (kind: string, max: number, n: number) => { if (n > max) throw new SourceError(`That ${kind} is larger than ${Math.round(max / 1024 / 1024)} MB`) }
@@ -224,6 +225,11 @@ export async function fromFile(bytes: Uint8Array, filename: string): Promise<{ k
   }
   if (e === 'csv' || e === 'tsv') { tooBig('file', CSV_MAX_BYTES, bytes.length); return { kind: 'csv', extracted: fromCsv(bytes, filename) } }
   if (e === 'eml') { tooBig('email', EML_MAX_BYTES, bytes.length); return { kind: 'email', extracted: fromEml(bytes, filename) } }
+  if (e === 'srt' || e === 'vtt' || e === 'sbv') {
+    if (bytes.length > 2 * 1024 * 1024) throw new SourceError('That caption file is larger than 2 MB')
+    if (bytes.subarray(0, 4096).includes(0)) throw new SourceError('That file does not look like a caption file')
+    return { kind: 'transcript', extracted: fromTranscript(filename.replace(/\.(srt|vtt|sbv)$/i, ''), new TextDecoder('utf-8', { fatal: false }).decode(bytes)) }
+  }
   if (e === 'doc' || e === 'xls' || e === 'ppt' || e === 'docx' || e === 'xlsx' || e === 'pptx') throw new SourceError('That file is not a valid Office document — it may be damaged or renamed from another type')
   if (!/\.(txt|md|markdown|text)$/i.test(filename)) throw new SourceError(`Unsupported file type — upload ${FILE_TYPES_HELP}`)
   return { kind: 'text', extracted: fromTextFile(bytes, filename) }

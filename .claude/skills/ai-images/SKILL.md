@@ -1,6 +1,6 @@
 ---
 name: ai-images
-description: How AI picture generation works in promptToPpt — limits, credits, storage, assistant proposals, slide placements. Use when touching image generation, the asset route, image limits/credits, picture backgrounds, or the AI image dialog.
+description: How AI picture generation works in SlidesDone — limits, credits, storage, assistant proposals, slide placements. Use when touching image generation, the asset route, image limits/credits, picture backgrounds, or the AI image dialog.
 ---
 
 Read `docs/IMAGES.md` first. Invariants:

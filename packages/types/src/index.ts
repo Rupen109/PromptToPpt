@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────
-// Core Domain Types — promptToPpt
+// Core Domain Types — SlidesDone
 // ─────────────────────────────────────────────
 
 // ---- User & Auth ----
@@ -122,6 +122,7 @@ export type AIRequestType =
   | 'deck_critic'
   | 'ai_assist'
   | 'ask_deck'
+  | 'image_read'
   | 'web_research'
   | 'source_analysis'
   | 'free_outline'

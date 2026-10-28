@@ -1,6 +1,6 @@
 {
-  "name": "promptToPpt",
-  "short_name": "promptToPpt",
+  "name": "SlidesDone",
+  "short_name": "SlidesDone",
   "description": "AI presentation maker: turn any prompt into a beautiful, editable deck.",
   "icons": [
     { "src": "/android-chrome-192x192.png", "sizes": "192x192", "type": "image/png" },

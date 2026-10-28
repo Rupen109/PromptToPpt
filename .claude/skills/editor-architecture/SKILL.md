@@ -1,6 +1,6 @@
 ---
 name: editor-architecture
-description: How the promptToPpt browser editor works — document store with patch-based undo/redo, commands, interaction layer, autosave/conflict/versioning, plan gates in the UI, and how to add an editor feature safely. Use when changing anything under apps/editor/src/editor, components/editor, or the save/version API.
+description: How the SlidesDone browser editor works — document store with patch-based undo/redo, commands, interaction layer, autosave/conflict/versioning, plan gates in the UI, and how to add an editor feature safely. Use when changing anything under apps/editor/src/editor, components/editor, or the save/version API.
 ---
 
 # Editor architecture

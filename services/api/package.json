@@ -2,7 +2,7 @@
   "name": "@prompttoppt/api",
   "version": "0.0.1",
   "private": true,
-  "description": "Hono API server — REST endpoints for promptToPpt",
+  "description": "Hono API server — REST endpoints for SlidesDone",
   "scripts": {
     "dev": "tsx watch --env-file-if-exists=.env src/index.ts",
     "build": "tsup",

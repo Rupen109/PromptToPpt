@@ -230,7 +230,7 @@ export function SlideCanvas({ slide, theme, aspect, width, watermark = false, fo
         {/* View-time overlay driven by the plan, NOT stored in the document: upgrading removes it everywhere instantly. */}
         {watermark && (
           <div aria-hidden style={{ position: 'absolute', right: 32, bottom: 24, zIndex: 9999, padding: '10px 20px', borderRadius: 999, background: 'rgba(15,23,42,0.78)', color: '#fff', fontFamily: 'Inter, system-ui, sans-serif', fontSize: 26, fontWeight: 600, letterSpacing: 0.3 }}>
-            Made with promptToPpt
+            Made with SlidesDone
           </div>
         )}
       </div>

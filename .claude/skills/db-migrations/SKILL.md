@@ -1,6 +1,6 @@
 ---
 name: db-migrations
-description: Drizzle/Postgres workflow for promptToPpt — schema changes, migrations, seeding, append-only ledgers, local/test DB handling, and the gotchas hit so far. Use when changing services/api/src/db/schema.ts or any table.
+description: Drizzle/Postgres workflow for SlidesDone — schema changes, migrations, seeding, append-only ledgers, local/test DB handling, and the gotchas hit so far. Use when changing services/api/src/db/schema.ts or any table.
 ---
 
 # DB workflow

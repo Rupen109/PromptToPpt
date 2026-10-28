@@ -1,9 +1,9 @@
 import json
 
-with open(r'd:\PromptToPpt\figma_data.json', 'r', encoding='utf-8-sig') as f:
+with open(r'd:\SlidesDone\figma_data.json', 'r', encoding='utf-8-sig') as f:
     data = json.load(f)
 
-with open(r'd:\PromptToPpt\figma_structure.txt', 'w', encoding='utf-8') as out:
+with open(r'd:\SlidesDone\figma_structure.txt', 'w', encoding='utf-8') as out:
     # Extract styles
     styles = data.get('styles', {})
     out.write('=== STYLES ===\n')

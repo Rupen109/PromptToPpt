@@ -17,7 +17,7 @@ const schema = z
     /** run the generation worker inside the API process (fine for 1 task; split into services/worker to scale) */
     RUN_WORKER: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
     TRUSTED_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(0),
-    COOKIE_DOMAIN: optional(z.string().regex(/^\.[a-z0-9.-]+$/i, 'must start with a dot, e.g. .prompttoppt.app')),
+    COOKIE_DOMAIN: optional(z.string().regex(/^\.[a-z0-9.-]+$/i, 'must start with a dot, e.g. .slidesdone.app')),
     DATABASE_URL: z.string().startsWith('postgres'),
     AUTH_SECRET: z.string().min(32, 'AUTH_SECRET must be at least 32 characters'),
     GOOGLE_CLIENT_ID: optional(z.string()),

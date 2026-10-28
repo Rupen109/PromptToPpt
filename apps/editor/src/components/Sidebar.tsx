@@ -100,7 +100,7 @@ export function Sidebar() {
 
   const body = (
     <>
-      <Link to="/" aria-label="promptToPpt home" className="px-2 pt-2 pb-3"><Logo size={30} /></Link>
+      <Link to="/" aria-label="SlidesDone home" className="px-2 pt-2 pb-3"><Logo size={30} /></Link>
       <div className="flex items-center gap-2 px-2 py-3 mb-2 border-t border-border">
         <div className="w-8 h-8 rounded-md bg-accent text-white grid place-items-center font-bold">{user.name.charAt(0).toUpperCase()}</div>
         <div className="min-w-0">
@@ -153,7 +153,7 @@ export function Sidebar() {
         <button type="button" aria-label="Open menu" aria-expanded={open} onClick={() => setOpen(true)} className="w-11 h-11 -ml-1 grid place-items-center rounded-lg hover:bg-black/5">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden><path d="M4 7h16M4 12h16M4 17h16" /></svg>
         </button>
-        <Link to="/" aria-label="promptToPpt home"><Logo size={26} /></Link>
+        <Link to="/" aria-label="SlidesDone home"><Logo size={26} /></Link>
         <div className="w-8 h-8 rounded-md bg-accent text-white grid place-items-center font-bold text-sm" aria-hidden>{user.name.charAt(0).toUpperCase()}</div>
       </header>
       {open && (

@@ -1,6 +1,6 @@
 ---
 name: plans-and-entitlements
-description: How plans (Starter/Pro/Gold), feature gates, credits, and pricing work in promptToPpt — where limits are enforced, how to add a gated feature or change a plan, and what must never be trusted from the client. Use when touching billing, limits, export, AI edits, model access, or the pricing page.
+description: How plans (Starter/Pro/Gold), feature gates, credits, and pricing work in SlidesDone — where limits are enforced, how to add a gated feature or change a plan, and what must never be trusted from the client. Use when touching billing, limits, export, AI edits, model access, or the pricing page.
 ---
 
 # Plans, entitlements, credits

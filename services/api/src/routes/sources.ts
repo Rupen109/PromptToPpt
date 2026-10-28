@@ -1,10 +1,11 @@
 import { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
 import { zValidator } from '@hono/zod-validator'
-import { and, count, eq } from 'drizzle-orm'
+import { and, count, eq, gte } from 'drizzle-orm'
+import { nanoid } from 'nanoid'
 import { z } from 'zod'
 import { db } from '../db/index.ts'
-import { sourceDocument } from '../db/schema.ts'
+import { aiUsageEvent, sourceDocument } from '../db/schema.ts'
 import { GateError } from '../billing/errors.ts'
 import { byUser, rateLimit } from '../middleware/rate-limit.ts'
 import { requireAuth, type AppEnv } from '../middleware/session.ts'
@@ -13,6 +14,8 @@ import { BusyError, parseUpload } from '../sources/parse-pool.ts'
 import { busyAnswer, uploadGate } from '../middleware/upload-gate.ts'
 import { readLink } from '../sources/link.ts'
 import { saveSource } from '../sources/store.ts'
+import { canonicalYouTubeUrl, fromTranscript, youtubeId } from '../sources/transcript.ts'
+import { IMAGE_MAX_BYTES, ImageError, imageReadOutput, imageReadPrompt, inspectImage } from '../sources/image-read.ts'
 import { AIUnavailableError } from '@prompttoppt/ai'
 import { aiConfigured, gateway } from '../ai/gateway.ts'
 import { creditPrice, refundCredits, reserveCredits } from '../billing/credits.ts'
@@ -54,6 +57,18 @@ sources.post('/text', zValidator('json', z.object({ title: z.string().trim().max
  *  - wikipedia: free, Pro and Gold; up to 3 articles, each saved as its own source with its page link.
  *  - web: live web search, Gold; one research brief with the pages it used; costs credits (refunded if the search fails).
  */
+/** A video transcript (YouTube "Show transcript" copy, or the text of a caption file). The video link is optional and only kept when it really is a YouTube link. */
+sources.post('/transcript', zValidator('json', z.object({ title: z.string().trim().max(200).optional(), url: z.string().trim().max(2000).optional(), text: z.string().trim().min(20, 'Paste the transcript text').max(400_000) })), async (c) => {
+  const { title, url, text } = c.req.valid('json')
+  const id = url ? youtubeId(url) : null
+  if (url && !id) return fail(c, 400, 'INVALID_REQUEST', 'That is not a YouTube link. Paste the video link from YouTube, or leave it empty.')
+  try {
+    return c.json({ success: true, data: await save(c.get('session')!.user.id, 'transcript', fromTranscript(title ?? '', text), id ? canonicalYouTubeUrl(id) : undefined) }, 201)
+  } catch (e) {
+    return fail(c, 422, 'PARSE_FAILED', fileErrorMessage(e))
+  }
+})
+
 sources.post('/research', rateLimit({ windowMs: 60_000, max: 6, key: byUser('research'), message: 'You are searching very quickly. Wait a moment and try again.' }), zValidator('json', researchInput), async (c) => {
   const input = c.req.valid('json')
   const userId = c.get('session')!.user.id
@@ -130,6 +145,43 @@ sources.post('/file', uploadGate, bodyLimit({ maxSize: FILE_MAX_BYTES + 64 * 102
   } catch (e) {
     if (e instanceof BusyError) return busyAnswer(c)
     return fail(c, 422, 'PARSE_FAILED', fileErrorMessage(e))
+  }
+})
+
+/**
+ * "Image to deck": a JPG / PNG / WebP is read by a vision model into a plain-text source (the picture itself is never stored).
+ * Costs credits (refunded if reading fails); the picture's own words are treated as data, never as instructions.
+ */
+const IMAGES_PER_DAY = 100
+sources.post('/image', uploadGate, rateLimit({ windowMs: 60_000, max: 8, key: byUser('imageread'), message: 'You are adding pictures very quickly. Wait a moment and try again.' }), bodyLimit({ maxSize: IMAGE_MAX_BYTES + 64 * 1024, onError: (c) => fail(c, 413, 'TOO_LARGE', 'That picture is larger than 8 MB. Save a smaller copy and try again.') }), async (c) => {
+  const userId = c.get('session')!.user.id
+  const file = (await c.req.parseBody())['file']
+  if (!(file instanceof File)) return fail(c, 400, 'NO_FILE', 'Attach a picture as "file"')
+  let info
+  const bytes = new Uint8Array(await file.arrayBuffer())
+  try { info = inspectImage(bytes) } catch (e) { return fail(c, 422, 'PARSE_FAILED', e instanceof ImageError ? e.message : 'Could not read that picture') }
+  const maint = await refuseIfOn('maintenance_mode', c, userId)
+  if (maint) return maint
+  if (!aiConfigured) return c.json({ success: false, error: { code: 'AI_NOT_CONFIGURED', message: 'AI is not configured on this server' } }, 503)
+  const [{ n: today } = { n: 0 }] = await db.select({ n: count() }).from(aiUsageEvent).where(and(eq(aiUsageEvent.userId, userId), eq(aiUsageEvent.requestType, 'image_read'), gte(aiUsageEvent.createdAt, new Date(Date.now() - 24 * 3600_000))))
+  if (today >= IMAGES_PER_DAY) throw new GateError('LIMIT_REACHED', `You have reached today's limit of ${IMAGES_PER_DAY} pictures. Please try again tomorrow.`, 429, { feature: 'read_image', limit: IMAGES_PER_DAY })
+  const price = await creditPrice('read_image', 'starter')
+  const ref = nanoid()
+  await reserveCredits(userId, price, 'read_image', ref, { strict: true }) // 402 INSUFFICIENT_CREDITS before any model call
+  try {
+    const out = await gateway.run({ route: 'fast', requestType: 'image_read', ...imageReadPrompt(file.name || 'picture'), images: [{ mimeType: info.mime, data: bytes }], schema: imageReadOutput, maxOutputTokens: 8000, ctx: { userId } })
+    if (!out.legible || out.text.trim().length < 3) {
+      await refundCredits(userId, 'read_image', ref)
+      return fail(c, 422, 'NOTHING_READABLE', "I couldn't find any text or content in that picture to build a deck from. Try a sharper picture, or one with words, a table or a chart in it. You were not charged.")
+    }
+    const title = (out.title || file.name.replace(/\.[a-z0-9]+$/i, '') || 'Picture').slice(0, 200)
+    const saved = await saveSource(userId, 'image', fromText(title, out.text))
+    return c.json({ success: true, data: { ...saved, creditsCharged: price } }, 201)
+  } catch (e) {
+    await refundCredits(userId, 'read_image', ref)
+    if (e instanceof AIUnavailableError) return c.json({ success: false, error: { code: 'AI_UNAVAILABLE', message: 'The AI service is busy or unavailable. You were not charged — please try again.' } }, 503)
+    console.error('[image-read]', e)
+    return fail(c, 422, 'PARSE_FAILED', 'I could not read that picture. You were not charged.')
   }
 })
 

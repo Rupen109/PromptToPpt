@@ -1,4 +1,4 @@
-# promptToPpt — Developer Setup
+# SlidesDone — Developer Setup
 
 ## Prerequisites
 

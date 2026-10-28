@@ -14,7 +14,7 @@ import FaqSection from '@/components/sections/FaqSection'
 import CtaSection from '@/components/sections/CtaSection'
 
 export const metadata: Metadata = {
-  title: 'promptToPpt — AI Presentation Maker | Create Stunning Slides in Seconds',
+  title: 'SlidesDone — AI Presentation Maker | Create Stunning Slides in Seconds',
   description:
     'Transform any topic or prompt into a beautiful, editable presentation with AI. Upload PDFs, paste text, or enter a YouTube URL — get a professional deck in seconds.',
   alternates: {

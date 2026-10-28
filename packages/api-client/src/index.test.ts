@@ -1,20 +1,20 @@
 import { describe, expect, it } from 'vitest'
 import { safeRedirect } from './index'
 
-const allowed = ['https://app.prompttoppt.app', 'https://prompttoppt.app']
+const allowed = ['https://app.slidesdone.app', 'https://slidesdone.app']
 const fb = '/'
 
 describe('safeRedirect', () => {
   it.each([
     ['/dashboard', '/dashboard'],
-    ['https://app.prompttoppt.app/start?draft=abc', 'https://app.prompttoppt.app/start?draft=abc'],
+    ['https://app.slidesdone.app/start?draft=abc', 'https://app.slidesdone.app/start?draft=abc'],
   ])('allows %s', (input, out) => expect(safeRedirect(input, allowed, fb)).toBe(out))
 
   it.each([
     '//evil.com',
     '/\\evil.com',
     'https://evil.com',
-    'https://app.prompttoppt.app.evil.com/x',
+    'https://app.slidesdone.app.evil.com/x',
     'javascript:alert(1)',
     'data:text/html,hi',
     '',

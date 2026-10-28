@@ -33,11 +33,15 @@ export function mockRespond(req: TextRequest): string {
   if (task === 'free_pdf') {
     return JSON.stringify({ title: 'Mock document', summary: 'A short mock summary.', keyPoints: ['One', 'Two', 'Three', 'Four'], slides: Array.from({ length: 6 }, (_, i) => ({ title: `Part ${i + 1}`, points: ['Alpha', 'Beta', 'Gamma'] })) })
   }
-  if ((task === 'askdeck' || task === 'webresearch') && req.prompt.includes('FAIL_PLEASE')) throw new Error('mock model failure') // lets tests exercise the refund path
+  if ((task === 'askdeck' || task === 'webresearch' || task === 'imageread') && req.prompt.includes('FAIL_PLEASE')) throw new Error('mock model failure') // lets tests exercise the refund path
   if (task === 'askdeck') {
     const deck = req.prompt.match(/<deck>\n([\s\S]*?)\n<\/deck>/)?.[1] ?? ''
     const q = req.prompt.match(/<question>([\s\S]*?)<\/question>/)?.[1] ?? ''
     return JSON.stringify(/not in the deck|unknowable/i.test(q) ? { answer: 'The deck does not say.', slides: [] } : { answer: `From the deck: ${deck.split('\n')[0]?.slice(0, 200) ?? ''}`, slides: [1] })
+  }
+  if (task === 'imageread') {
+    if (req.images?.length && Buffer.from(typeof req.images[0]!.data === 'string' ? req.images[0]!.data : req.images[0]!.data).includes('BLANK_PICTURE')) return JSON.stringify({ title: '', kind: 'photo', legible: false, text: '' })
+    return JSON.stringify({ title: 'Mock picture', kind: 'notes', legible: true, text: 'Zorvex Bikes sold 4,200 electric bicycles in 2025.\nFactory: Pune.\nNext step: second factory in Chennai in 2027.' })
   }
   if (task === 'webresearch') return 'Mock web brief: the topic is widely covered; key facts follow. [example.com]'
   if (task === 'critic') return JSON.stringify({ defects: [] })

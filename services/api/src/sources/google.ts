@@ -39,7 +39,7 @@ export async function readGoogle(link: GoogleLink, fetchImpl?: FetchLike): Promi
   for (let hop = 0; hop <= MAX_HOPS; hop++) {
     if (!GOOGLE_HOST.test(url.hostname)) throw new SourceError('That Google link redirected somewhere unexpected, so it was not read')
     if (url.hostname === 'accounts.google.com') throw new SourceError(NEEDS_SHARING)
-    const res = await doFetch(url.toString(), { redirect: 'manual', signal: AbortSignal.timeout(20_000), headers: { 'User-Agent': 'Mozilla/5.0 (compatible; promptToPpt-sources/1.0)', Accept: '*/*' } })
+    const res = await doFetch(url.toString(), { redirect: 'manual', signal: AbortSignal.timeout(20_000), headers: { 'User-Agent': 'Mozilla/5.0 (compatible; SlidesDone-sources/1.0)', Accept: '*/*' } })
       .catch((e: unknown) => { if ((e as { name?: string }).name === 'TimeoutError') throw new SourceError('Google took too long to answer. Try again in a moment.'); throw new SourceError('Google could not be reached. Try again in a moment.') })
     if (res.status >= 300 && res.status < 400) {
       const loc = res.headers.get('location')

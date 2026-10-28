@@ -14,7 +14,7 @@ Baseline = commit `cc44444 initial setup`. Status after Phase 1a is in the right
 | 8 | Packages had no `tsconfig.json` → `pnpm typecheck` failed | Medium | Fixed |
 | 9 | `analytics` read `process.env` — package also runs in the browser | Low | Fixed — environment passed in |
 | 10 | Redis in docker-compose + README with no consumer (spec: "only if needed") | Low | Removed |
-| 11 | Hardcoded `https://prompttoppt.com` in layout/sitemap/robots; README said Next 14 (actual: 16.3.8) | Low | Fixed — driven by `NEXT_PUBLIC_SITE_URL` |
+| 11 | Hardcoded `https://slidesdone.com` in layout/sitemap/robots; README said Next 14 (actual: 16.3.8) | Low | Fixed — driven by `NEXT_PUBLIC_SITE_URL` |
 | 12 | Landing copy contains unverifiable claims: "Over 140,000 Decks Synthesized", "Solguruz Edition 3.0 Live", "142% net dollar retention" sample text, fake "trusted by" logos | **Business/legal** | **Open — needs your call before launch** (spec forbids fabricated stats/logos) |
 | 13 | `figma_data.json` (16 MB) committed in repo root; spec PDF at root | Low | Moved under `docs/` (still in git history) |
 | 14 | ADR cost tables (ADR-004) have no cited sources; Aurora Serverless v2 has a higher cost floor than a small RDS instance | Medium | Open — revisit in cost-model task |
@@ -24,9 +24,9 @@ Baseline = commit `cc44444 initial setup`. Status after Phase 1a is in the right
 ## Layout after audit
 
 ```
-apps/web        Next.js 16 — marketing/SEO, login/signup      → prompttoppt.app
-apps/editor     Vite + React 19 SPA — the product             → app.prompttoppt.app
-services/api    Hono + Better Auth + Drizzle/Postgres         → api.prompttoppt.app
+apps/web        Next.js 16 — marketing/SEO, login/signup      → slidesdone.app
+apps/editor     Vite + React 19 SPA — the product             → app.slidesdone.app
+services/api    Hono + Better Auth + Drizzle/Postgres         → api.slidesdone.app
 services/worker generation worker (Phase 2 — scaffold only)
 packages/       api-client · theme · types · validation · ai · billing · analytics · config
 docs/           AUDIT · DEPLOYMENT · adr/ · product/ (spec PDF) · design/figma/

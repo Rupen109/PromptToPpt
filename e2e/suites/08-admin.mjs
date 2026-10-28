@@ -44,7 +44,7 @@ export default async function () {
     expect(!/Something went wrong/.test(await p.locator('main').innerText()), 'error after filtering')
   })
   await s.check('owner: "Back to home" link and logout path work from the dashboard', p, async () => {
-    await p.getByRole('link', { name: /promptToPpt/ }).first().click(); await p.waitForURL(/localhost:3001\/$/, { timeout: 8000 })
+    await p.getByRole('link', { name: /SlidesDone/ }).first().click(); await p.waitForURL(/localhost:3001\/$/, { timeout: 8000 })
   })
 
   run('user') // leave the QA account as a normal user

@@ -2,7 +2,7 @@ import { createAuthClient } from 'better-auth/react'
 import type { Direction, Entitlements, ExportFormat, PlanId, PlanView, Presentation, PromptAnalysis, SlideContent, SubscriptionSummary, Theme } from '@prompttoppt/validation'
 
 export interface ApiClientConfig {
-  /** e.g. https://api.prompttoppt.app */
+  /** e.g. https://api.slidesdone.app */
   apiUrl: string
   /** the account id this tab believes is signed in; sent on every write so the server can refuse it if another tab switched accounts */
   sessionUser?: () => string | null
@@ -184,7 +184,7 @@ export interface FreePdfResult extends FreeOutline { summary: string; keyPoints:
 
 export interface DraftAttachment {
   id: string
-  kind: 'pdf' | 'pptx' | 'docx' | 'xlsx' | 'csv' | 'email' | 'text' | 'url'
+  kind: 'pdf' | 'pptx' | 'docx' | 'xlsx' | 'csv' | 'email' | 'text' | 'url' | 'transcript'
   title: string
   chars: number
 }
@@ -197,7 +197,7 @@ export interface CommentsData { threads: CommentThread[]; people: CommentPerson[
 
 export interface SourceSummary {
   id: string
-  type: 'text' | 'url' | 'pdf' | 'pptx' | 'docx' | 'xlsx' | 'csv' | 'email'
+  type: 'text' | 'url' | 'pdf' | 'pptx' | 'docx' | 'xlsx' | 'csv' | 'email' | 'image' | 'transcript'
   title: string
   chunks: number
 }
@@ -415,6 +415,15 @@ export function createApiClient({ apiUrl, sessionUser, onSessionChanged }: ApiCl
     /** Wikipedia (Pro/Gold, free) or live web search (Gold, costs credits): the facts come back as ready-made sources. */
     research: (body: { query: string; mode: 'wikipedia' | 'web'; language?: string; requestId: string }) =>
       request<ResearchResult>('/api/v1/sources/research', { method: 'POST', body: JSON.stringify(body) }),
+    /** Image to deck: a JPG / PNG / WebP is read by AI into a text source (4 credits; refunded if it fails). The picture itself is not stored. */
+    addImageSource: (file: File) => {
+      const body = new FormData()
+      body.set('file', file)
+      return request<SourceSummary & { creditsCharged: number }>('/api/v1/sources/image', { method: 'POST', body })
+    },
+    /** A video transcript (YouTube "Show transcript" text) or the text of a caption file; the optional YouTube link is kept so slides can cite the video. */
+    addTranscriptSource: (body: { text: string; title?: string; url?: string }) =>
+      request<SourceSummary>('/api/v1/sources/transcript', { method: 'POST', body: JSON.stringify(body) }),
     addUrlSource: (url: string) => request<SourceSummary>('/api/v1/sources/url', { method: 'POST', body: JSON.stringify({ url }) }),
     addPdfSource: (file: File) => {
       const body = new FormData()

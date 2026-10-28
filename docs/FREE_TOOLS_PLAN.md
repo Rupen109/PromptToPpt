@@ -1,6 +1,6 @@
 # Free tools — acquisition plan
 
-Goal: bring in search traffic with small free tools whose natural next step is "make this a designed deck in promptToPpt".
+Goal: bring in search traffic with small free tools whose natural next step is "make this a designed deck in SlidesDone".
 Principle: every tool ends in the same call to action — the result (outline, summary, PDF) is carried into the editor through the
 existing anonymous **draft** hand-off, so the visitor never starts over.
 

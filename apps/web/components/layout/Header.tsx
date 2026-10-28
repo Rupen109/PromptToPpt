@@ -20,7 +20,7 @@ export function Header() {
   return (
     <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b-2 border-foreground">
       <div className="max-w-[1280px] mx-auto h-20 px-5 md:px-10 flex items-center justify-between gap-6">
-        <Link href="/" aria-label="promptToPpt home" className="shrink-0"><Logo size={38} /></Link>
+        <Link href="/" aria-label="SlidesDone home" className="shrink-0"><Logo size={38} /></Link>
 
         <nav className="hidden xl:flex items-center gap-5" aria-label="Main">
           {NAV.filter(([label]) => !NOT_IN_BAR.has(label)).map(([label, href, count]) => (

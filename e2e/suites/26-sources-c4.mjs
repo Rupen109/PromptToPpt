@@ -92,7 +92,8 @@ export default async function () {
     await s.check('A5 old .doc / .xls / .ppt / .msg and unknown files each get one plain sentence on the page and nothing is stored', p, async () => {
       await home()
       const ole = Buffer.concat([Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]), Buffer.alloc(600)])
-      const cases = [['old.doc', ole, /save as \.docx/], ['old.xls', ole, /save as \.xlsx/], ['old.ppt', ole, /save as \.pptx/], ['mail.msg', ole, /save the email as \.eml/], ['setup.exe', Buffer.from('MZ\x90\0'), /use a PDF, Word/i], ['photo.png', Buffer.from([0x89, 0x50, 0x4e, 0x47]), /Pictures can't be used|use a PDF/i]]
+      // pictures are supported now (image to deck): a fake .png gets the picture sentence
+      const cases = [['old.doc', ole, /save as \.docx/], ['old.xls', ole, /save as \.xlsx/], ['old.ppt', ole, /save as \.pptx/], ['mail.msg', ole, /save the email as \.eml/], ['setup.exe', Buffer.from('MZ\x90\0'), /use a PDF, Word/i], ['photo.png', Buffer.from([0x89, 0x50, 0x4e, 0x47]), /not a JPG, PNG or WebP/i]]
       for (const [name, bytes, re] of cases) {
         await dropBytes(name, bytes)
         const m = await p.getByRole('alert').first().innerText(); expect(re.test(m), `${name}: "${m}"`)

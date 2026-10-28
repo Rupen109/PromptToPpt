@@ -4,21 +4,21 @@
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 16
+    "ms": 17
   },
   {
     "title": "D2: the website browser bundle (.next/static) and public files contain no secrets or source maps",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 24
+    "ms": 28
   },
   {
     "title": "D2: server-rendered website pages (HTML as served) contain no secrets",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 48
+    "ms": 432
   },
   {
     "title": "D1: (journey recorded) — landing, pricing, templates, editor home, billing, create, deck, share, comments, admin attempt",
@@ -32,14 +32,14 @@
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 40
+    "ms": 148
   },
   {
     "title": "D1: no stack trace, file path, SQL or internal host name in any response",
-    "ok": true,
-    "error": "",
+    "ok": false,
+    "error": "GET http://localhost:3100/ → 200 | GET http://localhost:3100/pricing → 200 | GET http://localhost:3100/templates → 200 | GET http://localhost:3001/src/main.tsx?t=1793195534409 → 200 | GET http://localhost:3001/@vite/client → 200 | GET http://localhost:3001/src/lib/entitlements.tsx?t=1793195478548 → 200",
     "noise": [],
-    "ms": 5
+    "ms": 9
   },
   {
     "title": "D1: tokens never travel in a URL (query strings are free of token / key / password / session values)",
@@ -53,56 +53,56 @@
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 4
+    "ms": 7
   },
   {
     "title": "D1: no response carries another person's e-mail address (only this account's own)",
-    "ok": true,
-    "error": "",
+    "ok": false,
+    "error": "http://localhost:3001/src/components/editor/ShareDialog.tsx?t=1793195478548: friend@email.com | http://localhost:3001/@fs/Users/rupenbhimani/workspace/learnings/PromptToPpt/pac: priya@northwind.example",
     "noise": [],
-    "ms": 14
+    "ms": 69452
   },
   {
     "title": "D1: the API calls the browser makes all go to our own API (no third-party host receives user data)",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 1
+    "ms": 2
   },
   {
     "title": "D3: what a signed-in customer receives from /me, entitlements, plans, models, billing and decks has no costs, margins, provider ids or credentials",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 34
+    "ms": 82
   },
   {
     "title": "D3: the sign-in response and /me give this account only: no password hash, no other accounts, no internal columns",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 4
+    "ms": 5
   },
   {
     "title": "D3: the admin API refuses a normal customer on every section (and its error says nothing about the data)",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 18
+    "ms": 12
   },
   {
     "title": "D4: the website, the editor and the API send the security headers (CSP, frame-ancestors, nosniff, referrer, permissions) and no X-Powered-By / server banner",
-    "ok": true,
-    "error": "",
+    "ok": false,
+    "error": "website: script-src allows unsafe-eval | website pricing: script-src allows unsafe-eval | editor: script-src allows unsafe-eval",
     "noise": [],
-    "ms": 13
+    "ms": 130
   },
   {
     "title": "D4: private API answers are never cached (Cache-Control: no-store) and public ones say so deliberately",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 13
+    "ms": 15
   },
   {
     "title": "D4: CORS: only our own sites get credentialed access; an evil origin gets none",
@@ -116,20 +116,20 @@
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 65
+    "ms": 617
   },
   {
     "title": "D5: error pages (404, malformed URLs, 500-style probes) are plain: no stack, framework banner, paths or SQL",
-    "ok": true,
-    "error": "",
+    "ok": false,
+    "error": "http://localhost:3100/this-page-does-not-exist: verbose body | http://localhost:3100/templates/%00: verbose body | http://localhost:3100/%ff%fe: verbose body | http://localhost:3100/templates/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa: verbose body",
     "noise": [],
-    "ms": 12
+    "ms": 107
   },
   {
     "title": "D5: the API root and unknown routes do not list routes or versions",
     "ok": true,
     "error": "",
     "noise": [],
-    "ms": 1
+    "ms": 2
   }
 ]

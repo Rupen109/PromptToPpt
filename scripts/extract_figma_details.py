@@ -46,9 +46,9 @@ def extract_node_data(node, out, indent_level=0):
     for child in node.get('children', []):
         extract_node_data(child, out, indent_level + 1)
 
-with open(r'd:\PromptToPpt\figma_data.json', 'r', encoding='utf-8-sig') as f:
+with open(r'd:\SlidesDone\figma_data.json', 'r', encoding='utf-8-sig') as f:
     data = json.load(f)
 
-with open(r'd:\PromptToPpt\figma_details.txt', 'w', encoding='utf-8') as out:
+with open(r'd:\SlidesDone\figma_details.txt', 'w', encoding='utf-8') as out:
     doc = data.get('document', {})
     extract_node_data(doc, out)

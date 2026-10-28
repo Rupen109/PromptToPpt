@@ -146,7 +146,7 @@ sharing.post('/:id/members', rateLimit({ windowMs: 3600_000, max: 20, key: byUse
   await sendMail({
     to: m.email,
     subject: `${me.name} invited you to edit "${deck.title}"`,
-    text: `${me.name} invited you to edit the presentation "${deck.title}" on promptToPpt.\n\nOpen this link and sign in with ${m.email}:\n${inviteUrl(m.token)}\n\nThe link works for 14 days. Anything the AI does while you edit uses ${me.name}'s credits, not yours.\nIf you were not expecting this, ignore this email.`,
+    text: `${me.name} invited you to edit the presentation "${deck.title}" on SlidesDone.\n\nOpen this link and sign in with ${m.email}:\n${inviteUrl(m.token)}\n\nThe link works for 14 days. Anything the AI does while you edit uses ${me.name}'s credits, not yours.\nIf you were not expecting this, ignore this email.`,
   }).catch((e) => console.error('[invite mail]', e))
   void audit(userId, 'collab.invited', { presentationId: id }, ipOf(c.req.raw.headers))
   return c.json({ success: true, data: memberView(m) }, 201)

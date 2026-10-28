@@ -170,7 +170,7 @@ export function EditorCanvas({ slide, theme, aspect, watermark, requireAdvanced 
               {shown.map((el) => (el.id === editingId && el.type === 'text' ? null : <ElementView key={el.id} el={el} theme={theme} slide={slide} />))}
               {watermark && (
                 <div aria-hidden style={{ position: 'absolute', right: 32, bottom: 24, zIndex: 9999, pointerEvents: 'none', padding: '10px 20px', borderRadius: 999, background: 'rgba(15,23,42,0.78)', color: '#fff', fontFamily: 'Inter, system-ui, sans-serif', fontSize: 26, fontWeight: 600 }}>
-                  Made with promptToPpt
+                  Made with SlidesDone
                 </div>
               )}
             </div>

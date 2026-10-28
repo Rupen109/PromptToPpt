@@ -1,4 +1,5 @@
 /**
+ * SUPERSEDED by e2e/make-brand-assets.mjs (new SlidesDone mark and social card). Kept only because the mark*.svg files here are the same drawing; do not run this for releases.
  * Rasterises the brand mark (scripts/brand/mark*.svg) into favicons, app icons, the social image and logo lockups.
  * Run from this folder in a scratch dir that has `playwright-core` installed:  CHROME_PATH=/path/to/chrome node build.cjs
  * Then copy the PNGs into apps/web/public (and favicon-32x32 / apple-touch-icon into apps/editor/public). See docs/BRAND.md.

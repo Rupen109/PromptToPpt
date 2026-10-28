@@ -35,8 +35,8 @@ const caveat = Caveat({
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: 'promptToPpt — AI Presentation Maker',
-    template: '%s | promptToPpt',
+    default: 'SlidesDone — AI Presentation Maker',
+    template: '%s | SlidesDone',
   },
   description:
     'Create stunning presentations in seconds with AI. Enter a topic or detailed prompt and get a beautiful, editable presentation — powered by AI.',
@@ -50,9 +50,9 @@ export const metadata: Metadata = {
     'AI slides',
     'prompt to presentation',
   ],
-  authors: [{ name: 'promptToPpt' }],
-  creator: 'promptToPpt',
-  publisher: 'promptToPpt',
+  authors: [{ name: 'SlidesDone' }],
+  creator: 'SlidesDone',
+  publisher: 'SlidesDone',
   robots: {
     index: true,
     follow: true,
@@ -67,8 +67,8 @@ export const metadata: Metadata = {
   openGraph: {
     type: 'website',
     locale: 'en_US',
-    siteName: 'promptToPpt',
-    title: 'promptToPpt — AI Presentation Maker',
+    siteName: 'SlidesDone',
+    title: 'SlidesDone — AI Presentation Maker',
     description:
       'Create stunning presentations in seconds with AI. Enter a topic and get a beautiful, editable deck.',
     images: [
@@ -76,17 +76,17 @@ export const metadata: Metadata = {
         url: '/og-image.png',
         width: 1200,
         height: 630,
-        alt: 'promptToPpt — AI Presentation Maker',
+        alt: 'SlidesDone — AI Presentation Maker',
       },
     ],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'promptToPpt — AI Presentation Maker',
+    title: 'SlidesDone — AI Presentation Maker',
     description:
       'Create stunning presentations in seconds with AI.',
     images: ['/og-image.png'],
-    creator: '@prompttoppt',
+    creator: '@slidesdone',
   },
   icons: {
     icon: [{ url: '/favicon.svg', type: 'image/svg+xml' }, { url: '/favicon-32x32.png', sizes: '32x32', type: 'image/png' }, { url: '/favicon.ico', sizes: 'any' }],
@@ -129,7 +129,7 @@ export default function RootLayout({
             __html: JSON.stringify({
               '@context': 'https://schema.org',
               '@type': 'SoftwareApplication',
-              name: 'promptToPpt',
+              name: 'SlidesDone',
               applicationCategory: 'BusinessApplication',
               description:
                 'AI-powered presentation maker. Create beautiful presentations from a prompt.',

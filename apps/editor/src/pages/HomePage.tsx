@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type 
 import { Link, useNavigate } from 'react-router'
 import { ApiError, type PresentationSummary, type SourceSummary } from '@prompttoppt/api-client'
 import { DECK_LANGUAGES } from '@prompttoppt/validation'
-import { SourcesDialog } from '@/components/SourcesDialog'
+import { SourcesDialog, isYouTubeLink } from '@/components/SourcesDialog'
 import { api } from '@/lib/api'
 import { MaintenanceBanner } from '@/lib/flags'
 import { DeckThumb } from '@/components/DeckThumb'
@@ -10,10 +10,13 @@ import { Sidebar } from '@/components/Sidebar'
 import { clearPending, setPendingLanguage, setPendingPrompt, setPendingSources } from '@/lib/pending-prompt'
 
 const MAX_SOURCES = 10
-const FILE_TYPES = /\.(pdf|pptx|docx|docm|xlsx|xlsm|csv|tsv|eml|txt|md|markdown)$/i
+const FILE_TYPES = /\.(pdf|pptx|docx|docm|xlsx|xlsm|csv|tsv|eml|txt|md|markdown|jpe?g|png|webp|srt|vtt)$/i
+/** pictures are read by AI (4 credits each), so they take a different road from documents */
+const IMAGE_TYPES = /\.(jpe?g|png|webp)$/i
+const IMAGE_MAX = 8 * 1024 * 1024
 /** old Office formats and Outlook's .msg are recognised only to say what to do instead */
-const OLD_FORMATS: Record<string, string> = { doc: 'Old .doc files are not supported — open it in Word and save as .docx.', xls: 'Old .xls files are not supported — open it in Excel and save as .xlsx (or CSV).', ppt: 'Old .ppt files are not supported — open it in PowerPoint and save as .pptx.', msg: 'Outlook .msg files are not supported — save the email as .eml, or paste its text.' }
-const SOURCE_ICON: Record<SourceSummary['type'], string> = { url: '🔗', pdf: '📄', pptx: '📊', text: '📝', docx: '📘', xlsx: '📈', csv: '🧮', email: '✉️' }
+const OLD_FORMATS: Record<string, string> = { doc: 'Old .doc files are not supported — open it in Word and save as .docx.', xls: 'Old .xls files are not supported — open it in Excel and save as .xlsx (or CSV).', ppt: 'Old .ppt files are not supported — open it in PowerPoint and save as .pptx.', msg: 'Outlook .msg files are not supported — save the email as .eml, or paste its text.', heic: 'iPhone HEIC photos are not supported — in Photos choose Share → Save as JPG, then add that.', heif: 'iPhone HEIF photos are not supported — in Photos choose Share → Save as JPG, then add that.', gif: 'GIF files are not supported — add a JPG or PNG (a screenshot of the GIF works).', svg: 'SVG drawings are not supported — export it as PNG or take a screenshot.' }
+const SOURCE_ICON: Record<SourceSummary['type'], string> = { transcript: '🎬', image: '🖼️', url: '🔗', pdf: '📄', pptx: '📊', text: '📝', docx: '📘', xlsx: '📈', csv: '🧮', email: '✉️' }
 const EXAMPLES = [
   'Make a deck on Chandrayaan-3 and India’s moon mission',
   'Pitch deck for a specialty coffee startup',
@@ -51,6 +54,8 @@ export function HomePage() {
   const navigate = useNavigate()
   const [sources, setSources] = useState<SourceSummary[]>([])
   const [dialog, setDialog] = useState(false)
+  /** a pasted YouTube link opens the dialog on the transcript tab with the link filled in */
+  const [ytLink, setYtLink] = useState<string | null>(null)
   /** language of the deck: '' = detect it from what is typed */
   const [language, setLanguage] = useState('')
   /** attachments the server is still checking: shown as normal chips (no spinner), settled in the background */
@@ -91,7 +96,11 @@ export function HomePage() {
   function attachFile(f: File) {
     const old = OLD_FORMATS[/\.([a-z0-9]+)$/i.exec(f.name)?.[1]?.toLowerCase() ?? '']
     if (old) return setAttachError(old)
-    if (!FILE_TYPES.test(f.name)) return setAttachError(f.type.startsWith('image/') ? "Pictures can't be used as a source yet. Attach a PDF, Word, PowerPoint, Excel, CSV, email, text file or a link." : `${f.name}: use a PDF, Word (.docx), PowerPoint (.pptx), Excel (.xlsx), CSV, email (.eml), or text/Markdown file.`)
+    if (!FILE_TYPES.test(f.name)) return setAttachError(`${f.name}: use a PDF, Word (.docx), PowerPoint (.pptx), Excel (.xlsx), CSV, email (.eml), text/Markdown file, or a JPG / PNG picture.`)
+    if (IMAGE_TYPES.test(f.name)) {
+      if (f.size > IMAGE_MAX) return setAttachError(`${f.name} is larger than 8 MB. Save a smaller copy and try again.`)
+      return attach(f.name, '🖼️', () => api.addImageSource(f)) // read by AI: 4 credits, refunded if it fails
+    }
     if (f.size > 15 * 1024 * 1024) return setAttachError(`${f.name} is larger than 15 MB.`)
     const kind = /\.(docx|docm)$/i.test(f.name) ? '📘' : /\.(xlsx|xlsm)$/i.test(f.name) ? '📈' : /\.(csv|tsv)$/i.test(f.name) ? '🧮' : /\.eml$/i.test(f.name) ? '✉️' : /\.pptx$/i.test(f.name) ? '📊' : '📄'
     attach(f.name, kind, () => api.addFileSource(f))
@@ -101,6 +110,7 @@ export function HomePage() {
     const files = [...e.clipboardData.files]
     if (files.length) { e.preventDefault(); files.forEach(attachFile); return }
     const parts = e.clipboardData.getData('text').trim().split(/\s+/).filter(Boolean)
+    if (parts.length === 1 && isYouTubeLink(parts[0]!)) { e.preventDefault(); setYtLink(parts[0]!); setDialog(true); return }
     if (parts.length > 0 && parts.length <= MAX_SOURCES && parts.every((u) => /^https?:\/\/\S+$/i.test(u))) {
       e.preventDefault()
       parts.forEach((u) => attach(hostOf(u), '🔗', () => api.addUrlSource(u)))
@@ -221,7 +231,7 @@ export function HomePage() {
           )}
         </div>
       </main>
-      {dialog && <SourcesDialog count={sources.length} language={language} onAdd={(s) => keep(sourcesRef.current.some((x) => x.id === s.id) ? sourcesRef.current : [...sourcesRef.current, s])} onClose={() => setDialog(false)} />}
+      {dialog && <SourcesDialog count={sources.length} language={language} {...(ytLink ? { initialTab: 'youtube' as const, initialUrl: ytLink } : {})} onAdd={(s) => keep(sourcesRef.current.some((x) => x.id === s.id) ? sourcesRef.current : [...sourcesRef.current, s])} onClose={() => { setDialog(false); setYtLink(null) }} />}
     </div>
   )
 }

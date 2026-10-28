@@ -15,7 +15,7 @@ function buildProviders(): Record<string, AIProvider> {
     return { gemini: mock, vertex: mock, openrouter: mock }
   }
   if (env.AI_PROVIDER === 'openrouter') {
-    return env.OPENROUTER_API_KEY ? { openrouter: new OpenRouterProvider({ apiKey: env.OPENROUTER_API_KEY, appUrl: env.WEB_URL, appName: 'promptToPpt' }) } : {}
+    return env.OPENROUTER_API_KEY ? { openrouter: new OpenRouterProvider({ apiKey: env.OPENROUTER_API_KEY, appUrl: env.WEB_URL, appName: 'SlidesDone' }) } : {}
   }
   if (!env.GEMINI_API_KEY) return {} // API still boots; AI endpoints answer AI_NOT_CONFIGURED
   return { [env.AI_PROVIDER]: new GeminiProvider(env.GEMINI_API_KEY, env.AI_PROVIDER === 'vertex' ? VERTEX : AI_STUDIO) }

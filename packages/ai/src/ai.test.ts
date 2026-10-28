@@ -145,7 +145,7 @@ describe('OpenRouterProvider', () => {
   it('sends bearer auth + usage accounting, normalises usage, and keeps the provider-reported cost', async () => {
     const { OpenRouterProvider } = await import('./index')
     let seen: { url: string; headers: Record<string, string>; body: any } | undefined
-    const p = new OpenRouterProvider({ apiKey: 'sk-or-SECRET', appName: 'promptToPpt', fetchImpl: (async (url: string, init: RequestInit) => {
+    const p = new OpenRouterProvider({ apiKey: 'sk-or-SECRET', appName: 'SlidesDone', fetchImpl: (async (url: string, init: RequestInit) => {
       seen = { url, headers: init.headers as Record<string, string>, body: JSON.parse(init.body as string) }
       return new Response(JSON.stringify(orOk))
     }) as never })
