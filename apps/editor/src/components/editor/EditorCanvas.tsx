@@ -55,13 +55,25 @@ function InlineText({ el, theme, slide, onCommit }: { el: TextElement; theme: Th
     sel?.removeAllRanges()
     sel?.addRange(range)
   }, [])
+  // The box can be CLOSED by the editor itself (a click on the slide background or on another object clears editingId first). A box that is removed never sends
+  // its blur event, so the typed words would be lost. Keep the latest words and the latest onCommit, and save them when the box goes away.
+  const typed = useRef<EditedParagraph[] | null>(null)
+  const onCommitRef = useRef(onCommit)
+  useEffect(() => { onCommitRef.current = onCommit })
+  const flagsOf = () => Object.fromEntries([...touched.current].map((f) => [f, fmtRef.current[f]])) as Partial<Record<Flag, boolean>>
   const commit = () => {
     if (done.current) return
     done.current = true
     const node = ref.current
     if (node) normalizeRoot(node)
-    onCommit(node ? readParagraphs(node) : [{ text: '' }], Object.fromEntries([...touched.current].map((f) => [f, fmtRef.current[f]])))
+    onCommit(node ? readParagraphs(node) : typed.current ?? [{ text: '' }], flagsOf())
   }
+  useEffect(() => () => {
+    if (done.current || (!typed.current && touched.current.size === 0)) return // already saved, or nothing was changed
+    done.current = true
+    onCommitRef.current(typed.current ?? el.paragraphs.map((p) => ({ text: p.runs.map((r) => r.text).join(''), ...(p.list ? { list: p.list } : {}) })), flagsOf())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const heading = HEADING.has(el.role)
   const gap = el.fontSize * (el.paraGap ?? 0.5)
   return (
@@ -78,7 +90,7 @@ function InlineText({ el, theme, slide, onCommit }: { el: TextElement; theme: Th
       aria-multiline="true"
       onBlur={commit}
       onPaste={(e) => { e.preventDefault(); if (ref.current) pastePlain(ref.current, e.clipboardData.getData('text/plain')) }}
-      onInput={() => { if (ref.current) { normalizeRoot(ref.current); applyListShortcut(ref.current) } }}
+      onInput={() => { if (ref.current) { normalizeRoot(ref.current); applyListShortcut(ref.current); typed.current = readParagraphs(ref.current) } }}
       onKeyDown={(e) => {
         e.stopPropagation() // keep editor shortcuts (delete/undo/nudge) out of text editing
         const root = ref.current
@@ -213,7 +225,7 @@ export function EditorCanvas({ slide, theme, aspect, watermark, requireAdvanced 
                 if (el.id === editingId && el.type === 'text') {
                   return (
                     <div key={el.id} style={{ pointerEvents: 'auto' }}>
-                      <InlineText el={el} theme={theme} slide={slide} onCommit={(items, flags) => { apply('Edit text', (d) => { C.setText(d, slide.id, el.id, C.retextParagraphs(el.paragraphs, items.length ? items : [{ text: '' }])); for (const [flag, on] of Object.entries(flags)) C.setRunFlag(d, slide.id, el.id, flag as Flag, on) }, { mergeKey: `text:${el.id}` }); edit(null) }} />
+                      <InlineText el={el} theme={theme} slide={slide} onCommit={(items, flags) => { const next = C.retextParagraphs(el.paragraphs, items.length ? items : [{ text: '' }]); if (!Object.keys(flags).length && JSON.stringify(next) === JSON.stringify(el.paragraphs)) { edit(null); return } /* nothing changed: no edit, no new revision, the slide is not marked hand-edited */ apply('Edit text', (d) => { C.setText(d, slide.id, el.id, next); for (const [flag, on] of Object.entries(flags)) C.setRunFlag(d, slide.id, el.id, flag as Flag, on) }, { mergeKey: `text:${el.id}` }); edit(null) }} />
                     </div>
                   )
                 }
