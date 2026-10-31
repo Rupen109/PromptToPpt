@@ -5,7 +5,7 @@
 export interface WikiPage { title: string; url: string; text: string }
 type FetchLike = (url: string, init: { signal: AbortSignal; headers: Record<string, string> }) => Promise<Response>
 
-const UA = 'SlidesDone/1.0 (https://slidesdone.com; support@slidesdone.com) research'
+const UA = 'SlidesDone/1.0 (https://slidesdone.app; support@slidesdone.app) research'
 const MAX_CHARS_PER_PAGE = 9000
 
 /** "pt-BR" → "pt", "EN" → "en"; anything that is not 2–3 letters falls back to English. */

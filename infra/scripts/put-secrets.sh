@@ -16,6 +16,8 @@ while [ $# -gt 0 ]; do case "$1" in --from-env-file) ENVFILE="${2:-}"; shift 2 ;
 command -v aws >/dev/null || { echo "aws CLI is not installed"; exit 1; }
 command -v openssl >/dev/null || { echo "openssl is not installed"; exit 1; }
 aws sts get-caller-identity --profile "$PROFILE" >/dev/null || { echo "Cannot use AWS profile '$PROFILE'. Run: aws configure --profile $PROFILE"; exit 1; }
+# this account may only use Sydney; override with AWS_REGION=... if that ever changes
+export AWS_DEFAULT_REGION="${AWS_REGION:-ap-southeast-2}"
 PREFIX="/prompttoppt/$ENVNAME"
 
 exists() { aws ssm get-parameter --profile "$PROFILE" --name "$PREFIX/$1" >/dev/null 2>&1; }
@@ -50,6 +52,7 @@ ask() { # name  label  mode(required|optional|generate)  [hint]
 echo "Storing secrets for environment '$ENVNAME' with AWS profile '$PROFILE'."
 echo "Generated automatically (you never see them):"
 ask AUTH_SECRET "AUTH_SECRET" generate
+ask POSTGRES_PASSWORD "POSTGRES_PASSWORD" generate
 ask EDGE_SHARED_SECRET "EDGE_SHARED_SECRET" generate
 ask RAZORPAY_WEBHOOK_SECRET "RAZORPAY_WEBHOOK_SECRET" generate
 echo "RAZORPAY_WEBHOOK_SECRET was generated: copy the SAME value into the Razorpay dashboard webhook later (I will show you how to read it back safely)."
