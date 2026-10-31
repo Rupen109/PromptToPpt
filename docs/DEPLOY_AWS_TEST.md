@@ -22,6 +22,14 @@ Built 2026-10-31. Domain `slidesdone.app` (bought at Hostinger, 1 year, renews 2
 4. `colima start`, then `infra/scripts/deploy.sh` (builds ARM images, pushes to ECR, starts on the server, runs migrations, publishes the editor). Partial runs: `deploy.sh api`, `web`, `editor`, `config`.
 5. Reach the server: `aws ssm start-session --target <instance id> --profile goldenhour --region ap-southeast-2`.
 
+## Deploying
+- **From GitHub (manual):** Actions -> "Deploy (test environment)" -> Run workflow (choose everything, api, web, editor or config). Uses repository secrets `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` of the limited IAM user `slidesdone-test-github-deploy` (this Free-plan account blocks the passwordless OIDC login; rotate the key from `infra/tofu`: `tofu apply -replace=aws_iam_access_key.github_deploy`, then update the two secrets). Builds on a GitHub ARM runner, about 10-15 minutes.
+- **From the Mac:** `colima start`, then `infra/scripts/deploy.sh [api] [web] [editor] [config]`.
+- First live deploy: 2026-10-31. Checked in a real browser: home, pricing, login, signup and the editor's login redirect load over HTTPS; containers up, 417 of 910 MB used.
+
+- **AI on the test server:** Gemini on Vertex (`AI_PROVIDER=vertex`, key `GEMINI_API_KEY` in Parameter Store). To switch to OpenRouter later, store `AI_PROVIDER=openrouter` and a real `OPENROUTER_API_KEY` there (they override the default) and run a `config` deploy.
+- **Live check after a deploy:** `LIVE_EMAIL=<verified account> LIVE_PASSWORD=... node e2e/live-smoke.mjs` runs 16 checks through a real browser (pages, login, scratch editor, pictures in S3, share link, support form, AI). It tests what a free-plan person can do.
+
 ## Known limits
 - 1 GB is tight for API, website and Postgres together. Watch `free -m` and the budget mails; step up to `t4g.small` (2 GB) by changing `instance_type`.
 - There is no CloudFront in front of the API or website yet, so no country header: prices use the default currency until an edge is added (`EDGE_SHARED_SECRET` is set but unused). Add it before real launch (see PRODUCTION_RELEASE_CHECKLIST).
