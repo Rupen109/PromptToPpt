@@ -1,43 +1,12 @@
-# GitHub Actions deploys without any stored AWS key: GitHub proves "this run is repo X, branch master" and AWS hands out a short-lived login.
-variable "github_repo" {
-  description = "owner/name of the repository allowed to deploy"
-  type        = string
-  default     = "Rupen109/PromptToPpt"
-}
-variable "github_branch" {
-  type    = string
-  default = "master"
-}
-
-resource "aws_iam_openid_connect_provider" "github" {
-  url             = "https://token.actions.githubusercontent.com"
-  client_id_list  = ["sts.amazonaws.com"]
-  thumbprint_list = ["6938fd4d98bab03faadb97b34396831e3780aea1"]
-}
-
-resource "aws_iam_role" "github_deploy" {
+# GitHub Actions deploys with a limited user whose key is stored as a GitHub secret (this Free-plan account cannot create the passwordless OIDC login).
+# The user can only deploy: push the two images, publish files to the two buckets, restart this one server, and look it up. Nothing else.
+resource "aws_iam_user" "github_deploy" {
   name = "${local.prefix}-github-deploy"
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect    = "Allow"
-      Principal = { Federated = aws_iam_openid_connect_provider.github.arn }
-      Action    = "sts:AssumeRoleWithWebIdentity"
-      Condition = {
-        StringEquals = {
-          "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
-          "token.actions.githubusercontent.com:sub" = "repo:${var.github_repo}:ref:refs/heads/${var.github_branch}"
-        }
-      }
-    }]
-  })
-  max_session_duration = 3600
 }
 
-# only what a deploy needs: push images, publish files, tell the server to restart
-resource "aws_iam_role_policy" "github_deploy" {
+resource "aws_iam_user_policy" "github_deploy" {
   name = "deploy"
-  role = aws_iam_role.github_deploy.id
+  user = aws_iam_user.github_deploy.name
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -52,4 +21,16 @@ resource "aws_iam_role_policy" "github_deploy" {
   })
 }
 
-output "github_deploy_role_arn" { value = aws_iam_role.github_deploy.arn }
+resource "aws_iam_access_key" "github_deploy" {
+  user = aws_iam_user.github_deploy.name
+}
+
+# read them without printing:  tofu output -raw github_deploy_access_key_id | pbcopy   (then the secret one the same way)
+output "github_deploy_access_key_id" {
+  value     = aws_iam_access_key.github_deploy.id
+  sensitive = true
+}
+output "github_deploy_secret_access_key" {
+  value     = aws_iam_access_key.github_deploy.secret
+  sensitive = true
+}

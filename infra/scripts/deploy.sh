@@ -9,6 +9,8 @@
 # Needs: Docker running (colima start), the AWS profile, and the secrets stored once with infra/scripts/put-secrets.sh.
 set -euo pipefail
 export PATH="$HOME/homebrew/bin:/opt/homebrew/bin:$PATH"
+# node and pnpm from nvm when run on a Mac (GitHub Actions installs its own)
+for d in "$HOME"/.nvm/versions/node/*/bin; do [ -d "$d" ] && PATH="$d:$PATH"; done
 ENVNAME="${ENVNAME:-test}"; export AWS_REGION="${AWS_REGION:-ap-southeast-2}" AWS_DEFAULT_REGION="${AWS_REGION:-ap-southeast-2}" AWS_PAGER=""
 # on your Mac the saved login profile is used; in GitHub Actions the role login is already in the environment
 [ -n "${GITHUB_ACTIONS:-}" ] || export AWS_PROFILE="${AWS_PROFILE:-goldenhour}"
