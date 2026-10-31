@@ -79,7 +79,7 @@ const searchQuery = z.object({ q: z.string().trim().min(2).max(80), page: z.coer
 editorMedia.get('/media/search', requireAuth, rateLimit({ windowMs: 60_000, max: 40, key: (c) => `mediasearch:${uid(c)}` }), zValidator('query', searchQuery), async (c) => {
   const { q, page } = c.req.valid('query')
   const r = await searchStockForEditor(q, uid(c), page)
-  if (!r.ok) return err(c, 503, r.reason === 'busy' ? 'SEARCH_BUSY' : 'SEARCH_UNAVAILABLE', r.reason === 'busy' ? 'Photo search is busy right now. Try again in a few minutes, or use the template pictures and your uploads.' : 'Photo search is not set up on this server.')
+  if (!r.ok) return err(c, 503, r.reason === 'busy' ? 'SEARCH_BUSY' : 'SEARCH_UNAVAILABLE', r.reason === 'busy' ? 'Photo search is busy right now. Try again in a few minutes, or use the template pictures and your uploads.' : 'Photo search is not available right now. You can still use the gradients, your uploads and the template photos.')
   return c.json({ success: true, data: { photos: r.photos, page: r.page, hasMore: r.hasMore } })
 })
 

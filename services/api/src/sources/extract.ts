@@ -20,6 +20,15 @@ export interface Extracted {
   kind?: 'docx' | 'xlsx' | 'pptx'
 }
 
+/** What to tell a person when a website refuses or fails: plain words and a way forward (many news sites block automated readers on purpose). */
+export function pageStatusMessage(status: number): string {
+  if (status === 401 || status === 403) return `That website does not allow automated reading (it answered ${status}). Many news sites do this. Copy the text from the page and use Paste text, or try another link.`
+  if (status === 404 || status === 410) return `That page was not found (${status}). Check the address.`
+  if (status === 429) return 'That website is limiting automated visits right now. Try again in a few minutes, or paste the text.'
+  if (status >= 500) return `That website had a problem on its side (error ${status}). Try again later, or paste the text.`
+  return `The page responded with ${status}. Try another link, or paste the text.`
+}
+
 export const MAX_FETCH_BYTES = 2 * 1024 * 1024
 export { MAX_TEXT_CHARS }
 const MAX_REDIRECTS = 3
@@ -71,7 +80,7 @@ export async function fetchPage(rawUrl: string, fetchImpl?: FetchLike): Promise<
       url = assertPublicUrl(new URL(loc, url).toString()) // every hop re-validated
       continue
     }
-    if (!res.ok) throw new Error(`The page responded with ${res.status}`)
+    if (!res.ok) throw new Error(pageStatusMessage(res.status))
     const type = res.headers.get('content-type') ?? ''
     if (!/text\/html|text\/plain|application\/xhtml/.test(type)) throw new Error('That URL is not a web page')
     const reader = res.body?.getReader()
@@ -112,7 +121,7 @@ export async function fromPdf(bytes: Uint8Array, filename: string): Promise<Extr
   work.catch(() => {}) // a late failure after the timeout must not surface as an unhandled rejection
   const { text } = await Promise.race([work, timeout]).finally(() => clearTimeout(timer))
   const parts = text.map((t, i) => ({ locator: `p. ${i + 1}`, text: clean(t) })).filter((p) => p.text)
-  if (parts.length === 0) throw new Error('No text found — scanned PDFs are not supported yet')
+  if (parts.length === 0) throw new Error('This PDF has no text we can read: it looks like a scan, or its text was turned into pictures. Add pictures (screenshots) of its pages instead, or paste the text.')
   let budget = MAX_TEXT_CHARS
   return { title: filename.replace(/\.pdf$/i, '').slice(0, 200) || 'PDF', parts: parts.map((p) => ({ ...p, text: p.text.slice(0, Math.max(0, (budget -= p.text.length) + p.text.length)) })).filter((p) => p.text) }
 }

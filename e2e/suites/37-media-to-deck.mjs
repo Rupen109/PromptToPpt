@@ -30,6 +30,7 @@ export default async function () {
       await P.p.getByRole('button', { name: /Upload files, or links/ }).click()
       const dlg = P.p.getByRole('dialog', { name: 'Add sources' }); await dlg.waitFor()
       expect((await dlg.getByLabel('File').getAttribute('accept')).includes('.m4a'), 'picker does not offer recordings')
+      await dlg.getByText('More about file types and credits').click() // the price is in the folded details so the dialog stays short
       expect(/6 credits per 4 MB/.test(await dlg.innerText()), 'dialog does not state the price')
       await dlg.getByLabel('File').setInputFiles(join(FX, 'talk.m4a'))
       await dlg.getByRole('button', { name: 'Add source' }).click()

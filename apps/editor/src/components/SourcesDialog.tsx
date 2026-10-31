@@ -137,7 +137,11 @@ export function SourcesDialog({ count, language, initialTab, initialUrl, onAdd, 
           {tab === 'file' && (
             <>
               <input ref={file} type="file" accept=".pdf,.docx,.docm,.pptx,.xlsx,.xlsm,.csv,.tsv,.eml,.txt,.md,.jpg,.jpeg,.png,.webp,.srt,.vtt,.mp3,.m4a,.wav,.ogg,.flac,.aac,.mp4,.mov,.webm" aria-label="File" className={input} />
-              <p className="text-xs text-slate-500">PDF, Word (.docx), PowerPoint (.pptx), Excel (.xlsx), CSV, email (.eml) or text/Markdown — up to 15 MB. Video caption files (.srt, .vtt) work too. A short audio clip (up to 12 MB) is transcribed by AI for 6 credits per 4 MB. A video, or a longer recording (MP4, MOV, WebM, MP3, M4A… up to 200 MB and 90 minutes), is both listened to and read off the screen in the background for 3 credits per minute; it is refunded if it fails. A JPG, PNG or WebP picture (notes, a whiteboard, a table, a chart, a screenshot — up to 8 MB) is read by AI for 4 credits. Old .doc / .xls / .ppt files: save them in the newer format first.</p>
+              <p className="text-xs text-slate-500">PDF, Word, PowerPoint, Excel, CSV, email, text, pictures, audio and video. Documents up to 15 MB.</p>
+              <details className="text-xs text-slate-500">
+                <summary className="cursor-pointer font-medium text-slate-600">More about file types and credits</summary>
+                <p className="mt-1.5">PDF, Word (.docx), PowerPoint (.pptx), Excel (.xlsx), CSV, email (.eml) or text/Markdown — up to 15 MB. Video caption files (.srt, .vtt) work too. A short audio clip (up to 12 MB) is transcribed by AI for 6 credits per 4 MB. A video, or a longer recording (MP4, MOV, WebM, MP3, M4A… up to 200 MB and 90 minutes), is both listened to and read off the screen in the background for 3 credits per minute; it is refunded if it fails. A JPG, PNG or WebP picture (notes, a whiteboard, a table, a chart, a screenshot — up to 8 MB) is read by AI for 4 credits. Old .doc / .xls / .ppt files: save them in the newer format first.</p>
+              </details>
             </>
           )}
           {tab === 'text' && (

@@ -1,4 +1,4 @@
-import { Clapperboard, FileSpreadsheet, FileText, Globe, Image as ImageIcon, Link2, Mail, Mic, NotebookPen, Presentation, Send, Table, X, type LucideIcon } from '@prompttoppt/ui/icons'
+import { Clapperboard, FileSpreadsheet, FileText, Globe, Image as ImageIcon, Link2, Mail, Mic, NotebookPen, PencilRuler, Presentation, Send, Sparkles, Table, X, type LucideIcon } from '@prompttoppt/ui/icons'
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { ApiError, type PresentationSummary, type SourceSummary } from '@prompttoppt/api-client'
@@ -158,6 +158,13 @@ export function HomePage() {
       <main className="flex-1 min-w-0 px-4 sm:px-6 lg:px-10 pb-12 lg:pb-16">
         <MaintenanceBanner />
         <div className="max-w-[860px] mx-auto mt-8 sm:mt-14 lg:mt-20">
+          {/* the two ways to start, visible at once: AI builds it, or you build it yourself */}
+          <div className="flex justify-center mb-6">
+            <div role="group" aria-label="How do you want to start?" className="inline-flex p-1 rounded-full bg-white ring-1 ring-black/10 shadow-sm text-sm font-semibold">
+              <span aria-current="true" className="inline-flex items-center gap-1.5 px-4 h-9 rounded-full bg-primary text-white"><Sparkles aria-hidden size={16} />Create with AI</span>
+              <Link to="/scratch" data-testid="home-scratch-top" className="inline-flex items-center gap-1.5 px-4 h-9 rounded-full text-slate-700 hover:bg-slate-100"><PencilRuler aria-hidden size={16} />Create from scratch</Link>
+            </div>
+          </div>
           <h1 className="font-heading font-extrabold text-2xl sm:text-4xl text-center text-foreground tracking-tight">What will you present today?</h1>
           <p className="text-center text-slate-500 mt-2 text-sm sm:text-base">Describe it, add a link or a file, and we’ll build the deck.</p>
           <form
