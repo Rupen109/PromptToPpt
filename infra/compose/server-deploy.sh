@@ -8,6 +8,8 @@ chmod +x ./*.sh
 EDITOR_BUCKET="${ASSETS_BUCKET/-assets-/-editor-}"
 mkdir -p editor
 aws s3 sync "s3://$EDITOR_BUCKET/" /opt/slidesdone/editor/ --delete --region "$AWS_REGION" --no-progress
+# index.html always has the same size (only the script hashes inside it change), so sync can wrongly skip it and leave a page that asks for scripts which no longer exist
+aws s3 cp "s3://$EDITOR_BUCKET/index.html" /opt/slidesdone/editor/index.html --region "$AWS_REGION" --no-progress
 bash ./render-env.sh
 REGISTRY="$(cut -d/ -f1 <<<"$(grep '^API_IMAGE=' images.env | cut -d= -f2-)")"
 aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$REGISTRY"

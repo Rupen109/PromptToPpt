@@ -56,6 +56,8 @@ if has editor; then
   echo "== building the editor"
   VITE_API_URL="https://api.$DOMAIN" VITE_WEB_URL="https://$DOMAIN" pnpm --filter @prompttoppt/editor build
   aws s3 sync apps/editor/dist "s3://$EDITOR_BUCKET/" --delete --no-progress >/dev/null
+  # the entry page is always re-uploaded last (same size every build, so sync alone may skip it), so a page never points at scripts that are not there yet
+  aws s3 cp apps/editor/dist/index.html "s3://$EDITOR_BUCKET/index.html" --cache-control "no-cache" --no-progress >/dev/null
   DIST="$(TF editor_distribution_id 2>/dev/null || true)"
   if [ -n "$DIST" ] && [ "$DIST" != "null" ]; then aws cloudfront create-invalidation --distribution-id "$DIST" --paths '/*' >/dev/null && echo "CDN refreshed"; fi
 fi
