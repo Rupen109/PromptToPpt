@@ -1,7 +1,10 @@
 name: CI
+# PAUSED (2026-10-31): it ran on every push and failed. It now only runs when started by hand (Actions -> CI -> Run workflow).
+# To switch it back on, replace `workflow_dispatch:` with the two lines below.
+#   push: { branches: [master] }
+#   pull_request:
 on:
-  push: { branches: [master] }
-  pull_request:
+  workflow_dispatch:
 
 # least privilege: the workflow token can only read the repository
 permissions:
