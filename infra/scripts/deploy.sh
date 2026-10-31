@@ -9,15 +9,28 @@
 # Needs: Docker running (colima start), the AWS profile, and the secrets stored once with infra/scripts/put-secrets.sh.
 set -euo pipefail
 export PATH="$HOME/homebrew/bin:/opt/homebrew/bin:$PATH"
-PROFILE="${AWS_PROFILE:-goldenhour}"; ENVNAME="${ENVNAME:-test}"; export AWS_REGION="${AWS_REGION:-ap-southeast-2}" AWS_DEFAULT_REGION="${AWS_REGION:-ap-southeast-2}" AWS_PROFILE="$PROFILE" AWS_PAGER=""
+ENVNAME="${ENVNAME:-test}"; export AWS_REGION="${AWS_REGION:-ap-southeast-2}" AWS_DEFAULT_REGION="${AWS_REGION:-ap-southeast-2}" AWS_PAGER=""
+# on your Mac the saved login profile is used; in GitHub Actions the role login is already in the environment
+[ -n "${GITHUB_ACTIONS:-}" ] || export AWS_PROFILE="${AWS_PROFILE:-goldenhour}"
 DOMAIN="${DOMAIN:-slidesdone.app}"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"; cd "$ROOT"
-TF() { (cd infra/tofu && tofu output -raw "$1"); }
+ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+# resource names come from OpenTofu on your Mac; in CI (no state) they follow the same naming rule
+TF() {
+  if [ -z "${GITHUB_ACTIONS:-}" ] && [ -d infra/tofu/.terraform ]; then (cd infra/tofu && tofu output -raw "$1"); return; fi
+  case "$1" in
+    ecr_api) echo "$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/slidesdone-$ENVNAME/api" ;;
+    ecr_web) echo "$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/slidesdone-$ENVNAME/web" ;;
+    assets_bucket) echo "slidesdone-$ENVNAME-assets-$ACCOUNT_ID" ;;
+    editor_bucket) echo "slidesdone-$ENVNAME-editor-$ACCOUNT_ID" ;;
+    server_instance_id) aws ec2 describe-instances --filters "Name=tag:Name,Values=slidesdone-$ENVNAME-server" "Name=instance-state-name,Values=running" --query 'Reservations[0].Instances[0].InstanceId' --output text ;;
+    editor_distribution_id) echo "" ;;
+  esac
+}
 WHAT=("$@"); [ ${#WHAT[@]} -gt 0 ] || WHAT=(api web editor config)
 has() { for w in "${WHAT[@]}"; do [ "$w" = "$1" ] && return 0; done; return 1; }
 
-ACCOUNT="$(aws sts get-caller-identity --query Account --output text)"
-REGISTRY="$ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com"
+REGISTRY="$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
 ECR_API="$(TF ecr_api)"; ECR_WEB="$(TF ecr_web)"; ASSETS="$(TF assets_bucket)"; EDITOR_BUCKET="$(TF editor_bucket)"; INSTANCE="$(TF server_instance_id)"
 TAG="$(git rev-parse --short HEAD 2>/dev/null || echo manual)-$(date -u +%m%d%H%M)"
 

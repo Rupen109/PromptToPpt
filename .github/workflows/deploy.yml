@@ -1,0 +1,40 @@
+name: Deploy (test environment)
+
+# Every push to master deploys to the test server. It can also be started by hand from the Actions tab.
+on:
+  push: { branches: [master] }
+  workflow_dispatch:
+
+# AWS login without stored keys (OIDC); the workflow token can only read the repository
+permissions:
+  id-token: write
+  contents: read
+
+# one deploy at a time; a newer push waits for the running one instead of cancelling it half-way
+concurrency:
+  group: deploy-test
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    # ARM runner: the server is an ARM machine, so the images are built natively (no slow emulation)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    env:
+      AWS_REGION: ap-southeast-2
+      ENVNAME: test
+      DOMAIN: slidesdone.app
+      NEXT_PUBLIC_GOOGLE_AUTH: 'true'
+      NEXT_PUBLIC_MICROSOFT_AUTH: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-arn: arn:aws:iam::461415799262:role/slidesdone-test-github-deploy
+          aws-region: ap-southeast-2
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version-file: .nvmrc, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: Build, publish and restart
+        run: infra/scripts/deploy.sh api web editor
