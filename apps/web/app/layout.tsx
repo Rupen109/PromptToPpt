@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next'
-import { Inter, Plus_Jakarta_Sans, Caveat, Sora } from 'next/font/google'
+import localFont from 'next/font/local'
 import './globals.css'
 import '@prompttoppt/ui/prose.css'
 import { SiteTranslate } from '@/components/layout/SiteTranslate'
@@ -7,28 +7,29 @@ import { SITE_URL } from '@/lib/env'
 
 // ─── Fonts ────────────────────────────────────────────────────────────────
 
-const inter = Inter({
-  subsets: ['latin'],
+// Self-hosted (see app/fonts/README.md): the build must not depend on fetching fonts from Google.
+const inter = localFont({
+  src: './fonts/Inter-latin.woff2',
   variable: '--font-inter',
   display: 'swap',
-  weight: ['400', '600', '700'],
+  weight: '100 900',
 })
 
-const plusJakartaSans = Plus_Jakarta_Sans({
-  subsets: ['latin'],
+const plusJakartaSans = localFont({
+  src: './fonts/PlusJakartaSans-latin.woff2',
   variable: '--font-plus-jakarta-sans',
   display: 'swap',
-  weight: ['700', '800'],
+  weight: '200 800',
 })
 
 // Wordmark only: a light + extra-bold pair (see docs/BRAND.md)
-const sora = Sora({ subsets: ['latin'], variable: '--font-logo', display: 'swap', weight: ['300', '800'] })
+const sora = localFont({ src: './fonts/Sora-latin.woff2', variable: '--font-logo', display: 'swap', weight: '100 800' })
 
-const caveat = Caveat({
-  subsets: ['latin'],
+const caveat = localFont({
+  src: './fonts/Caveat-latin.woff2',
   variable: '--font-caveat',
   display: 'swap',
-  weight: ['700'],
+  weight: '400 700',
 })
 
 // ─── Default Metadata ────────────────────────────────────────────────────
