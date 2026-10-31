@@ -144,6 +144,8 @@ interface StockPhoto {
   id: string
   alt: string
   imageUrl: string
+  /** small preview for pickers */
+  thumbUrl?: string | undefined
   pageUrl: string
   author: string
   authorUrl?: string | undefined
@@ -162,7 +164,7 @@ interface StockProvider {
 const UTM = 'utm_source=slidesdone&utm_medium=referral'
 const withUtm = (u?: string) => (u ? `${u}${u.includes('?') ? '&' : '?'}${UTM}` : undefined)
 
-interface UnsplashResult { id: string; alt_description?: string | null; description?: string | null; urls?: { regular?: string; full?: string }; links?: { html?: string; download_location?: string }; user?: { name?: string; links?: { html?: string } } }
+interface UnsplashResult { id: string; alt_description?: string | null; description?: string | null; urls?: { regular?: string; full?: string; small?: string }; links?: { html?: string; download_location?: string }; user?: { name?: string; links?: { html?: string } } }
 
 /** Unsplash demo apps get 50 requests/hour: identical searches (same topic, retries, "fix pictures") are served from memory for 30 minutes. */
 const SEARCH_CACHE = new Map<string, { at: number; photos: StockPhoto[] }>()
@@ -208,7 +210,7 @@ function unsplashProvider(accessKey: string): StockProvider {
       const found = (body?.results ?? []).flatMap((r): StockPhoto[] => {
         const raw = r.urls?.regular ?? r.urls?.full
         if (!r || typeof r.id !== 'string' || !raw) return []
-        return [{ id: r.id, alt: r.alt_description || r.description || '', imageUrl: `${raw}${raw.includes('?') ? '&' : '?'}w=1920&q=80&fm=jpg`, pageUrl: withUtm(r.links?.html) ?? `https://unsplash.com/photos/${r.id}?${UTM}`, author: r.user?.name ?? '', authorUrl: withUtm(r.user?.links?.html), trackUrl: r.links?.download_location }]
+        return [{ id: r.id, alt: r.alt_description || r.description || '', imageUrl: `${raw}${raw.includes('?') ? '&' : '?'}w=1920&q=80&fm=jpg`, thumbUrl: r.urls?.small, pageUrl: withUtm(r.links?.html) ?? `https://unsplash.com/photos/${r.id}?${UTM}`, author: r.user?.name ?? '', authorUrl: withUtm(r.user?.links?.html), trackUrl: r.links?.download_location }]
       })
       if (found.length) remember(ck, found, st.deps.now())
       return found
@@ -219,7 +221,7 @@ function unsplashProvider(accessKey: string): StockProvider {
   }
 }
 
-interface PexelsPhoto { id: number; url: string; photographer?: string; alt?: string; src?: { large2x?: string; large?: string } }
+interface PexelsPhoto { id: number; url: string; photographer?: string; alt?: string; src?: { large2x?: string; large?: string; medium?: string } }
 function pexelsProvider(key: string): StockProvider {
   return {
     name: 'pexels', license: 'Pexels License',
@@ -227,7 +229,7 @@ function pexelsProvider(key: string): StockProvider {
       const res = await st.deps.fetch(`https://api.pexels.com/v1/search?${new URLSearchParams({ query, orientation: orientationFor(aspect), per_page: '12', size: 'large' })}`, { headers: { Authorization: key }, signal: sig(st, st.deps.searchBudgetMs ?? SEARCH_BUDGET_MS) })
       if (!res.ok) return [] // 429 / 401 / 5xx → this source is skipped for the slide
       const body = (await res.json().catch(() => null)) as { photos?: PexelsPhoto[] } | null
-      return (body?.photos ?? []).flatMap((p): StockPhoto[] => (p && typeof p.id === 'number' && typeof p.url === 'string' && (p.src?.large2x ?? p.src?.large) ? [{ id: String(p.id), alt: p.alt ?? '', imageUrl: (p.src?.large2x ?? p.src?.large)!, pageUrl: p.url, author: p.photographer ?? '' }] : []))
+      return (body?.photos ?? []).flatMap((p): StockPhoto[] => (p && typeof p.id === 'number' && typeof p.url === 'string' && (p.src?.large2x ?? p.src?.large) ? [{ id: String(p.id), alt: p.alt ?? '', imageUrl: (p.src?.large2x ?? p.src?.large)!, thumbUrl: p.src?.medium, pageUrl: p.url, author: p.photographer ?? '' }] : []))
     },
     attribution: (p) => ({ source: `Photo by ${p.author || 'a Pexels photographer'} on Pexels`, license: 'Pexels License', url: p.pageUrl }),
   }
@@ -284,22 +286,16 @@ const hashOf = (s: string) => { let h = 0; for (const c of s) h = (h * 31 + c.ch
 const shapeRank = (key: string, want: AspectGroup) => (slotAspect(key) === want ? 0 : want !== 'tall' && slotAspect(key) !== 'tall' ? 1 : 2)
 
 /**
- * A photo from the pictures that ship with the templates. A tagged match wins when there is one; otherwise ANY picture of the deck's category — it does not have to fit the
- * slide (a generic, on-brand photo is better than an empty frame, and it costs nothing and cannot be rate limited). Never repeats a picture within a deck.
+ * A photo from the pictures that ship with the templates, ONLY when it is about the slide: a tagged match (at least two keywords shared with the slide's intent, title or topic).
+ * Otherwise no picture: a wrong photo (a lecture hall on a slide about Gandhi's spinning wheel) is worse than none, and the slide then becomes a clean text slide.
+ * Never repeats a picture within a deck.
  */
 function pickLibrary(req: PictureRequest, st: State): PickedPicture | null {
   const base = st.deps.config.webUrl.replace(/\/+$/, '')
-  const free = (key: string) => !st.used.has(`lib:${key}`)
-  const take = (key: string, score: number): PickedPicture => {
-    st.used.add(`lib:${key}`)
-    return { src: `${base}/template-assets/${key}.jpg`, alt: LIBRARY_TAGS[key]?.description ?? `${req.category} presentation photo`, source: 'library', score }
-  }
-  const tagged = scoreLibrary(req).find((m) => free(m.key))
-  if (tagged) return take(tagged.key, 3)
-  const order = (keys: readonly string[]) => keys.filter(free).sort((a, b) => shapeRank(a, req.aspect) - shapeRank(b, req.aspect) || hashOf(req.topic + a) - hashOf(req.topic + b))
-  const own = order(AVAILABLE_PHOTOS.filter((k) => k.startsWith(`${req.category}-`)))
-  const key = own[0] ?? order(AVAILABLE_PHOTOS)[0]
-  return key ? take(key, 1) : null
+  const tagged = scoreLibrary(req).find((m) => !st.used.has(`lib:${m.key}`))
+  if (!tagged) return null
+  st.used.add(`lib:${tagged.key}`)
+  return { src: `${base}/template-assets/${tagged.key}.jpg`, alt: LIBRARY_TAGS[tagged.key]?.description ?? `${req.category} presentation photo`, source: 'library', score: 3 }
 }
 
 async function pickOne(req: PictureRequest, st: State): Promise<PickedPicture | null> {
@@ -384,4 +380,61 @@ export async function pickPictures(reqs: PictureRequest[], ctx: { userId: string
   } finally {
     session.close()
   }
+}
+
+
+// ─── the editor's "Media library" search ─────────────────────────────────────
+export interface EditorStockPhoto { id: string; provider: 'unsplash' | 'pexels'; thumb: string; full: string; alt: string; author: string; authorUrl?: string | undefined; pageUrl: string; trackUrl?: string | undefined; attribution: { source: string; license: string; url?: string } }
+export type EditorSearch = { ok: true; photos: EditorStockPhoto[]; page: number; hasMore: boolean } | { ok: false; reason: 'not_configured' | 'busy' }
+
+/**
+ * A person typing in the Media library asks for pictures directly (not through a slide). It shares the Unsplash hourly quota and the per-user
+ * budget with deck generation, so one person cannot spend everybody's searches; results are cached for 30 minutes per query and page.
+ */
+export async function searchStockForEditor(query: string, userId: string, page: number, over: Partial<PickerDeps> = {}): Promise<EditorSearch> {
+  const deps = await resolveDeps(over)
+  const { unsplashKey, pexelsKey } = deps.config
+  const q = query.trim().slice(0, 80)
+  const asEditor = (name: 'unsplash' | 'pexels', provider: StockProvider, list: StockPhoto[]): EditorStockPhoto[] => list.map((p) => ({ id: p.id, provider: name, thumb: p.thumbUrl ?? p.imageUrl, full: p.imageUrl, alt: p.alt, author: p.author, authorUrl: p.authorUrl, pageUrl: p.pageUrl, trackUrl: p.trackUrl, attribution: provider.attribution(p) }))
+  const now = deps.now()
+  if (unsplashKey && now >= unsplashBlockedUntil) {
+    const ck = `editor|unsplash|${q}|${page}`
+    const hit = cached(ck, now)
+    if (hit) return { ok: true, photos: asEditor('unsplash', unsplashProvider(unsplashKey), hit), page, hasMore: hit.length >= 24 }
+    if (takeStockSearch(userId, now, deps.config.stockLimits)) {
+      const res = await deps.fetch(`https://api.unsplash.com/search/photos?${new URLSearchParams({ query: q, page: String(page), per_page: '24', content_filter: 'high' })}`, { headers: { Authorization: `Client-ID ${unsplashKey}`, 'Accept-Version': 'v1' }, signal: AbortSignal.timeout(SEARCH_BUDGET_MS) }).catch(() => null)
+      if (res && (res.status === 403 || res.status === 429)) unsplashBlockedUntil = now + 15 * 60_000
+      else if (res?.ok) {
+        if (Number(res.headers.get('x-ratelimit-remaining') ?? '99') <= 1) unsplashBlockedUntil = now + 10 * 60_000
+        const body = (await res.json().catch(() => null)) as { results?: UnsplashResult[] } | null
+        const found = (body?.results ?? []).flatMap((r): StockPhoto[] => {
+          const raw = r.urls?.regular ?? r.urls?.full
+          if (!r || typeof r.id !== 'string' || !raw) return []
+          return [{ id: r.id, alt: r.alt_description || r.description || '', imageUrl: `${raw}${raw.includes('?') ? '&' : '?'}w=1920&q=80&fm=jpg`, thumbUrl: r.urls?.small, pageUrl: withUtm(r.links?.html) ?? `https://unsplash.com/photos/${r.id}?${UTM}`, author: r.user?.name ?? '', authorUrl: withUtm(r.user?.links?.html), trackUrl: r.links?.download_location }]
+        })
+        remember(ck, found, now)
+        return { ok: true, photos: asEditor('unsplash', unsplashProvider(unsplashKey), found), page, hasMore: found.length >= 24 }
+      }
+    }
+  }
+  if (pexelsKey) {
+    const res = await deps.fetch(`https://api.pexels.com/v1/search?${new URLSearchParams({ query: q, page: String(page), per_page: '24', size: 'large' })}`, { headers: { Authorization: pexelsKey }, signal: AbortSignal.timeout(SEARCH_BUDGET_MS) }).catch(() => null)
+    if (res?.ok) {
+      const body = (await res.json().catch(() => null)) as { photos?: PexelsPhoto[] } | null
+      const found = (body?.photos ?? []).flatMap((p): StockPhoto[] => (p && typeof p.id === 'number' && typeof p.url === 'string' && (p.src?.large2x ?? p.src?.large) ? [{ id: String(p.id), alt: p.alt ?? '', imageUrl: (p.src?.large2x ?? p.src?.large)!, thumbUrl: p.src?.medium, pageUrl: p.url, author: p.photographer ?? '' }] : []))
+      return { ok: true, photos: asEditor('pexels', pexelsProvider(pexelsKey), found), page, hasMore: found.length >= 24 }
+    }
+  }
+  return { ok: false, reason: unsplashKey || pexelsKey ? 'busy' : 'not_configured' }
+}
+
+/** Unsplash asks for a ping to the photo's download address whenever a photo is really used. Only their own API host is ever called. */
+export async function pingStockUse(trackUrl: string | undefined, over: Partial<PickerDeps> = {}): Promise<void> {
+  if (!trackUrl) return
+  let host = ''
+  try { host = new URL(trackUrl).hostname } catch { return }
+  if (host !== 'api.unsplash.com') return
+  const deps = await resolveDeps(over)
+  if (!deps.config.unsplashKey) return
+  await deps.fetch(trackUrl, { headers: { Authorization: `Client-ID ${deps.config.unsplashKey}`, 'Accept-Version': 'v1' }, signal: AbortSignal.timeout(5000) }).catch(() => {})
 }

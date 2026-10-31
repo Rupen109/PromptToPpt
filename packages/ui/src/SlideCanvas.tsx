@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { CANVAS, type Animation, type AspectRatio, type Slide, type SlideElement, type TextElement, type Theme } from '@prompttoppt/validation'
+import { CANVAS, shapeDef, type Animation, type AspectRatio, type Slide, type SlideElement, type TextElement, type Theme } from '@prompttoppt/validation'
 import { resolveColor } from '@prompttoppt/theme'
 import { MOTION_CSS } from './animations.css'
 import { Chart } from './charts'
@@ -112,7 +112,7 @@ export function ElementView({ el, theme, slide, play = false }: { el: SlideEleme
               {p.list && <span style={{ position: 'absolute', insetInlineStart: 0 }}>{p.list === 'bullet' ? el.bullet : `${i + 1}.`}</span>}
               {p.runs.map((r, k) => {
                 const inner = isCount && play ? <CountUp text={r.text} duration={el.animation!.duration} delay={el.animation!.delay} play /> : r.text
-                const st: CSSProperties = { fontWeight: r.bold ? 700 : undefined, fontStyle: r.italic ? 'italic' : undefined, ...(r.color ? { color: resolveColor(r.color, theme, slide) } : {}) }
+                const st: CSSProperties = { fontWeight: r.bold ? 700 : undefined, fontStyle: r.italic ? 'italic' : undefined, ...(r.underline ? { textDecoration: 'underline', textUnderlineOffset: '0.15em' } : {}), ...(r.color ? { color: resolveColor(r.color, theme, slide) } : {}) }
                 return safeHref(r.link) ? (
                   <a key={k} href={safeHref(r.link)} target="_blank" rel="noopener noreferrer" style={{ ...st, color: 'inherit', textDecoration: 'underline', textUnderlineOffset: '0.15em' }}>{inner}</a>
                 ) : (
@@ -130,6 +130,17 @@ export function ElementView({ el, theme, slide, play = false }: { el: SlideEleme
       const bg = el.gradient ? `linear-gradient(${el.gradient.angle}deg, ${el.gradient.from}, ${el.gradient.to})` : fill
       const stroke = el.stroke ? `${el.strokeWidth ?? 3}px solid ${resolve(el.stroke)}` : undefined
       const clip = el.shape === 'triangle' ? 'polygon(50% 0, 100% 100%, 0 100%)' : el.shape === 'chevron' ? 'polygon(0 0, calc(100% - 26px) 0, 100% 50%, calc(100% - 26px) 100%, 0 100%, 26px 50%)' : undefined
+      const def = shapeDef(el.shape)
+      if (def) {
+        const gid = `g-${el.id}`
+        const sw = el.stroke ? (el.strokeWidth ?? 3) : 0
+        return wrap(
+          <svg {...(el.animation && play ? { 'data-pt-anim': '' } : {})} viewBox="0 0 100 100" preserveAspectRatio="none" style={{ ...base, overflow: 'visible', ...a() }}>
+            {el.gradient && <defs><linearGradient id={gid} gradientTransform={`rotate(${el.gradient.angle - 90} .5 .5)`}><stop offset="0" stopColor={el.gradient.from} /><stop offset="1" stopColor={el.gradient.to} /></linearGradient></defs>}
+            <path d={def.path} fillRule="evenodd" fill={el.gradient ? `url(#${gid})` : fill} stroke={sw ? resolve(el.stroke) : 'none'} strokeWidth={sw} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+          </svg>,
+        )
+      }
       return wrap(
         <div {...(el.animation && play ? { 'data-pt-anim': '' } : {})} style={{ ...base, background: el.shape === 'ring' ? 'transparent' : bg, border: el.shape === 'ring' ? `${el.strokeWidth ?? 3}px solid ${resolve(el.stroke) ?? fill}` : stroke, borderRadius: el.shape === 'ellipse' || el.shape === 'ring' ? '50%' : el.radius, clipPath: clip, boxSizing: 'border-box', ...a() }} />,
       )
@@ -162,9 +173,9 @@ export function ElementView({ el, theme, slide, play = false }: { el: SlideEleme
     case 'table':
       return wrap(
         <div {...(el.animation && play ? { 'data-pt-anim': '' } : {})} style={{ ...base, fontFamily: theme.fonts.body, fontSize: 30, ...a() }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', color: colors['textPrimary'] }}>
-            <thead><tr>{el.header.map((h, i) => <th key={i} style={{ background: colors['primary'], color: colors['onPrimary'], textAlign: 'left', padding: '16px 20px', fontFamily: theme.fonts.heading }}>{h}</th>)}</tr></thead>
-            <tbody>{el.rows.map((r, ri) => <tr key={ri} style={{ background: ri % 2 ? 'transparent' : colors['surface'] }}>{r.map((c, ci) => <td key={ci} style={{ padding: '14px 20px' }}>{c}</td>)}</tr>)}</tbody>
+          <table style={{ width: '100%', borderCollapse: 'collapse', color: el.textColor ?? colors['textPrimary'] }}>
+            <thead><tr>{el.header.map((h, i) => <th key={i} style={{ background: el.headerFill === 'none' ? 'transparent' : el.headerFill ?? colors['primary'], color: el.headerColor ?? colors['onPrimary'], textAlign: 'left', padding: '16px 20px', fontFamily: theme.fonts.heading, ...(el.borderColor ? { border: `2px solid ${el.borderColor}` } : {}) }}>{h || '\u00A0'}</th>)}</tr></thead>
+            <tbody>{el.rows.map((r, ri) => <tr key={ri} style={{ background: (ri % 2 ? el.altRowFill ?? 'transparent' : el.rowFill ?? colors['surface']) === 'none' ? 'transparent' : ri % 2 ? el.altRowFill ?? 'transparent' : el.rowFill ?? colors['surface'] }}>{r.map((c, ci) => <td key={ci} style={{ padding: '14px 20px', ...(el.borderColor ? { border: `2px solid ${el.borderColor}` } : {}) }}>{c || '\u00A0'}</td>)}</tr>)}</tbody>
           </table>
         </div>
       )

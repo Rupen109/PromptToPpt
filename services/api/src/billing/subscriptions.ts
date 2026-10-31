@@ -1,13 +1,16 @@
 import { createHash } from 'node:crypto'
-import { and, desc, eq, gt, isNull, sql } from 'drizzle-orm'
+import { and, desc, eq, gt, isNull, ne, sql } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import type { Currency, SubscriptionSummary } from '@prompttoppt/validation'
 import { db } from '../db/index.ts'
 import { checkoutAttempt, payment, plan, planPrice, subscription, user, webhookEvent } from '../db/schema.ts'
 import { env } from '../env.ts'
 import { audit } from '../lib/audit.ts'
+import * as mail from '../lib/email-templates.ts'
+import { sendMail } from '../lib/mailer.ts'
 import { clawbackCredits } from './credits.ts'
 import { BillingError } from './errors.ts'
+import { SIM_KEY_ID, simulatorEnabled } from './simulator.ts'
 import { notesOf, razorpay, razorpayEnabled, razorpayTestMode, RazorpayApiError, verifyCheckoutSignature, verifyWebhookSignature, type RzpPayment, type RzpSubscription } from './razorpay.ts'
 
 type Interval = 'month' | 'year'
@@ -23,7 +26,7 @@ const LIVE = ['active', 'trialing', 'past_due']
 /** A payment session that nobody has paid for is handed out again for this long; after that a click opens a fresh one. */
 const CHECKOUT_REUSE_MS = 15 * 60_000
 
-const priceId = (planId: string, currency: string, interval: string) => `${planId}-${currency}-${interval}`
+export const priceId = (planId: string, currency: string, interval: string) => `${planId}-${currency}-${interval}`
 
 /** Razorpay plans are immutable, so each (plan, currency, interval) maps to one provider plan, created on first use. */
 export async function ensureProviderPlan(planId: string, currency: Currency, interval: Interval): Promise<{ providerPlanId: string; amountMinor: number; planName: string }> {
@@ -46,10 +49,26 @@ export interface CheckoutSession {
   planName: string
   interval: Interval
   testMode: boolean
+  /** true = the browser shows OUR test payment window (PAYMENTS_SIMULATOR), not Razorpay's */
+  simulated: boolean
 }
 
 /** Creates the provider subscription the browser will pay for. Price, plan and currency are all decided here, never by the client. */
+/** The provider says a plan id we stored does not exist in THIS account (keys switched, test ↔ live, plan deleted in the dashboard). */
+const planIdUnknown = (e: unknown) => e instanceof RazorpayApiError && /ID provided is invalid|could not be found|does not exist/i.test(e.message)
+
 export async function startCheckout(userId: string, planId: PaidPlan, interval: Interval, currency: Currency): Promise<CheckoutSession> {
+  try {
+    return await openCheckout(userId, planId, interval, currency)
+  } catch (e) {
+    if (!planIdUnknown(e) && !(e instanceof BillingError && e.code === 'PROVIDER_ERROR' && /ID provided is invalid|could not be found|does not exist/i.test(e.message))) throw e
+    // self-heal once: forget the stored provider plan, create it again in the account the keys belong to, and retry
+    await db.update(planPrice).set({ providerPriceId: null }).where(eq(planPrice.id, priceId(planId, currency, interval)))
+    return openCheckout(userId, planId, interval, currency)
+  }
+}
+
+async function openCheckout(userId: string, planId: PaidPlan, interval: Interval, currency: Currency): Promise<CheckoutSession> {
   if (!razorpayEnabled()) throw new BillingError('BILLING_DISABLED', 'Payments are not configured yet.', 503)
   if (currency === 'USD' && !env.RAZORPAY_INTERNATIONAL) {
     throw new BillingError('CURRENCY_UNAVAILABLE', 'International (USD) payments are not available yet. Please check back soon.', 400)
@@ -73,7 +92,7 @@ export async function startCheckout(userId: string, planId: PaidPlan, interval: 
       await tx.insert(checkoutAttempt).values({ id: nanoid(), userId, planId, interval, currency, providerRef: fresh.id }).onConflictDoUpdate({ target: [checkoutAttempt.userId, checkoutAttempt.planId, checkoutAttempt.interval, checkoutAttempt.currency], set: { providerRef: fresh.id, createdAt: new Date() } })
       return fresh
     })
-    return { keyId: env.RAZORPAY_KEY_ID!, subscriptionId: sub.id, currency, amountMinor, planName, interval, testMode: razorpayTestMode() }
+    return { keyId: simulatorEnabled() ? SIM_KEY_ID : env.RAZORPAY_KEY_ID!, subscriptionId: sub.id, currency, amountMinor, planName, interval, testMode: razorpayTestMode(), simulated: simulatorEnabled() }
   } catch (e) {
     if (e instanceof RazorpayApiError) throw new BillingError('PROVIDER_ERROR', `The payment provider refused the request: ${e.message}`, 502)
     throw e
@@ -153,7 +172,32 @@ export async function recordPayment(p: RzpPayment, ctx: { userId: string; planId
     planId: ctx.planId ?? null, interval: ctx.interval ?? null, currency: p.currency, amountMinor: p.amount, status, method: p.method ?? null,
     failureReason: status === 'failed' ? (p.error_description ?? null) : null, paidAt: new Date(p.created_at * 1000),
   }
-  await db.insert(payment).values({ id: nanoid(), ...values }).onConflictDoUpdate({ target: [payment.provider, payment.providerPaymentId], set: { status, failureReason: values.failureReason } })
+  // Exactly one caller wins each change, so the customer gets one e-mail even when the checkout confirmation and the webhook report the same payment at the same moment:
+  // the first to INSERT the row, or the first to turn an earlier failed attempt into a captured one.
+  const [inserted] = await db.insert(payment).values({ id: nanoid(), ...values }).onConflictDoNothing().returning({ id: payment.id })
+  let notify = !!inserted
+  if (!inserted) {
+    if (status === 'captured') {
+      const [retried] = await db.update(payment).set({ status, failureReason: null }).where(and(eq(payment.provider, 'razorpay'), eq(payment.providerPaymentId, p.id), eq(payment.status, 'failed'))).returning({ id: payment.id })
+      notify = !!retried
+    }
+    await db.update(payment).set({ status, failureReason: values.failureReason }).where(and(eq(payment.provider, 'razorpay'), eq(payment.providerPaymentId, p.id), ne(payment.status, status)))
+  }
+  if (notify && (status === 'captured' || status === 'failed')) await briefly(mailPayment(status, { ...ctx, amountMinor: p.amount, currency: p.currency, paymentId: p.id, paidAt: values.paidAt, reason: values.failureReason }))
+}
+
+/** Waits for a customer e-mail, but never longer than 3 s: the payment provider's webhook wants a quick answer, and a slow mail service must not hold it up. */
+const briefly = (work: Promise<unknown>) => Promise.race([work, new Promise<void>((resolve) => setTimeout(resolve, 3000).unref())])
+
+/** The customer's receipt (or failure notice). Best effort: a mail problem must never fail the payment that was just recorded. */
+async function mailPayment(kind: 'captured' | 'failed', o: { userId: string; planId?: string | undefined; amountMinor: number; currency: string; paymentId: string; paidAt: Date; reason: string | null; interval?: string | undefined }): Promise<void> {
+  try {
+    const [u] = await db.select({ email: user.email, name: user.name }).from(user).where(eq(user.id, o.userId))
+    if (!u) return
+    if (kind === 'failed') return await sendMail({ to: u.email, ...mail.paymentFailed({ name: u.name, planId: o.planId ?? null, amountMinor: o.amountMinor, currency: o.currency, reason: o.reason }) })
+    const [sub] = await db.select({ end: subscription.currentPeriodEnd }).from(subscription).where(eq(subscription.userId, o.userId))
+    await sendMail({ to: u.email, ...mail.paymentSuccess({ name: u.name, planId: o.planId ?? null, interval: o.interval ?? null, amountMinor: o.amountMinor, currency: o.currency, paymentId: o.paymentId, paidAt: o.paidAt, periodEnd: sub?.end ?? null }) })
+  } catch (e) { console.error('[billing mail]', (e as Error).message) }
 }
 
 /** Browser reports a finished checkout. The HMAC proves Razorpay (not the user) vouches for this payment+subscription pair. */
@@ -186,6 +230,10 @@ export async function cancelAtPeriodEnd(userId: string): Promise<void> {
     }
   }
   await db.update(subscription).set({ cancelAtPeriodEnd: true, updatedAt: new Date() }).where(eq(subscription.userId, userId))
+  if (!sub.cancelAtPeriodEnd) { // a second click on "cancel" is not news
+    const [u] = await db.select({ email: user.email, name: user.name }).from(user).where(eq(user.id, userId))
+    if (u) await briefly(sendMail({ to: u.email, ...mail.subscriptionEnding({ name: u.name, planId: sub.planId, endsOn: sub.currentPeriodEnd }) }).catch((e) => console.error('[billing mail]', (e as Error).message)))
+  }
 }
 
 export async function subscriptionSummary(userId: string): Promise<{ subscription: SubscriptionSummary | null; payments: { id: string; amountMinor: number; currency: string; status: string; paidAt: string; planId: string | null }[] }> {
@@ -255,6 +303,7 @@ export async function revokeForPayment(providerPaymentId: string, kind: 'refunde
   const [pay] = await db.select().from(payment).where(and(eq(payment.provider, 'razorpay'), eq(payment.providerPaymentId, providerPaymentId)))
   if (!pay) return
   if (kind === 'refunded' && refundedMinor !== undefined && refundedMinor < pay.amountMinor) return // partial refund: keep the plan
+  const firstTime = pay.status !== kind // a repeated event must not mail again
   await db.update(payment).set({ status: kind }).where(eq(payment.id, pay.id))
   const [sub] = await db.select().from(subscription).where(eq(subscription.userId, pay.userId))
   if (sub && (!pay.providerSubscriptionId || sub.providerRef === pay.providerSubscriptionId)) {
@@ -263,4 +312,8 @@ export async function revokeForPayment(providerPaymentId: string, kind: 'refunde
   }
   await clawbackCredits(pay.userId, `${kind}:${pay.providerPaymentId}`)
   void audit(pay.userId, 'billing.access_revoked', { reason: kind, paymentId: pay.providerPaymentId }, null)
+  if (kind === 'refunded' && firstTime) {
+    const [u] = await db.select({ email: user.email, name: user.name }).from(user).where(eq(user.id, pay.userId))
+    if (u) await briefly(sendMail({ to: u.email, ...mail.refundProcessed({ name: u.name, planId: pay.planId, amountMinor: refundedMinor ?? pay.amountMinor, currency: pay.currency }) }).catch((e) => console.error('[billing mail]', (e as Error).message)))
+  }
 }

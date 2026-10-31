@@ -12,6 +12,8 @@ RUN pnpm --filter @prompttoppt/api deploy --prod /out && cp -r services/api/dist
 
 FROM node:22-alpine
 ENV NODE_ENV=production
+# ffmpeg: pulls the sound and still frames out of uploaded videos (video to slides)
+RUN apk add --no-cache ffmpeg
 WORKDIR /app
 COPY --from=build /out .
 USER node

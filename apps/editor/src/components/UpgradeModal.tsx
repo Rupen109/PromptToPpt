@@ -1,8 +1,9 @@
+import { Check, X } from '@prompttoppt/ui/icons'
 import { useEffect, useState } from 'react'
 import { planHighlights, priceFor, type BillingInterval, type PlansResponse } from '@prompttoppt/api-client'
 import type { PlanId } from '@prompttoppt/validation'
 import { api } from '@/lib/api'
-import { checkoutErrorMessage, subscribe, TEST_MODE_HINT } from '@/lib/checkout'
+import { checkoutErrorMessage, setSimulatorMode, subscribe, testModeHint } from '@/lib/checkout'
 import { useDialog } from '@/lib/useDialog'
 import { useEntitlements } from '@/lib/entitlements'
 
@@ -24,7 +25,7 @@ export function UpgradeModal() {
 
   useEffect(() => {
     if (upgrade.open && !plans) api.plans().then(setPlans).catch(() => {})
-    if (upgrade.open) void api.billing().then((b) => setTestHint(b.testMode)).catch(() => {})
+    if (upgrade.open) void api.billing().then((b) => { setSimulatorMode(!!b.simulator); setTestHint(b.testMode) }).catch(() => {})
   }, [upgrade.open, plans])
 
   if (!upgrade.open) return null
@@ -50,7 +51,7 @@ export function UpgradeModal() {
       <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Upgrade your plan" className="bg-white rounded-2xl w-full max-w-3xl p-6 shadow-xl max-h-[90vh] overflow-y-auto outline-none">
         <div className="flex items-start justify-between mb-1">
           <h2 className="font-heading font-bold text-2xl">{paid ? 'Payment successful' : 'Upgrade to continue'}</h2>
-          <button onClick={close} aria-label="Close" className="text-slate-500 hover:text-slate-800 text-2xl leading-none">×</button>
+          <button onClick={close} aria-label="Close" className="text-slate-500 hover:text-slate-800 text-2xl leading-none"><X aria-hidden size={24} /></button>
         </div>
         {paid ? (
           <div className="py-6">
@@ -77,7 +78,7 @@ export function UpgradeModal() {
                   <div key={p.id} className="border border-border rounded-xl p-4 flex flex-col gap-2">
                     <div className="font-heading font-bold text-lg">{p.name}</div>
                     {price && <div><span className="text-3xl font-extrabold">{price.text}</span><span className="text-slate-500"> /mo</span><div className="text-xs text-slate-500">{price.billed}</div></div>}
-                    <ul className="text-sm text-slate-700 space-y-1 my-2">{h.items.slice(0, 7).map((x) => <li key={x}>✓ {x}</li>)}</ul>
+                    <ul className="text-sm text-slate-700 space-y-1 my-2">{h.items.slice(0, 7).map((x) => <li key={x} className="flex items-start gap-1.5"><Check aria-hidden size={16} className="mt-0.5 shrink-0 text-primary" />{x}</li>)}</ul>
                     <button onClick={() => void pay(p.id as 'pro' | 'gold')} disabled={busy !== null} className="text-center bg-primary text-white rounded-lg py-2 text-sm font-semibold disabled:opacity-50">
                       {busy === p.id ? 'Opening secure checkout…' : current ? `Switch ${p.name} billing` : `Subscribe to ${p.name}`}
                     </button>
@@ -85,7 +86,7 @@ export function UpgradeModal() {
                 )
               })}
             </div>
-            {testHint && <p className="text-xs bg-amber-50 border border-amber-200 text-amber-900 rounded-lg p-2 mt-4">{TEST_MODE_HINT}</p>}
+            {testHint && <p className="text-xs bg-amber-50 border border-amber-200 text-amber-900 rounded-lg p-2 mt-4">{testModeHint()}</p>}
             {error && <p className="text-sm text-red-600 mt-4" role="alert">{error}</p>}
             <p className="text-xs text-slate-500 mt-4">
               Secure payments by Razorpay (cards, UPI, netbanking). Cancel any time — you keep your plan until the period ends.

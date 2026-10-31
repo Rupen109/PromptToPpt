@@ -1,3 +1,4 @@
+import { Sparkles, X } from '@prompttoppt/ui/icons'
 import { Portal } from '@/components/Portal'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ApiError, isGateError, type GeneratedImage, type ImageUsage, type ModelOption } from '@prompttoppt/api-client'
@@ -91,8 +92,8 @@ export function ImageDialog({ doc, slide, presentationId, request, onClose }: { 
     <Portal><div className="fixed inset-0 z-50 bg-black/40 grid place-items-center p-4" onMouseDown={(e) => e.target === e.currentTarget && attemptClose()}>
       <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="AI image" className="bg-white rounded-2xl w-full max-w-xl p-6 shadow-xl max-h-[92vh] overflow-y-auto outline-none">
         <div className="flex items-start justify-between mb-3">
-          <h2 className="font-heading font-bold text-xl">✨ AI image</h2>
-          <button onClick={attemptClose} aria-label="Close" className="text-slate-500 hover:text-slate-800 text-2xl leading-none">×</button>
+          <h2 className="font-heading font-bold text-xl inline-flex items-center gap-2"><Sparkles aria-hidden size={20} />AI image</h2>
+          <button onClick={attemptClose} aria-label="Close" className="text-slate-500 hover:text-slate-800 text-2xl leading-none"><X aria-hidden size={24} /></button>
         </div>
 
         {result ? (

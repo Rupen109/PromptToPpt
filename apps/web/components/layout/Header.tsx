@@ -1,39 +1,44 @@
 import Link from 'next/link'
 import { Logo } from '@prompttoppt/ui/logo'
 import { DesktopAuth } from './AuthActions'
+import { LanguageSelect } from './LanguageSelect'
 import { MobileNav } from './MobileNav'
+import { ResourcesMenu, TemplatesMenu } from './NavMenus'
+import { LANDINGS } from '@/lib/template-landing'
 
-const NAV = [
-  ['Ingest Modes', '/#modalities', '4'],
-  ['Interactive Studio', '/#studio'],
-  ['How It Works', '/#workflow'],
-  ['Templates', '/templates'],
-  ['Free Tools', '/free-tools'],
-  ['Pricing', '/pricing'],
-  ['FAQ', '/#faq'],
-] as const
+/** The phone menu lists everything flat (a menu inside a menu is hard to use on a phone). */
+const MOBILE_ITEMS = [
+  { label: 'Interactive Studio', href: '/#studio' },
+  { label: 'Templates', href: '/templates' },
+  { label: 'Pricing', href: '/pricing' },
+  { label: 'Blog', href: '/blog' },
+  { label: 'Tech news', href: '/news' },
+  { label: 'Guides', href: '/guides' },
+  { label: 'Support', href: '/support' },
+  { label: 'FAQ', href: '/#faq' },
+]
 
-/** The desktop bar holds six links (the row has a fixed 1280px width at every screen size, so a seventh never fits next to the sign-in buttons — it measured ~60px too wide); FAQ stays in the mobile menu and the footer. */
-const NOT_IN_BAR = new Set<string>(['FAQ'])
+const LINK = 'relative inline-flex items-center rounded-lg px-3 py-2 font-heading font-bold text-sm text-[#475569] whitespace-nowrap transition-colors hover:bg-[#f1f5f9] hover:text-primary'
 
 export function Header() {
+  const collections = LANDINGS.map((l) => ({ href: `/free-templates/${l.slug}`, label: `${l.noun} templates` }))
   return (
     <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b-2 border-foreground">
       <div className="max-w-[1280px] mx-auto h-20 px-5 md:px-10 flex items-center justify-between gap-6">
-        <Link href="/" aria-label="SlidesDone home" className="shrink-0"><Logo size={38} /></Link>
+        <Link href="/" aria-label="SlidesDone home" translate="no" className="shrink-0"><Logo size={38} /></Link>
 
-        <nav className="hidden xl:flex items-center gap-5" aria-label="Main">
-          {NAV.filter(([label]) => !NOT_IN_BAR.has(label)).map(([label, href, count]) => (
-            <Link key={label} href={href} className={`relative inline-flex items-center gap-2 font-heading font-bold text-sm text-[#475569] hover:text-primary transition-colors whitespace-nowrap after:absolute after:-bottom-1 after:left-0 after:h-0.5 after:w-full after:origin-left after:scale-x-0 after:bg-accent after:transition-transform after:duration-300 hover:after:scale-x-100`}>
-              {label}
-              {count && <span className="bg-[#fffbe6] border border-foreground rounded px-1.5 text-[11px] leading-5 font-extrabold text-foreground">{count}</span>}
-            </Link>
-          ))}
+        <nav className="hidden xl:flex items-center gap-1" aria-label="Main">
+          <Link href="/#studio" className={LINK}>Interactive Studio</Link>
+          <TemplatesMenu items={collections} />
+          <Link href="/pricing" className={LINK}>Pricing</Link>
+          <ResourcesMenu />
+          <Link href="/support" className={LINK}>Support</Link>
         </nav>
 
         <div className="flex items-center gap-4 md:gap-6">
+          <div className="hidden sm:block"><LanguageSelect /></div>
           <DesktopAuth />
-          <MobileNav items={NAV.map(([label, href]) => ({ label, href }))} />
+          <MobileNav items={MOBILE_ITEMS} />
         </div>
       </div>
     </header>

@@ -49,7 +49,8 @@ export default async function () {
   }
   const next = (p) => p.keyboard.press('ArrowRight'), prev = (p) => p.keyboard.press('ArrowLeft')
   // a visitor closes the TAB; the browser stays open for a moment (closing the whole browser in the same instant would abort any request still in flight, which no web technology can prevent)
-  const leave = async (v) => { await v.p.close({ runBeforeUnload: true }); await sleep(700); await v.ctx.close() }
+  // a visitor leaving: the page is navigated away (pagehide fires and the closing report is sent); Playwright's abrupt page.close() can drop that report, which a real tab closing does not
+  const leave = async (v) => { await v.p.goto('about:blank').catch(() => {}); await sleep(700); await v.ctx.close() }
 
   const slideNames = ['', ''] // keep the linter quiet about unused helpers
   void slideNames; void WEB; void plan
@@ -124,7 +125,7 @@ export default async function () {
     await s.check('C6 five visitors each read one slide for ~3 s and close the tab at once: every one of those visits still has its time recorded (the last report survives the tab closing)', o, async () => {
       const before = (await dash(T.id)).recent.length
       for (let i = 0; i < 5; i++) { const v = await visit(T.token); await sleep(3200); await leave(v) }
-      const d = await until(async () => { const x = await dash(T.id); return x.recent.length === before + 5 && x.recent.slice(0, 5).every((r) => r.seconds >= 2.6) && x }, 20000, 'all five visits with their time')
+      const d = await until(async () => { const x = await dash(T.id); return x.recent.length === before + 5 && x.recent.slice(0, 5).every((r) => r.seconds >= 2.6) && x }, 20000, 'all five visits with their time').catch(async (e) => { const x = await dash(T.id); throw new Error(`${e.message}; before ${before}, now ${x.recent.length}, seconds ${x.recent.slice(0, 6).map((r) => r.seconds)}`) })
       expect(d.recent.slice(0, 5).every((r) => r.seconds >= 2.6 && r.seconds <= 6), `recorded seconds: ${d.recent.slice(0, 5).map((r) => r.seconds)}`)
     })
 

@@ -114,7 +114,7 @@ export default async function () {
     await ask('Animate every slide with a nice entrance'); const d = await doc(); expect(d.theme.motion && d.theme.motion.entrance !== 'none', `motion ${JSON.stringify(d.theme.motion)}`)
   })
   await s.check('AI › slide scope "make this slide much shorter": that slide shrinks, others untouched', p, async () => {
-    await thumbs().nth(4).click(); await settle(300); await panel().getByRole('button', { name: /This slide/i }).click()
+    await thumbs().nth(4).click(); await settle(300);
     const before = await doc(); await ask('Make this slide much shorter and punchier'); const after = await doc()
     expect(textLen(after.slides[4]) < textLen(before.slides[4]), `not shorter (${textLen(before.slides[4])} → ${textLen(after.slides[4])}) — reply: ${(await lastReply()).slice(-140)}`)
     expect(after.slides.every((sl, i) => i === 4 || JSON.stringify(sl.content) === JSON.stringify(before.slides[i].content)), 'other slides were modified by a slide-scoped request')

@@ -49,6 +49,13 @@ export const DECK_LANGUAGES: readonly DeckLanguage[] = [
 
 const BY_CODE = new Map(DECK_LANGUAGES.map((l) => [l.code.toLowerCase(), l]))
 
+/**
+ * The languages the product OFFERS in its pickers (same 13 as the website's header picker, `SITE_LANGUAGES` in apps/web/lib/language.ts).
+ * The AI and the API still accept every language in DECK_LANGUAGES, so older decks and API callers keep working.
+ */
+export const OFFERED_LANGUAGE_CODES = ['en', 'de', 'es', 'fr', 'hi', 'id', 'it', 'zh', 'pl', 'pt', 'vi', 'hu', 'sv'] as const
+export const OFFERED_DECK_LANGUAGES: readonly DeckLanguage[] = OFFERED_LANGUAGE_CODES.map((c) => DECK_LANGUAGES.find((l) => l.code === c)!)
+
 /** Accepts "pt-BR", "EN", "zh-tw": exact code first, then the part before the dash. Unknown → undefined. */
 export function deckLanguage(code: string | undefined | null): DeckLanguage | undefined {
   if (!code) return undefined

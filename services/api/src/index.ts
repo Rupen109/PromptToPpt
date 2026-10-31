@@ -3,6 +3,7 @@ import { app } from './app.ts'
 import { env } from './env.ts'
 import { seedBilling } from './billing/seed.ts'
 import { startWorker } from './generation/worker.ts'
+import { startMediaWorker } from './media/worker.ts'
 import { purgeExpiredDrafts } from './routes/drafts.ts'
 import { purgeOldShareViews } from './routes/share-analytics.ts'
 
@@ -13,6 +14,7 @@ const server = serve({ fetch: app.fetch, port: env.PORT }, (info) => {
 })
 
 const stopWorker = env.RUN_WORKER ? startWorker() : () => {}
+const stopMediaWorker = env.RUN_WORKER ? startMediaWorker() : () => {}
 const purge = setInterval(() => void purgeExpiredDrafts().catch((e) => console.error('[purge]', e)), 10 * 60_000)
 purge.unref()
 const purgeViews = setInterval(() => void purgeOldShareViews().catch((e) => console.error('[purge views]', e)), 6 * 3600_000)
@@ -33,5 +35,6 @@ process.on('uncaughtException', (e) => {
 // Graceful shutdown so ECS/Fargate rolling deploys drain in-flight requests.
 for (const sig of ['SIGINT', 'SIGTERM'] as const) process.on(sig, () => {
     stopWorker()
+    stopMediaWorker()
     server.close(() => process.exit(0))
   })

@@ -15,7 +15,6 @@ export function PeerAvatars() {
         <span key={p.userId} title={`${p.name} is here`} data-peer-avatar={p.name} className="w-8 h-8 rounded-full grid place-items-center text-[11px] font-bold text-white border-2 border-white" style={{ background: p.color, marginLeft: i ? -8 : 0 }}>{initials(p.name)}</span>
       ))}
       {people.length > 4 && <span className="w-8 h-8 rounded-full grid place-items-center text-[11px] font-bold bg-slate-200 text-slate-700 border-2 border-white -ml-2">+{people.length - 4}</span>}
-      {people.length === 0 && <span className="text-xs text-green-700 hidden md:inline" title="Changes by collaborators appear here as they happen">● Live</span>}
     </div>
   )
 }

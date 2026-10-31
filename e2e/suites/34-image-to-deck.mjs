@@ -97,7 +97,7 @@ export default async function () {
         document.querySelector('textarea[aria-label="Presentation prompt"]').dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }))
       }, b64)
       await P.p.locator('form span[title]').first().waitFor({ timeout: 90000 })
-      await P.p.waitForFunction(() => !document.querySelector('form')?.textContent?.includes('⏳'), null, { timeout: 5000 }).catch(() => {})
+      await P.p.waitForFunction(() => !document.querySelector('form .animate-spin'), null, { timeout: 5000 }).catch(() => {})
       await P.p.waitForTimeout(1500)
       const spent = before - balance(); expect(spent === 4, `expected 4 credits spent, got ${spent}`)
     })

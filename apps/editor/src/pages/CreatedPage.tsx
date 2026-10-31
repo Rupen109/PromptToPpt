@@ -1,3 +1,4 @@
+import { Folder } from '@prompttoppt/ui/icons'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import type { PresentationSummary } from '@prompttoppt/api-client'
@@ -60,7 +61,7 @@ export function CreatedPage() {
       <main className="flex-1 min-w-0 px-4 sm:px-6 lg:px-10 py-6 lg:py-10 max-w-[1100px]">
         <div className="flex items-end justify-between gap-4 mb-6 flex-wrap">
           <div>
-            <h1 className="font-heading font-bold text-3xl">{project ? `📁 ${project.name}` : 'Created by me'}</h1>
+            <h1 className="font-heading font-bold text-3xl">{project ? <span className="inline-flex items-center gap-2"><Folder aria-hidden size={28} />{project.name}</span> : 'Created by me'}</h1>
             <p className="text-slate-600 text-sm mt-1">{decks ? `${decks.length} presentation${decks.length === 1 ? '' : 's'}` : 'Loading…'}</p>
           </div>
           <div className="flex gap-2 items-center">

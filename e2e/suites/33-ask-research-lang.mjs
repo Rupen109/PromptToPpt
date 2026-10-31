@@ -119,6 +119,8 @@ export default async function () {
       await A.p.getByLabel('Presentation prompt').fill('A 5 slide deck about the Chandrayaan-3 mission from the Wikipedia articles')
       await A.p.getByRole('button', { name: 'Create Presentation' }).click(); await A.p.waitForURL(/\/create/)
       const radios = A.p.getByRole('radiogroup', { name: 'AI model' }).getByRole('radio'); await radios.first().waitFor({ timeout: 90000 })
+      // a language the picker no longer lists is still supported by the server: hand it over the way the picker does (session storage), before the model is chosen
+      if (!OFFERED.includes(code)) await A.p.evaluate((c) => sessionStorage.setItem('prompttoppt:pending-language', c), code)
       const names = await radios.allInnerTexts(); await radios.nth(Math.max(0, names.findIndex((n) => /3\.6 Flash/.test(n)))).click()
       await A.p.waitForURL(/\/edit\//, { timeout: 300000 })
       const id = new URL(A.p.url()).pathname.split('/').pop()
@@ -176,19 +178,23 @@ export default async function () {
       expect(balance(A.email) === before, 'credits changed')
     })
 
-    await s.check('C1 the picker offers 100+ languages', A.p, async () => {
+    // the picker offers only the 13 languages of the website picker (+ auto-detect); the API and the AI still handle all 100+ (checked below with Arabic and Japanese)
+    const OFFERED = ['en', 'de', 'es', 'fr', 'hi', 'id', 'it', 'zh', 'pl', 'pt', 'vi', 'hu', 'sv']
+    await s.check('C1 the picker offers exactly our 13 languages (plus auto-detect)', A.p, async () => {
       await A.p.goto(EDITOR + '/', { waitUntil: 'load' })
       await A.p.getByLabel('Deck language').waitFor({ timeout: 15000 })
-      const n = await A.p.getByLabel('Deck language').locator('option').count()
-      expect(n >= 101, `only ${n} options`)
+      const values = await A.p.getByLabel('Deck language').locator('option').evaluateAll((os) => os.map((o) => o.value))
+      expect(JSON.stringify(values) === JSON.stringify(['', ...OFFERED]), `options: ${values.join(',')}`)
     })
 
     async function languageDeck(code, name, prompt, tag) {
       await A.p.goto(EDITOR + '/', { waitUntil: 'load' })
-      await A.p.getByLabel('Deck language').selectOption(code)
+      await A.p.getByLabel('Deck language').selectOption(OFFERED.includes(code) ? code : 'en')
       await A.p.getByLabel('Presentation prompt').fill(prompt)
       await A.p.getByRole('button', { name: 'Create Presentation' }).click(); await A.p.waitForURL(/\/create/)
       const radios = A.p.getByRole('radiogroup', { name: 'AI model' }).getByRole('radio'); await radios.first().waitFor({ timeout: 90000 })
+      // a language the picker no longer lists is still supported by the server: hand it over the way the picker does (session storage), before the model is chosen
+      if (!OFFERED.includes(code)) await A.p.evaluate((c) => sessionStorage.setItem('prompttoppt:pending-language', c), code)
       const names = await radios.allInnerTexts(); await radios.nth(Math.max(0, names.findIndex((x) => /3\.6 Flash/.test(x)))).click()
       await A.p.waitForURL(/\/edit\//, { timeout: 300000 })
       const id = new URL(A.p.url()).pathname.split('/').pop()
@@ -239,6 +245,8 @@ export default async function () {
       await A.p.getByLabel('Presentation prompt').fill('Una presentación de 4 diapositivas sobre la energía solar para estudiantes de secundaria')
       await A.p.getByRole('button', { name: 'Create Presentation' }).click(); await A.p.waitForURL(/\/create/)
       const radios = A.p.getByRole('radiogroup', { name: 'AI model' }).getByRole('radio'); await radios.first().waitFor({ timeout: 90000 })
+      // a language the picker no longer lists is still supported by the server: hand it over the way the picker does (session storage), before the model is chosen
+      if (!OFFERED.includes(code)) await A.p.evaluate((c) => sessionStorage.setItem('prompttoppt:pending-language', c), code)
       const names = await radios.allInnerTexts(); await radios.nth(Math.max(0, names.findIndex((x) => /3\.6 Flash/.test(x)))).click()
       await A.p.waitForURL(/\/edit\//, { timeout: 300000 })
       const id = new URL(A.p.url()).pathname.split('/').pop()

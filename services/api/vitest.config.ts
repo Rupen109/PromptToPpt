@@ -7,10 +7,14 @@ try {
 }
 
 export default defineConfig({ test: { globalSetup: ['./test-global-setup.ts'], setupFiles: ['./src/test-setup.ts'], env: {
-      AI_PROVIDER: 'mock', APP_ENV: 'development',
+      AI_PROVIDER: 'mock', APP_ENV: 'development', SUPPORT_IP_HOUR: '8', // src/routes/support.test.ts counts its sends against this
       // never the developer's real test keys: payment tests stub the provider and must be deterministic
       RAZORPAY_KEY_ID: 'rzp_test_unitkey00000', RAZORPAY_KEY_SECRET: 'unit-test-key-secret', RAZORPAY_WEBHOOK_SECRET: 'unit-test-webhook-secret-0123456789',
       RAZORPAY_INTERNATIONAL: 'false', BILLING_FORCE_CURRENCY: '',
+      // the developer may run the app with e-mail confirmation on (REQUIRE_EMAIL_VERIFICATION=true in .env): tests sign people up and expect a session
+      REQUIRE_EMAIL_VERIFICATION: 'false',
+      // the developer may run the app with test payments on (PAYMENTS_SIMULATOR=true in .env); the payment tests stub the real provider, and the simulator suite switches it on itself
+      PAYMENTS_SIMULATOR: 'false',
       // tests create many accounts from one address: the abuse limits are exercised explicitly in src/security; never call real picture providers from tests
       AUTH_SIGNUPS_PER_IP_HOUR: '100000', AUTH_SIGNUPS_PER_IP_DAY: '100000', AUTH_SIGNIN_FAILS_PER_EMAIL: '100000', AUTH_SIGNIN_FAILS_PER_IP: '100000', AUTH_RESET_PER_EMAIL_HOUR: '100000', AUTH_RESET_PER_IP_HOUR: '100000',
       // the test suite itself books (mock) costs at real model prices: keep the spend breaker out of unrelated tests; src/security/spend-breaker.test.ts sets tiny budgets explicitly

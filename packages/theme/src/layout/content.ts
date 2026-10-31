@@ -2,7 +2,7 @@ import type { SlideContent } from '@prompttoppt/validation'
 import { decor } from './decor'
 import { header } from './header'
 import { clipFor } from './photoKit'
-import { animationFor, card, cardBgHex, deco, grid, onBg, pal, para, rect, shape, stopsOf, text, type Ctx } from './primitives'
+import { animationFor, card, cardBgHex, deco, grid, hug, onBg, pal, para, rect, shape, stopsOf, text, textNeed, type Ctx } from './primitives'
 import { contrastRatio, hexToHsl, mix, readableOn } from '../color'
 
 type C<L extends SlideContent['layout']> = Extract<SlideContent, { layout: L }>
@@ -137,23 +137,36 @@ export function steps(c: Ctx, s: C<'process'> | C<'timeline'>) {
   const g = grid(c, n, s.layout === 'timeline' ? y + 70 : y, 300, 32, 520)
   const line = s.layout === 'timeline' && g.rows === 1
   const k = pal(c)
+  // one row of cards hugs its text (the tallest step decides); a grid of several rows keeps its even cells
+  const padFor = c.style.card === 'accent-left' ? 40 : 28
+  const small0 = g.ch < 360
+  const hugging = !line && g.rows === 1
+  const stepIw = g.cw - padFor * 2
+  const headBox = (small: boolean) => Math.max(small || line ? 56 : 100, ...s.steps.map((st) => textNeed(c, 'heading', [para(st.label)], stepIw, small ? 28 : 34) + 12))
+  const bodyNeed = Math.max(...s.steps.map((st) => textNeed(c, 'body', [para(st.detail)], stepIw, 26)))
+  const stepHug = hugging ? hug(g.ch, 24 + (small0 ? 60 : 90) + headBox(small0) + 14 + bodyNeed + 24) : { h: g.ch, lift: 0 }
+  const cardH = stepHug.h
+  const lift = stepHug.lift
   if (line) rect(c, k.primary, c.M, y + 28, inner(c), 8, { radius: 4, animate: 'accent' })
   s.steps.forEach((st, i) => {
-    const { x, y: cy } = g.pos(i)
+    const { x, y: gy } = g.pos(i)
+    const cy = gy + lift
     const tone = tones[i % 2]!
     if (line) shape(c, k.accent, x, y + 8, 48, 48, { shape: 'ellipse', animate: 'card' })
-    else card(c, x, cy, g.cw, g.ch, { tone })
+    else card(c, x, cy, g.cw, cardH, { tone })
     const asCard = !line
-    const pad = asCard ? (c.style.card === 'accent-left' ? 40 : 28) : 0
+    const pad = asCard ? padFor : 0
     const ix = x + pad
     const iw = g.cw - pad * 2
     const ty = asCard ? cy + 24 : cy
-    const small = g.ch < 360 && asCard
+    const small = cardH < 360 && asCard
     const tc = asCard ? cardText(c, tone) : pal(c).textPrimary
     text(c, 'metric', [para(String(i + 1).padStart(2, '0'))], ix, ty, iw, small ? 56 : 80, small ? 40 : 56, { color: 'primary', min: 28, animate: false })
-    text(c, 'heading', [para(st.label)], ix, ty + (small ? 60 : 90), iw, small ? 60 : 100, small ? 28 : 34, { min: 18, color: tc })
-    const by = ty + (small ? 124 : 200)
-    text(c, 'body', [para(st.detail)], ix, by, iw, Math.max(60, (asCard ? cy + g.ch - 16 : c.bottom) - by), 26, { color: asCard ? cardMuted(c, tone) : 'textSecondary', min: 16, animate: false })
+    const hb = hugging || line ? headBox(small) : small ? 60 : 100
+    const numH = line ? 64 : small ? 60 : 90
+    text(c, 'heading', [para(st.label)], ix, ty + numH, iw, hb, small ? 28 : 34, { min: 18, color: tc })
+    const by = ty + numH + hb + (hugging || line ? 14 : small ? 4 : 10)
+    text(c, 'body', [para(st.detail)], ix, by, iw, Math.max(60, (asCard ? cy + cardH - 16 : c.bottom) - by), 26, { color: asCard ? cardMuted(c, tone) : 'textSecondary', min: 16, animate: false })
   })
 }
 
@@ -161,12 +174,17 @@ export function comparison(c: Ctx, s: C<'comparison'>) {
   const y = header(c, s.title)
   const gap = 48
   const cw = (inner(c) - gap) / 2
+  const tw = cw - 2 * 36 - 8
+  const headH = Math.max(80, ...[s.left, s.right].map((col) => textNeed(c, 'heading', [para(col.heading)], tw, 40) + 24))
+  const bodyNeed = Math.max(...[s.left, s.right].map((col) => textNeed(c, 'body', col.bullets.map((b) => para(b, 'bullet')), tw, 30)))
+  const { h: ch, lift } = hug(c.bottom - y, 36 + headH + 14 + bodyNeed + 44)
+  const top = y + lift
   ;([['primary', s.left], ['accent', s.right]] as const).forEach(([tone, col], i) => {
     const x = c.M + i * (cw + gap)
-    const pad = card(c, x, y, cw, c.bottom - y, { tone })
-    if (c.style.card === 'flat' || c.style.card === 'outline' || c.style.card === 'tint') rect(c, pal(c)[tone], x, y, cw, 12, { radius: 6 })
-    text(c, 'heading', [para(col.heading)], x + pad + 4, y + 36, cw - 2 * pad - 8, 80, 40, { color: 'primary', min: 24, animate: false })
-    text(c, 'body', col.bullets.map((b) => para(b, 'bullet')), x + pad + 4, y + 130, cw - 2 * pad - 8, c.bottom - y - 160, 30, { min: 18, color: cardText(c, tone), byParagraph: true })
+    const pad = card(c, x, top, cw, ch, { tone })
+    if (c.style.card === 'flat' || c.style.card === 'outline' || c.style.card === 'tint') rect(c, pal(c)[tone], x, top, cw, 12, { radius: 6 })
+    text(c, 'heading', [para(col.heading)], x + pad + 4, top + 36, cw - 2 * pad - 8, headH, 40, { color: 'primary', min: 24, animate: false })
+    text(c, 'body', col.bullets.map((b) => para(b, 'bullet')), x + pad + 4, top + 36 + headH + 14, cw - 2 * pad - 8, ch - (36 + headH + 14) - 30, 30, { min: 18, color: cardText(c, tone), byParagraph: true })
   })
 }
 
@@ -188,25 +206,27 @@ export function table(c: Ctx, s: C<'table'>) {
 // ── new layouts ──────────────────────────────────────────────────────────────
 
 export function agenda(c: Ctx, s: C<'agenda'>) {
-  const y = header(c, s.title)
+  const y0 = header(c, s.title)
   const n = s.items.length
   const cols = n > 5 ? 2 : 1
   const per = Math.ceil(n / cols)
   const gap = 28
   const colW = (inner(c) - gap * (cols - 1)) / cols
-  const rowH = Math.min(150, (c.bottom - y - gap * (per - 1)) / per)
+  const rowH = Math.min(176, (c.bottom - y0 - gap * (per - 1)) / per)
+  // a short list sits in the middle of the room under the title instead of hanging from it
+  const y = y0 + Math.round(Math.max(0, c.bottom - y0 - (per * rowH + gap * (per - 1))) * 0.35)
   const k = pal(c)
   s.items.forEach((it, i) => {
     const col = Math.floor(i / per)
     const row = i % per
     const x = c.M + col * (colW + gap)
     const ry = y + row * (rowH + gap)
-    const d = Math.min(76, rowH - 8)
+    const d = Math.min(96, rowH - 8)
     shape(c, i % 2 ? k.accent : k.primary, x, ry + (rowH - d) / 2, d, d, { shape: 'ellipse', animate: 'card' })
     const numColor = onBg(c, i % 2 ? k.accent : k.primary)
     text(c, 'metric', [para(String(i + 1))], x, ry + (rowH - d) / 2, d, d, Math.round(d * 0.5), { color: numColor, align: 'center', valign: 'middle', weight: 800, animate: false, min: 18 })
-    text(c, 'heading', [para(it.label)], x + d + 28, ry, colW - d - 28, it.detail ? rowH * 0.55 : rowH, 36, { valign: it.detail ? 'bottom' : 'middle', min: 20 })
-    if (it.detail) text(c, 'caption', [para(it.detail)], x + d + 28, ry + rowH * 0.57, colW - d - 28, rowH * 0.43, 24, { color: 'textSecondary', min: 14, animate: false })
+    text(c, 'heading', [para(it.label)], x + d + 32, ry, colW - d - 32, it.detail ? rowH * 0.55 : rowH, 44, { valign: it.detail ? 'bottom' : 'middle', min: 22 })
+    if (it.detail) text(c, 'caption', [para(it.detail)], x + d + 32, ry + rowH * 0.57, colW - d - 32, rowH * 0.43, 28, { color: 'textSecondary', min: 14, animate: false })
   })
 }
 
@@ -215,11 +235,19 @@ export function team(c: Ctx, s: C<'team'>) {
   const n = s.people.length
   const g = grid(c, n, y, 330, 36, 560)
   const k = pal(c)
+  // a single row of people: the cards are as tall as their content needs (avatar, name, role, bio), not as tall as the slide
+  const tIw = g.cw - 2 * 28
+  const dAvatar = Math.min(150, g.ch * 0.3, g.cw - 56)
+  const bioNeed = Math.max(0, ...s.people.map((p) => (p.bio ? textNeed(c, 'body', [para(p.bio)], tIw, 22) : 0)))
+  const nameNeed = g.rows === 1 ? Math.max(56, ...s.people.map((p) => textNeed(c, 'heading', [para(p.name)], tIw, 34) + 8)) : 56
+  const teamHug = g.rows === 1 ? hug(g.ch, 28 + dAvatar + 18 + nameNeed + 48 + bioNeed + 28) : { h: g.ch, lift: 0 }
   s.people.forEach((p, i) => {
-    const { x, y: cy } = g.pos(i)
+    const { x, y: gy } = g.pos(i)
+    const cy = gy + teamHug.lift
+    const g2 = { ...g, ch: teamHug.h }
     const tone = tones[i % 3]!
-    const pad = card(c, x, cy, g.cw, g.ch, { tone: tone === 'secondary' ? 'primary' : tone })
-    const d = Math.min(150, g.ch * 0.3, g.cw - 2 * pad)
+    const pad = card(c, x, cy, g.cw, g2.ch, { tone: tone === 'secondary' ? 'primary' : tone })
+    const d = Math.min(150, g2.ch * 0.3, g.cw - 2 * pad)
     const initials = p.name.split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase()
     let bg = mix(k[tone], c.bodyBg, 0.2)
     // A mid-tone avatar can't carry readable initials: darken until white text passes.
@@ -229,11 +257,11 @@ export function team(c: Ctx, s: C<'team'>) {
     const tx = x + pad
     const tw = g.cw - 2 * pad
     const ty = cy + pad + d + 18
-    text(c, 'heading', [para(p.name)], tx, ty, tw, 56, 34, { min: 18, color: cardText(c, tone === 'secondary' ? 'primary' : tone), animate: 'body' })
-    text(c, 'caption', [para(p.role)], tx, ty + 56, tw, 44, 24, { color: readableOn(cardBgHex(c, tone === 'secondary' ? 'primary' : tone), [k.accent, k.primary, k.textPrimary, '#FFFFFF', '#111111'], 4.5), min: 14, animate: false, weight: 600 })
+    text(c, 'heading', [para(p.name)], tx, ty, tw, nameNeed, 34, { min: 18, color: cardText(c, tone === 'secondary' ? 'primary' : tone), animate: 'body' })
+    text(c, 'caption', [para(p.role)], tx, ty + nameNeed, tw, 44, 24, { color: readableOn(cardBgHex(c, tone === 'secondary' ? 'primary' : tone), [k.accent, k.primary, k.textPrimary, '#FFFFFF', '#111111'], 4.5), min: 14, animate: false, weight: 600 })
     // bio only when it genuinely fits inside the card (tight 1:1 grids drop it rather than spill onto the card's shadow)
-    const bioH = cy + g.ch - pad - (ty + 104)
-    if (p.bio && bioH >= 40) text(c, 'body', [para(p.bio)], tx, ty + 104, tw, bioH, 22, { color: cardMuted(c, tone === 'secondary' ? 'primary' : tone), min: 14, animate: false })
+    const bioH = cy + g2.ch - pad - (ty + nameNeed + 48)
+    if (p.bio && bioH >= 40) text(c, 'body', [para(p.bio)], tx, ty + nameNeed + 48, tw, bioH, 22, { color: cardMuted(c, tone === 'secondary' ? 'primary' : tone), min: 14, animate: false })
   })
 }
 
@@ -252,8 +280,8 @@ export function matrix(c: Ctx, s: C<'matrix'>) {
     const cy = y + Math.floor(i / 2) * (ch + gap)
     const tone = tones[i % 2]!
     const pad = card(c, x, cy, cw, ch, { tone })
-    text(c, 'heading', [para(q.heading)], x + pad, cy + 22, cw - 2 * pad, 56, 34, { color: readableOn(cardBgHex(c, tone), [pal(c).primary, pal(c).textPrimary, '#FFFFFF', '#111111'], 4.5), min: 18, animate: false })
-    text(c, 'body', q.bullets.map((b) => para(b, 'bullet')), x + pad, cy + 84, cw - 2 * pad, ch - 104, 26, { min: 16, color: cardText(c, tone), byParagraph: true })
+    text(c, 'heading', [para(q.heading)], x + pad, cy + 18, cw - 2 * pad, 52, 34, { color: readableOn(cardBgHex(c, tone), [pal(c).primary, pal(c).textPrimary, '#FFFFFF', '#111111'], 4.5), min: 18, animate: false })
+    text(c, 'body', q.bullets.map((b) => para(b, 'bullet')), x + pad, cy + 72, cw - 2 * pad, ch - 88, 26, { min: 16, color: cardText(c, tone), byParagraph: true })
   })
   if (s.xLabel) text(c, 'caption', [para(s.xLabel)], x0, c.bottom - 40, w, 40, 24, { color: 'textSecondary', align: 'center', min: 14, animate: false, weight: 600, uppercase: true, tracking: 3 })
   if (s.yLabel) text(c, 'caption', [para(s.yLabel)], c.M - (h / 2 - 20), y + h / 2 - 20, h, 40, 24, { color: 'textSecondary', align: 'center', min: 14, animate: false, weight: 600, uppercase: true, tracking: 3, rotation: -90 })
@@ -307,16 +335,22 @@ export function roadmap(c: Ctx, s: C<'roadmap'>) {
   }
 
   const chevH = 92
+  const tw = cw - 2 * 32
+  const cy0 = y + chevH + 28
+  const headH = Math.min(Math.round((c.bottom - cy0) * 0.35), Math.max(80, ...s.phases.map((p) => textNeed(c, 'heading', [para(p.heading)], tw, 32) + 16)))
+  const bodyNeed = Math.max(...s.phases.map((p) => textNeed(c, 'body', p.bullets.map((b) => para(b, 'bullet')), tw, 26)))
+  const { h: ch, lift } = hug(c.bottom - cy0, 24 + headH + 12 + bodyNeed + 32)
+  const y0 = y + lift
   s.phases.forEach((p, i) => {
     const x = c.M + i * (cw + gap)
     const fill = fillFor(i)
-    shape(c, fill, x, y, cw + (i < n - 1 ? 26 : 0), chevH, { shape: 'chevron', animate: 'card' })
-    text(c, 'metric', [para(p.label)], x + 40, y, cw - 66, chevH, 30, { color: onBg(c, fill), valign: 'middle', align: 'center', min: 14, animate: false, weight: 800 })
-    const cy = y + chevH + 28
+    shape(c, fill, x, y0, cw + (i < n - 1 ? 26 : 0), chevH, { shape: 'chevron', animate: 'card' })
+    text(c, 'metric', [para(p.label)], x + 40, y0, cw - 66, chevH, 30, { color: onBg(c, fill), valign: 'middle', align: 'center', min: 14, animate: false, weight: 800 })
+    const cy = y0 + chevH + 28
     const tone = i % 2 && !clashes(c) ? 'accent' : 'primary'
-    const pad = card(c, x, cy, cw, c.bottom - cy, { tone })
-    text(c, 'heading', [para(p.heading)], x + pad, cy + 24, cw - 2 * pad, 80, 32, { min: 16, color: cardText(c, tone), animate: false })
-    text(c, 'body', p.bullets.map((b) => para(b, 'bullet')), x + pad, cy + 112, cw - 2 * pad, c.bottom - cy - 132, 26, { min: 14, color: cardMuted(c, tone), byParagraph: true })
+    const pad = card(c, x, cy, cw, ch, { tone })
+    text(c, 'heading', [para(p.heading)], x + pad, cy + 24, cw - 2 * pad, headH, 32, { min: 16, color: cardText(c, tone), animate: false })
+    text(c, 'body', p.bullets.map((b) => para(b, 'bullet')), x + pad, cy + 24 + headH + 12, cw - 2 * pad, ch - (24 + headH + 12) - 24, 26, { min: 14, color: cardMuted(c, tone), byParagraph: true })
   })
 }
 

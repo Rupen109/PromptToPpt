@@ -19,7 +19,8 @@
     "make-admin": "tsx --env-file-if-exists=.env scripts/make-admin.ts",
     "db:reset": "tsx --env-file-if-exists=.env scripts/db-reset.ts",
     "billing:sync-plans": "tsx --env-file-if-exists=.env scripts/billing-sync-plans.ts",
-    "pricing:model": "tsx --env-file-if-exists=.env scripts/pricing-model.ts"
+    "pricing:model": "tsx --env-file-if-exists=.env scripts/pricing-model.ts",
+    "email:preview": "tsx --env-file-if-exists=.env scripts/email-preview.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1145.0",

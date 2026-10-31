@@ -1,3 +1,4 @@
+import { Check, Laptop, Smartphone, Tablet, X } from '@prompttoppt/ui/icons'
 import { useCallback, useEffect, useState } from 'react'
 import { ApiError, type ShareAnalytics, type ShareAnalyticsFull } from '@prompttoppt/api-client'
 import { Portal } from '@/components/Portal'
@@ -11,7 +12,11 @@ const ago = (iso: string | null) => {
   const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000)
   return s < 60 ? 'just now' : s < 3600 ? `${Math.round(s / 60)} min ago` : s < 86400 ? `${Math.round(s / 3600)} h ago` : new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
 }
-const DEVICE = { phone: '📱 Phone', tablet: '📟 Tablet', computer: '💻 Computer' } as const
+const DEVICE = { phone: [Smartphone, 'Phone'], tablet: [Tablet, 'Tablet'], computer: [Laptop, 'Computer'] } as const
+function Device({ kind }: { kind: keyof typeof DEVICE }) {
+  const [I, label] = DEVICE[kind]
+  return <span className="inline-flex items-center gap-1.5"><I aria-hidden size={14} />{label}</span>
+}
 const region = (code: string) => { try { return new Intl.DisplayNames(undefined, { type: 'region' }).of(code) ?? code } catch { return code } }
 
 function Kpi({ label, value, hint }: { label: string; value: string; hint?: string }) {
@@ -23,7 +28,7 @@ function Share({ title, rows, empty }: { title: string; rows: { name: string; vi
       <h3 className="text-sm font-semibold mb-2">{title}</h3>
       {rows.length === 0 ? <p className="text-xs text-slate-600">{empty}</p> : (
         <ul className="space-y-1.5">{rows.map((r) => (
-          <li key={r.name} className="text-sm"><div className="flex justify-between gap-2"><span className="truncate">{title === 'Countries' ? region(r.name) : r.name in DEVICE ? DEVICE[r.name as keyof typeof DEVICE] : r.name}</span><span className="tabular-nums text-slate-700">{r.views} · {r.pct}%</span></div>
+          <li key={r.name} className="text-sm"><div className="flex justify-between gap-2"><span className="truncate">{title === 'Countries' ? region(r.name) : r.name in DEVICE ? <Device kind={r.name as keyof typeof DEVICE} /> : r.name}</span><span className="tabular-nums text-slate-700">{r.views} · {r.pct}%</span></div>
             <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden mt-0.5" aria-hidden><div className="h-full bg-primary" style={{ width: `${r.pct}%` }} /></div></li>
         ))}</ul>
       )}
@@ -69,7 +74,7 @@ export function AnalyticsDialog({ deckId, onClose }: { deckId: string; onClose: 
       <div ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Link analytics" className="bg-white rounded-2xl w-full max-w-3xl max-h-[92vh] overflow-y-auto p-4 sm:p-6 shadow-xl outline-none">
         <div className="flex items-center justify-between gap-3 mb-1">
           <h2 className="font-heading font-bold text-xl">Link analytics</h2>
-          <button onClick={onClose} aria-label="Close" className="text-slate-600 hover:text-slate-900 text-xl leading-none">×</button>
+          <button onClick={onClose} aria-label="Close" className="text-slate-600 hover:text-slate-900 text-xl leading-none"><X aria-hidden size={20} /></button>
         </div>
         <p className="text-sm text-slate-600 mb-4">How people view your shared link. Your own views and your collaborators' are not counted. Nothing personal is recorded — no names, e-mail addresses, IP addresses or cookies.</p>
         {error && <p role="alert" className="text-sm font-medium text-red-700 mb-3">{error} <button onClick={load} className="underline">Try again</button></p>}
@@ -134,7 +139,7 @@ export function AnalyticsDialog({ deckId, onClose }: { deckId: string; onClose: 
                   <table className="w-full text-sm min-w-[520px]">
                     <thead><tr className="text-left text-xs text-slate-600"><th className="font-medium py-1 pr-2">When</th><th className="font-medium pr-2">Device</th><th className="font-medium pr-2">From</th><th className="font-medium pr-2">Time</th><th className="font-medium">Slides</th></tr></thead>
                     <tbody>{full.recent.map((r, i) => (
-                      <tr key={i} className="border-t border-border"><td className="py-1.5 pr-2"><time dateTime={r.at}>{ago(r.at)}</time></td><td className="pr-2">{DEVICE[r.device]}</td><td className="pr-2 truncate max-w-[10rem]">{r.source}{r.country ? ` · ${region(r.country)}` : ''}</td><td className="pr-2 tabular-nums">{dur(r.seconds)}</td><td className="tabular-nums">{r.slidesReached}/{r.slideCount}{r.completed ? ' ✓' : ''}</td></tr>
+                      <tr key={i} className="border-t border-border"><td className="py-1.5 pr-2"><time dateTime={r.at}>{ago(r.at)}</time></td><td className="pr-2"><Device kind={r.device} /></td><td className="pr-2 truncate max-w-[10rem]">{r.source}{r.country ? ` · ${region(r.country)}` : ''}</td><td className="pr-2 tabular-nums">{dur(r.seconds)}</td><td className="tabular-nums">{r.slidesReached}/{r.slideCount}{r.completed && <Check aria-hidden size={13} className="inline ml-1" />}</td></tr>
                     ))}</tbody>
                   </table>
                 </section>

@@ -8,6 +8,7 @@ import { GateError } from '../billing/errors.ts'
 import { db } from '../db/index.ts'
 import { comment, commentSeen, commentThread, presentation, presentationMember, presentationVersion, user } from '../db/schema.ts'
 import { env } from '../env.ts'
+import * as mail from '../lib/email-templates.ts'
 import { sendMail } from '../lib/mailer.ts'
 import { publishComments } from '../live/bus.ts'
 import { byUser, rateLimit } from '../middleware/rate-limit.ts'
@@ -79,7 +80,7 @@ async function mailMentions(deckId: string, deckTitle: string, author: { id: str
       if (!to) continue
       await db.insert(commentSeen).values({ userId: uid, presentationId: deckId, seenAt: new Date(0), lastMentionMailAt: new Date() }).onConflictDoUpdate({ target: [commentSeen.userId, commentSeen.presentationId], set: { lastMentionMailAt: new Date() } })
       const excerpt = showBody(body, people).slice(0, 280)
-      await sendMail({ to: to.email, subject: `${author.name.slice(0, 60)} mentioned you in "${deckTitle.slice(0, 80)}"`, text: `${author.name} mentioned you in a comment on "${deckTitle}":\n\n${excerpt}${body.length > 280 ? '…' : ''}\n\nOpen the presentation: ${env.EDITOR_URL}/edit/${deckId}\n` })
+      await sendMail({ to: to.email, ...mail.mention({ authorName: author.name, deckTitle, excerpt, truncated: body.length > 280, url: `${env.EDITOR_URL}/edit/${deckId}` }) })
     } catch (e) { console.warn('[comments] mention mail failed:', (e as Error).message) }
   }
 }

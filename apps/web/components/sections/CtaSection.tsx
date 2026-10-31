@@ -1,5 +1,6 @@
 'use client'
 
+import { Rocket } from '@prompttoppt/ui/icons'
 import { useRouter } from 'next/navigation'
 import { useState, type FormEvent } from 'react'
 import { Button } from '@/components/ui/Button'
@@ -16,7 +17,7 @@ export function CtaSection() {
   return (
     <section className="bg-[#f3f4f9] border-b-2 border-foreground px-5 md:px-10 pt-16 pb-16 md:pb-28">
       <Card tone="yellow" shadow="lg" hover={false} wrapperClassName="max-w-[816px] mx-auto h-auto" className="px-6 md:px-12 py-16 md:py-[67px] text-center flex flex-col items-center">
-        <span className={`inline-block -rotate-[0.05deg] bg-white border-2 border-foreground rounded-full px-[22px] py-[7px] font-heading font-extrabold text-xs uppercase text-foreground ${HARD.sm}`}>🚀 Immediate acceleration</span>
+        <span className={`inline-flex items-center gap-1.5 -rotate-[0.05deg] bg-white border-2 border-foreground rounded-full px-[22px] py-[7px] font-heading font-extrabold text-xs uppercase text-foreground ${HARD.sm}`}><Rocket aria-hidden size={14} />Immediate acceleration</span>
         <h2 className="mt-8 font-heading font-extrabold text-4xl md:text-5xl leading-[1.05] text-foreground max-w-[672px]">Stop Staring at Blank Slides. Build Your Deck in Under a Minute.</h2>
         <p className="mt-6 text-lg leading-7 font-medium text-foreground max-w-[576px]">Describe your topic, drop in a PDF or a link, and get a designed, editable presentation you can present today.</p>
         <form onSubmit={go} className="mt-8 w-full max-w-[448px] flex flex-col sm:flex-row gap-3">

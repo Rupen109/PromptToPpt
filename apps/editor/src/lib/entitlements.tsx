@@ -8,6 +8,9 @@ interface Ctx {
   /** UI-only convenience; the server re-checks every gated action. */
   upgrade: { open: boolean; reason: string | null; show: (reason?: string) => void; hide: () => void }
 }
+/** shown in the upgrade window when a Starter plan opens Present mode */
+export const PRESENT_LOCKED = 'Present mode is available on the Pro plan.'
+
 const EntitlementsContext = createContext<Ctx | null>(null)
 
 export const useEntitlements = () => {

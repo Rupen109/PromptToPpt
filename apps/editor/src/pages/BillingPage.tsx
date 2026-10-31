@@ -1,9 +1,10 @@
+import { ArrowLeft } from '@prompttoppt/ui/icons'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { formatMoney, type BillingOverview } from '@prompttoppt/api-client'
 import { Sidebar } from '@/components/Sidebar'
 import { api } from '@/lib/api'
-import { checkoutErrorMessage, subscribe, TEST_MODE_HINT } from '@/lib/checkout'
+import { checkoutErrorMessage, setSimulatorMode, subscribe, testModeHint } from '@/lib/checkout'
 import { useEntitlements } from '@/lib/entitlements'
 
 const when = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
@@ -37,7 +38,7 @@ export function BillingPage() {
 
   const load = useCallback(() => api.billing().then(setData).catch(() => setMsg({ kind: 'err', text: 'Could not load billing details.' })), [])
   useEffect(() => {
-    void api.billing().then((b) => { setData(b); setTestHint(b.testMode) }).catch(() => setMsg({ kind: 'err', text: 'Could not load billing details.' }))
+    void api.billing().then((b) => { setSimulatorMode(!!b.simulator); setData(b); setTestHint(b.testMode) }).catch(() => setMsg({ kind: 'err', text: 'Could not load billing details.' }))
   }, [])
 
   const run = useCallback(async (fn: () => Promise<unknown>, ok: string) => {
@@ -74,7 +75,7 @@ export function BillingPage() {
       <Sidebar />
       <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 max-w-4xl">
         <h1 className="font-heading font-bold text-3xl mb-6">Plan &amp; credits</h1>
-        {testHint && <p className="mb-4 rounded-lg px-4 py-3 text-sm bg-amber-50 border border-amber-200 text-amber-900">{TEST_MODE_HINT}</p>}
+        {testHint && <p className="mb-4 rounded-lg px-4 py-3 text-sm bg-amber-50 border border-amber-200 text-amber-900">{testModeHint()}</p>}
         {msg && <p role={msg.kind === 'err' ? 'alert' : 'status'} className={`mb-4 rounded-lg px-4 py-3 text-sm ${msg.kind === 'ok' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-700'}`}>{msg.text}</p>}
 
         <section className="bg-white border border-border rounded-xl p-5 mb-6" aria-label="Current plan">
@@ -104,6 +105,17 @@ export function BillingPage() {
           </div>
           {data && !data.billingEnabled && <p className="text-xs text-amber-700 mt-3">Payments are not configured on this server yet.</p>}
         </section>
+
+        {data?.simulator && (
+          <section className="rounded-xl border border-amber-200 bg-amber-50 p-5 mb-6" aria-label="Test payment tools">
+            <h2 className="font-heading font-bold text-lg text-amber-900">Test payment tools</h2>
+            <p className="text-sm text-amber-900/80 mt-1 mb-3">Only visible while the server is in test-payment mode. They change your test subscription the way the payment provider would.</p>
+            <div className="flex flex-wrap gap-2">
+              <button disabled={busy || !sub} onClick={() => void run(() => api.simulatorRenew(), 'Renewal simulated: the next period started, a payment was recorded and your credits renewed.')} className="rounded-lg border border-amber-300 bg-white px-4 py-2 text-sm font-semibold text-amber-900 disabled:opacity-50">Simulate next renewal</button>
+              <button disabled={busy || !sub} onClick={() => window.confirm('Refund your latest test payment in full? Your plan ends and its credits are taken back.') && void run(() => api.simulatorRefund(), 'Full refund simulated: your plan has ended.')} className="rounded-lg border border-amber-300 bg-white px-4 py-2 text-sm font-semibold text-amber-900 disabled:opacity-50">Simulate full refund</button>
+            </div>
+          </section>
+        )}
 
         <section className="bg-white border border-border rounded-xl p-5 mb-6" aria-label="Credits">
           <div className="flex items-end justify-between gap-4 flex-wrap">
@@ -144,7 +156,7 @@ export function BillingPage() {
             </table>
           )}
         </section>
-        <p className="mt-6 text-sm"><Link to="/" className="text-primary">← Back to home</Link></p>
+        <p className="mt-6 text-sm"><Link to="/" className="text-primary inline-flex items-center gap-1"><ArrowLeft aria-hidden size={14} />Back to home</Link></p>
       </main>
     </div>
   )

@@ -6,8 +6,9 @@
  * Changelog
  *  2026-10-03.1  story arcs per family, grounding rules, facts/mustCover, imageIntent, quality gate
  *  2026-10-07.1  outline adds imageQuery (stock-photo search words) beside imageIntent
+ *  2026-10-30.1  size budget for slide text (large type), darkMode, template chosen per topic (design_pick)
  */
-export const INSTRUCTIONS_VERSION = '2026-10-07.1'
+export const INSTRUCTIONS_VERSION = '2026-10-30.1'
 
 /** The story each kind of deck should tell. The outline follows the arc unless the user supplied their own structure. */
 export const STORY_ARCS: Record<string, string> = {

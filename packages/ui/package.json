@@ -6,9 +6,31 @@
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
-  "exports": { ".": "./src/index.ts", "./logo": "./src/Logo.tsx" },
-  "scripts": { "typecheck": "tsc --noEmit", "test": "vitest run --passWithNoTests" },
-  "dependencies": { "@prompttoppt/theme": "workspace:*", "@prompttoppt/validation": "workspace:*" },
-  "peerDependencies": { "react": "^19.0.0" },
-  "devDependencies": { "@types/react": "^19", "react": "19.3.0", "typescript": "^5.5.0", "vitest": "^5.0.3" }
+  "exports": {
+    ".": "./src/index.ts",
+    "./logo": "./src/Logo.tsx",
+    "./icons": "./src/icons.ts",
+    "./markdown": "./src/Markdown.tsx",
+    "./prose.css": "./src/prose.css"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@prompttoppt/theme": "workspace:*",
+    "@prompttoppt/validation": "workspace:*",
+    "lucide-react": "0.468.0",
+    "react-markdown": "10.1.0",
+    "remark-gfm": "4.0.1"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19",
+    "react": "19.3.0",
+    "typescript": "^5.5.0",
+    "vitest": "^5.0.3"
+  }
 }

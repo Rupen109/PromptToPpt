@@ -74,6 +74,13 @@ export interface CreateJobInput {
   idempotencyKey: string
 }
 export interface AskDeckAnswer { answer: string; slides: { n: number; id: string }[]; creditsCharged: number; model: string }
+export interface SitemapRequest { url: string; maxPages?: number; lastmod?: boolean; changefreq?: 'none' | 'always' | 'hourly' | 'daily' | 'weekly' | 'monthly' | 'yearly' | 'never'; priority?: boolean }
+export interface SitemapResponse {
+  site: string
+  urls: { loc: string; depth: number; lastmod?: string }[]
+  xml: string
+  stats: { found: number; crawled: number; skipped: { robots: number; noindex: number; other: number }; failed: number; truncated: boolean; slow: boolean; ms: number; foundSitemap: boolean }
+}
 export interface ResearchResult { sources: (SourceSummary & { url?: string })[]; creditsCharged: number }
 export interface PresentationSummary {
   id: string
@@ -147,6 +154,10 @@ export interface AiAssistResult {
   additions?: { afterSlideId: string | null; content: SlideContent }[]
   /** the assistant is asking which slide (or what) you mean; the reply is the question */
   ask?: boolean
+  /** new background colours for single slides (applied with the editor's setSlideBackground, so the text stays readable) */
+  backgrounds?: { slideId: string; color: string }[]
+  /** slides whose text must be made readable on what is behind it (the editor recolours only the text that does not read) */
+  readability?: string[]
   /** earlier assistant changes to put back (the editor holds the "before" of each) */
   reverts?: { change: number; part: 'all' | 'theme' | 'slide'; slideId?: string }[]
   /** pictures the user can confirm (generation is a separate, explicitly-paid step) */
@@ -164,6 +175,7 @@ export interface AiAssistResult {
 }
 
 export type ImageStyle = 'photo' | 'illustration' | '3d' | 'minimal' | 'abstract' | 'watercolor'
+export interface StockPhoto { id: string; provider: 'unsplash' | 'pexels'; thumb: string; full: string; alt: string; author: string; authorUrl?: string; pageUrl: string; trackUrl?: string; attribution: { source: string; license: string; url?: string } }
 export interface ImageUsage {
   enabled: boolean
   deck: { used: number; max: number }
@@ -180,6 +192,9 @@ export interface GeneratedImage {
 }
 
 export interface FreeOutline { title: string; slides: { title: string; points: string[] }[] }
+export interface FreeTranscript { title: string; words: number; timed: boolean; parts: { locator: string | null; text: string }[]; attachmentId: string }
+export interface PublicReviews { count: number; average: number | null; items: { id: string; rating: number; body: string; name: string; role: string | null; createdAt: string }[] }
+export interface MyReview { rating: number; body: string; displayName: string; role: string | null; status: 'pending' | 'approved' | 'rejected' }
 export interface FreePdfResult extends FreeOutline { summary: string; keyPoints: string[]; mode: string; pages: number; attachmentId: string; truncated: boolean }
 
 export interface DraftAttachment {
@@ -212,6 +227,8 @@ export interface CheckoutSession {
   planName: string
   interval: 'month' | 'year'
   testMode: boolean
+  /** true = show OUR test payment window instead of Razorpay's (the server runs with PAYMENTS_SIMULATOR) */
+  simulated?: boolean
   prefill: { name: string; email: string }
 }
 export interface PaymentSummary { id: string; amountMinor: number; currency: string; status: string; paidAt: string; planId: string | null }
@@ -249,7 +266,8 @@ export interface BrandKitInput {
   /** one of our own asset URLs, e.g. the logo a website lookup saved */
   logoUrl?: string
 }
-export interface BillingOverview { subscription: SubscriptionSummary | null; payments: PaymentSummary[]; billingEnabled: boolean; testMode: boolean }
+export interface BillingOverview { subscription: SubscriptionSummary | null; payments: PaymentSummary[]; billingEnabled: boolean; testMode: boolean; simulator?: boolean }
+export type SimulatorPayResult = ({ outcome: 'paid' } & RazorpayResult) | { outcome: 'failed'; message: string }
 export interface RazorpayResult { razorpay_payment_id: string; razorpay_subscription_id: string; razorpay_signature: string }
 export interface PlansResponse {
   currency: 'INR' | 'USD'
@@ -339,6 +357,33 @@ export function createApiClient({ apiUrl, sessionUser, onSessionChanged }: ApiCl
     /** Public free tools (no login; rate- and spend-limited server-side). */
     freeOutline: (b: { topic: string; kind?: string; audience?: string; slides?: number }) =>
       request<FreeOutline>('/api/v1/free-tools/outline', { method: 'POST', body: JSON.stringify(b) }),
+    /** Support page: a message (with up to 3 screenshots) for the owner; no sign-in needed. `website` is a hidden field real people leave empty. */
+    sendSupport: (b: { email: string; message: string; files: File[]; website?: string }) => {
+      const body = new FormData()
+      body.set('email', b.email); body.set('message', b.message); body.set('website', b.website ?? '')
+      for (const f of b.files) body.append('files', f)
+      return request<{ id: string }>('/api/v1/support', { method: 'POST', body })
+    },
+    /** Free tool: crawl a public website and get its sitemap.xml (no sign-in, no AI). */
+    freeSitemap: (b: SitemapRequest) => request<SitemapResponse>('/api/v1/free-tools/sitemap', { method: 'POST', body: JSON.stringify(b) }),
+    /** Free tool: clean a transcript the visitor pasted from YouTube (or a caption file's text) and keep it for the editor hand-off. */
+    freeTranscript: (body: { text: string; title?: string }) =>
+      request<FreeTranscript>('/api/v1/free-tools/transcript', { method: 'POST', body: JSON.stringify(body) }),
+    /** Approved customer reviews for the website (public). */
+    reviews: () => request<PublicReviews>('/api/v1/reviews'),
+    myReview: () => request<MyReview | null>('/api/v1/reviews/mine'),
+    /** Needs at least one presentation; new and edited reviews wait for the owner's approval before they are shown. */
+    saveMyReview: (b: { rating: number; body: string; displayName: string; role?: string }) => request<{ status: 'pending' }>('/api/v1/reviews/mine', { method: 'PUT', body: JSON.stringify(b) }),
+    deleteMyReview: () => request<null>('/api/v1/reviews/mine', { method: 'DELETE' }),
+    /** Free tool: a small recording of the visitor's own is transcribed (no account; a few a day). */
+    freeMedia: (file: File) => {
+      const body = new FormData()
+      body.set('file', file)
+      return request<FreeTranscript>('/api/v1/free-tools/media', { method: 'POST', body })
+    },
+    /** Free tool: a video / Reel script becomes a slide outline (and is kept for an hour for the editor hand-off). */
+    freeScript: (b: { script: string; kind?: 'reel' | 'youtube' | 'talk' | 'podcast' }) =>
+      request<FreeOutline & { attachmentId: string }>('/api/v1/free-tools/script', { method: 'POST', body: JSON.stringify(b) }),
     freePdf: (file: File, mode: string) => {
       const body = new FormData()
       body.set('file', file)
@@ -365,7 +410,7 @@ export function createApiClient({ apiUrl, sessionUser, onSessionChanged }: ApiCl
     cancelJob: (id: string) => request<JobView>(`/api/v1/generation/jobs/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),
     listPresentations: (projectId?: string) => request<PresentationSummary[]>(`/api/v1/presentations${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''}`),
     /** New deck from a template design (or blank when templateId is omitted). Premium designs need Pro (server-enforced). */
-    createPresentation: (body: { templateId?: string; title?: string; aspectRatio?: '16:9' | '4:3' | '1:1'; projectId?: string }) =>
+    createPresentation: (body: { templateId?: string; title?: string; aspectRatio?: '16:9' | '4:3' | '1:1'; projectId?: string; blank?: boolean }) =>
       request<{ id: string }>('/api/v1/presentations', { method: 'POST', body: JSON.stringify(body) }),
     moveToProject: (deckId: string, projectId: string | null) => request<{ id: string; projectId: string | null }>(`/api/v1/presentations/${encodeURIComponent(deckId)}/project`, { method: 'PUT', body: JSON.stringify({ projectId }) }),
     listProjects: () => request<ProjectSummary[]>('/api/v1/projects'),
@@ -389,6 +434,7 @@ export function createApiClient({ apiUrl, sessionUser, onSessionChanged }: ApiCl
     },
     getShareLink: (id: string) => request<ShareLinkView>(`/api/v1/presentations/${encodeURIComponent(id)}/share`),
     createShareLink: (id: string, opts: { password?: string; expiresInDays?: ShareExpiry } = {}) => request<ShareLinkView>(`/api/v1/presentations/${encodeURIComponent(id)}/share`, { method: 'POST', body: JSON.stringify(opts) }),
+    emailShareLink: (id: string, emails: string[], message?: string) => request<{ sent: number; failed: number }>(`/api/v1/presentations/${encodeURIComponent(id)}/share/email`, { method: 'POST', body: JSON.stringify({ emails, ...(message ? { message } : {}) }) }),
     /** Pro / Gold: set or remove the password (`null` removes), set or clear the expiry (`null` clears). */
     updateShareLink: (id: string, body: { password?: string | null; expiresInDays?: ShareExpiry }) => request<ShareLinkView>(`/api/v1/presentations/${encodeURIComponent(id)}/share`, { method: 'PATCH', body: JSON.stringify(body) }),
     revokeShareLink: (id: string) => request<ShareLinkView>(`/api/v1/presentations/${encodeURIComponent(id)}/share`, { method: 'DELETE' }),
@@ -424,6 +470,48 @@ export function createApiClient({ apiUrl, sessionUser, onSessionChanged }: ApiCl
     /** A video transcript (YouTube "Show transcript" text) or the text of a caption file; the optional YouTube link is kept so slides can cite the video. */
     addTranscriptSource: (body: { text: string; title?: string; url?: string }) =>
       request<SourceSummary>('/api/v1/sources/transcript', { method: 'POST', body: JSON.stringify(body) }),
+    /** Video to slides: the person's own audio / video recording is transcribed by AI into a timed source (6 credits per started 4 MB, refunded if it fails). The file itself is not stored. */
+    addMediaSource: (file: File) => {
+      const body = new FormData()
+      body.set('file', file)
+      return request<SourceSummary & { creditsCharged: number }>('/api/v1/sources/media', { method: 'POST', body })
+    },
+    /**
+     * Video to slides for big recordings (up to 200 MB / 90 min, signed in, 3 credits per started minute, refunded if it fails):
+     * sent in 8 MB parts (each retried), then the server works in the background while this polls. `onNote` gets plain progress text.
+     */
+    async addVideoSource(file: File, onNote?: (note: string) => void, signal?: AbortSignal): Promise<SourceSummary & { creditsCharged: number }> {
+      const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
+      const stop = () => { if (signal?.aborted) throw new ApiError(0, 'CANCELLED', 'Cancelled.') }
+      const made = await request<{ id: string; partBytes: number; partsTotal: number }>('/api/v1/media/uploads', { method: 'POST', body: JSON.stringify({ filename: file.name, bytes: file.size }) })
+      const enc = encodeURIComponent(made.id)
+      try {
+        for (let n = 0; n < made.partsTotal; n++) {
+          stop()
+          onNote?.(`Uploading ${Math.round((n / made.partsTotal) * 100)}%`)
+          const piece = file.slice(n * made.partBytes, (n + 1) * made.partBytes)
+          for (let attempt = 0; ; attempt++) {
+            try { await request(`/api/v1/media/uploads/${enc}/parts/${n}`, { method: 'PUT', body: piece, headers: { 'Content-Type': 'application/octet-stream' } }); break }
+            catch (e) { if ((e instanceof ApiError && e.status < 500 && e.status !== 429) || attempt >= 3) throw e; await wait(1000 * (attempt + 1)) }
+          }
+        }
+        onNote?.('Checking the recording')
+        const done = await request<{ credits: number }>(`/api/v1/media/uploads/${enc}/complete`, { method: 'POST', body: '{}' })
+        let misses = 0
+        for (;;) {
+          stop()
+          await wait(2000)
+          let j: { status: string; stage: string | null; progress: number; error: string | null; source: SourceSummary | null }
+          try { j = await request(`/api/v1/media/jobs/${enc}`); misses = 0 } catch (e) { if (e instanceof ApiError && e.status < 500 && e.status !== 429) throw e; if (++misses > 15) throw e; continue }
+          if (j.status === 'completed' && j.source) return { ...j.source, creditsCharged: done.credits }
+          if (j.status === 'failed') throw new ApiError(422, 'MEDIA_FAILED', j.error ?? 'This recording could not be read. You were not charged.')
+          onNote?.(`${j.stage ?? 'Working'} ${j.progress}%`)
+        }
+      } catch (e) {
+        void request(`/api/v1/media/jobs/${enc}`, { method: 'DELETE' }).catch(() => undefined) // cancel + refund if still waiting; no-op once processing
+        throw e
+      }
+    },
     addUrlSource: (url: string) => request<SourceSummary>('/api/v1/sources/url', { method: 'POST', body: JSON.stringify({ url }) }),
     addPdfSource: (file: File) => {
       const body = new FormData()
@@ -440,6 +528,20 @@ export function createApiClient({ apiUrl, sessionUser, onSessionChanged }: ApiCl
 
     models: (kind: 'text' | 'image' = 'text') => request<{ default: string | null; models: ModelOption[] }>(`/api/v1/models${kind === 'image' ? '?kind=image' : ''}`),
     /** Remaining AI-picture allowance for a deck / the month — show it BEFORE the user spends anything. */
+    /** "Image URL": the server downloads the picture and keeps its own copy; returns the address of that copy. */
+    importImage: (deckId: string, url: string) => request<{ assetId: string; url: string; mime: string; aspect: number }>(`/api/v1/presentations/${encodeURIComponent(deckId)}/images/import`, { method: 'POST', body: JSON.stringify({ url }) }),
+    /** Add a picture from the computer (PNG or JPEG, up to 8 MB). */
+    uploadImage: (deckId: string, file: File) => {
+      const body = new FormData()
+      body.set('file', file)
+      return request<{ assetId: string; url: string; mime: string; aspect: number; name: string }>(`/api/v1/presentations/${encodeURIComponent(deckId)}/images/upload`, { method: 'POST', body })
+    },
+    myUploads: () => request<{ items: { id: string; url: string; name: string; createdAt: string }[] }>('/api/v1/media/mine'),
+    deleteUpload: (assetId: string) => request<{ deleted: boolean }>(`/api/v1/media/mine/${encodeURIComponent(assetId)}`, { method: 'DELETE' }),
+    searchStock: (q: string, page = 1) => request<{ photos: StockPhoto[]; page: number; hasMore: boolean }>(`/api/v1/media/search?${new URLSearchParams({ q, page: String(page) })}`),
+    templateLibrary: (q: string) => request<{ items: { key: string; url: string; alt: string }[] }>(`/api/v1/media/library?${new URLSearchParams({ q })}`),
+    /** Use a stock photo: the server keeps its own copy and returns the credit line. */
+    useStockPhoto: (deckId: string, p: StockPhoto) => request<{ assetId: string; url: string; mime: string; aspect: number; alt: string; attribution: { source: string; license: string; url?: string } }>(`/api/v1/presentations/${encodeURIComponent(deckId)}/images/stock`, { method: 'POST', body: JSON.stringify({ provider: p.provider, imageUrl: p.full, ...(p.trackUrl ? { trackUrl: p.trackUrl } : {}), alt: p.alt, author: p.author, pageUrl: p.pageUrl }) }),
     imageUsage: (deckId: string) => request<ImageUsage>(`/api/v1/presentations/${encodeURIComponent(deckId)}/images/usage`),
     /** One picture. Charged once per requestId (retries return the same picture); refunded on any failure. */
     generateImage: (deckId: string, body: { prompt: string; style?: ImageStyle; aspect: '16:9' | '4:3' | '1:1' | '3:4' | '9:16'; model?: string; requestId: string }) =>
@@ -490,6 +592,10 @@ export function createApiClient({ apiUrl, sessionUser, onSessionChanged }: ApiCl
     /** Send Razorpay's success payload; the server verifies the signature before activating the plan. */
     verifyPayment: (r: RazorpayResult) => request<Entitlements>('/api/v1/billing/verify', { method: 'POST', body: JSON.stringify(r) }),
     billing: () => request<BillingOverview>('/api/v1/billing/subscription'),
+    /** test payments only (the server answers 404 unless PAYMENTS_SIMULATOR is on) */
+    simulatorPay: (subscriptionId: string, outcome: 'success' | 'failure') => request<SimulatorPayResult>('/api/v1/billing/simulator/pay', { method: 'POST', body: JSON.stringify({ subscriptionId, outcome }) }),
+    simulatorRenew: () => request<Entitlements>('/api/v1/billing/simulator/renew', { method: 'POST', body: '{}' }),
+    simulatorRefund: () => request<Entitlements>('/api/v1/billing/simulator/refund', { method: 'POST', body: '{}' }),
     /** Reads a website's colours, fonts and logo (Pro and Gold). */
     /** An exact copy of one of your decks, saved as a new deck. */
     duplicatePresentation: (id: string) => request<{ id: string; title: string }>(`/api/v1/presentations/${encodeURIComponent(id)}/duplicate`, { method: 'POST', body: '{}' }),
@@ -512,6 +618,8 @@ export function createApiClient({ apiUrl, sessionUser, onSessionChanged }: ApiCl
       /** Generic owner-section access: `api.admin.get('/sales/summary', {from})`, `api.admin.send('PUT','/flags/images',{...})`. Paths are relative to /api/v1/admin. */
       get: <T>(path: string, query: Record<string, string | number | undefined> = {}) => request<T>(`/api/v1/admin${path}${qs(query)}`),
       send: <T>(method: 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: string, body?: unknown) => request<T>(`/api/v1/admin${path}`, { method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }),
+      /** owner uploads (a picture for a post): multipart, field "file" */
+      upload: <T>(path: string, file: File) => { const body = new FormData(); body.set('file', file); return request<T>(`/api/v1/admin${path}`, { method: 'POST', body }) },
       summary: (f: UsageFilters) => request<UsageSummary>(`/api/v1/admin/usage/summary${qs(f)}`),
       timeseries: (f: UsageFilters, bucket: 'hour' | 'day' | 'week' | 'month' = 'day') => request<UsagePoint[]>(`/api/v1/admin/usage/timeseries${qs({ ...f, bucket })}`),
       breakdown: (f: UsageFilters, by: UsageDimension, limit = 20) => request<UsageRow[]>(`/api/v1/admin/usage/breakdown${qs({ ...f, by, limit })}`),

@@ -69,6 +69,13 @@ describe('POST /sources/image (image to deck)', () => {
     expect(ev).toBeTruthy()
   })
 
+  it('a photo-sized picture (over the 256 KB limit that applies to ordinary requests) is accepted', async () => {
+    const u = await signUp('img'); await json(await api(u.cookie, 'GET', '/me/entitlements'))
+    const photo = png(64, 64, undefined, 'x'.repeat(1_200_000)) // ≈ 1.2 MB, like a small phone photo
+    expect(photo.length).toBeGreaterThan(1_000_000)
+    expect((await upload(u.cookie, photo)).status).toBe(201)
+  })
+
   it('a file that is not a picture is refused before any charge or model call', async () => {
     const u = await signUp('img'); await json(await api(u.cookie, 'GET', '/me/entitlements'))
     for (const [bytes, name, hint] of [[Buffer.from('MZ\x90\x00 fake exe'), 'photo.png', /not a JPG/], [Buffer.from('<svg xmlns="x"></svg>'), 'logo.png', /SVG/], [Buffer.alloc(0), 'empty.jpg', /empty/]] as const) {

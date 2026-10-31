@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from 'next'
 import { Inter, Plus_Jakarta_Sans, Caveat, Sora } from 'next/font/google'
 import './globals.css'
+import '@prompttoppt/ui/prose.css'
+import { SiteTranslate } from '@/components/layout/SiteTranslate'
 import { SITE_URL } from '@/lib/env'
 
 // ─── Fonts ────────────────────────────────────────────────────────────────
@@ -146,6 +148,7 @@ export default function RootLayout({
       {/* Browser extensions (ColorZilla's cz-shortcut-listen, Grammarly…) add attributes to <body> before React loads; that is not our markup, so don't warn about it. */}
       <body suppressHydrationWarning>
         {children}
+        <SiteTranslate />
       </body>
     </html>
   )

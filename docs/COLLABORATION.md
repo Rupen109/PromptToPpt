@@ -11,6 +11,9 @@ Everything promised on the pricing page for sharing now exists: view-only links 
 * **Pro / Gold — expiry:** 1, 7, 30 or 90 days. Expired links answer `410 LINK_EXPIRED` ("This link has expired"); the owner can extend or clear the expiry.
 * A downgraded owner keeps the protection on existing links and can remove it, but cannot add new protection.
 
+* **Email this link** (owner, every plan): Share → View-only link → "Email this link". Up to 5 addresses per send, an optional short message, 20 sends/hour and 40 mails/day per person; the owner's own email must be confirmed in production. The mail carries the link only — if the link has a password, the mail says to ask the owner for it and never contains it. `POST /presentations/:id/share/email`.
+* Checked end to end in `e2e/suites/45-share-link.mjs` (owner, anonymous visitor, phone): what the visitor's browser receives (no notes, sources or semantic content; `no-store`; `noindex`), the owner-only endpoints refuse a visitor, the link shows the latest version, off → new address (old stays dead), unknown addresses, expiry (410), password change signs viewers out, deleted deck, watermark follows the owner's plan, phone width.
+
 ## Level 2 — collaborators (Pro: 3 per deck, Gold: 10)
 * Owner: **Share → Invite people** → email. An invitation (`presentation_member`, status `pending`) is mailed with `/invite/:token` (14 days). Re-inviting refreshes the link.
 * **Accepting** needs a signed-in account whose canonical mailbox matches the invited address (plus-tags / gmail dots count as the same mailbox) and — in production — a verified email.
@@ -31,3 +34,20 @@ How it works, in one paragraph: the deck still travels through the normal save p
 * **Scaling:** `LIVE_BUS=memory` (one API process) or `pg` (Postgres LISTEN/NOTIFY — required as soon as there is more than one API task; the default in production). Behind a load balancer set the idle timeout above 20 s (heartbeat) and disable response buffering for `/live` (the API sends `X-Accel-Buffering: no`).
 
 Code: `services/api/src/collab/access.ts`, `routes/sharing.ts`, `live/*`; UI `ShareDialog`, `InvitePage`, `SharedPage`, `SharedViewPage`, `PeerLayer`, `PeerAvatars`, `editor/live.ts`, `editor/docdiff.ts`. Tests: `src/security/collab.test.ts`, `src/live/live.test.ts`, `editor/docdiff.test.ts`, `e2e/suites/17-collab.mjs`, `e2e/suites/18-live.mjs`.
+
+## Email — what exists and what you must provide
+Sent through **Brevo** or **Resend** (`services/api/src/lib/mailer.ts`; whichever key is set, Brevo first if both): sign-up confirmation, password reset, collaborator invitations, comment mentions and "Email this link". With no key (local development and tests) every mail is printed in the API console instead, so the flows can be completed by hand.
+
+| | Brevo | Resend |
+|---|---|---|
+| Free | 300 emails/day, Brevo logo | 100/day, 3,000/month, no logo |
+| Paid | Starter from about ₹562 (5,000/month, no daily cap); logo removal is an add-on | Pro $20 (50,000/month) |
+
+To send real mail in production:
+1. An account with one of them and an **API key** → `BREVO_API_KEY` or `RESEND_API_KEY`.
+2. A **sending domain** you own, verified there by adding the DNS records shown (SPF, DKIM, and ideally DMARC) → `EMAIL_FROM`, e.g. `SlidesDone <hello@yourdomain.com>`. Until the domain is verified, mail only reaches your own address.
+3. The production API refuses to start without a key, `EMAIL_FROM` and `REQUIRE_EMAIL_VERIFICATION=true` (see `env.ts`).
+4. Decide who answers replies (a real mailbox for `hello@` / support).
+5. Send one real invitation, one password reset and one "Email this link" to your own inbox; check they arrive and are not in spam.
+
+**Decision (2026-10-30): Brevo, free plan.** Tested with a real send from a verified Gmail sender: it arrived in the normal inbox and the API mail carries **no Brevo logo**. Still open: buy a domain, authenticate it in Brevo (DNS records) and switch `EMAIL_FROM` to an address on it before launch — Gmail senders are more likely to land in spam. Replies can go to free forwarding (e.g. Cloudflare Email Routing); no paid mailbox is needed.

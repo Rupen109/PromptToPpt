@@ -1,5 +1,6 @@
 'use client'
 
+import { ArrowLeft, ArrowRight, Play } from '@prompttoppt/ui/icons'
 import { useMemo, useState } from 'react'
 import { designById } from '@prompttoppt/theme'
 import { FitSlide } from '@prompttoppt/ui'
@@ -19,10 +20,10 @@ export function TemplatePreview({ designId }: { designId: string }) {
         <FitSlide key={`${i}-${play}`} slide={slides[i]!} theme={design.theme} aspect="16:9" play={play > 0} />
       </div>
       <div className="flex items-center justify-center gap-3 mt-5 flex-wrap">
-        <Button size="sm" variant="white" onClick={() => setI((x) => Math.max(0, x - 1))} disabled={i === 0} aria-label="Previous slide">← Prev</Button>
+        <Button size="sm" variant="white" onClick={() => setI((x) => Math.max(0, x - 1))} disabled={i === 0} aria-label="Previous slide"><ArrowLeft aria-hidden size={14} />Prev</Button>
         <span className="font-heading font-extrabold text-sm tabular-nums">{i + 1} / {slides.length}</span>
-        <Button size="sm" variant="white" onClick={() => setI((x) => Math.min(slides.length - 1, x + 1))} disabled={i === slides.length - 1} aria-label="Next slide">Next →</Button>
-        <Button size="sm" variant="yellow" onClick={() => setPlay((p) => p + 1)}>▶ Play animation</Button>
+        <Button size="sm" variant="white" onClick={() => setI((x) => Math.min(slides.length - 1, x + 1))} disabled={i === slides.length - 1} aria-label="Next slide">Next<ArrowRight aria-hidden size={14} /></Button>
+        <Button size="sm" variant="yellow" onClick={() => setPlay((p) => p + 1)}><Play aria-hidden size={14} fill="currentColor" />Play animation</Button>
       </div>
       <div className="flex gap-3 overflow-x-auto py-5" role="tablist" aria-label="Slides">
         {slides.map((s, k) => (

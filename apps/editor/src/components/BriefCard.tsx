@@ -1,3 +1,4 @@
+import { Check } from '@prompttoppt/ui/icons'
 import type { PromptAnalysis } from '@prompttoppt/validation'
 
 const FAMILY: Record<string, string> = { pitch: 'Pitch & investors', sales: 'Sales & proposals', marketing: 'Marketing', strategy: 'Strategy & planning', product: 'Product', tech: 'Tech & engineering', reports: 'Reports & reviews', education: 'Education & training', 'case-studies': 'Case studies', team: 'Team & onboarding' }
@@ -21,7 +22,7 @@ export function BriefCard({ analysis, keepDesign }: { analysis: PromptAnalysis; 
         </div>
       )}
       {analysis.requiredSections.length > 0 && <p className="mt-3 text-slate-700"><span className="text-slate-600">Must cover: </span>{analysis.requiredSections.join(' · ')}</p>}
-      {keepDesign && <p className="mt-3 text-green-800">✓ Your design stays exactly as it is — colours, fonts and layout.</p>}
+      {keepDesign && <p className="mt-3 text-green-800 flex items-start gap-1.5"><Check aria-hidden size={16} className="mt-0.5 shrink-0" />Your design stays exactly as it is — colours, fonts and layout.</p>}
       <p className="mt-3 text-xs text-slate-600">I won’t invent numbers, names or results you didn’t give me.</p>
     </section>
   )

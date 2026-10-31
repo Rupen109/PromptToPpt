@@ -13,6 +13,9 @@ interface ORResponse {
   error?: { code?: number | string; message?: string }
 }
 
+/** OpenRouter wants the audio container name, not a mime type (unverified against a live key: check the model's accepted formats). */
+const audioFormat = (mime: string) => (/mpeg|mp3/.test(mime) ? 'mp3' : /wav/.test(mime) ? 'wav' : /ogg|opus/.test(mime) ? 'ogg' : /flac/.test(mime) ? 'flac' : /aac/.test(mime) ? 'aac' : /mp4|m4a/.test(mime) ? 'm4a' : 'mp3')
+
 /** The OpenRouter web plugin returns up to this many results per search and bills about $4 per 1,000 results. */
 const WEB_RESULTS = 5
 
@@ -55,7 +58,7 @@ export class OpenRouterProvider implements AIProvider {
         },
         body: JSON.stringify({
           model: req.model,
-          messages: [{ role: 'system', content: req.system }, { role: 'user', content: req.images?.length ? [...req.images.map((i) => ({ type: 'image_url', image_url: { url: `data:${i.mimeType};base64,${imageToBase64(i)}` } })), { type: 'text', text: req.prompt }] : req.prompt }],
+          messages: [{ role: 'system', content: req.system }, { role: 'user', content: req.images?.length || req.media?.length ? [...(req.images ?? []).map((i) => ({ type: 'image_url', image_url: { url: `data:${i.mimeType};base64,${imageToBase64(i)}` } })), ...(req.media ?? []).map((m) => (m.kind === 'audio' ? { type: 'input_audio', input_audio: { data: imageToBase64(m), format: audioFormat(m.mimeType) } } : { type: 'video_url', video_url: { url: `data:${m.mimeType};base64,${imageToBase64(m)}` } })), { type: 'text', text: req.prompt }] : req.prompt }],
           temperature: req.temperature ?? 0.7,
           ...(req.maxOutputTokens ? { max_tokens: req.maxOutputTokens } : {}),
           usage: { include: true },

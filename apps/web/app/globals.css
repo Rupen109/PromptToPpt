@@ -69,7 +69,8 @@ img, video {
   display: block;
 }
 
-button { cursor: pointer; border: none; background: none; font-family: inherit; }
+/* No `border: none; background: none` here: Tailwind's base styles already clear a button's border and background, and a global `border-style: none` on `button` would also switch off the border of every Button that asks for one (border-2 …). */
+button { cursor: pointer; font-family: inherit; }
 input, textarea, select { font-family: inherit; font-size: inherit; }
 
 /* ─── Utility Classes ───────────────────────────────────────────────────── */
@@ -127,3 +128,9 @@ input, textarea, select { font-family: inherit; font-size: inherit; }
     transition: opacity 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) var(--reveal-delay, 0ms), transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) var(--reveal-delay, 0ms);
   }
 }
+
+/* ─── Page translation (Google widget): hide its own toolbar and tooltips, keep the page where it is ─────────────────── */
+.goog-te-banner-frame, iframe.goog-te-banner-frame, .skiptranslate > iframe, #goog-gt-tt, .goog-tooltip, .goog-te-balloon-frame { display: none !important; }
+body { top: 0 !important; }
+.goog-te-spinner-pos, .VIpgJd-ZVi9od-aZ2wEe-wOHMyf, .VIpgJd-ZVi9od-aZ2wEe-OiiCO, [class^="VIpgJd-ZVi9od"] { display: none !important; }
+.goog-text-highlight { background: none !important; box-shadow: none !important; }

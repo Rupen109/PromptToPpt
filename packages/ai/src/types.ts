@@ -18,12 +18,21 @@ export interface ImageInput {
   data: Uint8Array | string
 }
 
+/** A recording for models that can listen (audio) or watch (video). Sent inline, so keep it small. */
+export interface MediaInput {
+  kind: 'audio' | 'video'
+  mimeType: string
+  data: Uint8Array | string
+}
+
 export interface TextRequest {
   model: string
   system: string
   prompt: string
   /** pictures the model should look at (providers without vision ignore them) */
   images?: ImageInput[]
+  /** audio or video the model should listen to / watch (providers without that ability fail the call) */
+  media?: MediaInput[]
   /** ask the model for a JSON document (we validate it ourselves; providers differ in schema support) */
   json?: boolean
   temperature?: number
@@ -132,4 +141,4 @@ export const bytesToBase64 = (b: Uint8Array): string => {
   for (let i = 0; i < b.length; i += 0x8000) bin += String.fromCharCode(...b.subarray(i, i + 0x8000))
   return btoa(bin)
 }
-export const imageToBase64 = (i: ImageInput): string => (typeof i.data === 'string' ? i.data : bytesToBase64(i.data))
+export const imageToBase64 = (i: ImageInput | MediaInput): string => (typeof i.data === 'string' ? i.data : bytesToBase64(i.data))

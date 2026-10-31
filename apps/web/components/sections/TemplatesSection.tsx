@@ -1,5 +1,6 @@
 'use client'
 
+import { ArrowRight } from '@prompttoppt/ui/icons'
 import Link from 'next/link'
 import { useState } from 'react'
 import { CATEGORIES, DESIGNS, SKELETONS, type CategoryId } from '@prompttoppt/theme'
@@ -63,7 +64,7 @@ export function TemplatesSection() {
           )
         })}
       </div>
-      <p className="mt-10 text-center"><Link href="/templates" className="font-heading font-extrabold text-sm text-foreground underline underline-offset-4 decoration-2 hover:text-primary">Browse all {DESIGNS.length} templates →</Link></p>
+      <p className="mt-10 text-center"><Link href="/templates" className="font-heading font-extrabold text-sm text-foreground underline underline-offset-4 decoration-2 hover:text-primary inline-flex items-center gap-1.5">Browse all {DESIGNS.length} templates<ArrowRight aria-hidden size={14} /></Link></p>
     </Section>
   )
 }

@@ -2,7 +2,7 @@ import type { Theme } from '@prompttoppt/validation'
 import { CATEGORIES, type CategoryId } from './categories'
 import { DESIGN_ROWS } from './designs'
 import { FONT_PAIRS, KITS, MAX_WEIGHT, MOTIONS } from './kits'
-import { makeColors } from '../palette'
+import { makeColors, type PaletteSeed } from '../palette'
 
 export interface TemplateDesign {
   id: string
@@ -18,6 +18,8 @@ export interface TemplateDesign {
   kit: string
   motion: string
   theme: Theme
+  /** the design's own light/dark mode and background temperature, so a deck that swaps in the topic's colours keeps this look */
+  look: Pick<PaletteSeed, 'mode' | 'bg' | 'ground'>
 }
 
 /** How each design frames its pictures, from its title composition (odd-numbered `bar` designs get arches, so neighbours differ). */
@@ -45,7 +47,8 @@ export const DESIGNS: TemplateDesign[] = CATEGORIES.flatMap((cat) =>
       style: { ...KITS[kit], photo: kit === 'classicBar' && index % 2 ? 'arch' : PHOTO_FOR_TITLE[(KITS[kit] as { title: string }).title] ?? 'full', headingWeight: clampWeight(heading, k.headingWeight ?? 800), ...(extra?.style ?? {}) } as Theme['style'],
       motion: { ...MOTIONS[motion] } as Theme['motion'],
     }
-    return { id, name, category: cat.id, tagline, index, photoSeed: extra?.seed ?? index, premium: index >= FREE_PER_CATEGORY, kit, motion, theme }
+    const look: TemplateDesign['look'] = { mode, ...(bg.startsWith('#') ? { ground: bg } : bg !== '-' ? { bg: bg as 'white' | 'warm' | 'cool' | 'sun' } : {}) }
+    return { id, name, category: cat.id, tagline, index, photoSeed: extra?.seed ?? index, premium: index >= FREE_PER_CATEGORY, kit, motion, theme, look }
   }),
 )
 

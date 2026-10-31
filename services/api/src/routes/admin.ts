@@ -15,6 +15,9 @@ import { performanceRoutes } from '../admin/routes/performance.ts'
 import { providersRoutes } from '../admin/routes/providers.ts'
 import { auditRoutes } from '../admin/routes/audit.ts'
 import { flagsRoutes } from '../admin/routes/flags.ts'
+import { reviewsRoutes } from '../admin/routes/reviews.ts'
+import { postsRoutes } from '../admin/routes/posts.ts'
+import { supportRoutes } from '../admin/routes/support.ts'
 import { env } from '../env.ts'
 import { cloudRoutes } from '../admin/routes/billing-sync.ts'
 import { db } from '../db/index.ts'
@@ -48,6 +51,9 @@ admin.get('/usage/breakdown', zValidator('query', filtersSchema.extend({ by: dim
   return c.json({ success: true, data: await breakdown(f, by, limit) })
 })
 
+admin.route('/reviews', reviewsRoutes)
+admin.route('/posts', postsRoutes)
+admin.route('/support', supportRoutes)
 admin.route('/sales', salesRoutes)
 admin.route('/subscriptions', subscriptionsRoutes)
 admin.route('/images', imagesRoutes)

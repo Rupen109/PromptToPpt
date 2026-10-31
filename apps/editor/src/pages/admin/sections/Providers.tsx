@@ -18,6 +18,7 @@ interface Integrations {
   payments: { provider: string; configured: boolean; mode: 'test' | 'live' | null; internationalEnabled: boolean; webhookConfigured: boolean }
   email: { provider: string | null; configured: boolean; note: string }
   googleSignIn: { configured: boolean }
+  microsoftSignIn: { configured: boolean }
   environment: string
 }
 interface Data { staleAfterDays: number; reconcileTolerance: number; providers: Card[]; integrations: Integrations }
@@ -81,6 +82,7 @@ export default function Providers() {
             <div><dt className="text-xs font-semibold text-slate-600">Payment webhook secret</dt><dd><YesNo yes={i.payments.webhookConfigured} yesText="Configured" noText="Not configured" /></dd></div>
             <div><dt className="text-xs font-semibold text-slate-600">Email provider</dt><dd><YesNo yes={i.email.configured} yesText="Configured" noText="None" /> <span className="text-xs text-slate-600">{i.email.configured ? '' : i.email.note}</span></dd></div>
             <div><dt className="text-xs font-semibold text-slate-600">Google sign-in</dt><dd><YesNo yes={i.googleSignIn.configured} yesText="Configured" noText="Not configured" /></dd></div>
+            <div><dt className="text-xs font-semibold text-slate-600">Microsoft sign-in</dt><dd><YesNo yes={i.microsoftSignIn.configured} yesText="Configured" noText="Not configured" /></dd></div>
             <div><dt className="text-xs font-semibold text-slate-600">Environment</dt><dd><code>{i.environment}</code></dd></div>
           </dl>
         </Panel>

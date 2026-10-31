@@ -22,7 +22,7 @@ export class ConflictError extends Error {
 /** Payment-flow refusal that is not a plan gate (provider off, currency unavailable, already subscribed, provider outage…). */
 export class BillingError extends Error {
   constructor(
-    public readonly code: 'BILLING_DISABLED' | 'CURRENCY_UNAVAILABLE' | 'ALREADY_SUBSCRIBED' | 'PAYMENT_INVALID' | 'NO_SUBSCRIPTION' | 'PROVIDER_ERROR' | 'DUPLICATE_REQUEST',
+    public readonly code: 'BILLING_DISABLED' | 'CURRENCY_UNAVAILABLE' | 'ALREADY_SUBSCRIBED' | 'PAYMENT_INVALID' | 'NO_SUBSCRIPTION' | 'PROVIDER_ERROR' | 'DUPLICATE_REQUEST' | 'NOT_FOUND' | 'NO_PAYMENT',
     message: string,
     public readonly status: 400 | 404 | 409 | 502 | 503,
   ) {

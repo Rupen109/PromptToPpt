@@ -7,7 +7,7 @@ import { z } from 'zod'
 import { AIUnavailableError } from '@prompttoppt/ai'
 import { PREMIUM_THEME_IDS, composeSlide, designById, getTheme, templateSlides } from '@prompttoppt/theme'
 import { findUrls, presentationSchema, type AccessTier, type Presentation, type SlideContent } from '@prompttoppt/validation'
-import { aiAssistInput, aiAssistOutput, aiAssistPrompt, compileAssist } from '../ai/ai-assist.ts'
+import { aiAssistInput, aiAssistOutput, aiAssistPrompt, compileAssist, isSmallTalk, LIST_SHORTFALL, morePointsAsked, namesOneSlide, needsSlideChoice } from '../ai/ai-assist.ts'
 import { readLinkedPages } from '../ai/linked-pages.ts'
 import { aiEditInput, aiEditOutput, aiEditPrompt } from '../ai/ai-edit.ts'
 import { askDeckInput, askDeckOutput, askDeckPrompt, deckDigest } from '../ai/ask-deck.ts'
@@ -84,6 +84,8 @@ presentations.post('/', rateLimit({ windowMs: 60_000, max: 20, key: (c) => `crea
   title: z.string().trim().min(1).max(200).optional(),
   aspectRatio: z.enum(['16:9', '4:3', '1:1']).default('16:9'),
   projectId: z.string().max(40).optional(),
+  /** "Create from scratch": one empty slide in the chosen look (templateId then only supplies the colours and fonts) */
+  blank: z.boolean().default(false),
 })), async (c) => {
   const userId = c.get('session')!.user.id
   const input = c.req.valid('json')
@@ -101,7 +103,8 @@ presentations.post('/', rateLimit({ windowMs: 60_000, max: 20, key: (c) => `crea
   const idGen = () => nanoid(12)
   const built = design ? templateSlides(design.id, input.aspectRatio, idGen, `${env.WEB_URL}/template-assets`)! : null
   const theme = built?.theme ?? getTheme('cobalt')
-  const slides = (built?.slides ?? [composeSlide({ layout: 'title', title: 'Untitled presentation', subtitle: 'Click to edit', speakerNotes: '', sources: [] }, theme, input.aspectRatio, idGen)])
+  const blankSlide = () => ({ layoutId: 'blank' as const, manual: true, background: { type: 'color' as const, value: theme.colors.background }, elements: [], speakerNotes: '', sources: [] })
+  const slides = input.blank ? [blankSlide()] : (built?.slides ?? [composeSlide({ layout: 'title', title: 'Untitled presentation', subtitle: 'Click to edit', speakerNotes: '', sources: [] }, theme, input.aspectRatio, idGen)])
   if (slides.length > ent.limits.maxSlides) throw new GateError('UPGRADE_REQUIRED', `The ${ent.plan.name} plan allows up to ${ent.limits.maxSlides} slides per presentation.`, 403, { feature: 'slides', limit: ent.limits.maxSlides })
   const title = input.title ?? design?.name ?? 'Untitled presentation'
   const doc: Presentation = {
@@ -429,6 +432,15 @@ presentations.post('/:id/ai-assist', rateLimit({ windowMs: 60_000, max: 15, key:
     if (s.locked) return c.json({ success: false, error: { code: 'SLIDE_LOCKED', message: 'This slide is locked. Unlock it to use AI.' } }, 409)
   }
 
+  // A request about ONE slide that does not say which: ask before anything is read, charged or guessed (see needsSlideChoice)
+  if (needsSlideChoice(input.instruction, input.scope)) {
+    const at = input.activeSlideId ? doc.slides.findIndex((x) => x.id === input.activeSlideId) : -1
+    return c.json({ success: true, data: { reply: at >= 0 ? `Which slide should I change — slide ${at + 1} (the one you're on), every slide, or another one?` : 'Which slide should I change — one slide, or every slide?', ask: true, theme: null, edits: [], additions: [], reverts: [], images: [], applied: [], notes: [], rewrite: null, creditsCharged: 0, model: input.model ?? '', sources: [] } })
+  }
+
+  // a greeting or a thank-you is not a request: answer it for free (the model once read "hey" as "add that slide again")
+  if (isSmallTalk(input.instruction)) return c.json({ success: true, data: { reply: CAPABILITIES_REPLY, theme: null, edits: [], additions: [], reverts: [], images: [], applied: [], notes: [], rewrite: null, creditsCharged: 0, model: input.model ?? '', sources: [] } })
+
   const { rows } = await catalog()
   const picked = input.model ? rows.find((r) => r.id === input.model && r.kind === 'text') : defaultModel(ent, rows)
   if (!picked) return c.json({ success: false, error: { code: 'INVALID_MODEL', message: 'That model is not available.' } }, 400)
@@ -438,7 +450,7 @@ presentations.post('/:id/ai-assist', rateLimit({ windowMs: 60_000, max: 15, key:
   // (the prompt carries up to ~12k characters of page text per link).
   const pages = await readLinkedPages(findUrls(input.instruction))
   const readCount = pages.filter((p) => p.status === 'read').length
-  const price = (await creditPrice('ai_edit', tier)) * ((input.scope === 'deck' ? 2 : 1) + readCount)
+  const price = (await creditPrice('ai_edit', tier)) * ((input.scope === 'deck' && !namesOneSlide(input.instruction) ? 2 : 1) + readCount) // a message that names one slide costs one edit, a deck-wide one two
   await reserveCredits(userId, price, 'ai_assist', input.requestId, { strict: true })
 
   try {
@@ -447,13 +459,22 @@ presentations.post('/:id/ai-assist', rateLimit({ windowMs: 60_000, max: 15, key:
     const sources = await loadSources(userId, [...new Set([...deckIds, ...input.sourceIds])])
     const added = sources.filter((x) => !deckIds.includes(x.id)).map((x) => ({ id: x.id, type: (['pdf', 'url', 'text'].includes(x.type) ? x.type : 'text') as 'pdf' | 'url' | 'text', title: x.title.slice(0, 300), ...(x.url ? { url: x.url } : {}) }))
     const promptSources = trimSources(sources, 30_000)
-    const out = await gateway.run({
+    const runModel = (instruction: string) => gateway.run({
       route: 'quality', model: picked.id, requestType: 'ai_assist',
-      ...aiAssistPrompt({ conversation: input.conversation, activeSlideId: input.activeSlideId, recent: input.recent, instruction: input.instruction, scope: input.scope, focusSlideId: input.slideId, doc, pages, sources: promptSources }),
+      ...aiAssistPrompt({ conversation: input.conversation, activeSlideId: input.activeSlideId, recent: input.recent, instruction, scope: input.scope, focusSlideId: input.slideId, doc, pages, sources: promptSources }),
       schema: aiAssistOutput, ctx: { userId, presentationId: id },
     })
+    const compileFor = (o: Awaited<ReturnType<typeof runModel>>) => compileAssist({ ...doc, sources: [...(doc.sources ?? []), ...added] }, o, ent, input.scope, input.slideId, [...pages.filter((p) => p.status === 'read').map((p) => p.text), ...sources.map((x) => x.text)], input.recent, input.instruction)
     let enrichCharged = 0
-    const result = compileAssist({ ...doc, sources: [...(doc.sources ?? []), ...added] }, out, ent, input.scope, input.slideId, [...pages.filter((p) => p.status === 'read').map((p) => p.text), ...sources.map((x) => x.text)], input.recent)
+    let out = await runModel(input.instruction)
+    let result = compileFor(out)
+    // "add 2 more points" answered by only rewording the points: ask the model once more, precisely, before telling the person it did not work
+    const more = morePointsAsked(input.instruction)
+    if (more && result.notes.some((n) => LIST_SHORTFALL.test(n))) {
+      const again = await runModel(`${input.instruction}\n(Your previous answer did not add the points. Count the points the slide has now: each list you change must end with exactly ${more} more point${more > 1 ? 's' : ''} than it has now. Return the slide with the new points added.)`).catch(() => null)
+      const retried = again ? compileFor(again) : null
+      if (again && retried && !retried.notes.some((n) => LIST_SHORTFALL.test(n))) { result = retried; out = again }
+    }
     if (!isOwner && result.rewrite) {
       // rebuilding every slide runs as a separate generation job under the OWNER's account: collaborators edit slides, the owner rebuilds decks
       await refundPlanning(userId, input.requestId)
@@ -498,7 +519,7 @@ presentations.post('/:id/ai-assist', rateLimit({ windowMs: 60_000, max: 15, key:
       await refundPlanning(userId, input.requestId)
       return c.json({ success: true, data: { reply: result.rewrite.picturesOnly ? "On it — I'll pick new pictures that match each slide and keep your text." : "Got it — I'll rebuild every slide from your details, keeping this design.", theme: null, edits: [], additions: [], reverts: [], images: [], rewrite: result.rewrite, applied: result.applied, notes: result.notes, creditsCharged: 0, model: picked.id, sources: added } })
     }
-    return c.json({ success: true, data: { reply: replyFor(result.applied.length - result.images.length, result.images.length), theme: result.theme, edits: result.edits, additions: result.additions, reverts: result.reverts, images: result.images, rewrite: result.rewrite, applied: result.applied, notes: result.notes, creditsCharged: price + enrichCharged, model: picked.id, sources: added } })
+    return c.json({ success: true, data: { reply: replyFor(result.applied.length - result.images.length, result.images.length), theme: result.theme, edits: result.edits, additions: result.additions, reverts: result.reverts, backgrounds: result.backgrounds, readability: result.readability, images: result.images, rewrite: result.rewrite, applied: result.applied, notes: result.notes, creditsCharged: price + enrichCharged, model: picked.id, sources: added } })
   } catch (e) {
     await refundCredits(userId, 'ai_assist', input.requestId)
     if (e instanceof BillingError || e instanceof GateError) throw e

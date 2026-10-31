@@ -90,6 +90,7 @@ export function integrations() {
     payments: { provider: 'razorpay', configured: razorpayEnabled(), mode: razorpayEnabled() ? (razorpayTestMode() ? 'test' : 'live') : null, internationalEnabled: env.RAZORPAY_INTERNATIONAL, webhookConfigured: !!env.RAZORPAY_WEBHOOK_SECRET },
     email: { provider: null as string | null, configured: false, note: 'No transactional email provider is integrated yet.' },
     googleSignIn: { configured: !!env.GOOGLE_CLIENT_ID && !!env.GOOGLE_CLIENT_SECRET },
+    microsoftSignIn: { configured: !!env.MICROSOFT_CLIENT_ID && !!env.MICROSOFT_CLIENT_SECRET },
     environment: env.APP_ENV,
   }
 }

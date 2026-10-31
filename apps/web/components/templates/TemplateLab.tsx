@@ -1,5 +1,6 @@
 'use client'
 
+import { ArrowLeft, ArrowRight, Play, Square } from '@prompttoppt/ui/icons'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { LAB_TEMPLATES } from '@prompttoppt/theme'
 import { FitSlide, transitionStyle } from '@prompttoppt/ui'
@@ -49,11 +50,11 @@ export function TemplateLab() {
             </div>
           </div>
           <div className="flex items-center justify-center gap-3 mt-6 flex-wrap">
-            <Button size="sm" variant="white" onClick={() => setI((x) => Math.max(0, x - 1))} disabled={i === 0}>← Prev</Button>
+            <Button size="sm" variant="white" onClick={() => setI((x) => Math.max(0, x - 1))} disabled={i === 0}><ArrowLeft aria-hidden size={14} />Prev</Button>
             <span className="font-heading font-extrabold text-sm tabular-nums">{i + 1} / {slides.length}</span>
-            <Button size="sm" variant="white" onClick={() => setI((x) => Math.min(slides.length - 1, x + 1))} disabled={i === slides.length - 1}>Next →</Button>
-            <Button size="sm" variant="yellow" onClick={() => setReplay((r) => r + 1)}>▶ Replay slide</Button>
-            <Button size="sm" variant={auto ? 'accent' : 'primary'} onClick={() => setAuto((a) => !a)}>{auto ? '■ Stop autoplay' : '▶ Autoplay deck'}</Button>
+            <Button size="sm" variant="white" onClick={() => setI((x) => Math.min(slides.length - 1, x + 1))} disabled={i === slides.length - 1}>Next<ArrowRight aria-hidden size={14} /></Button>
+            <Button size="sm" variant="yellow" onClick={() => setReplay((r) => r + 1)}><Play aria-hidden size={14} fill="currentColor" />Replay slide</Button>
+            <Button size="sm" variant={auto ? 'accent' : 'primary'} onClick={() => setAuto((a) => !a)}>{auto ? <><Square aria-hidden size={14} fill="currentColor" />Stop autoplay</> : <><Play aria-hidden size={14} fill="currentColor" />Autoplay deck</>}</Button>
           </div>
           <div className="flex gap-3 overflow-x-auto py-5" role="tablist" aria-label="Slides">
             {slides.map((s, k) => (

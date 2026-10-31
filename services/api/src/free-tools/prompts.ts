@@ -26,6 +26,25 @@ Each slide has 3 points of at most 14 words each. One idea per slide; the slides
   prompt: `<params>${JSON.stringify({ kind: i.kind, audience: i.audience ?? null, slides: i.slides })}</params>\n<user_request>\n${neutralise(i.topic)}\n</user_request>`,
 })
 
+export const SCRIPT_KINDS = ['reel', 'youtube', 'talk', 'podcast'] as const
+export type ScriptKind = (typeof SCRIPT_KINDS)[number]
+export const SCRIPT_MAX_CHARS = 6000
+const SCRIPT_GUIDE: Record<ScriptKind, string> = { reel: 'a short Reel / Short / TikTok video script', youtube: 'a YouTube video script', talk: 'a talk or speech', podcast: 'a podcast episode script' }
+/** How many slides a script of this length deserves: about one per 60 words, between 5 and 12. */
+export const scriptSlideCount = (text: string) => Math.max(5, Math.min(12, Math.round(text.split(/\s+/).filter(Boolean).length / 60)))
+
+export const scriptPrompt = (i: { kind: ScriptKind; text: string }) => {
+  const n = scriptSlideCount(i.text)
+  return {
+    system: `[task:free_script]
+You turn ${SCRIPT_GUIDE[i.kind]} into the outline of a presentation. ${DATA_RULES}
+Return JSON: {"title": string, "slides": [{"title": string, "points": string[]}]} with EXACTLY ${n} slides.
+Rules: slide 1 is the hook / opening of the script. Each next slide covers one beat or scene of the script, in the script's order; skip filler ("like and subscribe", "welcome back") unless it is the closing call to action, which becomes the last slide.
+Each slide title states the point of the slide in at most 9 words. Each slide has 3 points of at most 14 words each, taken from the script: reuse its facts, numbers and names exactly, and add nothing the script does not say.`,
+    prompt: `<params>${JSON.stringify({ kind: i.kind, slides: n })}</params>\n<user_request>\n${neutralise(i.text)}\n</user_request>`,
+  }
+}
+
 export const PDF_MODES = ['presentation', 'summary', 'executive', 'academic', 'business'] as const
 export type PdfMode = (typeof PDF_MODES)[number]
 export const pdfOutput = z.object({

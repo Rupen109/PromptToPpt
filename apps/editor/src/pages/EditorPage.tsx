@@ -1,3 +1,4 @@
+import { AlertTriangle, Ban, ChevronDown, ChevronRight, Home, Lock, MessageSquare, MoreVertical, Palette, Play, Redo2, Sparkles, Undo2, Users } from '@prompttoppt/ui/icons'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { ApiError, isGateError } from '@prompttoppt/api-client'
@@ -14,6 +15,8 @@ import { ShareDialog } from '@/components/editor/ShareDialog'
 import { SlideRail } from '@/components/editor/SlideRail'
 import { StyleDrawer } from '@/components/editor/StyleDrawer'
 import { VersionsDialog } from '@/components/editor/VersionsDialog'
+import { TopToolbar } from '@/components/editor/toolbar/TopToolbar'
+import { TableDialog } from '@/components/editor/toolbar/TableDialog'
 import { readBackup, useAutosave, type SaveStatus } from '@/editor/autosave'
 import * as C from '@/editor/commands'
 import { openCount, unreadCount, useComments } from '@/editor/comments'
@@ -21,7 +24,7 @@ import { useLive, useLiveSync } from '@/editor/live'
 import { useDoc } from '@/editor/store'
 import { useUi } from '@/editor/ui'
 import { api } from '@/lib/api'
-import { useEntitlements } from '@/lib/entitlements'
+import { PRESENT_LOCKED, useEntitlements } from '@/lib/entitlements'
 import { useFlag } from '@/lib/flags'
 import { download, exportClient, type ClientFormat } from '@/lib/export'
 
@@ -41,10 +44,8 @@ export function EditorPage() {
   const aiAvailable = useFlag('ai_assistant') && !maintenance
   const doc = useDoc((s) => s.doc)
   const revision = useDoc((s) => s.revision)
-  const canUndo = useDoc((s) => s.past.length > 0)
-  const canRedo = useDoc((s) => s.future.length > 0)
   const apply = useDoc((s) => s.apply)
-  const { activeSlideId, setActiveSlide, select, edit, drawer, setDrawer, notesOpen, toggleNotes, setClipboard, imageDialog, openImageDialog, closeImageDialog } = useUi()
+  const { activeSlideId, setActiveSlide, select, edit, drawer, setDrawer, notesOpen, toggleNotes, setClipboard, imageDialog, openImageDialog, closeImageDialog, tableEditId, editTable } = useUi()
   const [load, setLoad] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading')
   const [toast, setToast] = useState<string | null>(null)
   const [menu, setMenu] = useState<{ x: number; y: number; kind: 'insert' | 'more' } | null>(null)
@@ -185,7 +186,7 @@ export function EditorPage() {
     { label: 'Text box', onClick: () => addEl({ ...base, id: crypto.randomUUID(), type: 'text', x: 200, y: 400, width: 700, height: 120, role: 'body', paragraphs: [{ runs: [{ text: 'Type here' }] }], fontSize: 44, align: 'left', color: 'textPrimary', valign: 'top' }) },
     { label: 'Rectangle', onClick: () => addEl({ ...base, id: crypto.randomUUID(), type: 'shape', shape: 'rect', x: 300, y: 300, width: 500, height: 300, fill: 'accent', radius: doc.theme.radius }) },
     { label: 'Circle', onClick: () => addEl({ ...base, id: crypto.randomUUID(), type: 'shape', shape: 'ellipse', x: 400, y: 300, width: 320, height: 320, fill: 'secondary', radius: 0 }) },
-    { label: '✨ AI image…', onClick: () => openImageDialog() },
+    { label: 'AI image…', onClick: () => openImageDialog() },
     { label: 'Image (set URL after)', onClick: () => addEl({ ...base, id: crypto.randomUUID(), type: 'image', x: 300, y: 250, width: 800, height: 450, alt: 'Image', fit: 'cover' }) },
     { type: 'emoji', label: 'Sticker', options: STICKERS, onPick: (emoji) => addEl({ ...base, id: crypto.randomUUID(), type: 'icon', x: 800, y: 300, width: 240, height: 240, name: emoji, color: 'primary' }) },
   ]
@@ -201,6 +202,9 @@ export function EditorPage() {
     { type: 'divider' },
     { label: 'Delete presentation', danger: true, onClick: () => { if (confirm(`Delete "${doc.title}"? This can't be undone.`)) void api.deletePresentation(id).then(() => navigate('/')) } },
   ]
+
+  // Present mode belongs to the paid plans, like export (the Starter plan has no export formats)
+  const canPresent = !ent || ent.features.exportFormats.length > 0
 
   async function doExport(format: ExportFormat) {
     setExportMenu(false)
@@ -227,13 +231,13 @@ export function EditorPage() {
   return (
     <div className="h-screen flex flex-col bg-[#eeeeee]">
       <header className="h-14 bg-white border-b border-border flex items-center gap-2 sm:gap-3 px-3 sm:px-4 shrink-0">
-        <Link to="/" aria-label="Home" className="font-bold text-lg w-8 h-9 grid place-items-center shrink-0">⌂</Link>
-        <input aria-label="Presentation title" defaultValue={doc.title} key={doc.title} maxLength={200} onBlur={(e) => e.target.value.trim() !== doc.title && apply('Rename', (d) => C.setTitle(d, e.target.value))} onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} className="font-semibold min-w-0 flex-1 max-w-sm px-2 py-1 rounded-md hover:bg-slate-100 focus:bg-white focus:outline focus:outline-2 focus:outline-primary truncate" />
+        <Link to="/" aria-label="Home" className="font-bold text-lg w-8 h-9 grid place-items-center shrink-0"><Home aria-hidden size={20} /></Link>
+        <input aria-label="Presentation title" defaultValue={doc.title} key={doc.title} maxLength={200} onBlur={(e) => e.target.value.trim() !== doc.title && apply('Rename', (d) => C.setTitle(d, e.target.value))} onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} style={{ width: `${Math.min(Math.max(doc.title.length, 14) + 4, 44)}ch` }} className="font-semibold min-w-0 max-w-[45vw] h-9 px-3 rounded-lg bg-slate-100 border border-transparent hover:border-slate-300 focus:bg-white focus:border-primary focus:outline focus:outline-2 focus:outline-primary/30 truncate" />
         <span role="status" aria-live="polite" title={autosave.message ?? undefined} className={`hidden sm:inline text-xs shrink-0 ${st.cls}`}>{st.text}</span>
         <div className="ml-auto flex items-center gap-2">
-          <button onClick={() => { void autosave.saveNow(); navigate(`/present/${id}`) }} className="h-9 px-3 rounded-lg text-sm border border-border hover:bg-slate-50 whitespace-nowrap">▷<span className="max-sm:sr-only"> Present</span></button>
+          <button onClick={() => { if (!canPresent) return upgrade.show(PRESENT_LOCKED); void autosave.saveNow(); navigate(`/present/${id}`) }} className="h-9 px-3 rounded-lg text-sm border border-border hover:bg-slate-50 whitespace-nowrap inline-flex items-center gap-1.5"><Play aria-hidden size={16} /><span className="max-sm:sr-only">Present</span></button>
           <PeerAvatars />
-          {role === 'owner' && <button onClick={() => setShareOpen(true)} className="h-9 px-3 rounded-lg text-sm font-semibold border border-border hover:bg-slate-50 whitespace-nowrap"><span aria-hidden>👥</span><span className="max-sm:sr-only"> Share</span></button>}
+          {role === 'owner' && <button onClick={() => setShareOpen(true)} className="h-9 px-3 rounded-lg text-sm font-semibold border border-border hover:bg-slate-50 whitespace-nowrap inline-flex items-center gap-1.5"><Users aria-hidden size={16} /><span className="max-sm:sr-only">Share</span></button>}
           {role === 'editor' && <span title="You were invited to edit this presentation. The AI uses the owner's credits; only the owner can export or share." className="hidden sm:inline text-xs rounded-full bg-amber-100 text-amber-900 px-2.5 py-1 whitespace-nowrap">Collaborating</span>}
           {role === 'owner' && <div className="relative" data-export-menu>
             <button onClick={() => setExportMenu((v) => !v)} aria-haspopup="menu" aria-expanded={exportMenu} disabled={!!exporting} className="h-9 px-4 rounded-lg text-sm font-semibold bg-foreground text-white disabled:opacity-60">{exporting ? 'Exporting…' : 'Export'}</button>
@@ -247,6 +251,7 @@ export function EditorPage() {
           </div>}
         </div>
       </header>
+      <TopToolbar doc={doc} slide={slide} presentationId={id} requireAdvanced={requireAdvanced} onHistory={() => setVersions(true)} flash={flash} />
 
       {(autosave.status === 'conflict' || autosave.status === 'error' || autosave.status === 'offline') && autosave.message && (
         <div role="alert" className={`px-4 py-2 text-sm flex items-center gap-3 ${autosave.status === 'offline' ? 'bg-amber-50 text-amber-900' : 'bg-red-50 text-red-800'}`}>
@@ -272,12 +277,12 @@ export function EditorPage() {
           <div className="flex-1 overflow-y-auto p-3 sm:p-6 pb-24">
             <div className="max-w-[1100px] mx-auto">
               <EditorCanvas slide={slide} theme={doc.theme} aspect={doc.aspectRatio} watermark={watermark} requireAdvanced={requireAdvanced} />
-              {slide.locked && <p className="mt-2 text-xs text-slate-500">🔒 This slide is locked — unlock it from ⋮ to edit.</p>}
+              {slide.locked && <p className="mt-2 text-xs text-slate-500 flex items-center gap-1.5"><Lock aria-hidden size={14} className="shrink-0" />This slide is locked — unlock it from the More menu to edit.</p>}
               {slide.validation.issues.length > 0 && (
-                <ul className="mt-3 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-1">{slide.validation.issues.map((x, i) => <li key={i}>{x.severity === 'error' ? '⛔' : '⚠️'} {x.message}</li>)}</ul>
+                <ul className="mt-3 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-1">{slide.validation.issues.map((x, i) => <li key={i} className="flex items-start gap-1.5">{x.severity === 'error' ? <Ban aria-hidden size={14} className="mt-0.5 shrink-0" /> : <AlertTriangle aria-hidden size={14} className="mt-0.5 shrink-0" />}{x.message}</li>)}</ul>
               )}
               <div className="mt-4">
-                <button onClick={() => toggleNotes()} aria-expanded={notesOpen} className="text-sm font-medium text-slate-600">{notesOpen ? '▾' : '▸'} Speaker notes</button>
+                <button onClick={() => toggleNotes()} aria-expanded={notesOpen} className="text-sm font-medium text-slate-600 inline-flex items-center gap-1">{notesOpen ? <ChevronDown aria-hidden size={16} /> : <ChevronRight aria-hidden size={16} />} Speaker notes</button>
                 {notesOpen && (
                   <textarea aria-label="Speaker notes" value={slide.speakerNotes} maxLength={5000} rows={4} placeholder="What you'll say on this slide…" onChange={(e) => apply('Speaker notes', (d) => C.setSpeakerNotes(d, slide.id, e.target.value), { mergeKey: `notes:${slide.id}` })} className="mt-2 w-full bg-white border border-border rounded-xl p-3 text-sm" />
                 )}
@@ -286,13 +291,10 @@ export function EditorPage() {
           </div>
           <div role="toolbar" aria-label="Editor toolbar" className="absolute bottom-3 sm:bottom-4 left-1/2 -translate-x-1/2 max-w-[calc(100%-1rem)] overflow-x-auto flex items-center gap-0.5 sm:gap-1 bg-white border border-border rounded-2xl shadow-lg px-1.5 sm:px-2 py-1.5 z-20">
             <button className={tb} aria-haspopup="menu" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu({ x: r.left, y: r.top - 330, kind: 'insert' }) }}>＋<span className="max-sm:sr-only"> Insert</span></button>
-            <button className={`${tb} ${drawer === 'style' ? 'bg-slate-100' : ''}`} aria-pressed={drawer === 'style'} onClick={() => setDrawer('style')}>🎨<span className="max-sm:sr-only"> Style</span></button>
-            <button className={`${tb} ${drawer === 'ai' ? 'bg-slate-100' : ''}`} aria-pressed={drawer === 'ai'} onClick={() => setDrawer('ai')}>✨<span className="max-sm:sr-only"> Edit with AI</span></button>
-            <button className={`${tb} relative ${drawer === 'comments' ? 'bg-slate-100' : ''}`} aria-pressed={drawer === 'comments'} aria-label={`Comments${openCount(cThreads) ? `, ${openCount(cThreads)} open` : ''}${unreadCount(cThreads, cSeen) ? ', unread' : ''}`} onClick={() => setDrawer('comments')}>💬<span className="max-sm:sr-only"> Comments</span>{openCount(cThreads) > 0 && <span data-testid="comments-count" className="ml-1 text-[11px] font-bold bg-primary text-white rounded-full px-1.5">{openCount(cThreads)}</span>}{unreadCount(cThreads, cSeen) > 0 && drawer !== 'comments' && <i data-testid="comments-unread" aria-hidden className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-500" />}</button>
-            <button className={tb} aria-label="More" aria-haspopup="menu" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu({ x: r.left, y: r.top - 300, kind: 'more' }) }}>⋮</button>
-            <span className="w-px h-6 bg-border mx-1" />
-            <button className={tb} aria-label="Undo" disabled={!canUndo} onClick={() => useDoc.getState().undo()}>↶</button>
-            <button className={tb} aria-label="Redo" disabled={!canRedo} onClick={() => useDoc.getState().redo()}>↷</button>
+            <button className={`${tb} ${drawer === 'style' ? 'bg-slate-100' : ''}`} aria-pressed={drawer === 'style'} onClick={() => setDrawer('style')}><Palette aria-hidden size={16} /><span className="max-sm:sr-only">Style</span></button>
+            <button className={`${tb} ${drawer === 'ai' ? 'bg-slate-100' : ''}`} aria-pressed={drawer === 'ai'} onClick={() => setDrawer('ai')}><Sparkles aria-hidden size={16} /><span className="max-sm:sr-only">Edit with AI</span></button>
+            <button className={`${tb} relative ${drawer === 'comments' ? 'bg-slate-100' : ''}`} aria-pressed={drawer === 'comments'} aria-label={`Comments${openCount(cThreads) ? `, ${openCount(cThreads)} open` : ''}${unreadCount(cThreads, cSeen) ? ', unread' : ''}`} onClick={() => setDrawer('comments')}><MessageSquare aria-hidden size={16} /><span className="max-sm:sr-only">Comments</span>{openCount(cThreads) > 0 && <span data-testid="comments-count" className="ml-1 text-[11px] font-bold bg-primary text-white rounded-full px-1.5">{openCount(cThreads)}</span>}{unreadCount(cThreads, cSeen) > 0 && drawer !== 'comments' && <i data-testid="comments-unread" aria-hidden className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-500" />}</button>
+            <button className={tb} aria-label="More" aria-haspopup="menu" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu({ x: r.left, y: r.top - 300, kind: 'more' }) }}><MoreVertical aria-hidden size={18} /></button>
           </div>
         </main>
         {drawer === 'comments' && <CommentsPanel doc={doc} slideId={slide.id} deckId={id} role={role} onClose={() => setDrawer('comments')} />}
@@ -319,6 +321,7 @@ export function EditorPage() {
           }}
         />
       )}
+      {tableEditId && <TableDialog slideId={slide.id} elementId={tableEditId} onClose={() => editTable(null)} />}
       {imageDialog && <ImageDialog key={imageDialog.elementId ?? 'new'} doc={doc} slide={slide} presentationId={id} request={imageDialog} onClose={closeImageDialog} />}
       {remix && <RemixDialog presentationId={id} title={doc.title} slideCount={doc.slides.length} handEdited={doc.slides.filter((x) => x.manual).length} beforeStart={() => autosave.saveNow(false)} onClose={() => setRemix(false)} />}
       {menu && <ContextMenu x={menu.x} y={Math.max(8, menu.y)} items={menu.kind === 'insert' ? insertItems : moreItems} onClose={() => setMenu(null)} />}

@@ -218,6 +218,41 @@
       "when": 1793200000000,
       "tag": "0030_read_image_price",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1793207595670,
+      "tag": "0031_reviews",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1793300000000,
+      "tag": "0032_read_media_price",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1793400000000,
+      "tag": "0033_media_jobs",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1793500000000,
+      "tag": "0034_posts",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1793600000000,
+      "tag": "0035_support_tickets",
+      "breakpoints": true
     }
   ]
 }

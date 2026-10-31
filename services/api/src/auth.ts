@@ -7,6 +7,7 @@ import { db } from './db/index.ts'
 import * as schema from './db/schema.ts'
 import { env, isProd } from './env.ts'
 import { countryFromHeaders } from './lib/country.ts'
+import * as mail from './lib/email-templates.ts'
 import { sendMail } from './lib/mailer.ts'
 import { canonicalEmail } from './security/email.ts'
 
@@ -29,7 +30,11 @@ export const auth = betterAuth({
     autoSignIn: !env.REQUIRE_EMAIL_VERIFICATION,
     revokeSessionsOnPasswordReset: true, // a reset signs the attacker out too
     sendResetPassword: async ({ user, url }) => {
-      await sendMail({ to: user.email, subject: 'Reset your SlidesDone password', text: `Reset your password (link valid for one hour):\n${url}\n\nIf you did not ask for this, ignore this email.` })
+      await sendMail({ to: user.email, ...mail.resetPassword({ name: user.name, url }) })
+    },
+    // a reset signs everyone out (see above): tell the owner of the mailbox, in case it was not them
+    onPasswordReset: async ({ user }) => {
+      await sendMail({ to: user.email, ...mail.passwordChanged({ name: user.name }) }).catch((e) => console.error('[password-changed mail]', (e as Error).message))
     },
   },
   emailVerification: {
@@ -37,15 +42,20 @@ export const auth = betterAuth({
     sendOnSignIn: env.REQUIRE_EMAIL_VERIFICATION,
     autoSignInAfterVerification: true,
     sendVerificationEmail: async ({ user, url }) => {
-      await sendMail({ to: user.email, subject: 'Confirm your email for SlidesDone', text: `Confirm your email address to start creating:\n${url}\n\nIf you did not sign up, ignore this email.` })
+      await sendMail({ to: user.email, ...mail.verifyEmail({ name: user.name, url }) })
+    },
+    // the account is real now: say hello (best effort, never blocks the sign-in)
+    afterEmailVerification: async (user) => {
+      await sendMail({ to: user.email, ...mail.welcome({ name: user.name }) }).catch((e) => console.error('[welcome mail]', (e as Error).message))
     },
   },
   // Better Auth's own limiter mis-buckets behind multi-hop proxies (one shared bucket for everyone); ours is database-backed, see security/auth-guard.ts
   rateLimit: { enabled: false },
-  socialProviders:
-    env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET
-      ? { google: { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET } }
-      : {},
+  // each button on the log-in page appears only when its keys are set (see NEXT_PUBLIC_*_AUTH on the website)
+  socialProviders: {
+    ...(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET ? { google: { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET } } : {}),
+    ...(env.MICROSOFT_CLIENT_ID && env.MICROSOFT_CLIENT_SECRET ? { microsoft: { clientId: env.MICROSOFT_CLIENT_ID, clientSecret: env.MICROSOFT_CLIENT_SECRET, tenantId: env.MICROSOFT_TENANT_ID } } : {}),
+  },
   databaseHooks: {
     user: {
       create: {
@@ -57,6 +67,10 @@ export const auth = betterAuth({
           const [existing] = await db.select({ id: schema.user.id }).from(schema.user).where(eq(schema.user.emailCanonical, emailCanonical)).limit(1)
           if (existing) throw new APIError('UNPROCESSABLE_ENTITY', { message: 'User already exists. Use another email.' })
           return { data: { ...user, country, emailCanonical } }
+        },
+        // Google / Microsoft sign-ups arrive already verified (no confirmation mail, so no "afterEmailVerification"): welcome them here
+        after: async (user) => {
+          if (user.emailVerified) await sendMail({ to: user.email, ...mail.welcome({ name: user.name }) }).catch((e) => console.error('[welcome mail]', (e as Error).message))
         },
       },
     },

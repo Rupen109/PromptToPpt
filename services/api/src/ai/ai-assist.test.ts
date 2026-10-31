@@ -1,11 +1,11 @@
 import { eq } from 'drizzle-orm'
 import { describe, expect, it, vi } from 'vitest'
-import { DESIGNS, contrastRatio, getTheme } from '@prompttoppt/theme'
+import { DESIGNS, composeSlide, contrastRatio, getTheme } from '@prompttoppt/theme'
 import { findUrls, themeSchema, type Entitlements, type Presentation, type SlideContent } from '@prompttoppt/validation'
 import { db } from '../db/index.ts'
 import { creditBalance, generatedAsset } from '../db/schema.ts'
 import { api, json, makeDeck, rid, setPlan, signUp } from '../test-utils.ts'
-import { aiAssistOutput, aiAssistPrompt, compileAssist, keepShape, type AiAssistOutput } from './ai-assist.ts'
+import { aiAssistOutput, aiAssistPrompt, compileAssist, isSmallTalk, keepShape, morePointsAsked, namesOneSlide, type AiAssistOutput } from './ai-assist.ts'
 import { pageReader } from './linked-pages.ts'
 
 const balance = async (id: string) => (await db.select().from(creditBalance).where(eq(creditBalance.userId, id)))[0]!.balance
@@ -14,6 +14,74 @@ const free = { features: { premiumTemplates: false } } as unknown as Entitlement
 const out = (o: Partial<AiAssistOutput>): AiAssistOutput => ({ reply: 'ok', operations: [], unsupported: [], onTopic: true, ...o })
 
 describe('POST /presentations/:id/ai-assist', () => {
+  it('a request about one slide that names none gets a free "which slide?" question — no model call, no charge, nothing changed', async () => {
+    const u = await signUp('as')
+    const { id } = await makeDeck(u.id)
+    await api(u.cookie, 'GET', '/me/entitlements')
+    const before = await balance(u.id)
+    const slideId = (await json(await api(u.cookie, 'GET', `/presentations/${id}`))).data.document.slides[1].id
+    const res = await ask(u.cookie, id, 'please make the title shorter', { activeSlideId: slideId })
+    const body = await json(res)
+    expect(res.status).toBe(200)
+    expect(body.data).toMatchObject({ ask: true, applied: [], edits: [], creditsCharged: 0 })
+    expect(body.data.reply).toMatch(/Which slide.*slide 2/)
+    expect(await balance(u.id)).toBe(before)
+    // naming the slide (as the answer buttons do) goes on to the model as usual
+    const named = await ask(u.cookie, id, 'please make the title shorter (slide 2)', { activeSlideId: slideId })
+    expect((await json(named)).data.ask).toBeUndefined()
+  })
+
+  it('"add 2 more bullet points" answered by only rewording makes the server ask the model once more, and the points are added', async () => {
+    const u = await signUp('asr')
+    const { id } = await makeDeck(u.id)
+    await api(u.cookie, 'GET', '/me/entitlements')
+    const doc = (await json(await api(u.cookie, 'GET', `/presentations/${id}`))).data.document
+    const was = (doc.slides[1].content.bullets as string[]).length
+    const body = (await json(await ask(u.cookie, id, 'please add 2 more bullet points', { activeSlideId: doc.slides[1].id }))).data
+    expect(body.edits).toHaveLength(1)
+    expect(body.edits[0].content.bullets).toHaveLength(was + 2)
+    expect(body.notes).toEqual([])
+    expect(body.creditsCharged).toBe(4) // one message, one charge: the second try is not billed again
+  })
+
+  it('if the model never adds them, the person is told plainly (nothing is faked)', async () => {
+    const u = await signUp('asq')
+    const { id } = await makeDeck(u.id)
+    await api(u.cookie, 'GET', '/me/entitlements')
+    const doc = (await json(await api(u.cookie, 'GET', `/presentations/${id}`))).data.document
+    const body = (await json(await ask(u.cookie, id, 'please add 2 more bullet points stubborn', { activeSlideId: doc.slides[1].id }))).data
+    expect(body.notes.join(' ')).toMatch(/asked for 2 more points/)
+  })
+
+  it('small talk ("hey", "thanks") is answered for free with what the assistant can do — never a change, never the last action again', async () => {
+    const u = await signUp('ast')
+    const { id } = await makeDeck(u.id)
+    await api(u.cookie, 'GET', '/me/entitlements')
+    const before = await balance(u.id)
+    for (const hello of ['hey', 'Thanks!', 'ok', 'hello 🙂', 'thank you']) {
+      const body = (await json(await ask(u.cookie, id, hello))).data
+      expect(body, hello).toMatchObject({ applied: [], edits: [], additions: [], creditsCharged: 0 })
+      expect(body.reply).toMatch(/Tell me what to update/)
+    }
+    expect(await balance(u.id)).toBe(before)
+    for (const real of ['ok make the title shorter on slide 2', 'hey add a thank you slide', 'good, now animate every slide']) expect(isSmallTalk(real), real).toBe(false)
+  })
+
+  it('a message that names ONE slide costs one edit (2 credits on the starter tier); a deck-wide one costs two (4)', async () => {
+    const u = await signUp('asp')
+    const { id } = await makeDeck(u.id)
+    await api(u.cookie, 'GET', '/me/entitlements')
+    const slideId = (await json(await api(u.cookie, 'GET', `/presentations/${id}`))).data.document.slides[1].id
+    const one = await json(await ask(u.cookie, id, 'please animate slide 2', { activeSlideId: slideId }))
+    expect(one.data.creditsCharged).toBe(2)
+    const wide = await json(await ask(u.cookie, id, 'please animate every slide', { activeSlideId: slideId }))
+    expect(wide.data.creditsCharged).toBe(4)
+    expect(namesOneSlide('make it shorter (slide 16)')).toBe(true)
+    expect(namesOneSlide('change the thank you page')).toBe(true)
+    expect(namesOneSlide('shorten slide 2 and 3 and every slide')).toBe(false)
+    expect(namesOneSlide('change the colours')).toBe(false)
+  })
+
   it('animates the deck: one charge (2× an edit on the starter tier), a valid full theme comes back', async () => {
     const u = await signUp('as')
     const { id } = await makeDeck(u.id)
@@ -186,6 +254,129 @@ describe('compileAssist (the trust boundary between model output and the deck)',
     expect(r.edits).toEqual([])
     expect(r.applied).toEqual([])
     expect(r.notes).toHaveLength(5)
+  })
+
+  describe('"the text is not visible": the assistant fixes the text instead of undoing the change', () => {
+    const slideWith = (id: string, bgColor: string, textColor: string) => {
+      const c = composeSlide({ layout: 'thank-you', title: 'Thank you', subtitle: 'Questions?', speakerNotes: '', sources: [] } as SlideContent, getTheme('cobalt'), '16:9')
+      return { id, locked: false, ...c, background: { type: 'color', value: bgColor }, elements: c.elements.map((e) => (e.type === 'text' ? { ...e, color: textColor } : e)) }
+    }
+    const d = () => withSlides([slideWith('s1', '#1A110C', '#0B0F1A'), slideWith('s2', '#1A110C', '#F8F1ED'), { ...slideWith('s3', '#1A110C', '#0B0F1A'), locked: true }])
+    it('fix_readability: one slide, every slide, locked slides skipped, slide scope only for the selected slide', () => {
+      const one = compileAssist(d(), out({ operations: [{ op: 'fix_readability', slideId: 's1' }] }), free, 'deck')
+      expect(one.readability).toEqual(['s1'])
+      expect(one.theme).toBeNull()
+      expect(one.applied).toEqual(['Made the text on slide 1 readable on its background'])
+      const all = compileAssist(d(), out({ operations: [{ op: 'fix_readability', slideId: null }] }), free, 'deck')
+      expect(all.readability).toEqual(['s1', 's2'])
+      const locked = compileAssist(d(), out({ operations: [{ op: 'fix_readability', slideId: 's3' }] }), free, 'deck')
+      expect(locked.readability).toEqual([])
+      expect(locked.notes).toHaveLength(1)
+      expect(compileAssist(d(), out({ operations: [{ op: 'fix_readability', slideId: 's1' }] }), free, 'slide', 's1').readability).toEqual(['s1'])
+      expect(compileAssist(d(), out({ operations: [{ op: 'fix_readability', slideId: 's2' }] }), free, 'slide', 's1').readability).toEqual([])
+    })
+    it('the model is TOLD what the slides look like: each slide\'s background and which ones have text that does not read', () => {
+      const p = aiAssistPrompt({ instruction: 'the text is not visible', scope: 'deck', focusSlideId: undefined, doc: d() })
+      const deckPart = p.prompt.slice(p.prompt.indexOf('<deck>'))
+      expect(deckPart).toContain('"background":"#1A110C"')
+      const lines = deckPart.split('\n').filter((l) => l.startsWith('{"id"'))
+      expect(lines[0]).toContain('"lowContrastText":true') // dark text on a dark background
+      expect(lines[1]).not.toContain('lowContrastText')
+    })
+    it('the prompt teaches: not visible = fix the text, do not revert, do not ask', () => {
+      const s = aiAssistPrompt({ instruction: 'x', scope: 'deck', focusSlideId: undefined, doc: d() }).system
+      expect(s).toContain('fix_readability')
+      expect(s).toMatch(/TEXT NOT VISIBLE/)
+      expect(s).toMatch(/Do NOT revert the change they asked for/)
+    })
+  })
+
+  describe('"add 2 more bullet points": the lists really grow, or the user is told why not', () => {
+    const cmp = (l: number, r: number): SlideContent => ({ layout: 'comparison', title: 'T', left: { heading: 'L', bullets: Array.from({ length: l }, (_, i) => `left ${i}`) }, right: { heading: 'R', bullets: Array.from({ length: r }, (_, i) => `right ${i}`) }, speakerNotes: '', sources: [] }) as SlideContent
+    const d = (c: SlideContent) => withSlides([{ id: 's1', layoutId: 'comparison', locked: false, manual: false, content: c }])
+    it('understands the request', () => {
+      expect(morePointsAsked('please add 2 more bullet points here')).toBe(2)
+      expect(morePointsAsked('currently its 4 bullet points, please add 2 more in both side')).toBe(2)
+      expect(morePointsAsked('add three more points')).toBe(3)
+      expect(morePointsAsked('add 2 bullet points')).toBe(2)
+      expect(morePointsAsked('make the title shorter')).toBe(0)
+      expect(morePointsAsked(undefined)).toBe(0)
+    })
+    it('a comparison slide may now hold 6 points per side (it was 4: the assistant could only reword)', () => {
+      const r = compileAssist(d(cmp(4, 4)), out({ operations: [{ op: 'edit_slide', slideId: 's1', content: cmp(6, 6) }] }), free, 'deck', undefined, [], [], 'currently its 4 bullet points, please add 2 more in both side')
+      expect((r.edits[0]!.content as { left: { bullets: string[] }; right: { bullets: string[] } }).left.bullets).toHaveLength(6)
+      expect((r.edits[0]!.content as { right: { bullets: string[] } }).right.bullets).toHaveLength(6)
+      expect(r.notes).toEqual([])
+    })
+    it('if the model only rewords (same number of points), the user is told nothing was added — not a bare "Done"', () => {
+      const same = { ...cmp(4, 4), left: { heading: 'L', bullets: ['a', 'b', 'c', 'd'] }, right: { heading: 'R', bullets: ['e', 'f', 'g', 'h'] } } as SlideContent
+      const r = compileAssist(d(cmp(4, 4)), out({ operations: [{ op: 'edit_slide', slideId: 's1', content: same }] }), free, 'deck', undefined, [], [], 'please add 2 more bullet points here')
+      expect(r.notes).toHaveLength(1)
+      expect(r.notes[0]).toMatch(/asked for 2 more points/)
+    })
+    it('a full layout is explained: "already full: at most N"', () => {
+      const r = compileAssist(d(cmp(6, 6)), out({ operations: [{ op: 'edit_slide', slideId: 's1', content: { ...cmp(6, 6), left: { heading: 'L', bullets: ['1', '2', '3', '4', '5', '6'] } } as SlideContent }] }), free, 'deck', undefined, [], [], 'add 2 more bullet points')
+      expect(r.notes[0]).toMatch(/already full.*at most 6/)
+    })
+    it('a request that is not "N more points" gets no such note', () => {
+      const r = compileAssist(d(cmp(4, 4)), out({ operations: [{ op: 'edit_slide', slideId: 's1', content: { ...cmp(4, 4), title: 'Better title' } as SlideContent }] }), free, 'deck', undefined, [], [], 'make the title better')
+      expect(r.notes).toEqual([])
+    })
+    it('the model is told the list limits and to count', () => {
+      const s = aiAssistPrompt({ instruction: 'x', scope: 'deck', focusSlideId: undefined, doc: d(cmp(4, 4)) }).system
+      expect(s).toMatch(/LIST SIZES/)
+      expect(s).toMatch(/comparison 6 per side/)
+    })
+  })
+
+  describe('the background of ONE slide', () => {
+    const bg = (value: string) => ({ type: 'color', value })
+    const d = () => withSlides([
+      { id: 's1', layoutId: 'title-body', locked: false, background: bg('#1A110C'), content },
+      { id: 's2', layoutId: 'title-body', locked: false, background: bg('#1A110C'), content },
+      { id: 's3', layoutId: 'title-body', locked: false, background: bg('#1a110c'), content },
+      { id: 's4', layoutId: 'thank-you', locked: false, background: bg('#D7936F'), content: { layout: 'thank-you', title: 'Thank you', speakerNotes: '', sources: [] } },
+      { id: 's5', layoutId: 'title-body', locked: true, background: bg('#1A110C'), content },
+    ])
+    it('"same as the other slides" = the background most of the other slides share (the slide itself does not count), and the theme is untouched', () => {
+      const r = compileAssist(d(), out({ operations: [{ op: 'set_slide_background', slideId: 's4', color: 'deck' }] }), free, 'deck')
+      expect(r.backgrounds).toEqual([{ slideId: 's4', color: '#1A110C' }])
+      expect(r.theme).toBeNull()
+      expect(r.applied).toEqual(['Slide 4 now has the same background as the other slides'])
+    })
+    it('a chosen colour is applied to that slide only', () => {
+      const r = compileAssist(d(), out({ operations: [{ op: 'set_slide_background', slideId: 's4', color: '#8b5a2b' }] }), free, 'deck')
+      expect(r.backgrounds).toEqual([{ slideId: 's4', color: '#8B5A2B' }])
+      expect(r.applied).toEqual(['Changed the background of slide 4'])
+    })
+    it('slide scope: allowed for the selected slide, refused for any other (and a deck-wide colour change is still refused there)', () => {
+      const ok = compileAssist(d(), out({ operations: [{ op: 'set_slide_background', slideId: 's4', color: 'deck' }] }), free, 'slide', 's4')
+      expect(ok.backgrounds).toHaveLength(1)
+      const other = compileAssist(d(), out({ operations: [{ op: 'set_slide_background', slideId: 's1', color: '#112233' }, { op: 'set_colors', primary: '#112233', accent: '#445566', mode: 'dark' }] }), free, 'slide', 's4')
+      expect(other.backgrounds).toEqual([])
+      expect(other.theme).toBeNull()
+      expect(other.notes.length).toBe(2)
+    })
+    it('missing and locked slides are skipped with a note; a slide that already has the colour is not "changed"', () => {
+      const r = compileAssist(d(), out({ operations: [{ op: 'set_slide_background', slideId: 'ghost', color: '#112233' }, { op: 'set_slide_background', slideId: 's5', color: '#112233' }, { op: 'set_slide_background', slideId: 's1', color: '#1a110c' }] }), free, 'deck')
+      expect(r.backgrounds).toEqual([])
+      expect(r.notes).toHaveLength(3)
+    })
+    it('a bad colour is rejected by the schema (no hex injection)', () => {
+      expect(aiAssistOutput.safeParse({ reply: 'x', onTopic: true, ask: null, operations: [{ op: 'set_slide_background', slideId: 's1', color: 'red; background:url(x)' }], unsupported: [] }).success).toBe(false)
+      expect(aiAssistOutput.safeParse({ reply: 'x', onTopic: true, ask: null, operations: [{ op: 'set_slide_background', slideId: 's1', color: 'deck' }], unsupported: [] }).success).toBe(true)
+    })
+    it('the prompt says greetings and thanks are never a request to repeat the last change (a customer typed "hey" and got another slide)', () => {
+      const s = aiAssistPrompt({ instruction: 'hey', scope: 'deck', focusSlideId: undefined, doc: d() }).system
+      expect(s).toMatch(/GREETINGS AND SMALL TALK ARE NOT REQUESTS/)
+      expect(s).toMatch(/NEVER repeat or continue your previous action/)
+    })
+    it('the prompt teaches the model: one-slide background is set_slide_background, "same as the others" is not a complaint', () => {
+      const p = aiAssistPrompt({ instruction: 'x', scope: 'deck', focusSlideId: undefined, doc: d() }).system
+      expect(p).toContain('set_slide_background')
+      expect(p).toMatch(/BACKGROUND OF ONE SLIDE/)
+      expect(p).toMatch(/not a complaint/)
+    })
   })
 
   it('applies a valid edit and a theme change together', () => {

@@ -1,22 +1,31 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { CANVAS } from '@prompttoppt/validation'
 import type { LoadedPresentation } from '@prompttoppt/api-client'
 import { SlideCanvas, transitionStyle } from '@prompttoppt/ui'
 import { api } from '@/lib/api'
-import { useEntitlements } from '@/lib/entitlements'
+import { PRESENT_LOCKED, useEntitlements } from '@/lib/entitlements'
 
 /** Full-screen present mode: keyboard + click navigation, fade transition, speaker notes (N), fullscreen (F), Esc to exit. */
 export function PresentPage() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
-  const { ent } = useEntitlements()
+  const { ent, upgrade } = useEntitlements()
   const [deck, setDeck] = useState<LoadedPresentation | null>(null)
   const [failed, setFailed] = useState(false)
   const [i, setI] = useState(0)
   const [notes, setNotes] = useState(false)
   const [size, setSize] = useState({ w: window.innerWidth, h: window.innerHeight })
 
+  // a Starter plan typing the address by hand lands back in the editor with the upgrade window
+  const locked = !!ent && ent.features.exportFormats.length === 0
+  const bounced = useRef(false) // once: `upgrade` is a new object after every show(), so depending on it would loop
+  useEffect(() => {
+    if (!locked || bounced.current) return
+    bounced.current = true
+    upgrade.show(PRESENT_LOCKED)
+    navigate(`/edit/${id}`, { replace: true })
+  }, [locked, id, navigate, upgrade])
   useEffect(() => {
     api.getPresentation(id).then(setDeck).catch(() => setFailed(true))
   }, [id])
@@ -40,6 +49,7 @@ export function PresentPage() {
     return () => window.removeEventListener('keydown', key)
   }, [n, id, navigate])
 
+  if (locked) return null
   if (failed) return <div className="min-h-screen grid place-items-center bg-black text-white"><div className="text-center"><p className="mb-3">Could not load the presentation.</p><Link to="/" className="underline">Back to home</Link></div></div>
   if (!deck) return <div className="min-h-screen grid place-items-center bg-black text-white/60">Loading…</div>
   const doc = deck.document

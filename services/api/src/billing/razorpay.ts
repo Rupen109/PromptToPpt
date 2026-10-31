@@ -1,6 +1,8 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import { env } from '../env.ts'
 import { BillingError } from './errors.ts'
+import { RazorpayApiError, type RzpPayment, type RzpSubscription } from './razorpay-types.ts'
+import { SIM_SECRET, simProvider, simulatorEnabled } from './simulator.ts'
 
 const LIVE_API = 'https://api.razorpay.com/v1'
 /**
@@ -9,40 +11,10 @@ const LIVE_API = 'https://api.razorpay.com/v1'
  */
 const apiBase = () => (env.RAZORPAY_API_BASE && razorpayTestMode() && env.NODE_ENV !== 'production' ? env.RAZORPAY_API_BASE : LIVE_API)
 
-export const razorpayEnabled = () => !!env.RAZORPAY_KEY_ID && !!env.RAZORPAY_KEY_SECRET
-export const razorpayTestMode = () => !!env.RAZORPAY_KEY_ID?.startsWith('rzp_test_')
+export const razorpayEnabled = () => simulatorEnabled() || (!!env.RAZORPAY_KEY_ID && !!env.RAZORPAY_KEY_SECRET)
+export const razorpayTestMode = () => simulatorEnabled() || !!env.RAZORPAY_KEY_ID?.startsWith('rzp_test_')
 
-/** Razorpay returns `notes: []` (an array!) when there are none. */
-type Notes = Record<string, string> | []
-export const notesOf = (n: Notes | undefined): Record<string, string> => (n && !Array.isArray(n) ? n : {})
-
-export interface RzpSubscription {
-  id: string
-  plan_id: string
-  status: 'created' | 'authenticated' | 'active' | 'pending' | 'halted' | 'cancelled' | 'completed' | 'expired' | 'paused'
-  current_start: number | null
-  current_end: number | null
-  paid_count?: number
-  short_url?: string
-  notes?: Notes
-}
-export interface RzpPayment {
-  id: string
-  amount: number
-  currency: string
-  status: 'created' | 'authorized' | 'captured' | 'refunded' | 'failed'
-  method?: string
-  error_description?: string | null
-  created_at: number
-  notes?: Notes
-  subscription_id?: string | null
-}
-
-export class RazorpayApiError extends Error {
-  constructor(public readonly status: number, message: string) {
-    super(message)
-  }
-}
+export { RazorpayApiError, notesOf, type Notes, type RzpPayment, type RzpSubscription } from './razorpay-types.ts'
 
 async function call<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
   if (!razorpayEnabled()) throw new BillingError('BILLING_DISABLED', 'Payments are not configured on this server.', 503)
@@ -64,12 +36,12 @@ async function call<T>(method: 'GET' | 'POST', path: string, body?: unknown): Pr
  */
 export const razorpay = {
   createPlan: (p: { period: 'monthly' | 'yearly'; name: string; amount: number; currency: string; notes?: Record<string, string> }) =>
-    call<{ id: string }>('POST', '/plans', { period: p.period, interval: 1, item: { name: p.name, amount: p.amount, currency: p.currency }, notes: p.notes ?? {} }),
+    simulatorEnabled() ? simProvider.createPlan() : call<{ id: string }>('POST', '/plans', { period: p.period, interval: 1, item: { name: p.name, amount: p.amount, currency: p.currency }, notes: p.notes ?? {} }),
   createSubscription: (p: { planId: string; totalCount: number; notes: Record<string, string> }) =>
-    call<RzpSubscription>('POST', '/subscriptions', { plan_id: p.planId, total_count: p.totalCount, customer_notify: 1, notes: p.notes }),
-  fetchSubscription: (id: string) => call<RzpSubscription>('GET', `/subscriptions/${encodeURIComponent(id)}`),
-  fetchPayment: (id: string) => call<RzpPayment>('GET', `/payments/${encodeURIComponent(id)}`),
-  cancelSubscription: (id: string, atCycleEnd: boolean) => call<RzpSubscription>('POST', `/subscriptions/${encodeURIComponent(id)}/cancel`, { cancel_at_cycle_end: atCycleEnd ? 1 : 0 }),
+    simulatorEnabled() ? simProvider.createSubscription(p) : call<RzpSubscription>('POST', '/subscriptions', { plan_id: p.planId, total_count: p.totalCount, customer_notify: 1, notes: p.notes }),
+  fetchSubscription: (id: string) => simulatorEnabled() ? simProvider.fetchSubscription(id) : call<RzpSubscription>('GET', `/subscriptions/${encodeURIComponent(id)}`),
+  fetchPayment: (id: string) => simulatorEnabled() ? simProvider.fetchPayment(id) : call<RzpPayment>('GET', `/payments/${encodeURIComponent(id)}`),
+  cancelSubscription: (id: string, atCycleEnd: boolean) => simulatorEnabled() ? simProvider.cancelSubscription(id, atCycleEnd) : call<RzpSubscription>('POST', `/subscriptions/${encodeURIComponent(id)}/cancel`, { cancel_at_cycle_end: atCycleEnd ? 1 : 0 }),
 }
 
 function safeEqualHex(expected: string, actual: string): boolean {
@@ -79,7 +51,7 @@ function safeEqualHex(expected: string, actual: string): boolean {
 }
 
 /** Checkout success callback: HMAC_SHA256(`${payment_id}|${subscription_id}`, key_secret). */
-export function verifyCheckoutSignature(paymentId: string, subscriptionId: string, signature: string, secret = env.RAZORPAY_KEY_SECRET ?? ''): boolean {
+export function verifyCheckoutSignature(paymentId: string, subscriptionId: string, signature: string, secret = simulatorEnabled() ? SIM_SECRET : env.RAZORPAY_KEY_SECRET ?? ''): boolean {
   if (!secret) return false
   return safeEqualHex(createHmac('sha256', secret).update(`${paymentId}|${subscriptionId}`).digest('hex'), signature)
 }

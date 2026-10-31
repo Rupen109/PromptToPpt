@@ -1,5 +1,6 @@
 'use client'
 
+import { LayoutGrid, BarChart3, Sparkles, Download, TrendingUp, Star, Type } from '@prompttoppt/ui/icons'
 import { useState } from 'react'
 import { Card } from '@/components/ui/Card'
 import { Badge, HARD, Section, SectionHeader } from './ui'
@@ -20,10 +21,10 @@ const SORTER = [
 ] as const
 
 const TOOLS = [
-  ['▦', '#0b3dd0', 'Layout Grid'],
-  ['▮', '#ff5722', 'Toggle Chart Style'],
-  ['✦', '#059669', 'Rewrite with AI'],
-  ['A', '#9333ea', 'Typography'],
+  [LayoutGrid, '#0b3dd0', 'Layout Grid'],
+  [BarChart3, '#ff5722', 'Toggle Chart Style'],
+  [Sparkles, '#059669', 'Rewrite with AI'],
+  [Type, '#9333ea', 'Typography'],
 ] as const
 
 export default function StudioMockupSection() {
@@ -56,15 +57,15 @@ export default function StudioMockupSection() {
           </div>
           <div className="flex items-center gap-4">
             <span className="hidden sm:flex items-center gap-2 font-heading font-bold text-xs text-highlight"><i className="w-2 h-2 rounded-full bg-highlight" />Cloud Synced</span>
-            <span className={`inline-flex items-center gap-1.5 bg-secondary text-foreground border border-foreground rounded-lg px-[15px] py-[5px] font-heading font-extrabold text-xs uppercase ${HARD.sm}`}>⬇ Export PPTX</span>
+            <span className={`inline-flex items-center gap-1.5 bg-secondary text-foreground border border-foreground rounded-lg px-[15px] py-[5px] font-heading font-extrabold text-xs uppercase ${HARD.sm}`}><Download aria-hidden size={14} />Export PPTX</span>
           </div>
         </div>
 
         {/* toolbar */}
         <div className="bg-[#edf0f7] border-b-2 border-foreground px-5 py-[11px] flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap gap-2">
-            {TOOLS.map(([icon, c, label]) => (
-              <span key={label} className="inline-flex items-center gap-1.5 bg-white border border-foreground rounded-lg px-3 py-[6px] font-heading font-bold text-xs text-foreground shadow-[0_1px_2px_rgba(0,0,0,0.05)]"><b style={{ color: c }} aria-hidden>{icon}</b>{label}</span>
+            {TOOLS.map(([Icon, c, label]) => (
+              <span key={label} className="inline-flex items-center gap-1.5 bg-white border border-foreground rounded-lg px-3 py-[6px] font-heading font-bold text-xs text-foreground shadow-[0_1px_2px_rgba(0,0,0,0.05)]"><Icon aria-hidden size={14} style={{ color: c }} />{label}</span>
             ))}
           </div>
           <span className="hidden sm:inline font-heading font-extrabold text-xs text-primary">Slide 03: Unit Economics & Moats</span>
@@ -90,7 +91,7 @@ export default function StudioMockupSection() {
             <div className="w-full max-w-[836px] rounded-2xl border-2 p-4 md:p-[34px] transition-colors shadow-[0_1px_2px_rgba(0,0,0,0.05)]" style={{ background: m.canvas, borderColor: m.edge, color: m.text }}>
               <div className="flex flex-col md:flex-row md:justify-between gap-4">
                 <div className="md:max-w-[530px]">
-                  <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-0.5 font-heading font-extrabold text-xs uppercase text-white ${HARD.sm}`} style={{ background: dark ? '#ff5722' : '#ff5722' }}>📈 Section 03 • Cohort Retention</span>
+                  <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-0.5 font-heading font-extrabold text-xs uppercase text-white ${HARD.sm}`} style={{ background: dark ? '#ff5722' : '#ff5722' }}><TrendingUp aria-hidden size={12} />Section 03 • Cohort Retention</span>
                   <h3 className="font-heading font-extrabold text-2xl md:text-3xl leading-9 mt-1">Accelerating Net Revenue Retention <span className="whitespace-nowrap">(142% NRR)</span></h3>
                   <p className="text-sm leading-5 mt-2" style={{ color: m.muted }}>Growth fueled by automatic enterprise seat expansion and high-margin API consumption tiers</p>
                 </div>
@@ -126,7 +127,7 @@ export default function StudioMockupSection() {
                     <div className="font-heading font-extrabold text-2xl leading-8">11 Months</div>
                     <div className="text-xs leading-4" style={{ color: m.muted }}>Gross margin adjusted CAC payback</div>
                   </div>
-                  <span className="mt-1 inline-block bg-highlight text-foreground border border-foreground rounded px-2 py-[2px] font-heading font-extrabold text-[10px] leading-[15px] uppercase">★ Top decile performance</span>
+                  <span className="mt-1 inline-flex items-center gap-1 bg-highlight text-foreground border border-foreground rounded px-2 py-[2px] font-heading font-extrabold text-[10px] leading-[15px] uppercase"><Star aria-hidden size={10} fill="currentColor" />Top decile performance</span>
                 </div>
               </div>
 
@@ -138,7 +139,7 @@ export default function StudioMockupSection() {
 
             {/* bottom floating AI copilot prompt bar */}
             <div className={`w-full max-w-[836px] bg-white border-2 border-foreground rounded-2xl p-3 flex items-center gap-3 ${HARD.sm}`}>
-              <span className="w-8 h-8 rounded-xl grid place-items-center text-white shrink-0 transition-colors" style={{ background: dark ? '#334155' : m.primary }} aria-hidden>✦</span>
+              <span className="w-8 h-8 rounded-xl grid place-items-center text-white shrink-0 transition-colors" style={{ background: dark ? '#334155' : m.primary }} aria-hidden><Sparkles size={16} /></span>
               <p className="flex-1 min-w-0 truncate font-sans font-semibold text-sm leading-5 text-foreground">Adjust Q4 projected ARR to $10.2M and highlight Fortune 100 customer retention rate</p>
               <span className={`hidden sm:inline-block rounded-xl border-2 border-foreground px-[22px] py-2 font-heading font-extrabold text-xs uppercase tracking-[0.6px] text-white ${HARD.sm} transition-colors`} style={{ background: dark ? '#334155' : m.primary }}>Apply Edit</span>
             </div>

@@ -41,6 +41,17 @@ export default async function () {
     await p.keyboard.press('Escape'); await p.mouse.click(10, 10)
   })
 
+  await s.check('starter: Present is locked like export — the button opens the upgrade window, and typing the /present address lands back in the editor with it', p, async () => {
+    await p.getByRole('button', { name: /Present/ }).click(); await settle(500)
+    expect(/Present mode is available on the Pro plan/.test(await p.locator('body').innerText()), 'no upgrade prompt for Present')
+    expect(await p.getByTestId('present').count() === 0 && !/\/present\//.test(p.url()), 'Present mode opened on the Starter plan')
+    await p.keyboard.press('Escape'); await p.mouse.click(10, 10)
+    await p.goto(`${EDITOR}/present/${starterDeck}`, { waitUntil: 'load' }); await settle(1200)
+    expect(/\/edit\//.test(p.url()) && await p.getByTestId('present').count() === 0, `stayed on ${p.url()}`)
+    expect(/Present mode is available on the Pro plan/.test(await p.locator('body').innerText()), 'no upgrade prompt after the direct address')
+    await open(starterDeck)
+  })
+
   grant('pro')
   await ctx.storageState({ path: STATE })
   const proDeck = await fresh('pitch-launchpad')
@@ -164,7 +175,7 @@ export default async function () {
     }
     await p.getByRole('button', { name: /Insert/ }).click(); await p.getByRole('menuitem', { name: /Sticker 🚀/ }).click(); await settle(250); expect(await count() === n + 1, 'sticker')
     await p.getByRole('button', { name: /Insert/ }).click(); await p.getByRole('menuitem', { name: /Image \(set URL/ }).click(); await settle(250)
-    await p.getByRole('button', { name: 'Image URL' }).click(); await p.getByLabel('Image URL').fill('https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/PNG_transparency_demonstration_1.png/280px-PNG_transparency_demonstration_1.png'); await p.getByRole('button', { name: 'Set' }).click(); await settle(400)
+    await p.getByRole('button', { name: 'Image URL' }).click(); await p.getByLabel('Image URL').fill('https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/PNG_transparency_demonstration_1.png/330px-PNG_transparency_demonstration_1.png'); await p.getByRole('button', { name: 'Set' }).click(); await settle(400)
     await p.getByRole('button', { name: /Insert/ }).click(); await p.getByRole('menuitem', { name: /AI image/ }).click()
     await p.getByRole('dialog').waitFor({ timeout: 4000 }); await p.keyboard.press('Escape'); await settle(300)
     expect(await p.getByRole('dialog').count() === 0, 'image dialog did not close with Escape')

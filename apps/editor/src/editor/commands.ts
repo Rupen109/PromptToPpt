@@ -1,5 +1,5 @@
 import { current, isDraft, type Draft } from 'immer'
-import { IMAGE_BG_LAYOUTS, PHOTO_LAYOUTS, applyBrandToTheme, brandLogoElements, composeSlide, isDark, designById, getTheme, makeColors, recolor } from '@prompttoppt/theme'
+import { IMAGE_BG_LAYOUTS, PHOTO_LAYOUTS, applyBrandToTheme, brandLogoElements, composeSlide, contrastRatio, effectiveBackground, isDark, mix, readableOn, resolveColor, designById, getTheme, makeColors, recolor } from '@prompttoppt/theme'
 import { CANVAS, elementSchema, type AspectRatio, type LayoutId, type Presentation, type Slide, type SlideContent, type SlideElement, type TextElement, type Theme } from '@prompttoppt/validation'
 
 /**
@@ -39,6 +39,87 @@ export function setText(d: D, slideId: string, elId: string, paragraphs: TextEle
   const e = s && findEl(s, elId)
   if (!s || !e || e.type !== 'text' || e.locked) return
   e.paragraphs = paragraphs
+  touch(s)
+}
+
+type Paragraphs = TextElement['paragraphs']
+type Run = Paragraphs[number]['runs'][number]
+type RunStyle = Omit<Run, 'text'>
+const styleOf = (r: Run): RunStyle => { const rest: Partial<Run> = { ...r }; delete rest.text; return rest }
+const sameStyle = (a: RunStyle, b: RunStyle) => JSON.stringify(a) === JSON.stringify(b)
+
+/**
+ * The text typed in the inline editor becomes the new paragraphs WITHOUT throwing the formatting away. The editor only returns plain
+ * lines, so each line is matched to the paragraph it came from (same text, else same position) and the characters that did not change
+ * keep their run's look (italic word, emphasis colour, link); newly typed characters take the look of the character before them.
+ */
+export function retextParagraphs(old: Paragraphs, input: (string | { text: string; list?: 'bullet' | 'number' | undefined })[]): Paragraphs {
+  const used = new Set<number>()
+  const plainOf = (p: Paragraphs[number]) => p.runs.map((r) => r.text).join('')
+  // a line may arrive with its own list kind (the editor knows which lines are bullets / numbered); a plain string keeps the list of the paragraph it came from
+  const lines = input.map((x) => (typeof x === 'string' ? x : x.text))
+  const lists = input.map((x) => (typeof x === 'string' ? undefined : { list: x.list ?? null }))
+  return lines.map((line, i) => {
+    const out = retextOne(line, i)
+    const want = lists[i]
+    if (!want) return out
+    const { list: _gone, ...rest } = out
+    return want.list ? { ...rest, list: want.list } : rest
+  })
+  function retextOne(line: string, i: number): Paragraphs[number] {
+    let at = old.findIndex((p, k) => !used.has(k) && plainOf(p) === line)
+    if (at < 0) at = i < old.length && !used.has(i) ? i : -1
+    const src = at >= 0 ? old[at]! : old[old.length - 1]
+    if (at >= 0) used.add(at)
+    if (!src) return { runs: [{ text: line }] }
+    const list = src.list ? { list: src.list } : {}
+    const oldText = plainOf(src)
+    if (oldText === line) return { runs: src.runs.map((r) => ({ ...r })), ...list }
+    const styles: RunStyle[] = src.runs.flatMap((r) => [...r.text].map(() => styleOf(r)))
+    const fallback: RunStyle = styles[0] ?? styleOf(src.runs[0]!)
+    const a = [...oldText], b = [...line]
+    let pre = 0
+    while (pre < a.length && pre < b.length && a[pre] === b[pre]) pre++
+    let suf = 0
+    while (suf < a.length - pre && suf < b.length - pre && a[a.length - 1 - suf] === b[b.length - 1 - suf]) suf++
+    const runs: Run[] = []
+    b.forEach((ch, k) => {
+      const st = k < pre ? styles[k]! : k >= b.length - suf ? styles[a.length - (b.length - k)]! : (styles[Math.max(0, pre - 1)] ?? fallback)
+      const last = runs[runs.length - 1]
+      if (last && sameStyle(styleOf(last), st)) last.text += ch
+      else runs.push({ ...st, text: ch })
+    })
+    return { runs: runs.length ? runs : [{ ...fallback, text: '' }], ...list }
+  }
+}
+
+/** Turns bold / italic / underline on or off for every run of a text box (the toolbar acts on the whole box). */
+export function setRunFlag(d: D, slideId: string, elId: string, flag: 'bold' | 'italic' | 'underline', on: boolean) {
+  const s = findSlide(d, slideId)
+  const e = s && findEl(s, elId)
+  if (!s || !e || e.type !== 'text' || e.locked) return
+  for (const p of e.paragraphs) for (const r of p.runs) {
+    if (on || flag === 'bold') r[flag] = on // bold:false is kept — it overrides the weight a heading style gives
+    else delete r[flag]
+  }
+  touch(s)
+}
+
+/** Bullet / numbered list on or off for every paragraph of a text box. */
+export function setList(d: D, slideId: string, elId: string, list: 'bullet' | 'number' | null) {
+  const s = findSlide(d, slideId)
+  const e = s && findEl(s, elId)
+  if (!s || !e || e.type !== 'text' || e.locked) return
+  for (const p of e.paragraphs) { if (list) p.list = list; else delete p.list }
+  touch(s)
+}
+
+/** One link for the whole text box (http/https only — the schema refuses anything else); an empty value removes it. */
+export function setLink(d: D, slideId: string, elId: string, url: string | null) {
+  const s = findSlide(d, slideId)
+  const e = s && findEl(s, elId)
+  if (!s || !e || e.type !== 'text' || e.locked) return
+  for (const p of e.paragraphs) for (const r of p.runs) { if (url) r.link = url; else delete r.link }
   touch(s)
 }
 
@@ -195,7 +276,57 @@ export function setSlideBackground(d: D, slideId: string, value: string) {
   const s = findSlide(d, slideId)
   if (!s) return
   s.background = { type: 'color', value }
+  // text colours are theme tokens: on a hand-picked colour the deck's normal text can vanish (dark text on navy), so this one slide gets readable colours of its own
+  const isHexColour = /^#[0-9a-f]{6}$/i.test(value)
+  const light = isDark(value)
+  const overrides: Record<string, string> = { ...s.themeOverrides }
+  const setOrClear = (key: string, fix: string | null) => { if (fix) overrides[key] = fix; else delete overrides[key] }
+  for (const [key, fallback] of [['textPrimary', light ? '#FFFFFF' : '#111827'], ['textSecondary', light ? '#D6D6E0' : '#4B5563']] as const) {
+    setOrClear(key, isHexColour && contrastRatio(d.theme.colors[key], value) < 4.5 ? fallback : null)
+  }
+  // brand colours also draw text (kickers, numbers) and panels: move them toward white/black only as far as needed, and keep the text ON them readable
+  let moved = false
+  for (const key of ['primary', 'accent'] as const) {
+    const base = d.theme.colors[key]
+    let fix: string | null = null
+    if (isHexColour && contrastRatio(base, value) < 3) {
+      const toward = light ? '#FFFFFF' : '#000000'
+      for (let t = 0.1; t <= 1.001 && !fix; t += 0.1) { const c = mix(base, toward, t); if (contrastRatio(c, value) >= 3.5) fix = c }
+    }
+    setOrClear(key, fix); if (fix && key === 'primary') moved = true
+  }
+  setOrClear('onPrimary', moved ? readableOn(overrides['primary']!, ['#FFFFFF', '#111827']) : null)
+  if (Object.keys(overrides).length) s.themeOverrides = overrides as typeof s.themeOverrides
+  else delete s.themeOverrides
+  makeSlideReadable(d, slideId)
   touch(s)
+}
+
+/**
+ * Makes every piece of text on a slide readable on what is ACTUALLY behind it (the slide's background and any panel or card under the text). Slides such as a cover or a
+ * thank-you page set their text to fixed colours chosen for their own background, so moving the background (a hand-picked colour, "same as the other slides") can leave
+ * dark text on dark: theme tokens cannot fix that. Text that already reads is left exactly as it was; text that does not gets the closest colour that does.
+ * Returns how many text boxes it recoloured.
+ */
+export function makeSlideReadable(d: D, slideId: string): number {
+  const s = findSlide(d, slideId)
+  if (!s) return 0
+  const theme = d.theme as Theme
+  const colors = { ...theme.colors, ...(s.themeOverrides ?? {}) }
+  let fixed = 0
+  for (const e of s.elements) {
+    if (e.type !== 'text' || e.decorative) continue
+    const t = e as TextElement
+    const bg = effectiveBackground(s as Slide, theme, t)
+    const fg = resolveColor(t.color, theme, s as Slide)
+    const need = t.fontSize >= 32 || ((t.weight ?? 400) >= 700 && t.fontSize >= 24) ? 3 : 4.5
+    if (fg && contrastRatio(fg, bg) >= need) continue
+    // the closest readable choice: the deck's own text colours first (so the slide still looks like the deck), then plain white / near-black
+    const soft = t.role === 'subtitle' || t.role === 'caption'
+    const fix = readableOn(bg, soft ? [colors.textSecondary, colors.textPrimary, '#FFFFFF', '#111827'] : [colors.textPrimary, '#FFFFFF', '#111827'], Math.max(need, 4.5))
+    if (fix && fix.toLowerCase() !== (fg ?? '').toLowerCase()) { t.color = fix as TextElement['color']; fixed++ }
+  }
+  return fixed
 }
 
 export function setSlideLocked(d: D, slideId: string, locked: boolean) {
@@ -300,9 +431,11 @@ export function addSources(d: D, list: { id: string; type: 'pdf' | 'url' | 'text
   for (const src of list) if (!d.sources.some((x) => x.id === src.id)) d.sources.push(src)
 }
 
-export function applyAssist(d: D, r: { theme: Theme | null; edits: { slideId: string; content: SlideContent }[]; additions?: { afterSlideId: string | null; content: SlideContent }[] | undefined; sources?: { id: string; type: 'pdf' | 'url' | 'text'; title: string; url?: string }[] | undefined }) {
+export function applyAssist(d: D, r: { theme: Theme | null; backgrounds?: { slideId: string; color: string }[] | undefined; readability?: string[] | undefined; edits: { slideId: string; content: SlideContent }[]; additions?: { afterSlideId: string | null; content: SlideContent }[] | undefined; sources?: { id: string; type: 'pdf' | 'url' | 'text'; title: string; url?: string }[] | undefined }) {
   if (r.theme) applyThemeObject(d, r.theme)
   for (const e of r.edits) replaceContent(d, e.slideId, e.content)
+  for (const b of r.backgrounds ?? []) setSlideBackground(d, b.slideId, b.color)
+  for (const id of r.readability ?? []) makeSlideReadable(d, id)
   for (const a of r.additions ?? []) {
     const at = a.afterSlideId ? d.slides.findIndex((s) => s.id === a.afterSlideId) : -1
     const slide: Slide = { id: newId(), locked: false, validation: { status: 'pending', issues: [] }, ...composeSlide(a.content, d.theme as Theme, d.aspectRatio, newId) }
@@ -319,23 +452,32 @@ export interface AssistUndo {
   id: string
   theme: Theme | null
   contents: Record<string, SlideContent>
+  /** slides whose background the change set: how each one was (background + its own readable-colour overrides) */
+  backgrounds?: Record<string, { background: Slide['background'] | null; themeOverrides: Slide['themeOverrides'] | null; textColors: Record<string, string> }>
   added: string[]
   /** what the change did, in words (also shown to the model as context) */
   summary: string[]
 }
 
 /** Records what an assistant answer changed (call with the deck from BEFORE and AFTER applying it). */
-export function snapshotAssist(before: Presentation, after: Presentation, themeChanged: boolean, summary: string[], id: string = newId()): AssistUndo {
+export function snapshotAssist(before: Presentation, after: Presentation, themeChanged: boolean, summary: string[], id: string = newId(), lookIds: string[] = []): AssistUndo {
   const had = new Set(before.slides.map((s) => s.id))
   const contents: Record<string, SlideContent> = {}
   for (const s of before.slides) {
     const now = after.slides.find((x) => x.id === s.id)
     if (s.content && now && JSON.stringify(now.content) !== JSON.stringify(s.content)) contents[s.id] = structuredClone(s.content) as SlideContent
   }
-  return { id, theme: themeChanged ? (structuredClone(before.theme) as Theme) : null, contents, added: after.slides.filter((s) => !had.has(s.id)).map((s) => s.id), summary }
+  const backgrounds: NonNullable<AssistUndo['backgrounds']> = {}
+  const colorsOf = (sl: Slide) => Object.fromEntries(sl.elements.filter((e) => e.type === 'text').map((e) => [e.id, String((e as TextElement).color)]))
+  // slides whose LOOK the change touched (background, own colours, the colour of their text): enough to put each one back
+  for (const s of before.slides.filter((x) => lookIds.includes(x.id))) {
+    const now = after.slides.find((x) => x.id === s.id)
+    if (now && (JSON.stringify(now.background) !== JSON.stringify(s.background) || JSON.stringify(now.themeOverrides) !== JSON.stringify(s.themeOverrides) || JSON.stringify(colorsOf(now)) !== JSON.stringify(colorsOf(s)))) backgrounds[s.id] = { background: structuredClone(s.background ?? null), themeOverrides: structuredClone(s.themeOverrides ?? null), textColors: colorsOf(s) }
+  }
+  return { id, theme: themeChanged ? (structuredClone(before.theme) as Theme) : null, contents, ...(Object.keys(backgrounds).length ? { backgrounds } : {}), added: after.slides.filter((s) => !had.has(s.id)).map((s) => s.id), summary }
 }
 /** Ids of every slide the change touched (rewritten or added). */
-export const undoSlideIds = (u: AssistUndo) => [...Object.keys(u.contents), ...u.added]
+export const undoSlideIds = (u: AssistUndo) => [...new Set([...Object.keys(u.contents), ...Object.keys(u.backgrounds ?? {}), ...u.added])]
 
 /** Puts back (all of, or part of) an assistant change. Slides first (added ones are removed), then the design so everything is recomposed together. */
 export function revertAssist(d: D, undo: AssistUndo, part: 'all' | 'theme' | 'slide', slideId?: string) {
@@ -344,6 +486,9 @@ export function revertAssist(d: D, undo: AssistUndo, part: 'all' | 'theme' | 'sl
     if (undo.added.includes(id)) { const i = d.slides.findIndex((s) => s.id === id); if (i >= 0 && !d.slides[i]!.locked) d.slides.splice(i, 1); continue }
     const old = undo.contents[id]
     if (old) replaceContent(d, id, old)
+    const bg = undo.backgrounds?.[id]
+    const slide = bg ? d.slides.find((x) => x.id === id) : undefined
+    if (bg && slide && !slide.locked) { if (bg.background) slide.background = structuredClone(bg.background); else delete slide.background; if (bg.themeOverrides) slide.themeOverrides = structuredClone(bg.themeOverrides); else delete slide.themeOverrides; for (const e of slide.elements) if (e.type === 'text' && bg.textColors[e.id] !== undefined) (e as TextElement).color = bg.textColors[e.id] as TextElement['color'] }
   }
   if ((part === 'theme' || part === 'all') && undo.theme) applyThemeObject(d, structuredClone(undo.theme))
 }

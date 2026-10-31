@@ -1,3 +1,4 @@
+import { ArrowLeft, Sparkles, X } from '@prompttoppt/ui/icons'
 import { Portal } from '@/components/Portal'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError, isGateError, type AnalyzeResult, type JobView } from '@prompttoppt/api-client'
@@ -105,7 +106,7 @@ export function DeckRewriteDialog({ presentationId, autoBrief, picturesOnly, sli
               {perSlide ? <span className="text-xs text-slate-600">≈ {perSlide * count} credits</span> : null}
             </label>
             <div className="flex items-center justify-between gap-3 mt-5">
-              <button type="button" onClick={() => setPhase('ask')} className="text-sm text-slate-600 underline">← Edit my text</button>
+              <button type="button" onClick={() => setPhase('ask')} className="text-sm text-slate-600 underline inline-flex items-center gap-1"><ArrowLeft aria-hidden size={14} />Edit my text</button>
               <button onClick={() => void start(brief.trim(), brief0.analysis, count)} className="bg-primary text-white rounded-lg px-5 py-2.5 text-sm font-semibold">Looks right — build it</button>
             </div>
           </div>
@@ -123,7 +124,7 @@ export function DeckRewriteDialog({ presentationId, autoBrief, picturesOnly, sli
                 <h2 className="font-heading font-bold text-xl">Tell me what to put in your slides</h2>
                 <p className="text-sm text-slate-600 mt-1">Describe your topic, experience or notes. I’ll write every slide, add pictures and keep this template’s look.</p>
               </div>
-              <button type="button" onClick={onClose} aria-label="Close" className="text-slate-500 hover:text-slate-800 text-2xl leading-none">×</button>
+              <button type="button" onClick={onClose} aria-label="Close" className="text-slate-500 hover:text-slate-800 text-2xl leading-none"><X aria-hidden size={24} /></button>
             </div>
             <textarea value={brief} onChange={(e) => setBrief(e.target.value)} rows={6} maxLength={3000} autoFocus aria-label="What is your presentation about?" placeholder="e.g. I did a QA internship. I learned to write test cases, test the real functionality and report real bugs. Cover everything." className="mt-4 w-full border border-border rounded-xl p-3 text-[15px] focus:outline-none focus:border-primary resize-none" />
             <div className="flex flex-wrap gap-2 mt-2" aria-label="Examples">
@@ -133,7 +134,7 @@ export function DeckRewriteDialog({ presentationId, autoBrief, picturesOnly, sli
             <div className="flex items-center justify-between gap-3 mt-5">
               <button type="button" onClick={onClose} className="text-sm text-slate-600 underline">Skip — I’ll edit the sample myself</button>
               <div className="text-right">
-                <button disabled={brief.trim().length < 10} className="bg-primary text-white rounded-lg px-5 py-2.5 text-sm font-semibold disabled:opacity-50">✨ Create my slides</button>
+                <button disabled={brief.trim().length < 10} className="bg-primary text-white rounded-lg px-5 py-2.5 text-sm font-semibold disabled:opacity-50 inline-flex items-center gap-1.5"><Sparkles aria-hidden size={16} />Create my slides</button>
                 {cost !== null && <div className="text-[11px] text-slate-600 mt-1">I’ll show what I understood first · your current version stays in Version history</div>}
               </div>
             </div>

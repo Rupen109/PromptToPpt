@@ -1,6 +1,6 @@
 import PptxGenJS from 'pptxgenjs'
 import { resolveColor } from '@prompttoppt/theme'
-import { CANVAS, type Presentation, type Slide, type SlideElement, type TextElement, type Theme } from '@prompttoppt/validation'
+import { CANVAS, flattenShape, shapeDef, type Presentation, type Slide, type SlideElement, type TextElement, type Theme } from '@prompttoppt/validation'
 import { gradientPng, imageSize, parseColor } from './png.ts'
 import { NAME_PREFIX, hasEntrance, injectMotion, type SlideMotion } from './motion.ts'
 import { and, eq, isNull } from 'drizzle-orm'
@@ -111,7 +111,7 @@ function addText(slide: PptxGenJS.Slide, el: TextElement, theme: Theme, sl: Slid
         text: el.uppercase ? r.text.toUpperCase() : r.text,
         options: {
           ...(rtl ? { rtlMode: true } : {}),
-          ...((r.bold ?? (el.weight ? el.weight >= 600 : false)) ? { bold: true } : {}), ...(r.italic ? { italic: true } : {}), ...(r.color ? { color: hex6(resolveColor(r.color, theme, sl)) } : {}), ...(r.link ? { hyperlink: { url: r.link } } : {}),
+          ...((r.bold ?? (el.weight ? el.weight >= 600 : false)) ? { bold: true } : {}), ...(r.italic ? { italic: true } : {}), ...(r.underline ? { underline: { style: 'sng' as const } } : {}), ...(r.color ? { color: hex6(resolveColor(r.color, theme, sl)) } : {}), ...(r.link ? { hyperlink: { url: r.link } } : {}),
           ...(ri === 0 && p.list ? { bullet: p.list === 'number' ? { type: 'number' as const } : { characterCode: (el.bullet.codePointAt(0) ?? 0x2022).toString(16).toUpperCase().padStart(4, '0') } } : {}),
           ...(ri === 0 && p.list ? { indentLevel: 0 } : {}),
           breakLine: isLast && !last,
@@ -147,6 +147,17 @@ function addShape(pptx: PptxGenJS, slide: PptxGenJS.Slide, el: Extract<SlideElem
   if (el.shape === 'ellipse') { slide.addShape(T.ellipse, { ...pos, fill, line }); return }
   if (el.shape === 'triangle') { slide.addShape(T.triangle, { ...pos, fill, line }); return }
   if (el.shape === 'chevron') { slide.addShape(T.chevron, { ...pos, fill, line }); return }
+  const def = shapeDef(el.shape)
+  if (def) {
+    // library shape: the outline flattened into a free-form PowerPoint shape (every contour, so holes in frames and signs survive)
+    const points: Array<Record<string, unknown>> = []
+    for (const contour of flattenShape(def.path)) {
+      contour.forEach(([x, y], i) => points.push({ x: (x / 100) * pos.w, y: (y / 100) * pos.h, ...(i === 0 ? { moveTo: true } : {}) }))
+      points.push({ close: true })
+    }
+    slide.addShape('custGeom' as never, { ...pos, fill, line, points } as never)
+    return
+  }
   if (el.radius > 0) {
     const r = Math.min(0.5, el.radius / Math.min(el.width, el.height))
     slide.addShape(T.roundRect, { ...pos, fill, line, rectRadius: r * Math.min(pos.w, pos.h) })
@@ -192,8 +203,10 @@ const mixHex = (a: string, b: string, t = 0.5) => { const x = parseColor(a), y =
 
 function addTableEl(slide: PptxGenJS.Slide, el: Extract<SlideElement, { type: 'table' }>, theme: Theme) {
   const k = theme.colors
+  // 'none' = no fill: the slide shows through (a table made in the editor starts that way)
+  const fillOf = (c: string, bg: string) => ({ color: hex6(c === 'none' ? bg : c), ...(c === 'none' ? { transparency: 100 } : {}) })
   const cell = (text: string, head: boolean, i: number): PptxGenJS.TableCell => ({
-    text, options: { bold: head, fontFace: head ? theme.fonts.heading : theme.fonts.body, fontSize: pt(head ? 26 : 24), color: hex6(head ? k.onPrimary : k.textPrimary), fill: { color: hex6(head ? k.primary : i % 2 ? k.surface : k.background) }, valign: 'middle', margin: [0.06, 0.1, 0.06, 0.1], border: { type: 'solid', pt: 0.5, color: hex6(mixHex(k.textSecondary, k.background, 0.75)) } },
+    text, options: { bold: head, fontFace: head ? theme.fonts.heading : theme.fonts.body, fontSize: pt(head ? 26 : 24), color: hex6(head ? (el.headerColor ?? k.onPrimary) : (el.textColor ?? k.textPrimary)), fill: fillOf(head ? (el.headerFill ?? k.primary) : i % 2 ? (el.altRowFill ?? k.background) : (el.rowFill ?? k.surface), k.background), valign: 'middle', margin: [0.06, 0.1, 0.06, 0.1], border: el.borderColor ? { type: 'solid', pt: 1.5, color: hex6(el.borderColor) } : { type: 'solid', pt: 0.5, color: hex6(mixHex(k.textSecondary, k.background, 0.75)) } },
   })
   slide.addTable([el.header.map((h) => cell(h, true, 0)), ...el.rows.map((r, i) => el.header.map((_, c) => cell(r[c] ?? '', false, i)))], { ...named(el), x: inch(el.x), y: inch(el.y), w: inch(el.width) })
 }

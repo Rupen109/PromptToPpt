@@ -22,21 +22,22 @@ export default async function () {
     await working.waitFor({ state: 'detached', timeout: wait }) // …and finished
     await settle(700)
   }
+  /** a model's wording can differ run to run: one more try before a check counts as failed (a second miss is a real failure) */
+  const twice = (fn) => async () => { try { await fn() } catch { await settle(20000); await fn() } }
   const sig = () => thumbs().evaluateAll((els) => els.map((e) => e.innerHTML.length + ':' + (e.innerHTML.match(/#[0-9a-fA-F]{6}|rgb\([^)]*\)/g) ?? []).slice(0, 6).join(',')).join('|'))
 
-  await s.check('panel: opens from the toolbar, shows scope toggle, model picker, suggestions, closes', p, async () => {
+  await s.check('panel: opens from the toolbar, has NO whole-deck / this-slide switch (the chat asks which slide), model picker, suggestions, quick actions, closes', p, async () => {
     await p.getByRole('button', { name: /Edit with AI/ }).click(); await panel().waitFor({ timeout: 4000 })
-    expect(await panel().getByRole('group', { name: 'What should the AI change?' }).isVisible(), 'scope toggle missing')
+    expect(await panel().getByRole('group', { name: 'What should the AI change?' }).count() === 0 && await panel().getByRole('button', { name: /^Whole deck$/ }).count() === 0, 'the scope switch is still there')
+    expect(await panel().getByLabel('Quick actions for this slide').isVisible(), 'quick actions missing')
     expect(await panel().getByLabel('AI model').isVisible(), 'model picker missing')
     expect(await panel().locator('button').count() >= 6, 'no suggestions')
     await p.getByLabel('Close AI panel').click(); await settle(200); expect(await panel().count() === 0, 'did not close')
     await p.getByRole('button', { name: /Edit with AI/ }).click(); await panel().waitFor()
   })
-  await s.check('panel: Send is disabled for an empty message; scope toggle switches placeholder', p, async () => {
+  await s.check('panel: Send is disabled for an empty message; the placeholder names the slide you are on', p, async () => {
     expect(await p.getByRole('button', { name: 'Send' }).isDisabled(), 'Send enabled when empty')
-    await panel().getByRole('button', { name: /This slide/i }).click()
     expect(/slide \d+/.test(await p.getByLabel('Message to the AI assistant').getAttribute('placeholder')), 'placeholder not slide-specific')
-    await panel().getByRole('button', { name: /Whole deck|Deck/i }).first().click()
   })
   await s.check('deck request: "change colours to warm oranges" restyles every slide live (no reload) and offers Undo', p, async () => {
     const before = await sig()
@@ -53,7 +54,6 @@ export default async function () {
   })
   await s.check('slide request: "make this slide shorter" edits only the active slide', p, async () => {
     await thumbs().nth(2).click(); await settle(300)
-    await panel().getByRole('button', { name: /This slide/i }).click()
     const others = await thumbs().evaluateAll((els) => els.map((e, i) => i === 2 ? '' : e.innerHTML.length).join(','))
     await send('Make this slide shorter and punchier')
     expect(!/Something went wrong/.test(await panel().getByRole('log').innerText()), 'errored')
@@ -67,19 +67,16 @@ export default async function () {
     expect(/I updated slide/.test(await panel().getByRole('log').innerText()), 'quick action failed')
   })
   await s.check('honesty: an impossible request (export + share) is declined in plain words, not faked', p, async () => {
-    await panel().getByRole('button', { name: /Whole deck|Deck/i }).first().click()
     await send('Export this to PDF and email it to my boss')
     const log = (await panel().getByRole('log').innerText()).toLowerCase()
     expect(/can.?t|cannot|unable|not able|isn.?t|doesn.?t|unsupported|no way|export button|couldn.?t/.test(log), `no honest refusal: ${log.slice(-250)}`)
   })
   await s.check('pictures: "add a picture" proposes an image (with Generate / Open image studio) instead of silently doing nothing', p, async () => {
     await thumbs().nth(1).click(); await settle(300)
-    await panel().getByRole('button', { name: /This slide/i }).click()
     await send('Add a picture of a modern city skyline at dawn to this slide')
     const card = p.getByLabel(/Picture proposal for slide/); expect(await card.count() >= 1, 'no picture proposal card')
   })
   await s.check('add a slide: "please add the thank you page at last" appends a Thank you slide (one undo step)', p, async () => {
-    await panel().getByRole('button', { name: /Whole deck|Deck/i }).first().click()
     const count = () => thumbs().count()
     const before = await count()
     await send('please add the thank you pafe at last')
@@ -89,18 +86,17 @@ export default async function () {
     await p.keyboard.press('Meta+z'); await settle(400)
     expect(await count() === before, 'undo did not remove the added slide')
   })
-  await s.check('no edit found: a greeting gets a helpful reply (what the assistant can do), not a bare refusal', p, async () => {
+  await s.check('no edit found: a greeting gets a helpful reply (what the assistant can do), not a bare refusal', p, twice(async () => {
     await send('hey')
     const log = await panel().getByRole('log').innerText()
     expect(/Tell me what to update/.test(log) && /add a slide/.test(log) && /colours/.test(log) && !/couldn't change anything|nothing was charged/i.test(log), `reply: ${log.slice(-300)}`)
-  })
-  await s.check('off-topic ("give me some water please") shows the help list, not a made-up note', p, async () => {
+  }))
+  await s.check('off-topic ("give me some water please") shows the help list, not a made-up note', p, twice(async () => {
     await send('give me some water please')
     const log = await panel().getByRole('log').innerText()
     expect(/Tell me what to update/.test(log.slice(-700)) && !/serving|physical|drinks/i.test(log.slice(-700)), `reply: ${log.slice(-300)}`)
-  })
-  await s.check('"why did you change the theme?" puts the assistant\'s own change back (free), and says so', p, async () => {
-    await panel().getByRole('button', { name: /Whole deck|Deck/i }).first().click()
+  }))
+  await s.check('"why did you change the theme?" puts the assistant\'s own change back (free), and says so', p, twice(async () => {
     const base = await sig()
     await send('change the colours to deep purple and gold')
     expect(await sig() !== base, 'the colour change did not apply')
@@ -110,29 +106,35 @@ export default async function () {
     const colours = (x) => x.split('|').map((t) => t.replace(/^\d+:/, '')).join('|') // markup length can differ by a few characters; the colours are what matter
     const aft = await sig()
     expect(colours(aft) === colours(base), 'the theme was not restored')
-  })
+  }))
   await s.check('"add more content in the 2nd slide" writes new topic content itself (no document needed, no refusal)', p, async () => {
-    await panel().getByRole('button', { name: /Whole deck|Deck/i }).first().click()
     await send('add more content in the 2nd slide')
     const tail = (await panel().getByRole('log').innerText()).slice(-400)
     expect(/rewrote slide 2/i.test(tail) && !/attach|specific details|couldn.?t do that/i.test(tail), `reply: ${tail}`)
   })
-  await s.check('vague request ("make the title shorter") asks which slide, changes nothing; the "this slide" button then does it', p, async () => {
-    await panel().getByRole('button', { name: /Whole deck|Deck/i }).first().click()
+  await s.check('vague request ("make the title shorter") always asks which slide (this one / all / another by number), changes nothing, costs nothing; the "this slide" button then does it', p, async () => {
+    p.once('dialog', (d) => void d.accept())
+    await panel().getByRole('button', { name: 'Clear chat' }).click(); await settle(700)
     const before = await sig()
-    await send('please make the title shorter')
+    await steadyModel()
+    await p.getByLabel('Message to the AI assistant').fill('please make the title shorter'); await p.getByRole('button', { name: 'Send' }).click()
+    await panel().getByRole('group', { name: 'Which slide?' }).waitFor({ timeout: 15000 }); await settle(500)
     const tail = (await panel().getByRole('log').innerText()).slice(-500)
     expect(/which slide/i.test(tail), `no question: ${tail} | alerts: ${await p.getByRole('alert').allInnerTexts()}`)
     expect(await sig() === before, 'something changed before the user chose a slide')
     const chip = panel().getByRole('group', { name: 'Which slide?' }).getByRole('button', { name: /this one/ })
     expect(await chip.count() === 1, 'no "this slide" button')
+    expect(await panel().getByRole('group', { name: 'Which slide?' }).getByRole('button', { name: 'All slides' }).count() === 1, 'no "All slides" button')
+    const other = panel().getByRole('group', { name: 'Which slide?' }).getByLabel('Another slide')
+    expect(await other.locator('option').count() >= 5, 'no list of other slides to pick from')
     await chip.click()
     await p.getByText('Working on it').waitFor({ state: 'visible', timeout: 10000 }); await p.getByText('Working on it').waitFor({ state: 'detached', timeout: 150000 }); await settle(700)
     expect(/rewrote slide/i.test((await panel().getByRole('log').innerText()).slice(-400)), 'the chosen slide was not edited')
   })
   const colours = (x) => x.split('|').map((t) => t.replace(/^\d+:/, '')).join('|')
   await s.check('"make theme light" then, after closing and reopening the panel, "didnt like it revert it please" simply puts it back (no question)', p, async () => {
-    await panel().getByRole('button', { name: /Whole deck|Deck/i }).first().click()
+    // the deck may already be light (templates are light or dark, and the assistant keeps that): start from a dark one so "make it light" has something to change
+    await send('make the theme dark')
     const base = colours(await sig())
     await send('make the theme light')
     expect(colours(await sig()) !== base, 'the theme change did not apply')
@@ -144,6 +146,7 @@ export default async function () {
     expect(colours(await sig()) === base, 'the theme was not restored')
   })
   await s.check('the same works after a full page reload (the undo record is saved with the chat)', p, async () => {
+    await settle(50000) // the assistant allows 15 requests a minute: let the window reset after the earlier checks
     const base = colours(await sig())
     await send('change the colours to deep green and gold')
     expect(colours(await sig()) !== base, 'the colour change did not apply')

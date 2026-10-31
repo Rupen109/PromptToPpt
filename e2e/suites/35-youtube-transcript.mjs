@@ -37,7 +37,7 @@ export default async function () {
       await dlg.getByRole('button', { name: 'Add transcript' }).click()
       await dlg.waitFor({ state: 'detached', timeout: 20000 })
       const chip = P.p.locator('form span[title]').first(); await chip.waitFor({ timeout: 8000 })
-      expect((await chip.innerText()).includes('🎬'), 'no 🎬 icon on the chip')
+      expect(await chip.locator('svg.lucide-clapperboard').count() > 0, 'no clapperboard (video) icon on the chip')
       const src = sources()[0]
       expect(src.type === 'transcript' && src.url === 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', `type/url: ${src.type} ${src.url}`)
       expect(src.chunks.some((c) => /^\d+:\d{2}/.test(c.locator ?? '')), `locators: ${JSON.stringify(src.chunks.map((c) => c.locator))}`)

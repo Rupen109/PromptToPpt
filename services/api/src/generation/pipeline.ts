@@ -2,7 +2,7 @@ import { and, eq, ne, sql } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { applyValidation, composeDeck, designById, pickDesign, type Photo } from '@prompttoppt/theme'
 import {
-  SCHEMA_VERSION, accessTierSchema, deckLanguage, directionSchema, outlineSchema, promptAnalysisSchema, slideContentSchema,
+  SCHEMA_VERSION, SOURCE_TYPES, accessTierSchema, deckLanguage, directionSchema, outlineSchema, promptAnalysisSchema, slideContentSchema,
   type Direction, type Outline, type Presentation, type PromptAnalysis, type Slide, type SlideContent,
 } from '@prompttoppt/validation'
 import { z } from 'zod'
@@ -22,6 +22,7 @@ import { env } from '../env.ts'
 import { publishRevision } from '../live/bus.ts'
 import { condense, hasNumbers, resolveSlideCount, sanitizeContent, sanitizeOutline } from './policy.ts'
 import { loadSources } from './sources.ts'
+import { chooseDesign } from './design-pick.ts'
 
 const BATCH = 4
 /** Independent model calls (slide batches, repair rewrites) that may run at once. Same prompts and models as before — only the waiting is shared. */
@@ -55,7 +56,7 @@ const optionsSchema = z.object({
   picturesOnly: z.boolean().default(false),
   sourceIds: z.array(z.string()).max(10).default([]),
 })
-type Checkpoint = { analysis?: PromptAnalysis; outline?: Outline; contents?: SlideContent[]; repaired?: boolean; report?: Record<string, unknown> }
+type Checkpoint = { analysis?: PromptAnalysis; outline?: Outline; contents?: SlideContent[]; repaired?: boolean; designId?: string; report?: Record<string, unknown> }
 
 /** Moves the job to a stage, extends the lease, and aborts if the user cancelled in the meantime. */
 async function stage(jobId: string, status: JobStatus, progress: number) {
@@ -252,17 +253,24 @@ async function generate(jobId: string, hold: { pictures?: PictureSession }): Pro
   cp.report = { ...(cp.report as object), pictures: { slots: wanted.length, placed: picks.filter(Boolean).length, missing: wanted.filter((w) => !picks[w.index]).map((w) => w.index), stockBlocked: hold.pictures.blocked(), unsplashRequests: hold.pictures.stats() } }
 
   // 5 ─ layout (deterministic) in the design, then validation (+ one condense-and-retry pass for overflow)
-  let design = (opts.designId ? designById(opts.designId) : undefined) ?? pickDesign(analysis.category, opts.premiumTemplates, prompt)
+  // A NEW deck gets the template that fits ITS topic (one small model call over the category's shortlist, remembered in the checkpoint so a retry never repeats it);
+  // a rewrite or remix keeps the existing deck's look and never asks.
+  const keepsLook = !!(existingDoc?.theme || remixDoc?.theme)
+  if (!opts.designId && !keepsLook && !cp.designId) {
+    cp.designId = (await chooseDesign({ analysis, prompt, premiumAllowed: opts.premiumTemplates, ctx })).id
+    await saveCheckpoint(jobId, cp)
+  }
+  let design = (opts.designId ? designById(opts.designId) : undefined) ?? (cp.designId ? designById(cp.designId) : undefined) ?? pickDesign(analysis.category, opts.premiumTemplates, prompt)
   // Rewriting an existing deck keeps its look EXACTLY (theme: colours, fonts, style, motion — including any custom colours the user set)
   if (existingDoc?.theme) design = { ...((existingDoc.theme.templateId ? designById(existingDoc.theme.templateId) : undefined) ?? design), theme: existingDoc.theme }
   // a NEW deck takes its colours from the topic, dark by default; a rewrite keeps the existing deck's theme untouched (set above)
   if (remixDoc?.theme) design = { ...((remixDoc.theme.templateId ? designById(remixDoc.theme.templateId) : undefined) ?? design), theme: remixDoc.theme } // a remix keeps the original's look exactly (colours, fonts, brand logo)
-  else if (!existingDoc?.theme) design = { ...design, theme: themeForAnalysis(design.theme, analysis) }
+  else if (!existingDoc?.theme) design = { ...design, theme: themeForAnalysis(design.theme, analysis, design.look) }
   // a NEW deck can be built in the user's brand kit (its own colours, fonts and logo replace the topic palette); a rewrite keeps the deck's look
   if (!existingDoc?.theme && !remixDoc?.theme && opts.brandKitId) { const kit = await getKit(job.userId, opts.brandKitId); if (kit) design = { ...design, theme: themeWithKit(design.theme, kit) } }
   const theme = design.theme
   const assetBase = `${env.WEB_URL}/template-assets`
-  const sourceRefs = remixDoc ? [] : opts.picturesOnly && existingDoc ? existingDoc.sources : sources.map((s) => ({ id: s.id, type: (s.type as 'pdf' | 'url' | 'text') ?? 'text', title: s.title.slice(0, 300), ...(s.url ? { url: s.url } : {}) }))
+  const sourceRefs = remixDoc ? [] : opts.picturesOnly && existingDoc ? existingDoc.sources : sources.map((s) => ({ id: s.id, type: (SOURCE_TYPES as readonly string[]).includes(s.type) ? (s.type as (typeof SOURCE_TYPES)[number]) : 'text', title: s.title.slice(0, 300), ...(s.url ? { url: s.url } : {}) }))
   const build = (cs: SlideContent[]): Presentation => {
     const composed = composeDeck(cs, design, opts.aspectRatio, () => nanoid(10), assetBase, analysis.category, picks).map((c): Slide => ({ id: nanoid(12), locked: false, validation: { status: 'pending', issues: [] }, ...c }))
     // pictures-only: hand-edited slides are kept exactly as they were, in their original positions
@@ -272,8 +280,9 @@ async function generate(jobId: string, hold: { pictures?: PictureSession }): Pro
   }
   await stage(jobId, 'validating', 92)
   let { doc, report } = applyValidation(build(contents))
-  if (report.errors > 0) {
-    const bad = new Set(report.slides.filter((s) => s.issues.some((i) => i.severity === 'error')).map((s) => s.slideId))
+  // a slide whose text overflowed, or could only be fitted in type smaller than 11 pt, gets its words shortened (one pass) instead of shipping tiny type
+  if (report.errors > 0 || report.slides.some((s) => s.issues.some((i) => i.code === 'small_text'))) {
+    const bad = new Set(report.slides.filter((s) => s.issues.some((i) => i.severity === 'error' || i.code === 'small_text')).map((s) => s.slideId))
     const fixed = contents.map((c, i) => (bad.has(doc.slides[i]!.id) ? condense(c) : c))
     ;({ doc, report } = applyValidation(build(fixed)))
   }

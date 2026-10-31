@@ -1,7 +1,6 @@
 import type { Metadata } from 'next'
-import Link from 'next/link'
-import { Logo } from '@prompttoppt/ui/logo'
 import { AuthForm } from '@/components/auth/AuthForm'
+import { AuthShell } from '@/components/auth/AuthShell'
 
 export const metadata: Metadata = {
   title: 'Sign up',
@@ -9,12 +8,11 @@ export const metadata: Metadata = {
   alternates: { canonical: '/signup' },
 }
 
-export default async function Page({ searchParams }: { searchParams: Promise<{ next?: string; email?: string }> }) {
-  const { next, email } = await searchParams
+export default async function Page({ searchParams }: { searchParams: Promise<{ next?: string; email?: string; error?: string }> }) {
+  const { next, email, error } = await searchParams
   return (
-    <main className="min-h-screen bg-gradient-to-b from-[#f8f9fc] to-[#f0f4f8] flex flex-col items-center justify-center gap-8 px-6 py-12">
-      <Link href="/" aria-label="SlidesDone home"><Logo size={44} /></Link>
-      <AuthForm mode="signup" next={next} {...(email && email.length < 200 ? { defaultEmail: email } : {})} />
-    </main>
+    <AuthShell mode="signup">
+      <AuthForm mode="signup" next={next} failed={error === 'google' || error === 'microsoft' ? error : undefined} {...(email && email.length < 200 ? { defaultEmail: email } : {})} />
+    </AuthShell>
   )
 }

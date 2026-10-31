@@ -383,6 +383,57 @@ export const checkoutAttempt = pgTable(
 )
 
 /**
+ * "Video to slides" for big recordings (up to 200 MB / 90 minutes): the browser sends the file in 8 MB parts, a background worker pulls out the audio
+ * (ffmpeg), listens to it in pieces, reads the text on still frames of the screen, and saves one timed transcript source. The uploaded file is deleted
+ * when the job ends. Credits (3 per started minute) are taken when the upload is complete and its length is known, and refunded if the job fails.
+ */
+export const mediaJob = pgTable(
+  'media_job',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+    filename: text('filename').notNull(),
+    bytes: integer('bytes').notNull(),
+    partsTotal: integer('parts_total').notNull(),
+    partsReceived: integer('parts_received').notNull().default(0),
+    status: text('status').notNull().default('uploading'), // uploading | queued | processing | completed | failed
+    stage: text('stage'),
+    progress: integer('progress').notNull().default(0),
+    durationSec: integer('duration_sec'),
+    hasVideo: boolean('has_video').notNull().default(false),
+    credits: integer('credits').notNull().default(0),
+    title: text('title'),
+    sourceId: text('source_id'),
+    error: text('error'),
+    attempts: integer('attempts').notNull().default(0),
+    lockedUntil: timestamp('locked_until'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [index('media_job_user_idx').on(t.userId, t.createdAt), index('media_job_status_idx').on(t.status, t.updatedAt)],
+)
+
+/**
+ * What real customers say about SlidesDone, shown on the website only after the owner approves it. One review per person (they can edit it, which
+ * sends it back to "pending"); only people who have made at least one presentation can write one.
+ */
+export const review = pgTable(
+  'review',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+    rating: integer('rating').notNull(),
+    body: text('body').notNull(),
+    displayName: text('display_name').notNull(),
+    role: text('role'),
+    status: text('status').notNull().default('pending'), // pending | approved | rejected
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('review_user_uq').on(t.userId), index('review_status_idx').on(t.status, t.createdAt), check('review_rating_range', sql`${t.rating} BETWEEN 1 AND 5`)],
+)
+
+/**
  * Money that actually moved (or failed to), written by verified payment webhooks / the verify endpoint. One row per
  * provider payment id, so replays are no-ops. Feeds the owner Sales/Margin sections; amounts are minor units (paise/cents).
  */
@@ -749,4 +800,56 @@ export const shareView = pgTable(
     referrerHost: text('referrer_host'),
   },
   (t) => [index('share_view_deck_idx').on(t.presentationId, t.startedAt), index('share_view_visitor_idx').on(t.linkId, t.visitorHash, t.lastSeenAt)],
+)
+
+/**
+ * Website content written by the owner in the dashboard: blog articles, short tech news and "how to use" guides share one table
+ * (`kind`). Only `published` rows whose `published_at` has passed are public; a future date schedules a post.
+ */
+export const post = pgTable(
+  'post',
+  {
+    id: text('id').primaryKey(),
+    kind: text('kind').notNull(), // blog | news | guide
+    slug: text('slug').notNull(),
+    title: text('title').notNull(),
+    summary: text('summary').notNull().default(''), // blog: excerpt; news: the short story itself; guide: one-line description
+    body: text('body').notNull().default(''), // Markdown (no raw HTML)
+    coverUrl: text('cover_url'),
+    coverAlt: text('cover_alt'),
+    tags: jsonb('tags').$type<string[]>().notNull().default([]),
+    section: text('section'), // guides: the group it is listed under
+    sortOrder: integer('sort_order').notNull().default(0), // guides: order inside the group
+    sourceName: text('source_name'), // news: who reported it
+    sourceUrl: text('source_url'), // news: link to the original
+    trending: boolean('trending').notNull().default(false), // news: shown in the Trending strip
+    featured: boolean('featured').notNull().default(false), // blog: the big card at the top
+    seoTitle: text('seo_title'),
+    seoDescription: text('seo_description'),
+    authorName: text('author_name').notNull().default('SlidesDone team'),
+    authorUserId: text('author_user_id').references(() => user.id, { onDelete: 'set null' }),
+    status: text('status').notNull().default('draft'), // draft | published
+    publishedAt: timestamp('published_at'),
+    readingMinutes: integer('reading_minutes').notNull().default(1),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('post_kind_slug_uq').on(t.kind, t.slug), index('post_public_idx').on(t.kind, t.status, t.publishedAt), check('post_kind_ok', sql`${t.kind} IN ('blog','news','guide')`), check('post_status_ok', sql`${t.status} IN ('draft','published')`)],
+)
+
+/** A message sent from the website's Support page. Read and answered by the owner in the dashboard (Control → Support). Screenshots are kept in asset storage. */
+export const supportTicket = pgTable(
+  'support_ticket',
+  {
+    id: text('id').primaryKey(),
+    email: text('email').notNull(),
+    message: text('message').notNull(),
+    files: jsonb('files').$type<{ key: string; name: string; mime: string; bytes: number }[]>().notNull().default([]),
+    userId: text('user_id').references(() => user.id, { onDelete: 'set null' }), // set when the sender was signed in
+    status: text('status').notNull().default('new'), // new | resolved
+    ip: text('ip'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [index('support_ticket_status_idx').on(t.status, t.createdAt), check('support_ticket_status_ok', sql`${t.status} IN ('new','resolved')`)],
 )

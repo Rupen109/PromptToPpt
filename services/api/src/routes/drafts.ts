@@ -24,13 +24,13 @@ export const drafts = new Hono<AppEnv>()
 
 const err = (c: any, status: 400 | 413 | 422, code: string, message: string) => c.json({ success: false, error: { code, message } }, status)
 /** One bucket for every anonymous upload/fetch: these endpoints do real work (PDF parsing, outbound fetches) for strangers. */
-const attachLimit = rateLimit({ windowMs: 60_000, max: 10 })
+export const attachLimit = rateLimit({ windowMs: 60_000, max: 10 })
 
 /** Anonymous uploads are capped per client per day and in total (storage + parsing CPU are the attack surface). */
 const MAX_UNCLAIMED_ATTACHMENTS = 20_000
 const MAX_ATTACHMENTS_PER_IP_DAY = 40
 const daily = new Map<string, { day: number; n: number }>()
-const dailyAttachLimit: MiddlewareHandler = async (c, next) => {
+export const dailyAttachLimit: MiddlewareHandler = async (c, next) => {
   const ip = clientIp(c)
   const day = Math.floor(Date.now() / 86_400_000)
   const hit = daily.get(ip)

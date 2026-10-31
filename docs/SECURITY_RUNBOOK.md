@@ -6,7 +6,7 @@
 | Setting | Why |
 |---|---|
 | `NODE_ENV=production`, `APP_ENV=production` (explicit), `TRUSTED_PROXY_HOPS` ≥ 1 (ALB = 1, CloudFront + ALB = 2) | correct client IPs for rate limits; no dev-only behaviour |
-| `REQUIRE_EMAIL_VERIFICATION=true` + `RESEND_API_KEY` + `EMAIL_FROM` | unverified accounts cannot sign in → no free-credit farming |
+| `REQUIRE_EMAIL_VERIFICATION=true` + `RESEND_API_KEY` or `BREVO_API_KEY` + `EMAIL_FROM` | unverified accounts cannot sign in → no free-credit farming |
 | `AUTH_SECRET` from `openssl rand -base64 48` | placeholders are rejected at boot |
 | `AI_PROVIDER` ≠ `mock`; `ASSET_STORAGE=s3`; HTTPS URLs + `COOKIE_DOMAIN` | |
 | `AI_BUDGET_USD_HOUR`, `AI_BUDGET_USD_DAY`, `AI_USER_USD_DAY` | the spend circuit breaker: your cloud bill has a ceiling |

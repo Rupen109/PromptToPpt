@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { composeSlide, getTheme, validateSlide } from '@prompttoppt/theme'
+import { composeSlide, contrastRatio, getTheme, validateSlide } from '@prompttoppt/theme'
 import { presentationSchema, type Presentation, type SlideContent, type TextElement } from '@prompttoppt/validation'
 import { DESIGNS } from '@prompttoppt/theme'
 import * as C from './commands'
@@ -83,7 +83,64 @@ describe('undo / redo', () => {
   })
 })
 
+describe('text formatting', () => {
+  const P = (runs: { text: string; italic?: boolean; color?: string; bold?: boolean; link?: string }[], list?: 'bullet') => ({ runs, ...(list ? { list } : {}) })
+  it('editing a word keeps the italic/colour/link of the words you did not touch', () => {
+    const old = [P([{ text: 'Revenue grew ' }, { text: '40%', italic: true, color: 'accent' }, { text: ' this year' }])]
+    const out = C.retextParagraphs(old as never, ['Revenue grew 40% in one year'])
+    expect(out[0]!.runs.map((r) => r.text).join('')).toBe('Revenue grew 40% in one year')
+    expect(out[0]!.runs.find((r) => r.text.includes('40%'))).toMatchObject({ italic: true, color: 'accent' })
+    expect(out[0]!.runs[0]).not.toHaveProperty('italic')
+    // typing inside the emphasised word extends the emphasis
+    const grown = C.retextParagraphs(old as never, ['Revenue grew 400% this year'])
+    expect(grown[0]!.runs.find((r) => r.text.includes('400%'))).toMatchObject({ italic: true })
+  })
+  it('unchanged text is returned as is; list marks and bold follow their paragraph; extra lines copy the last one', () => {
+    const old = [P([{ text: 'one', bold: true }], 'bullet'), P([{ text: 'two', bold: true }], 'bullet')]
+    expect(C.retextParagraphs(old as never, ['one', 'two'])).toEqual(old)
+    const more = C.retextParagraphs(old as never, ['one', 'two', 'three'])
+    expect(more[2]).toMatchObject({ list: 'bullet', runs: [{ text: 'three', bold: true }] })
+    const swapped = C.retextParagraphs(old as never, ['two', 'one'])
+    expect(swapped.map((p) => p.runs[0]!.text)).toEqual(['two', 'one'])
+    expect(C.retextParagraphs(old as never, [''])[0]!.runs[0]!.text).toBe('')
+  })
+  it('italic / underline / bold toggle every run; turning italic off removes the flag; lists and links apply to the whole box and undo', () => {
+    const slideId = 's1'
+    const target = () => doc().slides[1]!.elements.find((e) => e.type === 'text' && e.role === 'body') as TextElement
+    const id = target().id
+    apply('i', (d) => C.setRunFlag(d, slideId, id, 'italic', true))
+    expect(target().paragraphs.every((p) => p.runs.every((r) => r.italic))).toBe(true)
+    apply('i2', (d) => C.setRunFlag(d, slideId, id, 'italic', false))
+    expect(JSON.stringify(target())).not.toContain('italic')
+    apply('u', (d) => C.setRunFlag(d, slideId, id, 'underline', true))
+    expect(target().paragraphs.every((p) => p.runs.every((r) => r.underline))).toBe(true)
+    apply('l', (d) => C.setList(d, slideId, id, 'number'))
+    expect(target().paragraphs.every((p) => p.list === 'number')).toBe(true)
+    apply('l2', (d) => C.setList(d, slideId, id, null))
+    expect(target().paragraphs.some((p) => p.list)).toBe(false)
+    apply('k', (d) => C.setLink(d, slideId, id, 'https://example.com/a'))
+    expect(target().paragraphs.every((p) => p.runs.every((r) => r.link === 'https://example.com/a'))).toBe(true)
+    expect(presentationSchema.safeParse(doc()).success).toBe(true)
+    apply('k2', (d) => C.setLink(d, slideId, id, null))
+    expect(JSON.stringify(target())).not.toContain('example.com')
+    useDoc.getState().undo()
+    expect(target().paragraphs[0]!.runs[0]!.link).toBe('https://example.com/a')
+  })
+})
+
 describe('slide commands', () => {
+  it('a hand-picked slide background keeps the slide readable: dark colour → light text on that slide only, undo restores', () => {
+    const before = JSON.stringify(doc().slides[1]!.themeOverrides ?? null)
+    apply('bg', (d) => C.setSlideBackground(d, 's1', '#112233'))
+    const s = doc().slides[1]!
+    expect(s.background).toEqual({ type: 'color', value: '#112233' })
+    expect(contrastRatio(s.themeOverrides!.textPrimary as string, '#112233')).toBeGreaterThan(4.5)
+    expect(doc().slides[0]!.themeOverrides?.textPrimary).toBe(mkDoc().slides[0]!.themeOverrides?.textPrimary)
+    apply('bg2', (d) => C.setSlideBackground(d, 's1', '#FFFFFF'))
+    expect(contrastRatio((doc().slides[1]!.themeOverrides?.textPrimary ?? doc().theme.colors.textPrimary) as string, '#FFFFFF')).toBeGreaterThan(4.5)
+    useDoc.getState().undo(); useDoc.getState().undo()
+    expect(JSON.stringify(doc().slides[1]!.themeOverrides ?? null)).toBe(before)
+  })
   it('duplicate keeps content but creates NEW ids (slide and every element)', () => {
     let newSlide = ''
     apply('dup', (d) => { newSlide = C.duplicateSlide(d, 's1', gen)! })
@@ -133,6 +190,82 @@ describe('assistant additions', () => {
     expect(after.slides[after.slides.length - 1]!.layoutId).toBe('thank-you')
     useDoc.getState().undo()
     expect(useDoc.getState().doc!.slides).toHaveLength(n)
+  })
+})
+
+describe('editing a bulleted text box keeps its bullets (and can add and remove them)', () => {
+  const old = [{ runs: [{ text: 'one', italic: true }], list: 'bullet' }, { runs: [{ text: 'two' }], list: 'bullet' }] as never
+  it('lines that arrive with a list kind get exactly that kind; a new line after a bullet is a bullet with the look of the one before', () => {
+    const out = C.retextParagraphs(old, [{ text: 'one', list: 'bullet' }, { text: 'two', list: 'bullet' }, { text: 'three', list: 'bullet' }])
+    expect(out.map((p) => p.list)).toEqual(['bullet', 'bullet', 'bullet'])
+    expect(out[0]!.runs[0]!.italic).toBe(true) // untouched text keeps its look
+  })
+  it('a line can leave the list, join it, or become numbered', () => {
+    const out = C.retextParagraphs(old, [{ text: 'one', list: 'bullet' }, { text: 'two' }, { text: 'three', list: 'number' }])
+    expect(out[1]!.list).toBeUndefined()
+    expect(out[2]!.list).toBe('number')
+    const plainOld = [{ runs: [{ text: 'a' }] }] as never
+    expect(C.retextParagraphs(plainOld, [{ text: 'a', list: 'bullet' }])[0]!.list).toBe('bullet')
+  })
+  it('plain strings still keep the list of the paragraph they came from (nothing else changes)', () => {
+    expect(C.retextParagraphs(old, ['one', 'two']).map((p) => p.list)).toEqual(['bullet', 'bullet'])
+  })
+})
+
+describe('text stays readable when a slide background moves (the thank-you page bug)', () => {
+  it('a slide whose text has FIXED dark colours (cover / thank-you) gets readable text when its background turns dark; the other slides keep their colours', () => {
+    const base = useDoc.getState().doc!
+    const target = base.slides[0]!
+    const dark = '#1A110C'
+    // the state of the customer's slide: its text colours were fixed for a light brown background
+    useDoc.getState().apply('fixed dark text', (d) => { const s = d.slides[0]!; s.background = { type: 'color', value: '#D7936F' }; for (const e of s.elements) if (e.type === 'text') e.color = '#0B0F1A' as never })
+    const before = structuredClone(useDoc.getState().doc!)
+    const othersBefore = JSON.stringify(before.slides.slice(1).map((s) => s.elements.filter((e) => e.type === 'text').map((e) => (e as { color: string }).color)))
+    useDoc.getState().apply('AI assistant', (d) => C.applyAssist(d, { theme: null, backgrounds: [{ slideId: target.id, color: dark }], edits: [], additions: [] }))
+    const after = useDoc.getState().doc!
+    const slide = after.slides[0]!
+    for (const e of slide.elements) if (e.type === 'text' && !e.decorative) expect(contrastRatio(String(e.color).startsWith('#') ? String(e.color) : after.theme.colors[e.color as keyof typeof after.theme.colors] ?? '#000000', dark), `"${e.role}" text ${e.color} on ${dark}`).toBeGreaterThanOrEqual(4.5)
+    expect(JSON.stringify(after.slides.slice(1).map((s) => s.elements.filter((e) => e.type === 'text').map((e) => (e as { color: string }).color)))).toBe(othersBefore)
+    // putting the slide back restores its background AND its text colours (not light text on a light background)
+    const undo = C.snapshotAssist(before, after, false, ['Slide 1 now has the same background as the other slides'], undefined, [target.id])
+    expect(undo.backgrounds?.[target.id]?.textColors).toBeTruthy()
+    useDoc.getState().apply('put back', (d) => C.revertAssist(d, undo, 'all'))
+    const back = useDoc.getState().doc!.slides[0]!
+    expect(back.background).toEqual({ type: 'color', value: '#D7936F' })
+    expect(back.elements.filter((e) => e.type === 'text').map((e) => (e as { color: string }).color)).toEqual(before.slides[0]!.elements.filter((e) => e.type === 'text').map((e) => (e as { color: string }).color))
+    useDoc.getState().undo(); useDoc.getState().undo(); useDoc.getState().undo()
+  })
+
+  it('"fix_readability" recolours only text that does not read and leaves the rest exactly as it was', () => {
+    const slideId = useDoc.getState().doc!.slides[0]!.id
+    const snapshot = JSON.stringify(useDoc.getState().doc!.slides[0]!.elements)
+    useDoc.getState().apply('AI assistant', (d) => C.applyAssist(d, { theme: null, readability: [slideId], edits: [], additions: [] }))
+    expect(JSON.stringify(useDoc.getState().doc!.slides[0]!.elements)).toBe(snapshot) // a slide that already reads is not touched
+    useDoc.getState().apply('bad', (d) => { d.slides[0]!.background = { type: 'color', value: '#101010' }; for (const e of d.slides[0]!.elements) if (e.type === 'text') e.color = '#111111' as never })
+    useDoc.getState().apply('AI assistant', (d) => C.applyAssist(d, { theme: null, readability: [slideId], edits: [], additions: [] }))
+    for (const e of useDoc.getState().doc!.slides[0]!.elements) if (e.type === 'text' && !e.decorative) expect(contrastRatio(String(e.color), '#101010')).toBeGreaterThanOrEqual(4.5)
+    useDoc.getState().undo(); useDoc.getState().undo(); useDoc.getState().undo()
+  })
+})
+
+describe('the assistant sets the background of ONE slide', () => {
+  it('applies to that slide only (readable text of its own), is one undo step, and "put it back" restores the old background and text colours', () => {
+    const before = structuredClone(useDoc.getState().doc!)
+    const target = before.slides[before.slides.length - 1]!
+    const others = before.slides.filter((s) => s.id !== target.id).map((s) => JSON.stringify(s.background))
+    useDoc.getState().apply('AI assistant', (d) => C.applyAssist(d, { theme: null, backgrounds: [{ slideId: target.id, color: '#123456' }], edits: [], additions: [] }))
+    const after = useDoc.getState().doc!
+    expect(after.slides.find((s) => s.id === target.id)!.background).toEqual({ type: 'color', value: '#123456' })
+    expect(after.slides.filter((s) => s.id !== target.id).map((s) => JSON.stringify(s.background))).toEqual(others) // nothing else moved
+    expect(after.theme).toEqual(before.theme)
+    const undo = C.snapshotAssist(before, after, false, ['Changed the background of the last slide'], undefined, [target.id])
+    expect(undo.backgrounds?.[target.id]).toBeTruthy()
+    expect(C.undoSlideIds(undo)).toContain(target.id)
+    useDoc.getState().apply('put back', (d) => C.revertAssist(d, undo, 'all'))
+    const back = useDoc.getState().doc!.slides.find((s) => s.id === target.id)!
+    expect(back.background).toEqual(target.background)
+    expect(back.themeOverrides).toEqual(target.themeOverrides)
+    useDoc.getState().undo(); useDoc.getState().undo()
   })
 })
 

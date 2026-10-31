@@ -9,7 +9,7 @@ export default async function () {
   const s = suite('16-style-panel')
   // earlier suites upgrade the QA account to Pro: the lock check needs a Starter plan
   execSync(`pnpm --filter @prompttoppt/api exec tsx --env-file-if-exists=.env scripts/qa-grant-plan.ts ${JSON.parse(readFileSync(ACCOUNT, 'utf8')).email} starter`, { cwd: new URL('../..', import.meta.url).pathname, stdio: 'pipe' })
-  const id = JSON.parse(readFileSync(DECKS, 'utf8')).ai.split('?')[0]
+  const id = (((d) => d.ai ?? d.template)(JSON.parse(readFileSync(DECKS, 'utf8')))).split('?')[0] // the AI-made deck when suite 03 got one, else its template deck
   const b = await launch()
   const ctx = await b.newContext({ viewport: { width: 1500, height: 950 }, storageState: STATE })
   const p = await ctx.newPage()

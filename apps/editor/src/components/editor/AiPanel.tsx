@@ -1,3 +1,4 @@
+import { Check, MessageSquare, Paperclip, Pencil, Sparkles, X } from '@prompttoppt/ui/icons'
 import { useEffect, useRef, useState } from 'react'
 import { ApiError, isGateError, type AiEditCommand, type AiImageProposal, type ModelOption, type SourceSummary } from '@prompttoppt/api-client'
 import { SourcesDialog } from '@/components/SourcesDialog'
@@ -37,6 +38,12 @@ function conversationOf(msgs: Msg[]) {
     : { role: 'assistant' as const, text: [m.reply, m.applied.length ? `Changes made: ${m.applied.join('; ')}` : '', ...m.notes].filter(Boolean).join(' ').slice(0, 500) }))
 }
 
+/** A few words that tell slides apart in the "Which slide?" list: the slide's title text. */
+const slideLabel = (sl: { elements: { type: string; role?: string; paragraphs?: { runs: { text: string }[] }[] }[] }) => {
+  const t = sl.elements.find((e) => e.type === 'text' && (e.role === 'title' || e.role === 'heading')) ?? sl.elements.find((e) => e.type === 'text')
+  const text = (t?.paragraphs?.[0]?.runs ?? []).map((r) => r.text).join('').trim()
+  return text.length > 28 ? `${text.slice(0, 27)}…` : text
+}
 const SOURCE_SUGGESTION = 'Add more content to every slide from my attached sources'
 const SUGGESTIONS = {
   deck: ['Change the colour scheme to something warmer', 'Animate every slide', 'Make the whole deck more concise', 'Add a picture to the title slide'],
@@ -56,7 +63,8 @@ export function AiPanel({ doc, slide, presentationId, onClose, onBeforeSend, onR
   const { ent, refresh, upgrade } = useEntitlements()
   const [models, setModels] = useState<ModelOption[]>([])
   const [model, setModel] = useState('')
-  const [scope, setScope] = useState<'deck' | 'slide'>('deck')
+  // no "whole deck / this slide" switch: the message says where ("slide 3", "the thank-you page", "every slide"); when it does not, the assistant asks in the chat
+  const scope = 'deck' as const
   /** Edit: the assistant changes the deck. Ask: questions about the deck's content (read-only). */
   const [mode, setMode] = useState<'edit' | 'ask'>('edit')
   const [text, setText] = useState('')
@@ -68,9 +76,7 @@ export function AiPanel({ doc, slide, presentationId, onClose, onBeforeSend, onR
   const endRef = useRef<HTMLDivElement>(null)
   const undoStack = () => UNDO_STACKS.get(presentationId) ?? []
   const allowed = models.filter((m) => m.allowed)
-  const current = models.find((m) => m.id === model)
   const links = findUrls(text)
-  const cost = current ? current.creditsPerEdit * ((scope === 'deck' ? 2 : 1) + links.length) : null
   const slideNo = doc.slides.findIndex((s) => s.id === slide.id) + 1
 
   useEffect(() => {
@@ -105,14 +111,13 @@ export function AiPanel({ doc, slide, presentationId, onClose, onBeforeSend, onR
     const t = instruction.trim()
     if (!t || pending) return
     if (!ent?.features.aiEdits) return upgrade.show('AI edits are available on the Pro plan.')
-    if (scope === 'slide' && slide.locked) return setMsgs((m) => [...m, { role: 'error', text: 'This slide is locked. Unlock it first.' }])
-    const userMsg: Msg = { role: 'user', text: attached.length ? `${t}\n📎 ${attached.map((a) => a.title).join(', ')}` : t }
+    const userMsg: Msg = { role: 'user', text: attached.length ? `${t}\nAttached: ${attached.map((a) => a.title).join(', ')}` : t }
     setMsgs((m) => [...m, userMsg])
     setText('')
     setPending(true)
     try {
       await onBeforeSend().catch(() => {}) // the server reads the saved deck, so save what's on screen first
-      const res = await api.aiAssist(presentationId, { instruction: t, scope, ...(scope === 'slide' ? { slideId: slide.id } : {}), activeSlideId: slide.id, ...(model ? { model } : {}), requestId: crypto.randomUUID(), ...(attached.length ? { sourceIds: attached.map((a) => a.id) } : {}), ...(undoStack().length ? { recent: [...undoStack()].reverse().map((u) => ({ theme: !!u.theme, slideIds: C.undoSlideIds(u), summary: u.summary })) } : {}), conversation: conversationOf(msgs) })
+      const res = await api.aiAssist(presentationId, { instruction: t, scope, activeSlideId: slide.id, ...(model ? { model } : {}), requestId: crypto.randomUUID(), ...(attached.length ? { sourceIds: attached.map((a) => a.id) } : {}), ...(undoStack().length ? { recent: [...undoStack()].reverse().map((u) => ({ theme: !!u.theme, slideIds: C.undoSlideIds(u), summary: u.summary })) } : {}), conversation: conversationOf(msgs) })
       setAttached([])
       if (res.sources?.length) apply('Attach sources', (d) => C.addSources(d, res.sources!))
       let undoInfo: { undo?: string; revertedUndo?: string[] } = {}
@@ -125,10 +130,10 @@ export function AiPanel({ doc, slide, presentationId, onClose, onBeforeSend, onR
           for (const r of res.reverts ?? []) { const e = log[log.length - 1 - r.change]; if (e) { C.revertAssist(d, e, r.part, r.slideId); if (r.part === 'all') reverted.push(e.id) } }
         }) // live, one undo step
         const after = useDoc.getState().doc
-        const didEdit = !!res.theme || res.edits.length > 0 || (res.additions?.length ?? 0) > 0
+        const didEdit = !!res.theme || res.edits.length > 0 || (res.additions?.length ?? 0) > 0 || (res.backgrounds?.length ?? 0) > 0 || (res.readability?.length ?? 0) > 0
         let next = log.filter((u) => !reverted.includes(u.id))
         if (before && after && didEdit) {
-          const u = C.snapshotAssist(before, after, !!res.theme, res.applied)
+          const u = C.snapshotAssist(before, after, !!res.theme, res.applied, undefined, [...(res.backgrounds ?? []).map((b) => b.slideId), ...(res.readability ?? [])])
           next = [...next, u]
           const json = JSON.stringify(u)
           if (json.length <= MAX_UNDO_JSON) undoInfo = { undo: json }
@@ -174,22 +179,17 @@ export function AiPanel({ doc, slide, presentationId, onClose, onBeforeSend, onR
   return (
     <aside aria-label="AI assistant" className="w-[360px] max-lg:fixed max-lg:z-40 max-lg:right-0 max-lg:top-14 max-lg:bottom-0 max-lg:shadow-2xl max-md:left-0 max-md:top-auto max-md:h-[60vh] max-md:rounded-t-2xl max-md:border-t max-lg:max-w-full shrink-0 bg-white border-l border-border flex flex-col h-full min-h-0">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-        <h2 className="font-semibold">✨ AI assistant</h2>
-        <div className="flex items-center gap-3">{msgs.length > 0 && <button onClick={() => void clearChat()} className="text-xs text-slate-500 hover:text-slate-800 underline">Clear chat</button>}<button onClick={onClose} aria-label="Close AI panel" className="text-xl leading-none text-slate-500 hover:text-slate-800">×</button></div>
+        <h2 className="font-semibold inline-flex items-center gap-1.5"><Sparkles aria-hidden size={16} />AI assistant</h2>
+        <div className="flex items-center gap-3">{msgs.length > 0 && <button onClick={() => void clearChat()} className="text-xs text-slate-500 hover:text-slate-800 underline">Clear chat</button>}<button onClick={onClose} aria-label="Close AI panel" className="text-xl leading-none text-slate-500 hover:text-slate-800"><X aria-hidden size={18} /></button></div>
       </div>
 
       <div role="tablist" aria-label="Assistant mode" className="mx-4 mt-3 bg-slate-100 p-1 rounded-lg grid grid-cols-2 text-xs font-semibold">
-        {([['edit', '✏️ Edit'], ['ask', '💬 Ask']] as const).map(([k, label]) => (
-          <button key={k} role="tab" aria-selected={mode === k} onClick={() => setMode(k)} className={`py-1.5 rounded-md ${mode === k ? 'bg-white shadow-sm' : 'text-slate-500'}`}>{label}</button>
+        {([['edit', Pencil, 'Edit'], ['ask', MessageSquare, 'Ask']] as const).map(([k, Icon, label]) => (
+          <button key={k} role="tab" aria-selected={mode === k} onClick={() => setMode(k)} className={`py-1.5 rounded-md ${mode === k ? 'bg-white shadow-sm' : 'text-slate-500'}`}><span className="inline-flex items-center justify-center gap-1.5"><Icon aria-hidden size={14} />{label}</span></button>
         ))}
       </div>
       {mode === 'ask' ? <AskDeck doc={doc} presentationId={presentationId} /> : (<>
       <div className="px-4 pt-3 space-y-2">
-        <div role="group" aria-label="What should the AI change?" className="bg-slate-100 p-1 rounded-lg grid grid-cols-2 text-xs font-semibold">
-          {([['deck', 'Whole deck'], ['slide', `This slide (${slideNo})`]] as const).map(([k, label]) => (
-            <button key={k} aria-pressed={scope === k} onClick={() => setScope(k)} className={`py-1.5 rounded-md ${scope === k ? 'bg-white shadow-sm' : 'text-slate-500'}`}>{label}</button>
-          ))}
-        </div>
         <label className="flex items-center gap-2 text-xs text-slate-600">Model
           <select aria-label="AI model" value={model} onChange={(e) => setModel(e.target.value)} className="flex-1 min-w-0 border border-border rounded-md px-2 py-1 bg-white text-xs">
             {allowed.map((m) => <option key={m.id} value={m.id}>{m.displayName}</option>)}
@@ -197,13 +197,13 @@ export function AiPanel({ doc, slide, presentationId, onClose, onBeforeSend, onR
         </label>
       </div>
 
-      {doc.sources.length > 0 && <p className="px-4 pt-2 text-[11px] text-slate-600" aria-label="Deck sources">📎 Using {doc.sources.length === 1 ? '1 source' : `${doc.sources.length} sources`} from this deck: {doc.sources.map((x) => x.title).join(', ').slice(0, 120)}</p>}
+      {doc.sources.length > 0 && <p className="px-4 pt-2 text-[11px] text-slate-600" aria-label="Deck sources"><Paperclip aria-hidden size={12} className="inline mr-1 -mt-0.5" />Using {doc.sources.length === 1 ? '1 source' : `${doc.sources.length} sources`} from this deck: {doc.sources.map((x) => x.title).join(', ').slice(0, 120)}</p>}
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 min-h-0" role="log" aria-live="polite" aria-label="Conversation">
         {historyLoaded && msgs.length === 0 && (
           <div className="text-sm text-slate-600 space-y-3">
-            <p>Tell me what to change and I&apos;ll do it right on your slides. Paste a web link and I&apos;ll read that page and use it. {scope === 'deck' ? 'I can restyle the whole deck, add animations and rewrite slides.' : `I'll only change slide ${slideNo}.`}</p>
+            <p>Tell me what to change and I&apos;ll do it right on your slides. Paste a web link and I&apos;ll read that page and use it. I can restyle the whole deck, add animations and rewrite slides. If you don't say which slide, I'll ask.</p>
             <div className="flex flex-col gap-2">
-              {[...(doc.sources.length > 0 && scope === 'deck' ? [SOURCE_SUGGESTION] : []), ...SUGGESTIONS[scope]].map((s) => <button key={s} onClick={() => void send(s)} disabled={pending} className="text-left text-sm border border-border rounded-lg px-3 py-2 hover:border-primary disabled:opacity-50">{s}</button>)}
+              {[...(doc.sources.length > 0 ? [SOURCE_SUGGESTION] : []), ...SUGGESTIONS.deck].map((s) => <button key={s} onClick={() => void send(s)} disabled={pending} className="text-left text-sm border border-border rounded-lg px-3 py-2 hover:border-primary disabled:opacity-50">{s}</button>)}
             </div>
             <p className="text-xs text-slate-500">I can also add AI pictures — you confirm (and see the credit cost of) each one first. I&apos;ll tell you plainly when I can&apos;t do something.</p>
           </div>
@@ -217,20 +217,23 @@ export function AiPanel({ doc, slide, presentationId, onClose, onBeforeSend, onR
             <div key={i} className="mr-4 bg-slate-100 rounded-2xl rounded-bl-sm px-3 py-2 text-sm space-y-2">
               <p className="whitespace-pre-line">{m.reply}</p>
               {m.applied.length > 0 && (
-                <ul className="text-xs text-green-800 space-y-0.5">{m.applied.map((a) => <li key={a}>✓ {a}</li>)}</ul>
+                <ul className="text-xs text-green-800 space-y-0.5">{m.applied.map((a) => <li key={a} className="flex items-start gap-1.5"><Check aria-hidden size={14} className="mt-0.5 shrink-0" />{a}</li>)}</ul>
               )}
               {m.notes.length > 0 && <ul className="text-xs text-amber-800 space-y-0.5">{m.notes.map((n) => <li key={n}>• {n}</li>)}</ul>}
               {m.askAbout && i === msgs.length - 1 && !pending && (
-                <div className="flex flex-wrap gap-2" role="group" aria-label="Which slide?">
+                <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Which slide?">
                   <button onClick={() => void send(`${m.askAbout} (slide ${slideNo})`)} className="text-xs border border-primary text-primary rounded-full px-3 py-1 hover:bg-primary hover:text-white">Slide {slideNo} (this one)</button>
                   <button onClick={() => void send(`${m.askAbout} (on every slide)`)} className="text-xs border border-border rounded-full px-3 py-1 hover:border-primary">All slides</button>
+                  <select aria-label="Another slide" value="" onChange={(e) => { if (e.target.value) void send(`${m.askAbout} (slide ${e.target.value})`) }} className="text-xs border border-border rounded-full px-2 py-1 bg-white max-w-[11rem]">
+                    <option value="">Another slide…</option>
+                    {doc.slides.map((sl, k) => (k + 1 === slideNo ? null : <option key={sl.id} value={k + 1}>{`Slide ${k + 1}${slideLabel(sl) ? ` — ${slideLabel(sl)}` : ''}`}</option>))}
+                  </select>
                 </div>
               )}
               {m.images?.map((p, k) => <ProposalCard key={k} proposal={p} presentationId={presentationId} />)}
               {m.applied.length > 0 && (
                 <div className="flex items-center gap-3 text-xs text-slate-500">
                   {m.applied.length > (m.images?.length ?? 0) && <button onClick={() => useDoc.getState().undo()} className="text-primary font-semibold underline">Undo</button>}
-                  <span>{m.credits} credits</span>
                 </div>
               )}
             </div>
@@ -241,28 +244,29 @@ export function AiPanel({ doc, slide, presentationId, onClose, onBeforeSend, onR
       </div>
 
       <div className="border-t border-border p-3 space-y-2">
-        {scope === 'slide' && (
-          <div className="flex flex-wrap gap-1.5" aria-label="Quick actions for this slide">
+        {(
+          <div className="flex flex-wrap items-center gap-1.5" aria-label="Quick actions for this slide">
+            <span className="text-[11px] text-slate-500">Slide {slideNo}:</span>
             {QUICK.map((q) => <button key={q.id} disabled={pending || slide.locked} onClick={() => void quick(q.id)} className="text-xs border border-border rounded-full px-2.5 py-1 hover:border-primary disabled:opacity-50">{q.label}</button>)}
           </div>
         )}
-        {slide.locked && scope === 'slide' && <p role="alert" className="text-xs text-amber-800">This slide is locked. Unlock it to use AI.</p>}
+        {slide.locked && <p role="alert" className="text-xs text-amber-800">This slide is locked. Unlock it to use AI.</p>}
         {attached.length > 0 && (
           <ul className="flex flex-wrap gap-1.5" aria-label="Attached to this message">
-            {attached.map((a) => <li key={a.id} className="inline-flex items-center gap-1 bg-slate-100 rounded-full pl-2.5 pr-1 py-0.5 text-xs max-w-[220px]"><span className="truncate">{a.title}</span><button type="button" aria-label={`Remove ${a.title}`} onClick={() => setAttached((x) => x.filter((y) => y.id !== a.id))} className="w-4 h-4 rounded-full hover:bg-slate-300 leading-none">×</button></li>)}
+            {attached.map((a) => <li key={a.id} className="inline-flex items-center gap-1 bg-slate-100 rounded-full pl-2.5 pr-1 py-0.5 text-xs max-w-[220px]"><span className="truncate">{a.title}</span><button type="button" aria-label={`Remove ${a.title}`} onClick={() => setAttached((x) => x.filter((y) => y.id !== a.id))} className="w-4 h-4 rounded-full hover:bg-slate-300 leading-none"><X aria-hidden size={16} /></button></li>)}
           </ul>
         )}
         <form onSubmit={(e) => { e.preventDefault(); void send(text) }} className="flex items-end gap-2">
           <textarea
             value={text} onChange={(e) => setText(e.target.value)} rows={2} maxLength={1000} aria-label="Message to the AI assistant" disabled={pending}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(text) } }}
-            placeholder={scope === 'deck' ? 'e.g. change the colours and animate every slide' : `e.g. make slide ${slideNo} shorter`}
+            placeholder={`e.g. make slide ${slideNo} shorter`}
             className="flex-1 border border-border rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:border-primary"
           />
-          <button type="button" onClick={() => setSourcesOpen(true)} aria-label="Attach a file or link" title="Attach a PDF, website or notes" disabled={pending} className="border border-border rounded-xl px-2.5 py-2 text-sm hover:border-primary disabled:opacity-40">📎</button>
+          <button type="button" onClick={() => setSourcesOpen(true)} aria-label="Attach a file or link" title="Attach a PDF, website or notes" disabled={pending} className="border border-border rounded-xl px-2.5 py-2 text-sm hover:border-primary disabled:opacity-40"><Paperclip aria-hidden size={16} /></button>
           <button type="submit" disabled={pending || !text.trim()} aria-label="Send" className="bg-primary text-white rounded-xl px-3 py-2 text-sm font-semibold disabled:opacity-40">Send</button>
         </form>
-        <p className="text-[11px] text-slate-500">Enter to send · Shift+Enter for a new line{cost !== null && <> · ≈ {cost} credits per message</>}{links.length > 0 && <> (includes reading {links.length === 1 ? 'the linked page' : `${links.length} linked pages`})</>} · changes apply live (⌘Z to undo) · failed requests are refunded</p>
+        <p className="text-[11px] text-slate-500">Enter to send · Shift+Enter for a new line{links.length > 0 && <> (includes reading {links.length === 1 ? 'the linked page' : `${links.length} linked pages`})</>} · changes apply live (⌘Z to undo)</p>
       </div>
       </>)}
       {sourcesOpen && <SourcesDialog count={attached.length + doc.sources.length} onAdd={(src) => setAttached((x) => [...x, src])} onClose={() => setSourcesOpen(false)} />}
@@ -322,7 +326,7 @@ function ProposalCard({ proposal, presentationId }: { proposal: AiImageProposal;
       <div className="text-xs text-slate-500">Slide {proposal.slideNumber} · {PLACEMENT_LABEL[proposal.placement]}</div>
       <p className="text-sm">{proposal.prompt}</p>
       {state === 'done' ? (
-        <p className="text-xs text-green-800">✓ Picture added{left ? ` · ${left}` : ''}. Undo with ⌘Z.</p>
+        <p className="text-xs text-green-800 flex items-center gap-1"><Check aria-hidden size={14} />Picture added{left ? ` · ${left}` : ''}. Undo with ⌘Z.</p>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
           <button onClick={() => void generate()} disabled={state === 'busy' || !model} className="bg-primary text-white rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50">

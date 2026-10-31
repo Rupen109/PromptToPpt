@@ -33,7 +33,8 @@ export default async function () {
   await s.check('Subscribe to Pro → secure Razorpay checkout window opens (test mode); closing it leaves the user on Starter', p, async () => {
     await p.getByRole('button', { name: /Upgrade|Change plan/ }).first().click()
     await p.getByRole('button', { name: /Subscribe to Pro/ }).click()
-    const frame = p.locator('iframe.razorpay-checkout-frame, iframe[src*="razorpay"]').first()
+    // Razorpay's own window, or our test payment window when the server runs with PAYMENTS_SIMULATOR (docs/BILLING.md)
+    const frame = p.locator('iframe.razorpay-checkout-frame, iframe[src*="razorpay"], [role=dialog][aria-label="Test payment"]').first()
     await frame.waitFor({ timeout: 30000 })
     await p.keyboard.press('Escape'); await settle(1500)
     const ent = await p.evaluate(() => fetch('http://localhost:4000/api/v1/me/entitlements', { credentials: 'include' }).then((r) => r.json()))

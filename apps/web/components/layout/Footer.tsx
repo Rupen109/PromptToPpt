@@ -1,8 +1,10 @@
 import Link from 'next/link'
+import { Lock } from '@prompttoppt/ui/icons'
 import { Logo } from '@prompttoppt/ui/logo'
 
 const COLS = [
   { title: 'Product', links: [['Ingestion Modes', '/#modalities'], ['Interactive Studio', '/#studio'], ['Curated Templates', '/templates'], ['SaaS Pricing', '/pricing']] },
+  { title: 'Resources', links: [['Blog', '/blog'], ['Tech news', '/news'], ['Guides: how to use SlidesDone', '/guides'], ['Free tools', '/free-tools'], ['Support', '/support']] },
   { title: 'Formats & Sources', links: [['PDF & PowerPoint input', '/#modalities'], ['Website link sources', '/#modalities'], ['122 animated templates', '/templates'], ['Export on Pro & Gold', '/pricing']] },
 ] as const
 
@@ -10,7 +12,7 @@ export function Footer() {
   return (
     <footer className="bg-white border-t-2 border-foreground px-5 md:px-10 pt-14">
       <div className="max-w-[1200px] mx-auto">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-10 sm:gap-10 pb-12 border-b-2 border-[#f1f5f9]">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-x-6 gap-y-10 sm:gap-10 pb-12 border-b-2 border-[#f1f5f9]">
           <div className="flex flex-col gap-4 items-start col-span-2 lg:col-span-1">
             <Link href="/" aria-label="SlidesDone home"><Logo size={32} /></Link>
             <p className="text-xs leading-5 text-[#475569] max-w-[270px]">Vibrant AI presentation maker for venture decks, executive board reviews and fast product storytelling.</p>
@@ -27,7 +29,7 @@ export function Footer() {
           <div>
             <h5 className="font-heading font-extrabold text-xs uppercase tracking-[0.6px] text-foreground mb-3">Trust & Privacy</h5>
             <p className="text-xs leading-4 text-[#475569] max-w-[270px]">Your decks and sources are private to your account, and never go into analytics tools.</p>
-            <p className="mt-3 flex items-center gap-1.5 font-heading font-extrabold text-xs text-foreground"><span className="text-[#059669]" aria-hidden>🔒</span>Private by default</p>
+            <p className="mt-3 flex items-center gap-1.5 font-heading font-extrabold text-xs text-foreground"><Lock aria-hidden size={14} className="text-[#059669]" />Private by default</p>
           </div>
         </div>
         <div className="py-8 flex flex-col sm:flex-row items-center justify-between gap-3 font-heading font-bold text-xs text-[#475569]">

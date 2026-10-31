@@ -1,5 +1,6 @@
 import { type AspectRatio, type SlideContent } from '@prompttoppt/validation'
 import { composeSlide, type IdGen, type Photo } from '../layout/index'
+import { harmonizeType } from '../layout/harmonize'
 import { CATEGORIES } from './categories'
 import { DESIGNS, designById, type TemplateDesign } from './build'
 import { AVAILABLE_PHOTOS } from './photos.generated'
@@ -52,7 +53,7 @@ export function composeDeck(contents: SlideContent[], d: TemplateDesign, aspect:
   const used = new Set<string>()
   const seen: Record<string, number> = {}
   let plain = 0
-  return contents.map((content, idx) => {
+  return harmonizeType(contents.map((content, idx) => {
     if (content.layout === 'title-body') return composeSlide(content, d.theme, aspect, idGen, { variant: plain++ })
     if (!assetBase && !picks) return composeSlide(content, d.theme, aspect, idGen)
     // `picks[i]`: a chosen picture for this slide, `null` = deliberately none (a wrong picture is worse than none), `undefined` = use the library
@@ -66,7 +67,7 @@ export function composeDeck(contents: SlideContent[], d: TemplateDesign, aspect:
       case 'split-image-text': { const ph = pick1(forced, POOLS.standard, nth); return composeSlide(forced ? { ...content, imageUrl: forced.src, ...(forced.attribution ? { imageAttribution: forced.attribution } : {}) } : ph && !content.imageUrl ? { ...content, imageUrl: ph.src } : content, d.theme, aspect, idGen) }
       default: return composeSlide(content, d.theme, aspect, idGen)
     }
-  })
+  }))
 }
 
 /**

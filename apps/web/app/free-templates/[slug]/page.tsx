@@ -1,3 +1,4 @@
+import { ArrowRight } from '@prompttoppt/ui/icons'
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
@@ -67,7 +68,7 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
                         <div className="font-heading font-extrabold text-xs tracking-wide uppercase text-primary">{d.premium ? 'Pro' : 'Free'}</div>
                         <h3 className="font-heading font-extrabold text-xl text-foreground mt-1">{d.name}</h3>
                         <p className="text-sm text-slate-600 mt-1">{d.tagline}</p>
-                        <span className="mt-3 inline-block font-heading font-extrabold text-sm text-primary">Use this template →</span>
+                        <span className="mt-3 inline-flex items-center gap-1.5 font-heading font-extrabold text-sm text-primary">Use this template<ArrowRight aria-hidden size={14} /></span>
                       </div>
                     </Link>
                   </Card>

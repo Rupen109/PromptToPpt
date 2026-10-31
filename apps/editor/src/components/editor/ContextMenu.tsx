@@ -25,12 +25,14 @@ export function ContextMenu({ x, y, items, onClose }: { x: number; y: number; it
     document.addEventListener('keydown', key)
     document.addEventListener('mousedown', down)
     window.addEventListener('resize', close)
-    window.addEventListener('scroll', close, true)
+    // a scroll INSIDE a toolbar (a long toolbar nudged to show the button that was just clicked) must not close the menu opened from it
+    const scroll = (e: Event) => { if (!(e.target instanceof Element && e.target.closest('[role="toolbar"]'))) onClose() }
+    window.addEventListener('scroll', scroll, true)
     return () => {
       document.removeEventListener('keydown', key)
       document.removeEventListener('mousedown', down)
       window.removeEventListener('resize', close)
-      window.removeEventListener('scroll', close, true)
+      window.removeEventListener('scroll', scroll, true)
     }
   }, [onClose])
   // measure the REAL menu and keep all of it inside the viewport (a fixed guess pushed the lower items of tall menus off-screen, unreachable)

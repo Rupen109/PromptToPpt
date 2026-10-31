@@ -7,6 +7,8 @@ import { z } from 'zod'
 import { planIdSchema, type Currency, type PlanView } from '@prompttoppt/validation'
 import { getEntitlements } from '../billing/entitlements.ts'
 import { razorpayEnabled, razorpayTestMode } from '../billing/razorpay.ts'
+import { simulatorEnabled } from '../billing/simulator.ts'
+import { testPay, testRefund, testRenew } from '../billing/test-payments.ts'
 import { cancelAtPeriodEnd, confirmCheckout, handleWebhook, startCheckout, subscriptionSummary } from '../billing/subscriptions.ts'
 import { db } from '../db/index.ts'
 import { plan, planPrice, subscription } from '../db/schema.ts'
@@ -69,7 +71,7 @@ billing.post(
   },
 )
 
-billing.get('/billing/subscription', requireAuth, async (c) => c.json({ success: true, data: { ...(await subscriptionSummary(c.get('session')!.user.id)), billingEnabled: razorpayEnabled(), testMode: razorpayTestMode() } }))
+billing.get('/billing/subscription', requireAuth, async (c) => c.json({ success: true, data: { ...(await subscriptionSummary(c.get('session')!.user.id)), billingEnabled: razorpayEnabled(), testMode: razorpayTestMode(), simulator: simulatorEnabled() } }))
 
 billing.post('/billing/cancel', requireAuth, rateLimit({ windowMs: 60_000, max: 10, key: byUser('cancel') }), async (c) => {
   const userId = c.get('session')!.user.id
@@ -82,6 +84,25 @@ billing.post('/billing/cancel', requireAuth, rateLimit({ windowMs: 60_000, max: 
 billing.post('/webhooks/razorpay', bodyLimit({ maxSize: 256 * 1024, onError: (c) => c.json({ success: false, error: { code: 'TOO_LARGE', message: 'Payload too large' } }, 413) }), rateLimit({ windowMs: 60_000, max: 120 }), async (c) => {
   const { status, body } = await handleWebhook(await c.req.text(), c.req.raw.headers)
   return c.json(body, status)
+})
+
+// ─── test payments (PAYMENTS_SIMULATOR only; 404 when the flag is off, refused at start-up in production) ───
+const simOnly = async (c: { json: (b: unknown, s: 404) => Response }, next: () => Promise<void>) => (simulatorEnabled() ? next() : c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Not found' } }, 404))
+billing.post('/billing/simulator/pay', simOnly, requireAuth, rateLimit({ windowMs: 60_000, max: 30, key: byUser('sim-pay') }), zValidator('json', z.object({ subscriptionId: z.string().min(5).max(64), outcome: z.enum(['success', 'failure']) })), async (c) => {
+  const b = c.req.valid('json')
+  return c.json({ success: true, data: await testPay(c.get('session')!.user.id, b.subscriptionId, b.outcome) })
+})
+billing.post('/billing/simulator/renew', simOnly, requireAuth, rateLimit({ windowMs: 60_000, max: 30, key: byUser('sim-renew') }), async (c) => {
+  const userId = c.get('session')!.user.id
+  await testRenew(userId)
+  const { period: _p, ...ent } = await getEntitlements(userId)
+  return c.json({ success: true, data: ent })
+})
+billing.post('/billing/simulator/refund', simOnly, requireAuth, rateLimit({ windowMs: 60_000, max: 30, key: byUser('sim-refund') }), async (c) => {
+  const userId = c.get('session')!.user.id
+  await testRefund(userId)
+  const { period: _p, ...ent } = await getEntitlements(userId)
+  return c.json({ success: true, data: ent })
 })
 
 // NOTE: there is intentionally no 'set my plan' endpoint. Plans change only through verified payment webhooks (or the admin-run QA scripts).

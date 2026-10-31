@@ -13,6 +13,9 @@ interface UiState {
   imageDialog: ImageDialogRequest | null
   openImageDialog: (req?: ImageDialogRequest) => void
   closeImageDialog: () => void
+  /** the table whose cells are being edited (double-click a table) */
+  tableEditId: string | null
+  editTable: (id: string | null) => void
   activeSlideId: string | null
   selection: string[]
   editingId: string | null
@@ -31,6 +34,8 @@ export const useUi = create<UiState>((set) => ({
   imageDialog: null,
   openImageDialog: (req = {}) => set({ imageDialog: req }),
   closeImageDialog: () => set({ imageDialog: null }),
+  tableEditId: null,
+  editTable: (tableEditId) => set({ tableEditId }),
   activeSlideId: null,
   selection: [],
   editingId: null,

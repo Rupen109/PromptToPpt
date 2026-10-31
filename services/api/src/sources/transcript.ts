@@ -23,7 +23,7 @@ export function youtubeId(raw: string): string | null {
 export const isYouTubeLink = (raw: string) => youtubeId(raw) !== null
 export const canonicalYouTubeUrl = (id: string) => `https://www.youtube.com/watch?v=${id}`
 
-export const YOUTUBE_HELP = 'YouTube does not let apps read captions automatically. Open the video, click ⋯ (More) → "Show transcript", copy the text and paste it into "YouTube / captions" — or upload the caption file (.srt or .vtt).'
+export const YOUTUBE_HELP = 'YouTube does not let apps read captions automatically. Open the video, click "…more" under the title to open the description, scroll to the bottom and click "Show transcript", then copy the text and paste it into "YouTube / captions" — or upload the caption file (.srt or .vtt).'
 
 interface Cue { start: number | null; text: string }
 const TIME = /(?:(\d{1,2}):)?(\d{1,2}):(\d{2})(?:[.,](\d{1,3}))?/
@@ -51,10 +51,10 @@ function fromCaptionFile(raw: string): Cue[] {
 }
 
 /** YouTube's "Show transcript" copy: a time on its own line (or before the words) followed by the words. */
-function fromYouTubeCopy(raw: string): Cue[] | null {
+function fromYouTubeCopy(raw: string, minStamps = 3): Cue[] | null {
   const lines = raw.replace(/\r/g, '').split('\n')
   const stamp = /^\s*(?:(\d{1,2}):)?(\d{1,2}):(\d{2})\s*(.*)$/
-  if (lines.filter((l) => stamp.test(l)).length < 3) return null
+  if (lines.filter((l) => stamp.test(l)).length < minStamps) return null
   const cues: Cue[] = []
   let cur: Cue | null = null
   for (const l of lines) {
@@ -66,10 +66,11 @@ function fromYouTubeCopy(raw: string): Cue[] | null {
   return cues
 }
 
+/** `minStamps`: how many time lines make the text count as timed (3 for text people paste; 1 for our own model's output, whose format we control). */
 /** Groups cues into ≈2-minute parts, each located by the time its first words were spoken; plain text without times becomes one part. */
-export function fromTranscript(title: string, raw: string, windowSec = 120): Extracted {
+export function fromTranscript(title: string, raw: string, windowSec = 120, minStamps = 3): Extracted {
   const text = raw.replace(/\u0000/g, '')
-  const cues = /-->/.test(text) || /^\d+:\d{2}:\d{2}\.\d{3},/m.test(text) ? fromCaptionFile(text) : (fromYouTubeCopy(text) ?? [{ start: null, text: tidy(text) }])
+  const cues = /-->/.test(text) || /^\d+:\d{2}:\d{2}\.\d{3},/m.test(text) ? fromCaptionFile(text) : (fromYouTubeCopy(text, minStamps) ?? [{ start: null, text: tidy(text) }])
   const parts: { locator: string | null; text: string }[] = []
   let bucket = -1, bucketStart: number | null = null, buf: string[] = []
   const flush = () => { if (buf.length) parts.push({ locator: bucketStart !== null ? clock(bucketStart) : null, text: buf.join(' ').replace(/\s+/g, ' ').trim() }); buf = [] }

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { SHAPE_PATH_IDS } from './shapes'
 
 /**
  * Presentation document — the canonical, persisted representation (spec §11 / App. B).
@@ -173,6 +174,7 @@ const textRunSchema = z.object({
   text: z.string().max(5000),
   bold: z.boolean().optional(),
   italic: z.boolean().optional(),
+  underline: z.boolean().optional(),
   /** emphasis colour for a word or phrase (theme token or hex) — e.g. the key figure in a heading */
   color: z.union([z.enum(['textPrimary', 'textSecondary', 'primary', 'secondary', 'accent', 'onPrimary']), hex]).optional(),
   link: httpUrl.optional(),
@@ -227,7 +229,7 @@ export const imageElementSchema = z.object({
 export const shapeElementSchema = z.object({
   type: z.literal('shape'),
   ...box,
-  shape: z.enum(['rect', 'ellipse', 'line', 'ring', 'triangle', 'chevron']),
+  shape: z.enum(['rect', 'ellipse', 'line', 'ring', 'triangle', 'chevron', ...SHAPE_PATH_IDS]),
   fill: z.union([z.enum(['surface', 'primary', 'secondary', 'accent', 'background', 'text', 'onPrimary', 'none']), hex]).default('surface'),
   radius: z.number().min(0).default(0),
   gradient: z.object({ from: hex, to: hex, angle: z.number().min(0).max(360).default(135) }).optional(),
@@ -251,6 +253,13 @@ export const tableElementSchema = z.object({
   ...box,
   header: z.array(z.string()).min(1).max(8),
   rows: z.array(z.array(z.string())).max(20),
+  /** colours chosen in the editor; unset = the deck's theme colours */
+  headerFill: hex.or(z.literal('none')).optional(),
+  headerColor: hex.optional(),
+  rowFill: hex.or(z.literal('none')).optional(),
+  altRowFill: hex.or(z.literal('none')).optional(),
+  textColor: hex.optional(),
+  borderColor: hex.optional(),
 })
 
 export const diagramElementSchema = z.object({
@@ -284,7 +293,7 @@ export const sourceRefSchema = z.object({
 export type SourceRef = z.infer<typeof sourceRefSchema>
 
 export const validationIssueSchema = z.object({
-  code: z.enum(['schema', 'missing_content', 'overflow', 'image_ratio', 'duplicate_layout', 'contrast', 'font_fallback', 'unresolved_asset']),
+  code: z.enum(['schema', 'missing_content', 'overflow', 'image_ratio', 'duplicate_layout', 'contrast', 'font_fallback', 'unresolved_asset', 'small_text']),
   severity: z.enum(['error', 'warning']),
   message: z.string(),
   elementId: idSchema.optional(),
@@ -315,7 +324,8 @@ export type Slide = z.infer<typeof slideSchema>
 
 // ─── Sources ─────────────────────────────────────────────────────────────────
 
-export const SOURCE_TYPES = ['pdf', 'pptx', 'url', 'youtube', 'audio', 'text'] as const
+/** Every kind of source a deck can cite. Must include every kind the API can store (services/api/src/sources/store.ts SOURCE_KINDS): a kind missing here makes the deck fail to SAVE. */
+export const SOURCE_TYPES = ['pdf', 'pptx', 'url', 'youtube', 'audio', 'text', 'docx', 'xlsx', 'csv', 'email', 'image', 'transcript'] as const
 export const sourceSchema = z.object({
   id: idSchema,
   type: z.enum(SOURCE_TYPES),
@@ -373,8 +383,9 @@ export const slideContentSchema = z.discriminatedUnion('layout', [
   z.object({
     layout: z.literal('comparison'),
     title: short(90),
-    left: z.object({ heading: short(50), bullets: bullets(4) }),
-    right: z.object({ heading: short(50), bullets: bullets(4) }),
+    // generation writes 3-4 per side; people can ask the assistant for more, so the document allows 6
+    left: z.object({ heading: short(50), bullets: bullets(6) }),
+    right: z.object({ heading: short(50), bullets: bullets(6) }),
     ...common,
   }),
   z.object({
@@ -472,8 +483,10 @@ export const promptAnalysisSchema = z.object({
   keepDesign: z.boolean().optional(),
   /** two colours that fit the TOPIC's mood and culture (environment → forest greens, a national figure → their national colours…); tolerant: a bad value is dropped, never fails the analysis */
   palette: z.object({ primary: hex, accent: hex }).optional().catch(undefined),
-  /** true ONLY when the user explicitly asked for a light / white / bright deck (decks are dark by default) */
+  /** true ONLY when the user explicitly asked for a light / white / bright deck */
   lightMode: z.boolean().optional().catch(undefined),
+  /** true ONLY when the user explicitly asked for a dark / black / night deck (otherwise the template's own light or dark look is kept) */
+  darkMode: z.boolean().optional().catch(undefined),
   specificity: z.enum(['broad_topic', 'detailed']),
   missing: z.array(z.enum(['audience', 'objective', 'slideCount', 'duration', 'tone', 'sections'])).default([]),
 })

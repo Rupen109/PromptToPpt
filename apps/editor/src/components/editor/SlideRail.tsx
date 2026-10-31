@@ -1,3 +1,5 @@
+import { MoreHorizontal } from '@prompttoppt/ui/icons'
+import { Lock, MessageSquare } from '@prompttoppt/ui/icons'
 import { useState } from 'react'
 import type { LayoutId, Presentation, SlideElement } from '@prompttoppt/validation'
 import { SlideCanvas } from '@prompttoppt/ui'
@@ -18,7 +20,7 @@ function Bubble({ slideId, index }: { slideId: string; index: number }) {
   const mine = threads.filter((t) => t.slideId === slideId && t.status === 'open')
   if (!mine.length) return null
   const unread = mine.some((t) => isUnread(t, seenAt))
-  return <span data-testid={`comment-badge-${index}`} aria-label={`${mine.length} open comment${mine.length > 1 ? 's' : ''}${unread ? ', some unread' : ''}`} className="absolute right-1.5 bottom-9 z-10 inline-flex items-center gap-0.5 rounded-full bg-primary text-white text-[11px] font-bold px-1.5 py-0.5 shadow">💬 {mine.length}{unread && <i aria-hidden className="w-1.5 h-1.5 rounded-full bg-red-400 ml-0.5" />}</span>
+  return <span data-testid={`comment-badge-${index}`} aria-label={`${mine.length} open comment${mine.length > 1 ? 's' : ''}${unread ? ', some unread' : ''}`} className="absolute right-1.5 bottom-9 z-10 inline-flex items-center gap-0.5 rounded-full bg-primary text-white text-[11px] font-bold px-1.5 py-0.5 shadow"><MessageSquare aria-hidden size={11} /> {mine.length}{unread && <i aria-hidden className="w-1.5 h-1.5 rounded-full bg-red-400 ml-0.5" />}</span>
 }
 
 /** Coloured dots for the people currently looking at this slide. */
@@ -92,10 +94,10 @@ export function SlideRail({ doc, watermark }: { doc: Presentation; watermark: bo
             <span className="absolute left-1.5 top-1.5 z-10 text-[11px] font-bold bg-black/60 text-white rounded px-1.5">{i + 1}</span>
             <Here slideId={s.id} />
             <Bubble slideId={s.id} index={i} />
-            {s.locked && <span aria-label="Locked" className="absolute right-1.5 top-1.5 z-10 text-[11px]">🔒</span>}
+            {s.locked && <span aria-label="Locked" className="absolute right-1.5 top-1.5 z-10 text-[11px] inline-flex"><Lock aria-hidden size={12} /></span>}
             <SlideCanvas slide={s} theme={doc.theme} aspect={doc.aspectRatio} width={172} watermark={watermark} />
           </button>
-          <button aria-label={`Slide ${i + 1} options`} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setActiveSlide(s.id); setMenu({ x: r.right + 4, y: r.top, slideId: s.id }) }} className="absolute right-1 bottom-1 z-10 w-6 h-6 rounded bg-white/90 border border-border text-xs hover:bg-white">⋯</button>
+          <button aria-label={`Slide ${i + 1} options`} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setActiveSlide(s.id); setMenu({ x: r.right + 4, y: r.top, slideId: s.id }) }} className="absolute right-1 bottom-1 z-10 w-6 h-6 rounded bg-white/90 border border-border text-xs hover:bg-white grid place-items-center"><MoreHorizontal aria-hidden size={14} /></button>
         </div>
       ))}
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems(menu.slideId)} onClose={() => setMenu(null)} />}

@@ -1,3 +1,4 @@
+import { ArrowRight } from '@prompttoppt/ui/icons'
 import Link from 'next/link'
 import type { AnchorHTMLAttributes, ButtonHTMLAttributes, ReactNode } from 'react'
 import { cn } from './cn'
@@ -76,7 +77,7 @@ export function Button(props: AsLink | AsButton) {
       {!flat && <span aria-hidden className={cn('pointer-events-none absolute inset-y-0 -left-[60%] w-1/2 -skew-x-[20deg] opacity-0 transition-[left,opacity] duration-700 ease-out motion-safe:group-hover:left-[130%] motion-safe:group-hover:opacity-100', variant === 'white' ? 'bg-foreground/5' : 'bg-white/30')} />}
       {loading && <span aria-hidden className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />}
       <span className="relative inline-flex items-center gap-2">{children}</span>
-      {arrow && <span aria-hidden className="relative inline-block transition-transform duration-200 motion-safe:group-hover:translate-x-1">→</span>}
+      {arrow && <span aria-hidden className="relative inline-block transition-transform duration-200 motion-safe:group-hover:translate-x-1"><ArrowRight size={16} strokeWidth={2.5} /></span>}
     </>
   )
   if ('href' in props && props.href !== undefined) {

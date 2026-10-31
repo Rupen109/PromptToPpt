@@ -35,6 +35,8 @@ export function effectiveBackground(slide: Slide, theme: Theme, el: SlideElement
   return bg
 }
 
+/** reading text smaller than this is flagged (22 px = 11 pt) */
+export const SMALL_TEXT_PX = 22
 const isContent = (e: SlideElement) => !e.decorative
 
 /** Structural + visual validation (spec §7 "Validation"). Pure: same input → same issues. */
@@ -49,7 +51,8 @@ export function validateSlide(slide: Slide, theme: Theme): ValidationIssue[] {
     const need = estimateTextHeight(t.paragraphs, t.fontSize, t.width, metricOptsFor(t, theme))
     // rotated text (axis labels) is measured along its own axis
     if (need > t.height * 1.02) issues.push({ code: 'overflow', severity: 'error', message: `Text needs ~${Math.round(need)}px but box is ${Math.round(t.height)}px`, elementId: t.id })
-    if (t.fontSize < 14) issues.push({ code: 'overflow', severity: 'warning', message: `Text is tiny (${t.fontSize}px)`, elementId: t.id })
+    // readable size (1920 px canvas, 1 pt = 2 px): reading text under 11 pt is flagged so the generator can shorten the words; numbers/badges (metric) are display type
+    if (t.role !== 'metric' && t.fontSize < SMALL_TEXT_PX) issues.push({ code: 'small_text', severity: 'warning', message: `Text is small (${t.fontSize}px)`, elementId: t.id })
 
     const fg = resolveColor(t.color, theme, slide)
     const ratio = contrastRatio(fg, effectiveBackground(slide, theme, t))

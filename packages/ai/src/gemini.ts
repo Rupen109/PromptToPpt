@@ -49,7 +49,7 @@ export class GeminiProvider implements AIProvider {
         headers: { 'Content-Type': 'application/json', ...(this.backend.auth === 'header' ? { 'x-goog-api-key': this.apiKey } : {}) },
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: req.system }] },
-          contents: [{ role: 'user', parts: [...(req.images ?? []).map((i) => ({ inlineData: { mimeType: i.mimeType, data: imageToBase64(i) } })), { text: req.prompt }] }],
+          contents: [{ role: 'user', parts: [...(req.images ?? []).map((i) => ({ inlineData: { mimeType: i.mimeType, data: imageToBase64(i) } })), ...(req.media ?? []).map((m) => ({ inlineData: { mimeType: m.mimeType, data: imageToBase64(m) } })), { text: req.prompt }] }],
           ...(req.webSearch ? { tools: [{ googleSearch: {} }] } : {}),
           generationConfig: {
             temperature: req.temperature ?? 0.7,

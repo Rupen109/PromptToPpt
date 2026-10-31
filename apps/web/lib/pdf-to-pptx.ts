@@ -13,7 +13,7 @@ export class PdfConvertError extends Error {}
 
 interface Progress { page: number; pages: number }
 
-async function openPdf(file: File) {
+export async function openPdf(file: File) {
   if (file.size > MAX_BYTES) throw new PdfConvertError(`That PDF is larger than ${MAX_BYTES / 1024 / 1024} MB. Try a smaller file.`)
   const pdfjs = await import('pdfjs-dist')
   pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString()

@@ -22,6 +22,10 @@ const schema = z
     AUTH_SECRET: z.string().min(32, 'AUTH_SECRET must be at least 32 characters'),
     GOOGLE_CLIENT_ID: optional(z.string()),
     GOOGLE_CLIENT_SECRET: optional(z.string()),
+    /** Microsoft sign-in (Azure app registration). Tenant "common" = work, school and personal accounts. */
+    MICROSOFT_CLIENT_ID: optional(z.string()),
+    MICROSOFT_CLIENT_SECRET: optional(z.string()),
+    MICROSOFT_TENANT_ID: z.string().default('common'),
     /** AI Studio key (AI_PROVIDER=gemini) or Vertex AI / Agent Platform express key (AI_PROVIDER=vertex) */
     GEMINI_API_KEY: optional(z.string()),
     OPENROUTER_API_KEY: optional(z.string()),
@@ -37,6 +41,8 @@ const schema = z
     EDGE_SHARED_SECRET: z.string().min(24).optional(),
     /** test-only: a stand-in Razorpay for black-box payment tests (ignored with live keys and in production, see billing/razorpay.ts) */
     RAZORPAY_API_BASE: z.string().url().optional(),
+    /** TEST PAYMENTS: an in-process stand-in for Razorpay (no account, card or internet needed). Refused when APP_ENV=production. See billing/simulator.ts */
+    PAYMENTS_SIMULATOR: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
     RAZORPAY_INTERNATIONAL: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
     /** dev/testing: bill in this currency regardless of the visitor's country */
     /** FX used ONLY for owner revenue-vs-cost reporting (provider costs are USD, Razorpay INR test payments are paise) */
@@ -80,6 +86,20 @@ const schema = z
     /** Public free tools (no login): the most they may spend in any rolling 24h, and the per-visitor daily cap. Past either, they pause; paying users are unaffected. */
     FREE_TOOLS_USD_DAY: z.coerce.number().positive().default(3),
     FREE_TOOLS_IP_DAY: z.coerce.number().int().min(1).default(20),
+    /** recordings a visitor may transcribe per day in the free tool (each one costs real money) */
+    /** big recordings (video to slides): where ffmpeg / ffprobe live (default: found on PATH), where uploads wait, how many jobs run at once */
+    FFMPEG_PATH: optional(z.string()),
+    FFPROBE_PATH: optional(z.string()),
+    MEDIA_TMP_DIR: optional(z.string()),
+    MEDIA_JOB_CONCURRENCY: z.coerce.number().int().min(1).max(4).default(1),
+    /** the website's refresh hook (https://site/api/revalidate-content) and its shared secret: lets published posts appear at once instead of after the page cache expires */
+    WEB_REVALIDATE_URL: z.string().url().optional(),
+    REVALIDATE_SECRET: z.string().min(16).optional(),
+    /** sitemaps one visitor may make per hour */
+    FREE_SITEMAP_IP_HOUR: z.coerce.number().int().min(1).default(8),
+    /** support messages one visitor may send per hour */
+    SUPPORT_IP_HOUR: z.coerce.number().int().min(1).default(5),
+    FREE_MEDIA_IP_DAY: z.coerce.number().int().min(0).default(3),
     AI_BUDGET_USD_HOUR: z.coerce.number().positive().default(15),
     AI_BUDGET_USD_DAY: z.coerce.number().positive().default(75),
     /** per account, rolling 24 h: stops one abuser spending the shared budget */
@@ -87,8 +107,12 @@ const schema = z
     // ── account abuse protection ──
     /** unverified emails can't sign in (so can't spend anything). Needs a mailer. Production requires it. */
     REQUIRE_EMAIL_VERIFICATION: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
-    /** transactional email via Resend (https://resend.com): verification + password reset */
+    /** transactional email: verification, password reset, invitations, shared links. Set ONE of these keys (Brevo wins if both are set). */
     RESEND_API_KEY: optional(z.string().min(10)),
+    BREVO_API_KEY: optional(z.string().min(10)),
+    /** the logo at the top of every e-mail: a PNG on a PUBLIC address (mail apps fetch it from there). Default `${WEB_URL}/logo-lockup.png`, which only works once the website is online. */
+    EMAIL_LOGO_URL: optional(z.url()),
+    /** the From address on every mail, `Name <address@your-verified-domain>` or just the address */
     EMAIL_FROM: optional(z.string().min(5)),
     /** Cloudflare Turnstile secret: when set, sign-up (and sign-in after repeated failures) require a solved challenge */
     TURNSTILE_SECRET_KEY: optional(z.string().min(10)),
@@ -109,6 +133,8 @@ const schema = z
   .refine((e) => !!e.GOOGLE_CLIENT_ID === !!e.GOOGLE_CLIENT_SECRET, {
     message: 'GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set together',
   })
+  .refine((e) => !!e.MICROSOFT_CLIENT_ID === !!e.MICROSOFT_CLIENT_SECRET, { message: 'MICROSOFT_CLIENT_ID and MICROSOFT_CLIENT_SECRET must be set together' })
+  .refine((e) => !e.PAYMENTS_SIMULATOR || e.APP_ENV !== 'production', { message: 'PAYMENTS_SIMULATOR makes up payments and must never be on when APP_ENV=production' })
   .refine((e) => !!e.RAZORPAY_KEY_ID === !!e.RAZORPAY_KEY_SECRET, { message: 'RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET must be set together' })
   .refine((e) => e.NODE_ENV !== 'production' || !e.RAZORPAY_KEY_ID || (e.RAZORPAY_KEY_ID.startsWith('rzp_live_') === (e.APP_ENV === 'production')), {
     message: 'APP_ENV=production needs rzp_live_ keys, and non-production environments must use rzp_test_ keys',
@@ -124,7 +150,7 @@ const schema = z
   .refine((e) => e.NODE_ENV !== 'production' || e.TRUSTED_PROXY_HOPS >= 1, { message: 'production runs behind a proxy: set TRUSTED_PROXY_HOPS (ALB only = 1, CloudFront + ALB = 2) or every user shares one rate-limit bucket' })
   .refine((e) => e.NODE_ENV !== 'production' || e.AI_PROVIDER !== 'mock', { message: 'AI_PROVIDER=mock must never run in production' })
   .refine((e) => e.NODE_ENV !== 'production' || (new Set(e.AUTH_SECRET).size >= 12 && !/(ci-only|change-?me|secret|password|example|test)/i.test(e.AUTH_SECRET)), { message: 'AUTH_SECRET looks like a placeholder: generate one with `openssl rand -base64 48`' })
-  .refine((e) => e.NODE_ENV !== 'production' || (e.REQUIRE_EMAIL_VERIFICATION && !!e.RESEND_API_KEY && !!e.EMAIL_FROM), { message: 'production requires REQUIRE_EMAIL_VERIFICATION=true with RESEND_API_KEY and EMAIL_FROM (unverified accounts would be unlimited free-credit farms)' })
+  .refine((e) => e.NODE_ENV !== 'production' || (e.REQUIRE_EMAIL_VERIFICATION && (!!e.RESEND_API_KEY || !!e.BREVO_API_KEY) && !!e.EMAIL_FROM), { message: 'production requires REQUIRE_EMAIL_VERIFICATION=true with RESEND_API_KEY or BREVO_API_KEY, and EMAIL_FROM (unverified accounts would be unlimited free-credit farms)' })
   .refine((e) => e.AI_PROVIDER !== 'openrouter' || !!e.OPENROUTER_API_KEY, { message: 'AI_PROVIDER=openrouter requires OPENROUTER_API_KEY' })
   .refine((e) => e.NODE_ENV !== 'production' || (e.API_URL.startsWith('https://') && !!e.COOKIE_DOMAIN), {
     message: 'production requires https URLs and COOKIE_DOMAIN',

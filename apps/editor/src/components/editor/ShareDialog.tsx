@@ -1,3 +1,4 @@
+import { Mail, X } from '@prompttoppt/ui/icons'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { ApiError, isGateError, type MemberView, type ShareExpiry, type ShareLinkView } from '@prompttoppt/api-client'
 import { Portal } from '@/components/Portal'
@@ -26,6 +27,8 @@ export function ShareDialog({ deckId, onClose }: { deckId: string; onClose: () =
   const [error, setError] = useState<string | null>(null)
   const [note, setNote] = useState<string | null>(null)
   const [analytics, setAnalytics] = useState(false)
+  const [mailTo, setMailTo] = useState('')
+  const [mailNote, setMailNote] = useState('')
 
   const refreshMembers = useCallback(() => api.listMembers(deckId).then((r) => { setMembers(r.members); setLimit(r.limit) }).catch(() => setMembers([])), [deckId])
   useEffect(() => {
@@ -65,6 +68,18 @@ export function ShareDialog({ deckId, onClose }: { deckId: string; onClose: () =
     catch (err) { if (isGateError(err) && err.code === 'UPGRADE_REQUIRED') { onClose(); upgrade.show(err.message) } else setError(msg(err, 'Could not update the link.')) }
     finally { setBusy(false) }
   }
+  async function emailLink(e: FormEvent) {
+    e.preventDefault()
+    const emails = [...new Set(mailTo.split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean))]
+    if (emails.length === 0 || busy) return
+    if (emails.length > 5) { setError('Send to up to 5 people at a time.'); return }
+    setBusy(true); setError(null); setNote(null)
+    try {
+      const r = await api.emailShareLink(deckId, emails, mailNote.trim() || undefined)
+      setNote(r.failed ? `Sent to ${r.sent}; ${r.failed} could not be sent. Copy the link for ${r.failed === 1 ? 'that person' : 'them'}.` : `Link emailed to ${r.sent} ${r.sent === 1 ? 'person' : 'people'}.`)
+      setMailTo(''); setMailNote('')
+    } catch (err) { setError(msg(err, 'Could not send the email.')) } finally { setBusy(false) }
+  }
   async function copy() {
     if (!link) return
     try { await navigator.clipboard.writeText(link); setNote('Link copied.') } catch { setNote('Select the link and copy it.') }
@@ -80,7 +95,7 @@ export function ShareDialog({ deckId, onClose }: { deckId: string; onClose: () =
         <div ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Share presentation" className="bg-white rounded-2xl w-full max-w-lg p-5 sm:p-6 shadow-xl outline-none max-h-[90vh] overflow-y-auto">
           <div className="flex items-start justify-between mb-3">
             <h2 className="font-heading font-bold text-xl">Share</h2>
-            <button onClick={onClose} aria-label="Close" className="text-2xl leading-none text-slate-500 hover:text-slate-800">×</button>
+            <button onClick={onClose} aria-label="Close" className="text-2xl leading-none text-slate-500 hover:text-slate-800"><X aria-hidden size={24} /></button>
           </div>
           <div role="tablist" className="flex gap-2 mb-4">{tabBtn('people', 'Invite people')}{tabBtn('link', 'View-only link')}</div>
 
@@ -98,7 +113,7 @@ export function ShareDialog({ deckId, onClose }: { deckId: string; onClose: () =
                     <li key={m.id} className="flex items-center gap-3 py-2.5 text-sm">
                       <span className="min-w-0 flex-1 truncate">{m.email}</span>
                       <span className={`text-xs rounded-full px-2 py-0.5 ${m.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>{m.status === 'active' ? 'Can edit' : 'Invited'}</span>
-                      <button onClick={() => void remove(m)} aria-label={`Remove ${m.email}`} className="text-slate-500 hover:text-red-700 px-1">✕</button>
+                      <button onClick={() => void remove(m)} aria-label={`Remove ${m.email}`} className="text-slate-500 hover:text-red-700 px-1"><X aria-hidden size={14} /></button>
                     </li>
                   ))}
                   {members && members.length === 0 && <li className="py-3 text-sm text-slate-500">Nobody yet. Invite a teammate or friend above.</li>}
@@ -122,6 +137,15 @@ export function ShareDialog({ deckId, onClose }: { deckId: string; onClose: () =
                     <input readOnly value={link} aria-label="Share link" onFocus={(e) => e.currentTarget.select()} className="flex-1 min-w-0 border border-border rounded-lg px-3 py-2.5 text-sm bg-slate-50" />
                     <button onClick={() => void copy()} className="px-4 py-2.5 rounded-lg bg-primary text-white text-sm font-semibold">Copy</button>
                   </div>
+                  <form onSubmit={emailLink} className="mt-3 rounded-xl border border-border p-3 space-y-2" aria-label="Email this link">
+                    <label htmlFor="share-mail" className="block text-sm font-medium"><Mail aria-hidden size={14} className="inline -mt-0.5 mr-1" />Email this link</label>
+                    <div className="flex gap-2">
+                      <input id="share-mail" value={mailTo} onChange={(e) => setMailTo(e.target.value)} placeholder="friend@email.com, colleague@email.com" aria-label="Email addresses" className="flex-1 min-w-0 border border-border rounded-lg px-3 py-2 text-sm" />
+                      <button disabled={busy || !mailTo.trim()} className="px-3 py-2 rounded-lg bg-primary text-white text-sm font-semibold disabled:opacity-50">Send</button>
+                    </div>
+                    <input value={mailNote} onChange={(e) => setMailNote(e.target.value)} maxLength={300} placeholder="Add a short message (optional)" aria-label="Message" className="w-full border border-border rounded-lg px-3 py-2 text-sm" />
+                    <p className="text-xs text-slate-500">Up to 5 people at a time. If the link has a password, it is not in the email — send it separately.</p>
+                  </form>
                   <fieldset className="mt-4 border border-border rounded-xl p-3 space-y-3" aria-label="Link protection">
                     <legend className="px-1 text-xs font-semibold text-slate-500">Protect this link {!canInvite && <span className="ml-1 text-[10px] font-bold text-primary bg-primary/10 rounded-full px-1.5 py-0.5">PRO</span>}</legend>
                     <div>

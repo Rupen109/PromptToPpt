@@ -10,6 +10,7 @@ import { FormatBar } from './FormatBar'
 import { useComments } from '@/editor/comments'
 import { CommentPins } from './CommentPins'
 import { PeerLayer } from './PeerLayer'
+import { applyListShortcut, backspaceAtListStart, normalizeRoot, pastePlain, readParagraphs, splitParagraph, toggleList, type EditedParagraph } from '@/editor/inline-lists'
 
 const HANDLES: C.Handle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']
 const CURSOR: Record<C.Handle, string> = { nw: 'nwse-resize', se: 'nwse-resize', ne: 'nesw-resize', sw: 'nesw-resize', n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize' }
@@ -29,10 +30,20 @@ function useFitWidth(max: number) {
   return [ref, w] as const
 }
 
-/** Plain-text inline editor for a text element: commits on blur / Escape as ONE undoable edit. */
-function InlineText({ el, theme, slide, onCommit }: { el: TextElement; theme: Theme; slide: Slide; onCommit: (lines: string[]) => void }) {
+type Flag = 'bold' | 'italic' | 'underline'
+/**
+ * Inline editor for a text element: commits on blur / Escape as ONE undoable edit. It looks like the slide while you type: every paragraph is its own block, list items keep
+ * their bullet / number (drawn by CSS, never part of the text), Enter makes the next bullet, Enter on an empty bullet or Backspace at the start of one leaves the list,
+ * "- " / "1. " start a list, Ctrl/Cmd+Shift+8 / 7 toggle bullets / numbers. Ctrl/Cmd+B, I and U switch the whole box (like the toolbar buttons).
+ */
+function InlineText({ el, theme, slide, onCommit }: { el: TextElement; theme: Theme; slide: Slide; onCommit: (items: EditedParagraph[], flags: Partial<Record<Flag, boolean>>) => void }) {
   const ref = useRef<HTMLDivElement>(null)
   const done = useRef(false)
+  const first = el.paragraphs[0]?.runs[0]
+  const [fmt, setFmt] = useState<Record<Flag, boolean>>({ bold: !!first?.bold, italic: !!first?.italic, underline: !!first?.underline })
+  const touched = useRef(new Set<Flag>())
+  const fmtRef = useRef(fmt)
+  useEffect(() => { fmtRef.current = fmt }, [fmt])
   useEffect(() => {
     const node = ref.current
     if (!node) return
@@ -47,35 +58,54 @@ function InlineText({ el, theme, slide, onCommit }: { el: TextElement; theme: Th
   const commit = () => {
     if (done.current) return
     done.current = true
-    const raw = (ref.current?.innerText ?? '').replace(/\r/g, '').replace(/\n{2,}/g, '\n')
-    onCommit(raw.split('\n').map((l) => l.trimEnd()).filter((l, i, a) => l.length > 0 || a.length === 1))
+    const node = ref.current
+    if (node) normalizeRoot(node)
+    onCommit(node ? readParagraphs(node) : [{ text: '' }], Object.fromEntries([...touched.current].map((f) => [f, fmtRef.current[f]])))
   }
   const heading = HEADING.has(el.role)
+  const gap = el.fontSize * (el.paraGap ?? 0.5)
   return (
+    <>
+    {/* the same spacing, indent and markers as the slide itself, so the text does not jump when editing starts (outside the editable box: it must never become text) */}
+    <style>{`.pt-inline-edit{counter-reset:pt-n}.pt-inline-edit>div{position:relative;margin-bottom:var(--pt-gap);counter-increment:pt-n;white-space:pre-wrap}.pt-inline-edit>div:last-child{margin-bottom:0}.pt-inline-edit>div[data-list]{padding-inline-start:var(--pt-indent)}.pt-inline-edit>div[data-list]::before{position:absolute;inset-inline-start:0;content:var(--pt-bullet);user-select:none}.pt-inline-edit>div[data-list="number"]::before{content:counter(pt-n) "."}`}</style>
     <div
       ref={ref}
+      className="pt-inline-edit"
       contentEditable
       suppressContentEditableWarning
       role="textbox"
       aria-label="Edit text"
       aria-multiline="true"
       onBlur={commit}
+      onPaste={(e) => { e.preventDefault(); if (ref.current) pastePlain(ref.current, e.clipboardData.getData('text/plain')) }}
+      onInput={() => { if (ref.current) { normalizeRoot(ref.current); applyListShortcut(ref.current) } }}
       onKeyDown={(e) => {
         e.stopPropagation() // keep editor shortcuts (delete/undo/nudge) out of text editing
+        const root = ref.current
+        const mod = (e.ctrlKey || e.metaKey) && !e.altKey
+        const flag = mod && !e.shiftKey ? ({ b: 'bold', i: 'italic', u: 'underline' } as const)[e.key.toLowerCase() as 'b' | 'i' | 'u'] : undefined
+        if (flag) { e.preventDefault(); touched.current.add(flag); setFmt((f) => ({ ...f, [flag]: !f[flag] })); return }
+        if (root && mod && e.shiftKey && (e.code === 'Digit8' || e.code === 'Digit7')) { e.preventDefault(); toggleList(root, e.code === 'Digit8' ? 'bullet' : 'number'); return }
+        if (root && e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); splitParagraph(root); return }
+        if (root && e.key === 'Backspace' && !e.nativeEvent.isComposing && backspaceAtListStart(root)) { e.preventDefault(); return }
         if (e.key === 'Escape') {
           e.preventDefault()
           commit()
         }
       }}
       style={{
-        position: 'absolute', left: el.x, top: el.y, width: el.width, height: el.height, zIndex: 9000, outline: '3px solid #2563eb', background: 'rgba(255,255,255,0.0)', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere',
-        display: 'flex', flexDirection: 'column', justifyContent: { top: 'flex-start', middle: 'center', bottom: 'flex-end' }[el.valign], textAlign: { left: 'start', center: 'center', right: 'end' }[el.align] as 'start' | 'center' | 'end', unicodeBidi: 'plaintext', color: resolveColor(el.color, theme, slide), fontSize: el.fontSize, lineHeight: 1.3,
-        fontFamily: `'${heading ? theme.fonts.heading : theme.fonts.body}', system-ui, sans-serif`, fontWeight: el.role === 'title' || el.role === 'metric' ? 800 : heading ? 700 : 400,
-        paddingLeft: el.paragraphs[0]?.list ? 0 : 0,
+        position: 'absolute', left: el.x, top: el.y, width: el.width, height: el.height, zIndex: 9000, outline: '3px solid #2563eb', background: 'rgba(255,255,255,0.0)', overflowWrap: 'anywhere',
+        display: 'flex', flexDirection: 'column', justifyContent: { top: 'flex-start', middle: 'center', bottom: 'flex-end' }[el.valign], textAlign: { left: 'start', center: 'center', right: 'end' }[el.align] as 'start' | 'center' | 'end', unicodeBidi: 'plaintext', color: resolveColor(el.color, theme, slide), fontSize: el.fontSize, lineHeight: el.lineHeight ?? 1.3,
+        fontFamily: `'${heading ? theme.fonts.heading : theme.fonts.body}', system-ui, sans-serif`, fontWeight: fmt.bold ? 700 : el.weight ?? (el.role === 'title' || el.role === 'metric' ? 800 : heading ? 700 : 400), fontStyle: fmt.italic ? 'italic' : undefined, textDecoration: fmt.underline ? 'underline' : undefined,
+        ...(el.uppercase ? { textTransform: 'uppercase' as const } : {}), ...(el.letterSpacing ? { letterSpacing: el.letterSpacing } : {}),
+        ['--pt-gap' as string]: `${gap}px`, ['--pt-indent' as string]: `${el.fontSize * 0.9}px`, ['--pt-bullet' as string]: JSON.stringify(el.bullet ?? '•'),
       }}
     >
-      {el.paragraphs.map((p) => p.runs.map((r) => r.text).join('')).join('\n')}
+      {el.paragraphs.map((p, i) => (
+        <div key={i} {...(p.list ? { 'data-list': p.list } : {})}>{p.runs.map((r) => r.text).join('') || <br />}</div>
+      ))}
     </div>
+    </>
   )
 }
 
@@ -183,7 +213,7 @@ export function EditorCanvas({ slide, theme, aspect, watermark, requireAdvanced 
                 if (el.id === editingId && el.type === 'text') {
                   return (
                     <div key={el.id} style={{ pointerEvents: 'auto' }}>
-                      <InlineText el={el} theme={theme} slide={slide} onCommit={(lines) => { apply('Edit text', (d) => C.setText(d, slide.id, el.id, (lines.length ? lines : ['']).map((l) => ({ runs: [{ text: l, ...(el.paragraphs[0]?.runs[0]?.bold ? { bold: true } : {}) }], ...(el.paragraphs[0]?.list ? { list: el.paragraphs[0].list } : {}) }))), { mergeKey: `text:${el.id}` }); edit(null) }} />
+                      <InlineText el={el} theme={theme} slide={slide} onCommit={(items, flags) => { apply('Edit text', (d) => { C.setText(d, slide.id, el.id, C.retextParagraphs(el.paragraphs, items.length ? items : [{ text: '' }])); for (const [flag, on] of Object.entries(flags)) C.setRunFlag(d, slide.id, el.id, flag as Flag, on) }, { mergeKey: `text:${el.id}` }); edit(null) }} />
                     </div>
                   )
                 }
@@ -198,7 +228,7 @@ export function EditorCanvas({ slide, theme, aspect, watermark, requireAdvanced 
                     onPointerDown={(e) => begin(e, el, 'move')}
                     onPointerMove={move}
                     onPointerUp={end}
-                    onDoubleClick={(e) => { e.stopPropagation(); if (el.type === 'text' && !el.locked && !locked) edit(el.id) }}
+                    onDoubleClick={(e) => { e.stopPropagation(); if (el.type === 'text' && !el.locked && !locked) edit(el.id); else if (el.type === 'table' && !el.locked && !locked) useUi.getState().editTable(el.id) }}
                     style={{ position: 'absolute', left: el.x, top: el.y, width: el.width, height: el.height, zIndex: 5000 + el.zIndex, ...(clip ? { clipPath: clip } : {}), cursor: el.locked || locked ? 'default' : 'move', touchAction: 'none', pointerEvents: 'auto', outline: isSel ? `${Math.max(2, 2 / scale)}px solid #2563eb` : undefined }}
                     className={isSel ? '' : 'hover:outline hover:outline-2 hover:outline-blue-300/70'}
                   />

@@ -11,7 +11,7 @@ export function header(c: Ctx, title: string, o: { width?: number; size?: number
   const k = pal(c)
   const x = o.x ?? M
   const w = o.width ?? c.W - 2 * M
-  const size = o.size ?? 60
+  const size = o.size ?? 68
   const ornament = c.style.header === 'bar' || c.style.header === 'underline' ? k.secondary : k.accent
   switch (c.style.header) {
     case 'underline': {

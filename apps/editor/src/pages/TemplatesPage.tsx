@@ -1,3 +1,5 @@
+import { ArrowLeft, ArrowRight, Lock, Play } from '@prompttoppt/ui/icons'
+import { X } from '@prompttoppt/ui/icons'
 import { Portal } from '@/components/Portal'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
@@ -99,17 +101,17 @@ function PreviewDialog({ design, locked, onClose }: { design: TemplateDesign; lo
             <h2 className="font-heading font-bold text-2xl flex items-center gap-2">{design.name} {locked && <span className="text-[11px] font-bold text-primary bg-primary/10 rounded-full px-2 py-0.5">PRO</span>}</h2>
             <p className="text-slate-600 text-sm">{design.tagline} · {CATEGORIES.find((c) => c.id === design.category)?.name}</p>
           </div>
-          <button onClick={onClose} aria-label="Close" className="text-slate-600 hover:text-slate-800 text-2xl leading-none">×</button>
+          <button onClick={onClose} aria-label="Close" className="text-slate-600 hover:text-slate-800 text-2xl leading-none"><X aria-hidden size={24} /></button>
         </div>
         <div className="px-5">
           <div className="rounded-xl overflow-hidden border border-border bg-slate-100 max-w-[880px] mx-auto">
             <FitSlide key={`${i}-${play}-${aspect}`} slide={slides[i]!} theme={design.theme} aspect={aspect} play={play > 0} />
           </div>
           <div className="flex items-center justify-center gap-3 mt-3 text-sm">
-            <button onClick={() => setI((x) => Math.max(0, x - 1))} disabled={i === 0} aria-label="Previous slide" className="border border-border rounded-lg px-3 py-1 disabled:opacity-40">←</button>
+            <button onClick={() => setI((x) => Math.max(0, x - 1))} disabled={i === 0} aria-label="Previous slide" className="border border-border rounded-lg px-3 py-1 disabled:opacity-40"><ArrowLeft aria-hidden size={16} /></button>
             <span className="tabular-nums text-slate-600">{i + 1} / {slides.length}</span>
-            <button onClick={() => setI((x) => Math.min(slides.length - 1, x + 1))} disabled={i === slides.length - 1} aria-label="Next slide" className="border border-border rounded-lg px-3 py-1 disabled:opacity-40">→</button>
-            <button onClick={() => setPlay((p) => p + 1)} className="border border-border rounded-lg px-3 py-1 text-primary font-semibold">▶ Play animation</button>
+            <button onClick={() => setI((x) => Math.min(slides.length - 1, x + 1))} disabled={i === slides.length - 1} aria-label="Next slide" className="border border-border rounded-lg px-3 py-1 disabled:opacity-40"><ArrowRight aria-hidden size={16} /></button>
+            <button onClick={() => setPlay((p) => p + 1)} className="border border-border rounded-lg px-3 py-1 text-primary font-semibold inline-flex items-center gap-1.5"><Play aria-hidden size={14} fill="currentColor" />Play animation</button>
           </div>
           <div className="flex gap-2 overflow-x-auto py-3" role="tablist" aria-label="Slides in this template">
             {slides.map((s, k) => (
@@ -177,7 +179,7 @@ export function TemplatesPage() {
                   <button onClick={() => setOpen(d)} className="group block w-full text-left bg-white border border-border rounded-xl overflow-hidden hover:shadow-lg transition" aria-label={`${d.name} — ${d.tagline}${locked ? ' (Pro)' : ''}`}>
                     <div className="relative">
                       <LazyThumb design={d} />
-                      {locked && <span className="absolute top-2 right-2 text-[11px] font-bold bg-white/95 text-primary rounded-full px-2 py-0.5 shadow">🔒 PRO</span>}
+                      {locked && <span className="absolute top-2 right-2 text-[11px] font-bold bg-white/95 text-primary rounded-full px-2 py-0.5 shadow inline-flex items-center gap-1"><Lock aria-hidden size={11} />PRO</span>}
                       <span className="absolute inset-0 bg-black/0 group-hover:bg-black/25 grid place-items-center text-white font-semibold opacity-0 group-hover:opacity-100 transition">Preview</span>
                     </div>
                     <div className="p-4">

@@ -61,13 +61,13 @@ export default async function () {
     await p.goto(EDITOR + '/', { waitUntil: 'networkidle' })
     await p.getByRole('button', { name: /Upload files, or links/ }).click()
     const tabs = p.getByRole('dialog').getByRole('tab')
-    expect((await tabs.allInnerTexts()).join('|') === 'Upload file|Website link|Paste text', `tab order: ${(await tabs.allInnerTexts()).join('|')}`)
+    expect((await tabs.allInnerTexts()).join('|') === 'Upload file|Website link|YouTube / captions|Paste text|Wikipedia & web', `tab order: ${(await tabs.allInnerTexts()).join('|')}`)
     expect(await tabs.first().getAttribute('aria-selected') === 'true', 'Upload file is not the opening tab')
     expect(await p.getByRole('dialog').locator('input[type=file]').count() === 1, 'no file input on the first tab')
     await p.keyboard.press('Escape'); await settle(200)
   })
 
-  await s.check('home: pasting a file or a link into the prompt bar attaches it (chip, nothing typed); other text pastes normally; pictures are refused clearly', p, async () => {
+  await s.check('home: pasting a file or a link into the prompt bar attaches it (chip, nothing typed); other text pastes normally; a pasted picture is attached or refused clearly', p, async () => {
     await p.goto(EDITOR + '/', { waitUntil: 'networkidle' })
     const box = p.getByLabel('Presentation prompt')
     const size = await box.evaluate((el) => parseFloat(getComputedStyle(el).fontSize)); expect(size <= 18, `prompt text is ${size}px`)
@@ -89,7 +89,10 @@ export default async function () {
     expect(await p.getByRole('button', { name: /^Remove / }).count() === 2, 'expected two attachment chips')
     await paste('shot')
     await paste('image')
-    expect(/Pictures can.t be used as a source/.test(await p.locator('[role=alert]').first().innerText()), 'no clear message for a pasted picture')
+    // pictures are sources now (read by the AI): a real picture becomes a chip; this 4-byte fake is refused with a plain message, never silently
+    await settle(1500)
+    const text = (await p.locator('[role=alert]').allInnerTexts()).join(' ')
+    expect(/shot\.png/.test(await p.locator('body').innerText()) || text.trim().length > 0, 'a pasted picture did nothing: no chip and no message')
     await box.fill('Make a deck about coffee '); await box.evaluate((el) => { const dt = new DataTransfer(); dt.setData('text', 'and tea'); el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })) })
     expect(await p.getByRole('button', { name: /^Remove / }).count() === 2, 'plain text paste changed the attachments')
     while (await p.getByRole('button', { name: /^Remove / }).count()) { await p.getByRole('button', { name: /^Remove / }).first().click(); await settle(150) }

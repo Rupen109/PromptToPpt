@@ -1,3 +1,4 @@
+import { X } from '@prompttoppt/ui/icons'
 import { Portal } from '@/components/Portal'
 import { useRef, useState, type FormEvent } from 'react'
 import { ApiError, type SourceSummary } from '@prompttoppt/api-client'
@@ -20,6 +21,7 @@ export function SourcesDialog({ count, language, initialTab, initialUrl, onAdd, 
   const requestId = useRef(crypto.randomUUID())
   const [tab, setTab] = useState<Tab>(initialTab ?? 'file')
   const [busy, setBusy] = useState(false)
+  const [note, setNote] = useState('')
   const [error, setError] = useState<string | null>(null)
   const file = useRef<HTMLInputElement>(null)
   const dialogRef = useDialog<HTMLDivElement>(true, onClose)
@@ -28,6 +30,7 @@ export function SourcesDialog({ count, language, initialTab, initialUrl, onAdd, 
     if (count >= MAX_SOURCES) return setError(`You can attach up to ${MAX_SOURCES} sources.`)
     setBusy(true)
     setError(null)
+    setNote('')
     try {
       onAdd(await fn())
       onClose()
@@ -73,6 +76,11 @@ export function SourcesDialog({ count, language, initialTab, initialUrl, onAdd, 
     if (tab === 'text') return void run(() => api.addTextSource(String(f.get('text')), String(f.get('title') ?? '')))
     const picked = file.current?.files?.[0]
     if (!picked) return setError('Choose a file first.')
+    if (/\.(mp3|m4a|wav|ogg|flac|aac|mp4|mov|webm)$/i.test(picked.name)) {
+      if (picked.size > 200 * 1024 * 1024) return setError('That recording is larger than 200 MB. Save a shorter part, or export just the audio, and try again.')
+      if (/\.(mp4|mov|webm)$/i.test(picked.name) || picked.size > 12 * 1024 * 1024) return void run(async () => { const s = await api.addVideoSource(picked, setNote); void refresh(); return s }) // background job, 3 credits per minute
+      return void run(async () => { const s = await api.addMediaSource(picked); void refresh(); return s }) // credits changed
+    }
     if (/\.(jpe?g|png|webp)$/i.test(picked.name)) {
       if (picked.size > 8 * 1024 * 1024) return setError('That picture is larger than 8 MB. Save a smaller copy and try again.')
       return void run(async () => { const s = await api.addImageSource(picked); void refresh(); return s }) // credits changed
@@ -87,7 +95,7 @@ export function SourcesDialog({ count, language, initialTab, initialUrl, onAdd, 
       <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Add sources" className="bg-white rounded-2xl w-full max-w-lg p-6 shadow-xl outline-none">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-heading font-bold text-xl">Add sources</h2>
-          <button onClick={onClose} aria-label="Close" className="text-slate-500 hover:text-slate-800 text-xl leading-none">×</button>
+          <button onClick={onClose} aria-label="Close" className="text-slate-500 hover:text-slate-800 text-xl leading-none"><X aria-hidden size={20} /></button>
         </div>
         <div role="tablist" className="flex flex-wrap gap-2 mb-4">
           {([['file', 'Upload file'], ['link', 'Website link'], ['youtube', 'YouTube / captions'], ['text', 'Paste text'], ['research', 'Wikipedia & web']] as const).map(([t, label]) => (
@@ -101,8 +109,8 @@ export function SourcesDialog({ count, language, initialTab, initialUrl, onAdd, 
               <input name="title" maxLength={200} placeholder="Video title (optional)" aria-label="Video title" className={input} />
               <textarea name="transcript" required minLength={20} maxLength={400000} rows={6} placeholder="Paste the transcript here" aria-label="Transcript" className={input} />
               <ol className="text-xs text-slate-600 list-decimal pl-5 space-y-0.5">
-                <li>Open the video on YouTube and click <strong>⋯ More</strong> under it.</li>
-                <li>Choose <strong>Show transcript</strong>, then select all the text and copy it.</li>
+                <li>Open the video on YouTube and click <strong>…more</strong> under the title to open the description.</li>
+                <li>Scroll to the bottom of the description, click <strong>Show transcript</strong>, then select all the text in the panel and copy it.</li>
                 <li>Paste it above. Time stamps are kept, so slides can point to the minute.</li>
               </ol>
               <p className="text-xs text-slate-500">YouTube does not let apps read captions automatically. You can also upload a caption file (.srt or .vtt) from the Upload file tab.</p>
@@ -128,8 +136,8 @@ export function SourcesDialog({ count, language, initialTab, initialUrl, onAdd, 
           {tab === 'link' && <p className="text-xs text-slate-500">Websites, or a Google Doc, Sheet or Slides shared with “Anyone with the link”.</p>}
           {tab === 'file' && (
             <>
-              <input ref={file} type="file" accept=".pdf,.docx,.docm,.pptx,.xlsx,.xlsm,.csv,.tsv,.eml,.txt,.md,.jpg,.jpeg,.png,.webp,.srt,.vtt" aria-label="File" className={input} />
-              <p className="text-xs text-slate-500">PDF, Word (.docx), PowerPoint (.pptx), Excel (.xlsx), CSV, email (.eml) or text/Markdown — up to 15 MB. Video caption files (.srt, .vtt) work too. A JPG, PNG or WebP picture (notes, a whiteboard, a table, a chart, a screenshot — up to 8 MB) is read by AI for 4 credits. Old .doc / .xls / .ppt files: save them in the newer format first.</p>
+              <input ref={file} type="file" accept=".pdf,.docx,.docm,.pptx,.xlsx,.xlsm,.csv,.tsv,.eml,.txt,.md,.jpg,.jpeg,.png,.webp,.srt,.vtt,.mp3,.m4a,.wav,.ogg,.flac,.aac,.mp4,.mov,.webm" aria-label="File" className={input} />
+              <p className="text-xs text-slate-500">PDF, Word (.docx), PowerPoint (.pptx), Excel (.xlsx), CSV, email (.eml) or text/Markdown — up to 15 MB. Video caption files (.srt, .vtt) work too. A short audio clip (up to 12 MB) is transcribed by AI for 6 credits per 4 MB. A video, or a longer recording (MP4, MOV, WebM, MP3, M4A… up to 200 MB and 90 minutes), is both listened to and read off the screen in the background for 3 credits per minute; it is refunded if it fails. A JPG, PNG or WebP picture (notes, a whiteboard, a table, a chart, a screenshot — up to 8 MB) is read by AI for 4 credits. Old .doc / .xls / .ppt files: save them in the newer format first.</p>
             </>
           )}
           {tab === 'text' && (
@@ -140,7 +148,7 @@ export function SourcesDialog({ count, language, initialTab, initialUrl, onAdd, 
           )}
           {error && <p role="alert" className="text-sm font-semibold text-red-700">{error}</p>}
           <p className="text-xs text-slate-500">Sources are private to you. The AI treats them as reference data only and cites them on slides.</p>
-          <button type="submit" disabled={busy} className="w-full bg-primary text-white rounded-lg py-2.5 font-semibold disabled:opacity-60">{busy ? (tab === 'research' ? 'Searching…' : 'Reading…') : tab === 'research' ? 'Find facts' : tab === 'youtube' ? 'Add transcript' : 'Add source'}</button>
+          <button type="submit" disabled={busy} className="w-full bg-primary text-white rounded-lg py-2.5 font-semibold disabled:opacity-60">{busy ? (tab === 'research' ? 'Searching…' : note || 'Reading…') : tab === 'research' ? 'Find facts' : tab === 'youtube' ? 'Add transcript' : 'Add source'}</button>
         </form>
       </div>
     </div></Portal>

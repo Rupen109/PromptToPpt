@@ -8,6 +8,7 @@ import { env } from './env.ts'
 import { BillingError, ConflictError, GateError } from './billing/errors.ts'
 import { billing } from './routes/billing.ts'
 import { images } from './routes/images.ts'
+import { editorMedia } from './routes/editor-media.ts'
 import { brand } from './routes/brand.ts'
 import { comments } from './routes/comments.ts'
 import { publicAnalytics, shareAnalytics } from './routes/share-analytics.ts'
@@ -15,6 +16,10 @@ import { db } from './db/index.ts'
 import { generatedAsset } from './db/schema.ts'
 import { getStorage } from './storage/index.ts'
 import { and, eq, isNull } from 'drizzle-orm'
+import { reviews } from './routes/reviews.ts'
+import { content } from './routes/content.ts'
+import { support } from './routes/support.ts'
+import { media } from './routes/media.ts'
 import { exportsRoute } from './routes/exports.ts'
 import { models } from './routes/models.ts'
 import { flagsPublic } from './routes/flags.ts'
@@ -122,7 +127,7 @@ app.on(['GET', 'POST'], '/api/auth/*', async (c) => {
 })
 
 // Every JSON body is small except these (they carry their own, larger, explicit limits): a global ceiling stops multi-megabyte junk before any parsing.
-const OWN_BODY_LIMIT = /^\/api\/v1\/(presentations\/[^/]+|sources\/(pdf|file)|drafts\/attachments|brand\/kits\/[^/]+\/(logo|images)|webhooks\/.*)$/
+const OWN_BODY_LIMIT = /^\/api\/v1\/(presentations\/[^/]+(\/images\/upload)?|sources\/(pdf|file|image|media)|free-tools\/(pdf|media)|media\/uploads\/[^/]+\/parts\/\d+|drafts\/attachments|support|brand\/kits\/[^/]+\/(logo|images)|admin\/posts(\/[^/]+|\/images\/upload)?|webhooks\/.*)$/
 const defaultBody = bodyLimit({ maxSize: 256 * 1024, onError: (c) => c.json({ success: false, error: { code: 'TOO_LARGE', message: 'Request is too large' } }, 413) })
 app.use('/api/v1/*', (c, next) => (['GET', 'HEAD', 'OPTIONS'].includes(c.req.method) || OWN_BODY_LIMIT.test(new URL(c.req.url).pathname) ? next() : defaultBody(c, next)))
 app.use('/api/v1/*', originCheck)
@@ -155,9 +160,14 @@ app.route('/api/v1/sources', sources)
 app.route('/api/v1/brand', brand)
 app.route('/api/v1', billing)
 app.route('/api/v1', images)
+app.route('/api/v1', editorMedia)
 app.route('/api/v1/exports', exportsRoute)
 app.route('/api/v1/models', models)
 app.route('/api/v1/flags', flagsPublic)
+app.route('/api/v1/reviews', reviews)
+app.route('/api/v1/content', content)
+app.route('/api/v1/support', support)
+app.route('/api/v1/media', media)
 app.route('/api/v1/admin', admin)
 
 app.onError((err, c) => {

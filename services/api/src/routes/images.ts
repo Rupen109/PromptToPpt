@@ -6,6 +6,9 @@ import { z } from 'zod'
 import { AIUnavailableError, ProviderError } from '@prompttoppt/ai'
 import type { AccessTier } from '@prompttoppt/validation'
 import { aiConfigured, catalog, gateway } from '../ai/gateway.ts'
+import { checkRaster, InvalidImageError, storeAsset } from '../brand/assets.ts'
+import { BrandReadError, fetchLimited } from '../brand/find.ts'
+import { BlockedUrlError } from '../sources/ssrf.ts'
 import { creditPrice, refundCredits, reserveCredits } from '../billing/credits.ts'
 import { resolveAccess } from '../collab/access.ts'
 import { assertImagesEnabled, assertModelTier, countsTowardQuota, getEntitlements } from '../billing/entitlements.ts'
@@ -73,6 +76,34 @@ images.get('/presentations/:id/images/usage', requireAuth, async (c) => {
  *   → credits reserved → model runs → bytes stored → slot confirmed.
  * Any failure after a reservation releases both the slot and the credits.
  */
+/** Most pictures a person can keep from "Image URL" (they are stored on our side so they keep working and pass the page's content policy). */
+const MAX_IMPORTED_PICTURES = 300
+const importInput = z.object({ url: z.string().trim().min(8).max(2000) })
+
+/**
+ * "Image URL" in the editor: the SERVER downloads the picture (public addresses only, size and time capped, every redirect re-checked) and keeps
+ * its own copy. Pointing a slide straight at someone else's address would show nothing in production (the page only loads pictures from us and
+ * the photo libraries) and would break whenever that site moves the file.
+ */
+images.post('/presentations/:id/images/import', requireAuth, rateLimit({ windowMs: 60_000, max: 20, key: (c) => `imgimport:${(c.get('session') as { user: { id: string } }).user.id}` }), zValidator('json', importInput), async (c) => {
+  const access = await resolveAccess(c.req.param('id'), c.get('session')!.user.id)
+  if (!access) return err(c, 404, 'NOT_FOUND', 'Presentation not found')
+  const userId = access.ownerId // stored under the owner, like every picture a collaborator adds
+  const [held] = await db.select({ n: count() }).from(generatedAsset).where(and(eq(generatedAsset.userId, userId), eq(generatedAsset.kind, 'brand'), isNull(generatedAsset.deletedAt)))
+  if ((held?.n ?? 0) >= MAX_IMPORTED_PICTURES) return err(c, 422, 'LIMIT_REACHED', `You can keep up to ${MAX_IMPORTED_PICTURES} imported pictures. Remove a few from your brand pictures first.`)
+  const { url } = c.req.valid('json')
+  try {
+    const got = await fetchLimited(url, { accept: /^(image\/(png|jpe?g)|application\/octet-stream|binary\/octet-stream)$/, maxBytes: 8 * 1024 * 1024, timeoutMs: 15_000, headerAccept: 'image/png,image/jpeg,*/*;q=0.5' })
+    if (!got) return err(c, 422, 'NOT_A_PICTURE', 'We could not download a picture from that address. Use a direct link to a public PNG or JPEG file.')
+    const { mime, aspect } = checkRaster(got.bytes, { maxBytes: 8 * 1024 * 1024, minSide: 16, maxAspect: 20 })
+    const id = await storeAsset(userId, 'brand', got.bytes, mime, `imported from ${new URL(got.url).hostname}`)
+    return c.json({ success: true, data: { assetId: id, url: assetUrl(id), mime, aspect } })
+  } catch (e) {
+    if (e instanceof InvalidImageError || e instanceof BrandReadError || e instanceof BlockedUrlError) return err(c, 422, 'NOT_A_PICTURE', e.message)
+    throw e
+  }
+})
+
 images.post('/presentations/:id/images', requireAuth, rateLimit({ windowMs: 60_000, max: 10, key: (c) => `img:${(c.get('session') as { user: { id: string } }).user.id}` }), zValidator('json', imageInput), async (c) => {
   if (!env.IMAGES_ENABLED) return err(c, 503, 'IMAGES_DISABLED', 'Picture generation is temporarily switched off. Please try again later.')
   if (!aiConfigured) return err(c, 503, 'AI_NOT_CONFIGURED', 'AI is not configured on this server')

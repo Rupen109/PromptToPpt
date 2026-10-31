@@ -12,37 +12,53 @@ export default async function () {
   const goHome = async () => { await p.goto(`${WEB}/`, { waitUntil: 'networkidle' }); await header().waitFor({ timeout: 10000 }) }
 
   try {
-    await s.check('signed in: the header shows the e-mail instead of "Log In", and "My decks" instead of "Create Free Deck"', p, async () => {
+    await s.check('signed in: no My decks button in the header; one account menu that shows the e-mail and holds My decks, Plan & billing and Sign out', p, async () => {
       await goHome()
-      const chip = p.getByTestId('signed-in-email'); await chip.waitFor({ timeout: 8000 })
-      const shown = (await chip.locator('span').last().innerText()).trim(); expect(shown === A.email, `shows "${shown}" instead of ${A.email}`)
+      const acct = p.getByTestId('account-menu'); await acct.waitFor({ timeout: 8000 })
       expect(await header().getByRole('link', { name: 'Log In' }).count() === 0, '"Log In" is still shown')
       expect(await header().getByRole('link', { name: /Create Free Deck/ }).count() === 0, '"Create Free Deck" is still shown')
-      expect((await header().getByRole('link', { name: /My decks/ }).getAttribute('href')).startsWith(EDITOR), 'the button does not lead to the editor')
-      await p.screenshot({ path: join(RESULTS, '30-landing-signed-in.png'), clip: { x: 0, y: 0, width: 1280, height: 120 } })
+      expect(await header().getByRole('link', { name: /My decks/ }).count() === 0, 'there is still a My decks button in the header')
+      expect(await p.getByTestId('signed-in-email').count() === 0, 'the e-mail is shown outside the menu')
+      expect(await header().innerText().then((t) => !t.includes(A.email)), 'the e-mail clutters the header')
+      await acct.click()
+      expect((await p.getByTestId('signed-in-email').innerText()).trim() === A.email, 'the menu does not show the e-mail')
+      expect((await p.getByRole('menuitem', { name: /My decks/ }).getAttribute('href')).startsWith(EDITOR), 'My decks in the menu does not lead to the editor')
+      expect(await p.getByRole('menuitem', { name: /Plan & billing/ }).getAttribute('href').then((h) => h.startsWith(EDITOR) && h.endsWith('/billing')), 'billing link')
+      await p.getByRole('menuitem', { name: 'Sign out' }).waitFor()
+      await p.screenshot({ path: join(RESULTS, '30-landing-signed-in.png'), clip: { x: 0, y: 0, width: 1500, height: 330 } })
+      await p.keyboard.press('Escape'); expect(await p.getByRole('menu').count() === 0, 'Escape does not close the menu')
     })
 
-    await s.check('at every desktop width from 1280 px up the signed-in header stays inside its container (nothing pushed past the right edge) and the e-mail is shortened, never the button', p, async () => {
+    await s.check('at every desktop width from 1280 px up the signed-in header stays inside its container and the page does not scroll sideways', p, async () => {
       for (const w of [1280, 1366, 1440, 1920]) {
-        await p.setViewportSize({ width: w, height: 800 }); await goHome(); await p.getByTestId('signed-in-email').waitFor()
-        const r = await p.evaluate(() => { const row = document.querySelector('header > div')?.getBoundingClientRect(); const btn = [...document.querySelectorAll('header a')].find((a) => /My decks/.test(a.textContent ?? ''))?.getBoundingClientRect(); return { rowRight: row?.right ?? 0, btnRight: btn?.right ?? 9999, scroll: document.documentElement.scrollWidth - window.innerWidth } })
-        expect(r.btnRight <= r.rowRight + 1, `${w}px: the button ends at ${Math.round(r.btnRight)}px but the header row ends at ${Math.round(r.rowRight)}px`); expect(r.scroll <= 1, `${w}px: the page scrolls sideways`)
-        if (w === 1280) await p.screenshot({ path: join(RESULTS, '30-landing-signed-in-1280.png'), clip: { x: 0, y: 0, width: 1280, height: 130 } })
+        await p.setViewportSize({ width: w, height: 800 }); await goHome(); await p.getByTestId('account-menu').waitFor()
+        const r = await p.evaluate(() => { const row = document.querySelector('header > div')?.getBoundingClientRect(); const acct = document.querySelector('[data-testid="account-menu"]')?.getBoundingClientRect(); return { rowRight: row.right, acctRight: acct.right, scroll: document.documentElement.scrollWidth - window.innerWidth } })
+        expect(r.acctRight <= r.rowRight + 1, `${w}px: the account button ends at ${Math.round(r.acctRight)}px but the header row ends at ${Math.round(r.rowRight)}px`); expect(r.scroll <= 1, `${w}px: the page scrolls sideways`)
       }
       await p.setViewportSize({ width: 1500, height: 950 })
     })
 
-    await s.check('the e-mail is a link to the editor, and a very long address is shortened instead of breaking the header', p, async () => {
-      const chip = p.getByTestId('signed-in-email'); expect((await chip.getAttribute('href')).startsWith(EDITOR), 'not a link to the editor')
-      const w = (await chip.boundingBox()).width; expect(w <= 195, `the chip is ${w}px wide`)
-      expect(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'the page scrolls sideways')
+    await s.check('the header has no "Ingest Modes" and no "Free Tools" link; Interactive Studio, Templates, Pricing, Resources and Support remain', p, async () => {
+      await goHome()
+      const nav = await header().locator('nav').first().innerText()
+      expect(!/Ingest Modes/i.test(nav), `nav: ${nav.replace(/\n/g, ' | ')}`)
+      for (const l of ['Interactive Studio', 'Templates', 'Pricing', 'Resources', 'Support']) expect(nav.includes(l), `${l} missing`)
+      expect(!/Free Tools/i.test(nav), 'Free Tools is still in the header')
     })
 
-    await s.check('phone: the mobile menu shows "Signed in as <e-mail>" and a button to the editor, not Log In / Create Free Deck', p, async () => {
+    await s.check('Sign out in the menu ends the session and the header goes back to "Log In" + "Create Free Deck"', p, async () => {
+      await goHome(); await p.getByTestId('account-menu').click(); await p.getByRole('menuitem', { name: 'Sign out' }).click()
+      await header().getByRole('link', { name: 'Log In' }).waitFor({ timeout: 10000 })
+      expect(await p.getByTestId('account-menu').count() === 0, 'still shows the account menu')
+      // sign back in for the checks below
+      const si = await A.ctx.request.post(`${API}/api/auth/sign-in/email`, { headers: JSON_HEADERS, data: { email: A.email, password: 'Passw0rd!qa-test' } }); expect(si.ok(), `sign-in ${si.status()}`)
+    })
+
+    await s.check('phone: the mobile menu shows "Signed in as <e-mail>" and a My decks button and Sign out, not Log In / Create Free Deck', p, async () => {
       await p.setViewportSize({ width: 390, height: 800 }); await goHome()
       await p.getByRole('button', { name: 'Open menu' }).click()
       const nav = p.locator('#mobile-nav'); await nav.getByTestId('signed-in-email-mobile').waitFor({ timeout: 6000 })
-      expect((await nav.innerText()).includes(A.email), 'the e-mail is missing'); expect(await nav.getByRole('link', { name: 'Log In' }).count() === 0, 'Log In is still in the menu')
+      expect((await nav.innerText()).includes(A.email), 'the e-mail is missing'); await nav.getByRole('button', { name: 'Sign out' }).waitFor(); expect(await nav.getByRole('link', { name: 'Log In' }).count() === 0, 'Log In is still in the menu')
       await p.screenshot({ path: join(RESULTS, '30-landing-signed-in-phone.png') }); await p.setViewportSize({ width: 1500, height: 950 })
     })
 

@@ -1,3 +1,4 @@
+import { ChevronDown, Lock, Moon, Sun, X } from '@prompttoppt/ui/icons'
 import { useEffect, useRef, useState } from 'react'
 import { CATEGORIES, DESIGNS, PALETTES, PALETTE_GROUPS, SUPPORTED_FONTS, THEMES, PREMIUM_THEME_IDS, composeSlide, designById, isDark, isHex, makeColors, type TemplateDesign } from '@prompttoppt/theme'
 import type { Presentation, Slide, Theme } from '@prompttoppt/validation'
@@ -20,7 +21,7 @@ export function StyleDrawer({ doc, slide, onClose }: { doc: Presentation; slide:
     <aside aria-label="Style" className="w-[340px] max-lg:fixed max-lg:z-40 max-lg:right-0 max-lg:top-14 max-lg:bottom-0 max-lg:shadow-2xl max-md:left-0 max-md:top-auto max-md:h-[60vh] max-md:rounded-t-2xl max-md:border-t max-lg:max-w-full shrink-0 bg-white border-l border-border flex flex-col">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <h2 className="font-semibold">Style</h2>
-        <button onClick={onClose} aria-label="Close style panel" className="text-xl leading-none text-slate-500 hover:text-slate-800">×</button>
+        <button onClick={onClose} aria-label="Close style panel" className="text-xl leading-none text-slate-500 hover:text-slate-800"><X aria-hidden size={20} /></button>
       </div>
       <div role="tablist" className="flex flex-wrap gap-1 px-3 pt-3">
         {([['templates', 'Templates'], ['designs', 'Layouts'], ['colors', 'Colors'], ['fonts', 'Fonts'], ['brand', 'Brand']] as const).map(([k, l]) => (
@@ -57,7 +58,7 @@ export function StyleDrawer({ doc, slide, onClose }: { doc: Presentation; slide:
             <div role="group" aria-label="Deck mode" className="grid grid-cols-2 gap-1 bg-slate-100 p-1 rounded-lg text-sm font-semibold">
               {(['dark', 'light'] as const).map((m) => {
                 const on = isDark(doc.theme.colors.background) === (m === 'dark')
-                return <button key={m} aria-pressed={on} onClick={() => !on && apply('Deck mode', (d) => C.setThemeMode(d, m))} className={`py-1.5 rounded-md capitalize ${on ? 'bg-white shadow-sm' : 'text-slate-500'}`}>{m === 'dark' ? '🌙 Dark' : '☀️ Light'}</button>
+                return <button key={m} aria-pressed={on} onClick={() => !on && apply('Deck mode', (d) => C.setThemeMode(d, m))} className={`py-1.5 rounded-md capitalize ${on ? 'bg-white shadow-sm' : 'text-slate-500'}`}><span className="inline-flex items-center justify-center gap-1.5">{m === 'dark' ? <><Moon aria-hidden size={14} />Dark</> : <><Sun aria-hidden size={14} />Light</>}</span></button>
               })}
             </div>
             <p className="text-xs text-slate-500">Switches every slide and keeps your brand colours, fonts and content.</p>
@@ -157,7 +158,7 @@ function TemplatesTab({ doc }: { doc: Presentation }) {
       <div className="relative">
         <button type="button" aria-haspopup="listbox" aria-expanded={paletteOpen} onClick={() => setPaletteOpen((v) => !v)} className="w-full flex items-center justify-between gap-3 rounded-xl border-2 border-foreground px-3 py-2 text-left">
           <span className="min-w-0"><span className="block text-[11px] font-semibold text-slate-500">Color palette</span><span className="block text-sm font-semibold truncate">{PALETTES.find((p) => isCurrent(p))?.name ?? (currentDesign && doc.theme.colors.primary === currentDesign.theme.colors.primary && doc.theme.colors.accent === currentDesign.theme.colors.accent ? `Original (${currentDesign.name})` : 'Custom')}</span></span>
-          <span className="flex items-center gap-2"><Swatch primary={doc.theme.colors.primary} accent={doc.theme.colors.accent} dark={dark} /><span aria-hidden className={paletteOpen ? 'rotate-180' : ''}>⌄</span></span>
+          <span className="flex items-center gap-2"><Swatch primary={doc.theme.colors.primary} accent={doc.theme.colors.accent} dark={dark} /><ChevronDown aria-hidden size={16} className={paletteOpen ? 'rotate-180' : ''} /></span>
         </button>
         {paletteOpen && (
           <div role="listbox" aria-label="Color palettes" className="absolute z-20 left-0 right-0 mt-1 max-h-[55vh] overflow-y-auto bg-white border border-border rounded-xl shadow-xl p-1.5">
@@ -205,7 +206,7 @@ function TemplatesTab({ doc }: { doc: Presentation }) {
             return (
               <button key={d.id} type="button" aria-pressed={on} aria-label={`${d.name} template${locked ? ' (Pro)' : ''}`} onClick={() => choose(d)} className={`relative block w-full text-left rounded-xl border p-1.5 transition ${on ? 'border-2 border-foreground' : 'border-border hover:border-primary'}`}>
                 <Lazy height={176}><SlideCanvas slide={preview(d)} theme={d.theme} aspect={doc.aspectRatio} width={290} /></Lazy>
-                <div className="flex items-center justify-between mt-1.5 px-1 text-sm"><span className="font-medium">{d.name}</span>{locked && <span className="text-[10px] font-bold text-primary bg-primary/10 rounded-full px-1.5 py-0.5">🔒 PRO</span>}{on && <span className="text-[10px] font-bold text-slate-600">Current</span>}</div>
+                <div className="flex items-center justify-between mt-1.5 px-1 text-sm"><span className="font-medium">{d.name}</span>{locked && <span className="text-[10px] font-bold text-primary bg-primary/10 rounded-full px-1.5 py-0.5 inline-flex items-center gap-1"><Lock aria-hidden size={10} />PRO</span>}{on && <span className="text-[10px] font-bold text-slate-600">Current</span>}</div>
               </button>
             )
           })}
@@ -220,7 +221,7 @@ function TemplatesTab({ doc }: { doc: Presentation }) {
           return (
             <button key={t.id} type="button" aria-pressed={current} onClick={() => (premium && !premiumOk ? upgrade.show(`The "${t.name}" theme is available on the Pro plan.`) : apply('Change theme', (d) => C.applyTheme(d, t.id)))} className={`w-full text-left rounded-xl border p-1.5 ${current ? 'border-2 border-foreground' : 'border-border hover:border-primary'}`}>
               <Lazy height={176}><SlideCanvas slide={preview({ theme: t } as TemplateDesign)} theme={t} aspect={doc.aspectRatio} width={290} /></Lazy>
-              <div className="flex items-center justify-between mt-1.5 px-1 text-sm"><span className="font-medium">{t.name}</span>{premium && !premiumOk && <span className="text-[10px] font-bold text-primary bg-primary/10 rounded-full px-1.5 py-0.5">🔒 PRO</span>}</div>
+              <div className="flex items-center justify-between mt-1.5 px-1 text-sm"><span className="font-medium">{t.name}</span>{premium && !premiumOk && <span className="text-[10px] font-bold text-primary bg-primary/10 rounded-full px-1.5 py-0.5 inline-flex items-center gap-1"><Lock aria-hidden size={10} />PRO</span>}</div>
             </button>
           )
         })}

@@ -30,10 +30,16 @@ export function mockRespond(req: TextRequest): string {
     const n: number = p['slides'] ?? 8
     return JSON.stringify({ title: words(req.prompt).slice(0, 100) || 'Untitled', slides: Array.from({ length: n }, (_, i) => ({ title: `Point ${i + 1}`, points: ['First idea', 'Second idea', 'Third idea'] })) })
   }
+  if (task === 'free_script') {
+    const n: number = p['slides'] ?? 6
+    const body = req.prompt.match(/<user_request>\n([\s\S]*?)\n<\/user_request>/)?.[1] ?? ''
+    if (body.includes('FAIL_PLEASE')) throw new Error('mock model failure')
+    return JSON.stringify({ title: body.split(/\s+/).slice(0, 6).join(' ') || 'Script', slides: Array.from({ length: n }, (_, i) => ({ title: `Beat ${i + 1}`, points: ['First idea from the script', 'Second idea', 'Third idea'] })) })
+  }
   if (task === 'free_pdf') {
     return JSON.stringify({ title: 'Mock document', summary: 'A short mock summary.', keyPoints: ['One', 'Two', 'Three', 'Four'], slides: Array.from({ length: 6 }, (_, i) => ({ title: `Part ${i + 1}`, points: ['Alpha', 'Beta', 'Gamma'] })) })
   }
-  if ((task === 'askdeck' || task === 'webresearch' || task === 'imageread') && req.prompt.includes('FAIL_PLEASE')) throw new Error('mock model failure') // lets tests exercise the refund path
+  if ((task === 'askdeck' || task === 'webresearch' || task === 'imageread' || task === 'mediaread' || task === 'framesread') && req.prompt.includes('FAIL_PLEASE')) throw new Error('mock model failure') // lets tests exercise the refund path
   if (task === 'askdeck') {
     const deck = req.prompt.match(/<deck>\n([\s\S]*?)\n<\/deck>/)?.[1] ?? ''
     const q = req.prompt.match(/<question>([\s\S]*?)<\/question>/)?.[1] ?? ''
@@ -43,8 +49,19 @@ export function mockRespond(req: TextRequest): string {
     if (req.images?.length && Buffer.from(typeof req.images[0]!.data === 'string' ? req.images[0]!.data : req.images[0]!.data).includes('BLANK_PICTURE')) return JSON.stringify({ title: '', kind: 'photo', legible: false, text: '' })
     return JSON.stringify({ title: 'Mock picture', kind: 'notes', legible: true, text: 'Zorvex Bikes sold 4,200 electric bicycles in 2025.\nFactory: Pune.\nNext step: second factory in Chennai in 2027.' })
   }
+  if (task === 'mediaread') {
+    const data = req.media?.[0]?.data
+    const buf = typeof data === 'string' ? Buffer.from(data, 'base64') : data ? Buffer.from(data) : Buffer.alloc(0)
+    if (buf.includes('SILENT_MEDIA') || req.prompt.includes('SILENT_FILE')) return JSON.stringify({ title: '', language: '', hasSpeech: false, text: '' })
+    return JSON.stringify({ title: 'Mock recording', language: 'en', hasSpeech: true, text: '0:00 Zorvex Bikes sold 4,200 electric bicycles in 2025.\n0:25 The factory in Pune employs 310 people.\n2:10 Next step is a second factory in Chennai in 2027.' })
+  }
+  if (task === 'framesread') {
+    const frames = (p['frames'] as { index: number }[] | undefined) ?? []
+    return JSON.stringify({ frames: frames.map((f) => ({ index: f.index, text: f.index === 1 ? 'Quarterly results: revenue 86 crore rupees' : '' })) })
+  }
   if (task === 'webresearch') return 'Mock web brief: the topic is widely covered; key facts follow. [example.com]'
   if (task === 'critic') return JSON.stringify({ defects: [] })
+  if (task === 'design_pick') { const m = /<templates>\n([^\n|]+) \|/.exec(req.prompt); return JSON.stringify({ designId: m?.[1]?.trim() ?? '', reason: 'mock' }) }
   if (task === 'picture_query') return JSON.stringify({ queries: [String(p['topic'] ?? p['intent'] ?? 'business meeting').slice(0, 60)] })
   if (task === 'picture_verify') return JSON.stringify({ score: 4, reason: 'mock' })
   if (task === 'directions') {
@@ -117,6 +134,16 @@ export function mockRespond(req: TextRequest): string {
       const id = req.prompt.match(/"id":"([^"]+)","n":2,/)?.[1]
       const slide = id ? JSON.parse(req.prompt.match(new RegExp(`\\{"id":"${id}"[^\\n]*"content":(\\{.*\\})\\}$`, 'm'))![1]!) : null
       if (slide) ops.push({ op: 'edit_slide', slideId: id, content: { ...slide, ...(slide.title ? { title: `${slide.title} ✎` } : {}) } })
+    }
+    if (ins.includes('more bullet points')) {
+      // a model that only REWORDS the points the first time, and adds them when told its first answer did not ("stubborn" never does)
+      const id = req.prompt.match(/"id":"([^"]+)","n":2,/)?.[1]
+      const slide = id ? JSON.parse(req.prompt.match(new RegExp(`\\{"id":"${id}"[^\\n]*"content":(\\{.*\\})\\}$`, 'm'))![1]!) : null
+      const n = Number(ins.match(/(\d+) more bullet points/)?.[1] ?? 2)
+      if (slide?.bullets) {
+        const retry = ins.includes('did not add the points') && !ins.includes('stubborn')
+        ops.push({ op: 'edit_slide', slideId: id, content: { ...slide, bullets: retry ? [...slide.bullets, ...Array.from({ length: n }, (_, i) => `Added point ${i + 1}`)] : slide.bullets.map((b: string) => `${b}.`) } })
+      }
     }
     if (/photo|image|picture/.test(ins)) {
       const first = req.prompt.match(/"id":"([^"]+)","n":1,"layout":"([^"]+)"/)

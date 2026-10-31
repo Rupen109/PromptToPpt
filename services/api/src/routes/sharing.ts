@@ -12,6 +12,7 @@ import { db } from '../db/index.ts'
 import { presentation, presentationMember, presentationVersion, shareLink, shareView, user } from '../db/schema.ts'
 import { env } from '../env.ts'
 import { audit, ipOf } from '../lib/audit.ts'
+import * as mail from '../lib/email-templates.ts'
 import { sendMail } from '../lib/mailer.ts'
 import { byUser, clientIp, rateLimit } from '../middleware/rate-limit.ts'
 import { requireAuth, type AppEnv } from '../middleware/session.ts'
@@ -88,6 +89,39 @@ sharing.patch('/:id/share', rateLimit({ windowMs: 60_000, max: 30, key: byUser('
   return c.json({ success: true, data: linkView(row) })
 })
 
+/** Most e-mails one person can send with "Email this link" in a day (it mails strangers, so it is capped like sign-up mail). */
+const SHARE_MAILS_PER_DAY = 40
+const emailBody = z.object({ emails: z.array(z.email().max(254)).min(1).max(5), message: z.string().trim().max(300).optional() })
+
+/** E-mails the live view-only link to up to 5 people. The password (if any) is never put in the mail: the owner shares it separately. */
+sharing.post('/:id/share/email', rateLimit({ windowMs: 3600_000, max: 20, key: byUser('share-mail') }), zValidator('json', emailBody), async (c) => {
+  const session = c.get('session')!
+  const userId = session.user.id
+  const id = c.req.param('id')
+  const deck = await ownDeck(id, userId)
+  if (!deck) return notFound(c)
+  const me = session.user as { name: string; email: string; emailVerified?: boolean }
+  if (env.REQUIRE_EMAIL_VERIFICATION && me.emailVerified !== true) return c.json({ success: false, error: { code: 'EMAIL_NOT_VERIFIED', message: 'Confirm your own email address first, then you can email links.' } }, 403)
+  const live = await liveLink(id)
+  if (!live) return c.json({ success: false, error: { code: 'NO_LINK', message: 'Create the view-only link first.' } }, 409)
+  if (expired(live)) return c.json({ success: false, error: { code: 'LINK_EXPIRED', message: 'This link has expired. Extend it first.' } }, 409)
+  const body = c.req.valid('json')
+  const to = [...new Map(body.emails.map((e) => [canonicalEmail(e), e.trim()] as const)).values()]
+  const ip = ipOf(c.req.raw.headers)
+  if ((await recent('share_mail', 'subject', userId, 24 * 3600_000)) + to.length > SHARE_MAILS_PER_DAY) return c.json({ success: false, error: { code: 'TOO_MANY_EMAILS', message: 'You have emailed a lot of links today. Copy the link and send it yourself, or try again tomorrow.' } }, 429)
+  const results = await Promise.all(to.map(async (addr) => {
+    try {
+      await sendMail({ to: addr, ...mail.shareLink({ senderName: me.name, deckTitle: deck.title, url: shareUrl(live.token), message: body.message, protectedByPassword: !!live.passwordHash }) })
+      await record('share_mail', ip ?? '', userId)
+      return true
+    } catch (e) { console.error('[share mail]', e); return false }
+  }))
+  const sent = results.filter(Boolean).length
+  void audit(userId, 'share.emailed', { presentationId: id, recipients: to.length, sent }, ip)
+  if (sent === 0) return c.json({ success: false, error: { code: 'MAIL_FAILED', message: 'We could not send the email. Copy the link and send it yourself.' } }, 502)
+  return c.json({ success: true, data: { sent, failed: to.length - sent } })
+})
+
 sharing.delete('/:id/share', async (c) => {
   const userId = c.get('session')!.user.id
   const id = c.req.param('id')
@@ -143,11 +177,7 @@ sharing.post('/:id/members', rateLimit({ windowMs: 3600_000, max: 20, key: byUse
       : c.json({ success: false, error: { code: 'LIMIT_REACHED', message: `Your ${ent.plan.name} plan allows up to ${limit} collaborators per presentation.` } }, 429)
   }
   const m = out.member
-  await sendMail({
-    to: m.email,
-    subject: `${me.name} invited you to edit "${deck.title}"`,
-    text: `${me.name} invited you to edit the presentation "${deck.title}" on SlidesDone.\n\nOpen this link and sign in with ${m.email}:\n${inviteUrl(m.token)}\n\nThe link works for 14 days. Anything the AI does while you edit uses ${me.name}'s credits, not yours.\nIf you were not expecting this, ignore this email.`,
-  }).catch((e) => console.error('[invite mail]', e))
+  await sendMail({ to: m.email, ...mail.invitation({ ownerName: me.name, deckTitle: deck.title, email: m.email, url: inviteUrl(m.token) }) }).catch((e) => console.error('[invite mail]', e))
   void audit(userId, 'collab.invited', { presentationId: id }, ipOf(c.req.raw.headers))
   return c.json({ success: true, data: memberView(m) }, 201)
 })

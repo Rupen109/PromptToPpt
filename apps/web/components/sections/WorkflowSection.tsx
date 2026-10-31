@@ -1,3 +1,4 @@
+import { Star } from '@prompttoppt/ui/icons'
 import { Card, type CardTone } from '@/components/ui/Card'
 import { Badge, Section, SectionHeader, Tag, Tile } from './ui'
 
@@ -38,7 +39,7 @@ export default function WorkflowSection() {
             <h3 className="font-heading font-extrabold text-2xl leading-8 text-foreground pt-3 mt-3 lg:min-h-[5.5rem]">{s.title}</h3>
             <p className="mt-3 mb-6 text-base leading-6 text-[#475569] min-h-24">{s.body}</p>
             <div className="mt-auto pt-0 flex items-center gap-2.5 bg-white border-2 border-foreground rounded-xl px-3.5 py-3 font-heading font-bold text-xs leading-4 text-foreground">
-              <span aria-hidden className="text-accent">★</span>{s.chip}
+              <Star aria-hidden size={14} fill="currentColor" className="text-accent shrink-0" />{s.chip}
             </div>
           </Card>
         ))}

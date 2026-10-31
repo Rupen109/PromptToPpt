@@ -1,3 +1,4 @@
+import { LayoutList, Clapperboard, Ruler, Pencil } from '@prompttoppt/ui/icons'
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
@@ -45,10 +46,10 @@ export default async function TemplatePage({ params }: { params: Promise<{ id: s
             <h1 className="font-heading font-extrabold text-4xl text-foreground leading-tight mb-3">{d.name}</h1>
             <p className="text-slate-700 text-lg mb-6">{d.tagline}.</p>
             <ul className="text-sm text-slate-700 space-y-2 mb-8">
-              <li>📑 <b>{slides.length} slides</b>: {cat.covers}.</li>
-              <li>🎬 Animated: {motion && motion.entrance !== 'none' ? `${motion.entrance.replace('-', ' ')} entrances and ${motion.transition} slide transitions` : 'smooth slide transitions'}.</li>
-              <li>📐 Works in 16:9, 4:3 and square.</li>
-              <li>✏️ Fully editable — and the AI assistant can rewrite it for your topic.</li>
+              <li className="flex items-start gap-2"><LayoutList aria-hidden size={16} className="mt-1 shrink-0" /><span><b>{slides.length} slides</b>: {cat.covers}.</span></li>
+              <li className="flex items-start gap-2"><Clapperboard aria-hidden size={16} className="mt-1 shrink-0" /><span>Animated: {motion && motion.entrance !== 'none' ? `${motion.entrance.replace('-', ' ')} entrances and ${motion.transition} slide transitions` : 'smooth slide transitions'}.</span></li>
+              <li className="flex items-start gap-2"><Ruler aria-hidden size={16} className="mt-1 shrink-0" /><span>Works in 16:9, 4:3 and square.</span></li>
+              <li className="flex items-start gap-2"><Pencil aria-hidden size={16} className="mt-1 shrink-0" /><span>Fully editable — and the AI assistant can rewrite it for your topic.</span></li>
             </ul>
             <UseTemplateButton designId={d.id} premium={d.premium} />
             <p className="text-xs text-slate-600 mt-6">Sample text and numbers are placeholders for a fictional company — replace them with your own.</p>

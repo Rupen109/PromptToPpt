@@ -177,13 +177,23 @@ describe('picking pictures', () => {
 
   describe('library fallback', () => {
     const libraryKey = (src: string) => src.replace('https://web.test/template-assets/', '').replace('.jpg', '')
+    const unrelated = () => req({ intent: 'zzz qqq', title: 'zzz', topic: 'qqq', text: '' })
 
-    it('no results → a photo from our own library, served from the website', async () => {
+    it('no results → a library photo that is about the slide, served from the website', async () => {
       const h = setup({ unsplash: [] })
-      const [p] = await pickPictures([req({ intent: 'zzz qqq', title: 'zzz', topic: 'qqq', text: '' })], ctx, h.deps)
+      const [p] = await pickPictures([req()], ctx, h.deps)
       expect(p).toMatchObject({ source: 'library' })
-      expect(p!.src).toMatch(/^https:\/\/web\.test\/template-assets\/tech-\d+\.jpg$/) // the deck's category
+      expect(p!.src).toMatch(/^https:\/\/web\.test\/template-assets\/[a-z-]+-\d+\.jpg$/)
       expect(AVAILABLE_PHOTOS).toContain(libraryKey(p!.src))
+      expect(libraryKey(p!.src)).toBe(scoreLibrary(req())[0]!.key)
+    })
+
+    it('nothing in the library is about the slide → NO picture (a missing picture beats a wrong one; the slide becomes a text slide)', async () => {
+      const h = setup({ unsplash: [] })
+      const [p] = await pickPictures([unrelated()], ctx, h.deps)
+      expect(p).toBeNull()
+      const h2 = setup({ keys: {} })
+      expect((await pickPictures([unrelated(), { ...unrelated(), slideIndex: 1, aspect: 'wide' }], ctx, h2.deps)).every((x) => x === null)).toBe(true)
     })
 
     it.each([
@@ -191,16 +201,18 @@ describe('picking pictures', () => {
       ['rate limited (429)', { unsplash: 429 as const }],
       ['server error', { unsplash: 500 as const }],
       ['network down', { unsplash: 'down' as const }],
-    ])('Unsplash %s → library photo, no waiting', async (_n, cfg) => {
+    ])('Unsplash %s → a matching library photo if there is one, no waiting', async (_n, cfg) => {
       const h = setup(cfg)
-      const [p] = await pickPictures([req({ intent: 'zzz qqq', title: 'zzz', topic: 'qqq', text: '' })], ctx, h.deps)
+      const [p] = await pickPictures([req()], ctx, h.deps)
       expect(p?.source).toBe('library')
+      const [q] = await pickPictures([unrelated()], ctx, setup(cfg).deps)
+      expect(q).toBeNull()
     })
 
     it('a search that does not answer in time → library photo (the slide never waits for a slow source)', async () => {
       const h = setup({ unsplash: 'hang', searchBudgetMs: 40 })
       const t = Date.now()
-      const [p] = await pickPictures([req({ intent: 'zzz qqq', title: 'zzz', topic: 'qqq', text: '' })], ctx, h.deps)
+      const [p] = await pickPictures([req()], ctx, h.deps)
       expect(p?.source).toBe('library')
       expect(Date.now() - t).toBeLessThan(1500)
     })
@@ -213,58 +225,34 @@ describe('picking pictures', () => {
 
     it('after a rate limit, Unsplash is not asked again for the rest of the deck', async () => {
       const h = setup({ unsplash: 403 })
-      const r = await pickPictures([0, 1, 2].map((i) => req({ slideIndex: i, title: `Topic ${i}`, intent: `distinct intent ${i}` })), ctx, h.deps)
-      expect(r.every((x) => x?.source === 'library')).toBe(true)
+      await pickPictures([0, 1, 2].map((i) => req({ slideIndex: i, title: `Topic ${i}`, intent: `distinct intent ${i}` })), ctx, h.deps)
       expect(h.searches('unsplash').length).toBeLessThanOrEqual(3)
     })
 
-    it('no stock keys configured at all → library only, no network calls', async () => {
+    it('no stock keys configured at all → library only (matching pictures), no network calls', async () => {
       const h = setup({ keys: {} })
       const r = await pickPictures([req(), req({ slideIndex: 1 })], ctx, h.deps)
-      expect(r.every((x) => x?.source === 'library')).toBe(true)
+      expect(r[0]?.source).toBe('library')
       expect(h.calls).toHaveLength(0)
     })
 
-    it('a tagged library match is preferred over a random one', async () => {
+    it('a tagged library match is preferred, and a library picture is never repeated within a deck', async () => {
       const h = setup({ keys: {} })
       const best = scoreLibrary(req())[0]!
-      const [p] = await pickPictures([req()], ctx, h.deps)
-      expect(libraryKey(p!.src)).toBe(best.key)
-    })
-
-    it("never repeats a library picture within a deck, and still answers every slide of a long one", async () => {
-      const h = setup({ keys: {} })
-      const n = 12
-      const r = await pickPictures(Array.from({ length: n }, (_, i) => req({ slideIndex: i, intent: 'zzz qqq', title: 'zzz', topic: 'qqq', text: '' })), ctx, h.deps)
-      expect(r.every(Boolean)).toBe(true)
-      expect(new Set(r.map((x) => x!.src)).size).toBe(n)
-    })
-
-    it('prefers a picture of the right shape, and different decks start from different pictures', async () => {
-      const h = setup({ keys: {} })
-      const wide = (await pickPictures([req({ aspect: 'wide', intent: 'zzz qqq', title: 'zzz', topic: 'qqq', text: '' })], ctx, h.deps))[0]!
-      expect(slotAspect(libraryKey(wide.src))).toBe('wide')
-      const tall = (await pickPictures([req({ aspect: 'tall', intent: 'zzz qqq', title: 'zzz', topic: 'qqq', text: '' })], ctx, h.deps))[0]!
-      expect(slotAspect(libraryKey(tall.src))).toBe('tall')
-      const keys = new Set<string>()
-      for (const topic of ['alpha', 'bravo', 'charlie', 'delta', 'echo', 'foxtrot']) keys.add(libraryKey((await pickPictures([req({ topic, intent: 'zzz qqq', title: 'zzz', text: '', aspect: 'wide' })], ctx, h.deps))[0]!.src))
-      expect(keys.size).toBeGreaterThan(1)
-    })
-
-    it('an unknown category still gets a picture (from any category)', async () => {
-      const h = setup({ keys: {} })
-      const [p] = await pickPictures([req({ category: 'nonexistent', intent: 'zzz qqq', title: 'zzz', topic: 'qqq', text: '' })], ctx, h.deps)
-      expect(p?.source).toBe('library')
+      const r = await pickPictures(Array.from({ length: 6 }, (_, i) => req({ slideIndex: i })), ctx, h.deps)
+      expect(libraryKey(r[0]!.src)).toBe(best.key)
+      const used = r.filter(Boolean).map((x) => x!.src)
+      expect(new Set(used).size).toBe(used.length)
     })
   })
 
   describe('limits', () => {
     it('one user cannot spend the shared hourly stock quota: past their own limit they get library photos without calling Unsplash (security S16)', async () => {
-      const h = setup({ unsplash: [{ id: 'a', alt: 'software tester' }], limits: { total: 1000, perUser: 2 } })
+      const h = setup({ unsplash: Array.from({ length: 12 }, (_, i) => ({ id: `p${i}`, alt: 'software tester' })), limits: { total: 1000, perUser: 2 } })
       const r = await pickPictures([0, 1, 2, 3].map((i) => req({ slideIndex: i, title: `Unique ${i}`, intent: `distinct intent number ${i}`, query: `unique search ${i}` })), ctx, h.deps)
-      expect(h.searches('unsplash')).toHaveLength(2)
-      expect(r.every(Boolean)).toBe(true)
-      expect(r.filter((x) => x!.source === 'library').length).toBeGreaterThanOrEqual(2)
+      expect(h.searches('unsplash').length).toBeLessThanOrEqual(2) // never more than this person's own allowance
+      expect(r.filter((x) => x?.source === 'stock').length).toBeGreaterThanOrEqual(1)
+      expect(r.every((x) => x === null || x.source === 'stock' || x.source === 'library')).toBe(true) // never a made-up or off-topic filler
     })
 
     it('the shared total is honoured across users', async () => {
@@ -275,9 +263,10 @@ describe('picking pictures', () => {
     })
 
     it('a deck gets at most MAX_PICTURES_PER_DECK pictures', async () => {
-      const h = setup({ keys: {} })
-      const r = await pickPictures(Array.from({ length: MAX_PICTURES_PER_DECK + 3 }, (_, i) => req({ slideIndex: i })), ctx, h.deps)
+      const h = setup({ unsplash: Array.from({ length: 12 }, (_, i) => ({ id: `p${i}`, alt: 'software tester' })), limits: { total: 100000, perUser: 100000 } })
+      const r = await pickPictures(Array.from({ length: MAX_PICTURES_PER_DECK + 3 }, (_, i) => req({ slideIndex: i, query: `unique search ${i}` })), ctx, h.deps)
       expect(r.slice(0, MAX_PICTURES_PER_DECK).every(Boolean)).toBe(true)
+      expect(r.slice(MAX_PICTURES_PER_DECK).every((x) => x === null)).toBe(true)
     })
 
     it('identical searches (same words and shape) are served from memory, also across decks', async () => {

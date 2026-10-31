@@ -1,3 +1,4 @@
+import { X } from '@prompttoppt/ui/icons'
 import { Portal } from '@/components/Portal'
 import { useEffect, useState } from 'react'
 import { ApiError, type VersionSummary } from '@prompttoppt/api-client'
@@ -32,7 +33,7 @@ export function VersionsDialog({ id, revision, onRestored, onClose }: { id: stri
   return (
     <Portal><div className="fixed inset-0 z-50 bg-black/40 grid place-items-center p-4" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Version history" className="bg-white rounded-2xl w-full max-w-md p-6 shadow-xl outline-none max-h-[85vh] overflow-y-auto">
-        <div className="flex justify-between items-center mb-4"><h2 className="font-heading font-bold text-xl">Version history</h2><button onClick={onClose} aria-label="Close" className="text-2xl leading-none text-slate-500">×</button></div>
+        <div className="flex justify-between items-center mb-4"><h2 className="font-heading font-bold text-xl">Version history</h2><button onClick={onClose} aria-label="Close" className="text-2xl leading-none text-slate-500"><X aria-hidden size={24} /></button></div>
         {error && <p role="alert" className="text-sm text-red-700 mb-3">{error}</p>}
         {!rows ? <p className="text-slate-500 text-sm">Loading…</p> : (
           <ul className="divide-y divide-border">

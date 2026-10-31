@@ -3,7 +3,9 @@ import { db } from '../db/index.ts'
 import { sourceChunk, sourceDocument } from '../db/schema.ts'
 import { chunkText, type Extracted } from './extract.ts'
 
-export type SourceType = 'text' | 'url' | 'pdf' | 'pptx' | 'docx' | 'xlsx' | 'csv' | 'email' | 'image' | 'transcript'
+/** Everything a person can add as a source. The deck's own list of citeable kinds (validation SOURCE_TYPES) must contain all of these. */
+export const SOURCE_KINDS = ['text', 'url', 'pdf', 'pptx', 'docx', 'xlsx', 'csv', 'email', 'image', 'transcript'] as const
+export type SourceType = (typeof SOURCE_KINDS)[number]
 
 /** Persists extracted text as a private source (+ chunks with citation locators). Shared by the sources API and draft hand-off. */
 export async function saveSource(userId: string, type: SourceType, ex: Extracted, url?: string) {

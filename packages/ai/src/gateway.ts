@@ -1,7 +1,7 @@
 import type { ZodType } from 'zod'
 import { computeCostUsd } from './cost'
 import type { ModelRegistry } from './registry'
-import { IMAGE_MIMES, ProviderError, ZERO_USAGE, type AIProvider, type AIRequestType, type ImageAspect, type ImageInput, type ModelDefinition, type RouteClass, type Usage } from './types'
+import { IMAGE_MIMES, ProviderError, ZERO_USAGE, type AIProvider, type AIRequestType, type ImageAspect, type ImageInput, type MediaInput, type ModelDefinition, type RouteClass, type Usage } from './types'
 
 export interface UsageRecord {
   userId?: string | undefined
@@ -52,11 +52,15 @@ export interface RunInput<T> {
   prompt: string
   /** pictures for vision-capable models; passed through untouched */
   images?: ImageInput[]
+  /** audio / video for models that can listen or watch (sent inline) */
+  media?: MediaInput[]
   schema: ZodType<T>
   ctx?: { userId?: string | undefined; presentationId?: string | undefined; jobId?: string | undefined }
   temperature?: number
   maxOutputTokens?: number
   thinkingBudget?: number
+  /** per-attempt time limit in ms (default: the gateway's own, 60 s); long recordings need more */
+  timeoutMs?: number
   signal?: AbortSignal
 }
 
@@ -234,7 +238,7 @@ export class AIGateway {
 
     for (let attempt = 0; ; attempt++) {
       const started = Date.now()
-      const signal = AbortSignal.any([AbortSignal.timeout(this.o.timeoutMs ?? 60_000), ...(input.signal ? [input.signal] : [])])
+      const signal = AbortSignal.any([AbortSignal.timeout(input.timeoutMs ?? this.o.timeoutMs ?? 60_000), ...(input.signal ? [input.signal] : [])])
       let usage = ZERO_USAGE
       let modelVersion: string | undefined
       let reported: number | undefined
@@ -242,6 +246,7 @@ export class AIGateway {
         const res = await provider.generateText({
           model: def.model, system: input.system, prompt, json: true, signal,
           ...(input.images?.length ? { images: input.images } : {}),
+          ...(input.media?.length ? { media: input.media } : {}),
           ...(input.temperature !== undefined ? { temperature: input.temperature } : {}),
           // never leave the output unbounded: a runaway or prompt-injected generation must have a ceiling (generous: these are JSON documents, not chat)
           maxOutputTokens: input.maxOutputTokens ?? MAX_OUTPUT_TOKENS_DEFAULT,

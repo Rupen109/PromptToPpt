@@ -1,3 +1,4 @@
+import { MapPin, X } from '@prompttoppt/ui/icons'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CommentItem, CommentPerson, CommentThread } from '@prompttoppt/api-client'
 import type { Presentation } from '@prompttoppt/validation'
@@ -87,7 +88,7 @@ function Composer({ label, placeholder, initial = '', submitLabel, people, onSub
       <div className="flex items-center gap-2">
         <button type="button" onClick={() => void send()} disabled={busy || !text.trim()} className="bg-primary text-white rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-40">{busy ? 'Sending…' : submitLabel}</button>
         {onCancel && <button type="button" onClick={onCancel} className="text-sm text-slate-600 underline">Cancel</button>}
-        <span className={`ml-auto text-[11px] ${over ? 'text-red-700 font-semibold' : 'text-slate-400'}`} aria-live="off">{text.trim().length > MAX_BODY - 200 ? `${text.trim().length}/${MAX_BODY}` : '⌘↵ to send'}</span>
+        <span className={`ml-auto text-[11px] ${over ? 'text-red-700 font-semibold' : 'text-slate-400'}`} aria-live="off">{text.trim().length > MAX_BODY - 200 ? `${text.trim().length}/${MAX_BODY}` : 'Ctrl/Cmd+Enter to send'}</span>
       </div>
     </div>
   )
@@ -198,12 +199,12 @@ export function CommentsPanel({ doc, slideId, deckId, role, onClose }: { doc: Pr
     <aside aria-label="Comments" className="w-[360px] max-lg:fixed max-lg:z-40 max-lg:right-0 max-lg:top-14 max-lg:bottom-0 max-lg:shadow-2xl max-md:left-0 max-md:top-auto max-md:h-[70vh] max-md:rounded-t-2xl max-md:border-t max-lg:max-w-full shrink-0 bg-white border-l border-border flex flex-col">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <h2 className="font-semibold">Comments</h2>
-        <button onClick={onClose} aria-label="Close comments panel" className="text-xl leading-none text-slate-500 hover:text-slate-800">×</button>
+        <button onClick={onClose} aria-label="Close comments panel" className="text-xl leading-none text-slate-500 hover:text-slate-800"><X aria-hidden size={20} /></button>
       </div>
       <div className="px-4 pt-3 pb-3 border-b border-border space-y-2">
         <div className="text-sm font-medium">Comment on slide {here}</div>
         <div className="flex items-center gap-2 text-xs">
-          <button onClick={() => setPlacing(!placing)} aria-pressed={placing} className={`rounded-full border px-2.5 py-1 font-medium ${placing ? 'border-primary bg-primary/10 text-primary' : 'border-border hover:bg-slate-50'}`}>📍 {pending ? 'Move pin' : 'Pin to a spot'}</button>
+          <button onClick={() => setPlacing(!placing)} aria-pressed={placing} className={`rounded-full border px-2.5 py-1 font-medium ${placing ? 'border-primary bg-primary/10 text-primary' : 'border-border hover:bg-slate-50'} inline-flex items-center gap-1`}><MapPin aria-hidden size={14} />{pending ? 'Move pin' : 'Pin to a spot'}</button>
           {placing && <span role="status" className="text-primary font-medium">Click the slide where it belongs · Esc cancels</span>}
           {pending && !placing && <><span role="status" className="text-slate-600">Pinned on slide {slideNo(pending.slideId)}</span><button onClick={() => setPending(null)} className="underline text-slate-500">Remove pin</button></>}
         </div>

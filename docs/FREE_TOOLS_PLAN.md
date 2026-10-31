@@ -11,11 +11,16 @@ existing anonymous **draft** hand-off, so the visitor never starts over.
 | 1 | AI Presentation Outline Generator — `/free-tools/presentation-outline-generator` | **built** | one cheap model call (Flash-Lite), ~₹0.05 |
 | 1 | PDF → Presentation (AI) — `/free-tools/pdf-to-presentation` | **built** (modes: presentation, summary, executive, academic, business) | one call on ≤30k characters |
 | 1b | **PDF → PPT converter, in the browser** — `/free-tools/pdf-to-ppt` (exact-look or editable-text; nothing uploaded unless the visitor clicks "Redesign it with AI") | **built** | none (runs on the visitor's device) |
-| 1b | **Free template landing pages** — `/free-templates/<collection>` (e.g. `pitch-deck-templates`, `sales-presentation-templates`) (10 collections over the 120 templates) | **built** | none (static) |
+| 1c | **PDF → JPG converter, in the browser** — `/free-tools/pdf-to-jpg` (quality Standard/High/Maximum, page choice like `1-3, 7`, single JPG or zip; up to 60 pages / 30 MB; nothing uploaded). Suite `e2e/suites/40-pdf-to-jpg.mjs` | **built** | none (runs on the visitor's device) || 1b | **Free template landing pages** — `/free-templates/<collection>` (e.g. `pitch-deck-templates`, `sales-presentation-templates`) (10 collections over the 120 templates) | **built** | none (static) |
+| 1c2 | **Sitemap generator** — `/free-tools/sitemap-generator` (crawls a public site like a search bot: robots.txt, noindex, canonical, existing sitemap; ≤ 200 pages, ≤ 40 s; downloads / copies `sitemap.xml` with optional lastmod, changefreq, priority). Suite `e2e/suites/41-content.mjs` (C1) + API tests | **built** | none (a little bandwidth; 8 sites/hour/visitor, 4 crawls at once) |
+| 1d | **YouTube transcript → slides** — `/free-tools/youtube-transcript-to-slides` (paste the transcript copied from YouTube's "Show transcript", or load .srt/.vtt; cleaned, copy / download .txt, or open in the editor as a source; no AI, no YouTube access, 0 cost) | **built 2026-10-29** | none (text cleaning only) |
+| 1e | **Audio & video → slides** — `/free-tools/video-to-slides` (visitor's own recording ≤ 4 MB, 3 a day; transcript, copy / download, or open in the editor) | **built 2026-10-29** | ≈ $0.0005 per recording (one cheap model call), counted in the free-tool cost guard (`free_media`) |
+| 1f | **Video / Reel script → slides** — `/free-tools/script-to-slides` (paste a script ≤ 6,000 characters; one cheap model call returns an outline that follows its beats, ~1 slide per 60 words, 5–12; the script is kept for an hour for the editor hand-off) | **built 2026-10-29** | ≈ $0.0005 per run (`free_script`, counted in the free-tool cost guard) |
 | 1c | Programmatic outline pages `/presentation-outline/<use-case>` | planned (static copy, no AI cost) | none |
 | 2 | Compress PDF / Compress PowerPoint | planned — do it **in the browser** (no server cost, files never leave the device) | none |
 | 2 | Presentation Template Generator | planned — reuse the existing template/theme engine, no model call needed for the layouts | none / tiny |
-| 3 | YouTube / Article / Website → PPT | planned — website already ingests URLs; YouTube needs a transcript source | one larger call |
+| 3 | Article / Website → PPT | planned — website already ingests URLs | one larger call |
+| — | **Not building:** an Instagram Reels / video downloader (breaks Instagram's rules and copies other people's videos) and automatic YouTube caption fetching from a link (YouTube does not allow programs to read captions) | declined | — |
 | 3 | "Convert PDF to editable PowerPoint" (literal, option 1 of the brief) | planned — needs page rendering; separate from the AI path | CPU only |
 
 ## How a visitor is carried into the product

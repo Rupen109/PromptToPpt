@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { DECK_LANGUAGES, deckLanguage, isRtlLanguage } from '@prompttoppt/validation'
 
+describe('offered languages', () => {
+  it('are the 13 of the website picker, all known, English first', async () => {
+    const { OFFERED_DECK_LANGUAGES, DECK_LANGUAGES } = await import('@prompttoppt/validation')
+    expect(OFFERED_DECK_LANGUAGES.map((l) => l.code)).toEqual(['en', 'de', 'es', 'fr', 'hi', 'id', 'it', 'zh', 'pl', 'pt', 'vi', 'hu', 'sv'])
+    expect(OFFERED_DECK_LANGUAGES.every((l) => DECK_LANGUAGES.includes(l))).toBe(true)
+  })
+})
+
 describe('deck languages', () => {
   it('offers at least 100 languages with unique codes and non-empty names', () => {
     expect(DECK_LANGUAGES.length).toBeGreaterThanOrEqual(100)

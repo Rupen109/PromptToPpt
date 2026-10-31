@@ -1,6 +1,6 @@
 import { CANVAS, themeStyleSchema, motionSchema, type Animation, type AspectRatio, type SlideElement, type TextElement, type Theme, type ThemeStyle, type Motion } from '@prompttoppt/validation'
 import { blend, contrastRatio, isDark, luminance, mix, readableOn } from '../color'
-import { fitFontSize, metricOptsFor } from '../text-metrics'
+import { estimateTextHeight, fitFontSize, metricOptsFor } from '../text-metrics'
 
 export type IdGen = () => string
 export const defaultId: IdGen = () => globalThis.crypto.randomUUID()
@@ -119,13 +119,49 @@ export interface TextOpts {
 
 const HEADINGS = new Set<TextElement['role']>(['title', 'heading', 'metric'])
 
+/**
+ * The deck's TYPE SCALE (canvas px; the 1920 px canvas is 13.33 in wide, so 1 pt = 2 px). Presentation-design guidance converges on: titles 36-44 pt, body 20-24 pt
+ * (18 pt only for dense slides), captions 14 pt or more, and ONE size per level repeated on every slide. Layouts ask for a size; the scale lifts it to a readable one
+ * and sets the smallest size the fitter may shrink to (content has to be shortened beyond that, text is never made tiny).
+ */
+export const TYPE_FLOOR: Partial<Record<TextElement['role'], number>> = { title: 44, subtitle: 26, heading: 26, body: 24, caption: 20 }
+const even = (n: number) => Math.round(n / 2) * 2
+export function scaledSize(role: TextElement['role'], size: number): number {
+  switch (role) {
+    case 'body': return Math.min(48, Math.max(size, even(size * 1.4)))
+    case 'caption': return Math.min(32, Math.max(size, even(size * 1.25)))
+    case 'heading': return Math.min(52, Math.max(size, even(size * 1.2)))
+    case 'subtitle': return Math.min(44, Math.max(size, even(size * 1.2)))
+    default: return size
+  }
+}
+
+/** Height a block of text needs at the scale's size for `role` (what `text()` would choose when the box is roomy). */
+export function textNeed(c: Ctx, role: TextElement['role'], paragraphs: Para, width: number, size: number): number {
+  const s = scaledSize(role, size)
+  const proto = { role, uppercase: HEADINGS.has(role) && role !== 'metric' ? c.style.uppercaseHeadings : false, letterSpacing: role === 'title' || role === 'heading' ? c.style.headingTracking : 0 }
+  return estimateTextHeight(paragraphs, s, width, metricOptsFor(proto as TextElement, c.theme))
+}
+/**
+ * A card is as tall as what it holds (plus padding), not as tall as the slide has room for: sparse text in a tall card looks lost. Never taller than the room,
+ * never shorter than 45% of it (so a row of cards still reads as the body of the slide); `lift` is how far the block moves down to sit in the room instead of hanging from the title.
+ */
+export function hug(avail: number, need: number): { h: number; lift: number } {
+  const h = Math.round(Math.min(avail, Math.max(avail * 0.45, need)))
+  return { h, lift: Math.round((avail - h) * 0.3) }
+}
+
 export function text(c: Ctx, role: TextElement['role'], paragraphs: Para, x: number, y: number, w: number, h: number, size: number, o: TextOpts = {}): TextElement {
+  size = scaledSize(role, size)
   const heading = HEADINGS.has(role)
   const uppercase = o.uppercase ?? (heading && role !== 'metric' ? c.style.uppercaseHeadings : false)
   const tracking = o.tracking ?? (role === 'title' || role === 'heading' ? c.style.headingTracking : 0)
   const weight = o.weight ?? (role === 'title' ? c.style.headingWeight : role === 'metric' ? Math.max(700, c.style.headingWeight) : role === 'heading' ? Math.max(600, c.style.headingWeight - 100) : undefined)
   const proto = { role, uppercase, letterSpacing: tracking, lineHeight: o.lineHeight }
-  const fitted = fitFontSize(paragraphs, w, h, size, o.min ?? Math.round(size * 0.5), metricOptsFor(proto as TextElement, c.theme))
+  // the smallest size the fitter may shrink to: what the layout asked for, else the role's floor from the scale. Text that still does not fit is flagged `small_text` by the
+  // validator, and the generator then shortens that slide's words instead of living with tiny type.
+  const floor = Math.min(size, o.min ?? TYPE_FLOOR[role] ?? Math.round(size * 0.5))
+  const fitted = fitFontSize(paragraphs, w, h, size, floor, metricOptsFor(proto as TextElement, c.theme))
   const anim = o.animate === false ? undefined : animationFor(c, o.animate ?? (role === 'metric' ? 'metric' : role === 'title' ? 'title' : 'body'), o.byParagraph)
   const el: TextElement = {
     type: 'text', ...base(c, x, y, w, h), rotation: o.rotation ?? 0,
@@ -173,7 +209,9 @@ export const deco = (c: Ctx, fill: ShapeFill, x: number, y: number, w: number, h
 // ── layout helpers ───────────────────────────────────────────────────────────
 /** Card grid: as many columns as fit at `minW`, wrapping to more rows on narrow canvases (never squeezing text). */
 export function grid(c: Ctx, n: number, y: number, minW: number, gap: number, maxH?: number, x0 = c.M, totalW = c.W - 2 * c.M) {
-  const cols = Math.max(1, Math.min(n, Math.floor((totalW + gap) / (minW + gap))))
+  const fit = Math.max(1, Math.min(n, Math.floor((totalW + gap) / (minW + gap))))
+  // balanced rows: 6 in a 5-wide grid becomes 3 + 3, not 5 + 1 (a lone card on the last row looks like a mistake, and wide columns keep text large)
+  const cols = Math.ceil(n / Math.ceil(n / fit))
   const rows = Math.ceil(n / cols)
   const cw = (totalW - gap * (cols - 1)) / cols
   const availH = c.bottom - y

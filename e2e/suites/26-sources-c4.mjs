@@ -11,10 +11,10 @@ import { JSON_HEADERS, file, tsx } from '../kits-lib.mjs'
 const FX = new URL('../fixtures/sources/', import.meta.url).pathname
 const fx = (n) => join(FX, n)
 const SETS = [
-  { f: 'lighthouse-plan.docx', icon: '📘', title: 'Lighthouse Coffee — Expansion Plan', type: 'docx' },
-  { f: 'sales-2025.xlsx', icon: '📈', title: 'sales-2025', type: 'xlsx' },
-  { f: 'stores.csv', icon: '🧮', title: 'stores', type: 'csv' },
-  { f: 'q3-update.eml', icon: '✉️', title: 'Q3 update — café sales & Mumbai plan', type: 'email' },
+  { f: 'lighthouse-plan.docx', icon: 'file-text', title: 'Lighthouse Coffee — Expansion Plan', type: 'docx' },
+  { f: 'sales-2025.xlsx', icon: 'file-spreadsheet', title: 'sales-2025', type: 'xlsx' },
+  { f: 'stores.csv', icon: 'table', title: 'stores', type: 'csv' },
+  { f: 'q3-update.eml', icon: 'mail', title: 'Q3 update — café sales & Mumbai plan', type: 'email' },
 ]
 
 export default async function () {
@@ -61,7 +61,7 @@ export default async function () {
         await p.getByRole('button', { name: 'Add source' }).click()
         await p.getByRole('dialog', { name: 'Add sources' }).waitFor({ state: 'detached', timeout: 20000 })
         const chip = chips().filter({ hasText: x.title }).first(); await chip.waitFor({ timeout: 10000 })
-        expect((await chip.innerText()).includes(x.icon) || (await chip.locator('span').first().innerText()).includes(x.icon), `icon ${x.icon} not shown`)
+        expect(await chip.locator(`svg.lucide-${x.icon}`).count() > 0, `icon ${x.icon} not shown`)
         const row = stored().find((r) => r.title === x.title)
         expect(row && row.type === x.type, `stored as ${row?.type}, expected ${x.type}`)
         expect(row.chunks.length >= 1 && row.chunks.every((c) => c.text.length > 5), 'no readable chunks')
@@ -204,8 +204,8 @@ export default async function () {
       await v.goto(WEB + '/', { waitUntil: 'networkidle' })
       await v.getByLabel('Presentation prompt').fill('A 5 slide expansion pitch for Lighthouse Coffee for investors')
       await v.getByLabel('Attach files').setInputFiles([fx('lighthouse-plan.docx'), fx('stores.csv')])
-      await v.waitForFunction(() => /lighthouse-plan\.docx/.test(document.querySelector('[aria-label="Attached sources"]')?.textContent ?? '') && !/⏳/.test(document.querySelector('[aria-label="Attached sources"]')?.textContent ?? ''), null, { timeout: 30000 })
-      const chipText = await v.getByLabel('Attached sources').innerText(); expect(/📘/.test(chipText) && /🧮/.test(chipText), `chips: ${chipText}`)
+      await v.waitForFunction(() => /lighthouse-plan\.docx/.test(document.querySelector('[aria-label="Attached sources"]')?.textContent ?? '') && !document.querySelector('[aria-label="Attached sources"] .animate-spin'), null, { timeout: 30000 })
+      const chipText = await v.getByLabel('Attached sources').innerText(); expect(await v.locator('[aria-label="Attached sources"] svg.lucide-file-text').count() > 0 && await v.locator('[aria-label="Attached sources"] svg.lucide-table').count() > 0, `chips (Word file icon + spreadsheet icon): ${chipText}`)
       await v.getByRole('button', { name: /Generate Presentation/ }).click()
       await v.waitForURL(/\/(signup|login)/, { timeout: 15000 })
       if (/\/login/.test(v.url())) await v.getByRole('link', { name: /sign up|create/i }).first().click()

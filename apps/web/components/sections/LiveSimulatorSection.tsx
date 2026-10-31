@@ -1,3 +1,4 @@
+import { Zap, RefreshCw, ArrowRight, Check } from '@prompttoppt/ui/icons'
 import React from 'react';
 
 export function LiveSimulatorSection() {
@@ -5,8 +6,8 @@ export function LiveSimulatorSection() {
     <div className="bg-gradient-to-b from-[#f0f4f8] to-white pt-14 md:pt-24 pb-16 md:pb-24 px-4 sm:px-6 text-center z-10 relative">
       <div className="max-w-[1150px] mx-auto">
         <div className="mb-8">
-          <div className="inline-flex bg-white border border-foreground font-heading font-extrabold text-xs py-1 px-3 rounded-full text-slate-500 shadow-sm">
-            <span className="text-accent mr-2">⚡</span>
+          <div className="inline-flex items-center bg-white border border-foreground font-heading font-extrabold text-xs py-1 px-3 rounded-full text-slate-500 shadow-sm">
+            <Zap aria-hidden size={14} className="text-accent mr-2" />
             LIVE INGESTION SIMULATOR
           </div>
           <h2 className="font-heading text-3xl md:text-4xl font-extrabold mt-4 text-foreground">See Raw Chaos Transform into High-Conviction Slides</h2>
@@ -53,7 +54,7 @@ export function LiveSimulatorSection() {
               <div className="mt-auto flex justify-between items-center font-heading text-xs font-bold border-t border-border pt-4">
                 <span className="text-slate-600">OCR Table Extraction: Active</span>
                 <span className="flex items-center gap-1 text-primary">
-                  <span className="text-sm">🗘</span> Parsing 24 Tables
+                  <RefreshCw aria-hidden size={14} /> Parsing 24 Tables
                 </span>
               </div>
             </div>
@@ -61,7 +62,7 @@ export function LiveSimulatorSection() {
             {/* Center Arrow */}
             <div className="md:absolute md:left-1/2 md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2 flex flex-col items-center -my-4 md:my-0 rotate-90 md:rotate-0">
               <div className="bg-highlight border-2 border-foreground w-12 h-12 rounded-full flex items-center justify-center font-bold text-xl shadow-[2px_2px_0px_0px_var(--color-text-primary)] z-10 text-foreground">
-                →
+                <ArrowRight aria-hidden size={22} />
               </div>
               <div className="bg-white border border-border rounded-full py-1 px-3 text-[10px] font-bold text-slate-500 mt-2 shadow-sm whitespace-nowrap relative z-10 -rotate-90 md:rotate-0">
                 Synthesized in 28s
@@ -75,7 +76,7 @@ export function LiveSimulatorSection() {
                   SLIDE 04:<br/>TRACTION
                 </span>
                 <span className="text-slate-300 text-xs font-bold">
-                  Project_Zenith.pptx <span className="text-secondary">✓</span>
+                  Project_Zenith.pptx <Check aria-hidden size={14} className="inline text-secondary" />
                 </span>
                 <span className="text-secondary text-xs font-bold text-right leading-tight">
                   100% Vector<br/>PPTX

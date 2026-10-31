@@ -1,3 +1,4 @@
+import { ChevronDown, CreditCard, Folder, Home, LayoutTemplate, LifeBuoy, LogOut, MonitorPlay, PencilRuler, Plus, RefreshCw, ShieldCheck, Star, Users, X } from '@prompttoppt/ui/icons'
 import { Portal } from '@/components/Portal'
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, NavLink, useLocation, useNavigate } from 'react-router'
@@ -5,27 +6,20 @@ import { ApiError, isGateError } from '@prompttoppt/api-client'
 import { api } from '@/lib/api'
 import { useEntitlements } from '@/lib/entitlements'
 import { useProjects } from '@/lib/projects'
+import { WEB_URL } from '@/lib/env'
 import { useUser } from '@/lib/session'
 import { useDialog } from '@/lib/useDialog'
 import { Logo } from '@prompttoppt/ui/logo'
+import { ReviewDialog } from '@/components/ReviewDialog'
 
 const item = 'flex items-center gap-3 px-3 py-2.5 rounded-lg text-[15px] hover:bg-black/5'
 const active = 'bg-black/5 font-medium'
 
-/** 20px stroke icons (Lucide-style paths, inlined: no icon library in this app). Decorative: the label next to each one names the item. */
-const ICONS = {
-  home: <><path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V20h5v-6h4v6h5V9.5" /></>,
-  created: <><rect x="3" y="4" width="18" height="13" rx="2" /><path d="M8 21h8M12 17v4" /><path d="m9 12 2-2 2 2 2-3" /></>,
-  templates: <><rect x="3" y="3" width="8" height="8" rx="1.5" /><rect x="13" y="3" width="8" height="5" rx="1.5" /><rect x="13" y="10" width="8" height="11" rx="1.5" /><rect x="3" y="13" width="8" height="8" rx="1.5" /></>,
-  shared: <><circle cx="9" cy="8" r="3.2" /><path d="M3 20c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5" /><path d="M16 5.2a3.2 3.2 0 0 1 0 5.6M18 14.8c1.8.7 3 2.4 3 5.2" /></>,
-  billing: <><rect x="2.5" y="5" width="19" height="14" rx="2.5" /><path d="M2.5 10h19M6.5 15h4" /></>,
-  folder: <path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />,
-  plus: <path d="M12 5v14M5 12h14" />,
-  admin: <><path d="M12 3 4.5 6v5.5c0 4.5 3.2 8 7.5 9.5 4.3-1.5 7.5-5 7.5-9.5V6z" /><path d="m9 12 2 2 4-4" /></>,
-  logout: <><path d="M9 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h3" /><path d="M16 8l4 4-4 4M20 12H9" /></>,
-} as const
+/** The sidebar's icons: the shared lucide set at 20px / 1.8 stroke. Decorative: the label next to each one names the item. */
+const ICONS = { home: Home, created: MonitorPlay, scratch: PencilRuler, templates: LayoutTemplate, shared: Users, billing: CreditCard, folder: Folder, plus: Plus, admin: ShieldCheck, logout: LogOut } as const
 function Icon({ name }: { name: keyof typeof ICONS }) {
-  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="shrink-0 text-slate-500">{ICONS[name]}</svg>
+  const I = ICONS[name]
+  return <I size={20} strokeWidth={1.8} aria-hidden className="shrink-0 text-slate-500" />
 }
 
 function Badge({ children, title }: { children: string; title?: string }) {
@@ -78,9 +72,12 @@ function NewProjectDialog({ onClose }: { onClose: () => void }) {
 
 export function Sidebar() {
   const user = useUser()
-  const { ent, upgrade } = useEntitlements()
+  const { ent, upgrade, refresh } = useEntitlements()
   const { projects, loaded, load } = useProjects()
   const [newProject, setNewProject] = useState(false)
+  const [reviewing, setReviewing] = useState(false)
+  const [accountMenu, setAccountMenu] = useState(false)
+  const [refreshing, setRefreshing] = useState<'idle' | 'busy' | 'done'>('idle')
   const { pathname } = useLocation()
   // phone / tablet drawer: open for one route only, so navigating anywhere closes it without an effect
   const [openFor, setOpenFor] = useState<string | null>(null)
@@ -101,15 +98,42 @@ export function Sidebar() {
   const body = (
     <>
       <Link to="/" aria-label="SlidesDone home" className="px-2 pt-2 pb-3"><Logo size={30} /></Link>
-      <div className="flex items-center gap-2 px-2 py-3 mb-2 border-t border-border">
-        <div className="w-8 h-8 rounded-md bg-accent text-white grid place-items-center font-bold">{user.name.charAt(0).toUpperCase()}</div>
-        <div className="min-w-0">
-          <div className="font-semibold truncate">{user.name}</div>
-          <div className="text-xs text-slate-500 truncate" title={user.email}>{user.email}</div>
-        </div>
+      <div className="relative mb-2 border-t border-border">
+        <button type="button" aria-haspopup="menu" aria-expanded={accountMenu} onClick={() => setAccountMenu((v) => !v)} className="flex w-full items-center gap-2 rounded-lg px-2 py-3 text-left hover:bg-black/5">
+          <div className="w-8 h-8 shrink-0 rounded-md bg-accent text-white grid place-items-center font-bold">{user.name.charAt(0).toUpperCase()}</div>
+          <div className="min-w-0 flex-1">
+            <div className="font-semibold truncate">{user.name}</div>
+            <div className="text-xs text-slate-500 truncate" title={user.email}>{user.email}</div>
+          </div>
+          <ChevronDown size={16} aria-hidden className={`shrink-0 text-slate-500 transition-transform ${accountMenu ? 'rotate-180' : ''}`} />
+        </button>
+        {accountMenu && (
+          <>
+            <div className="fixed inset-0 z-10" onClick={() => setAccountMenu(false)} />
+            <div role="menu" aria-label="Account" className="absolute left-0 right-0 top-full z-20 mt-1 rounded-xl border border-border bg-white p-1 shadow-lg">
+              <a role="menuitem" href={`${WEB_URL}/support`} target="_blank" rel="noreferrer" onClick={() => setAccountMenu(false)} className="flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm hover:bg-black/5"><LifeBuoy size={18} strokeWidth={1.8} aria-hidden className="text-slate-500" />Support</a>
+              <button
+                role="menuitem"
+                type="button"
+                disabled={refreshing === 'busy'}
+                onClick={async () => {
+                  setRefreshing('busy')
+                  await refresh()
+                  setRefreshing('done')
+                  setTimeout(() => { setRefreshing('idle'); setAccountMenu(false) }, 1200)
+                }}
+                className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm hover:bg-black/5 disabled:opacity-70"
+              >
+                <RefreshCw size={18} strokeWidth={1.8} aria-hidden className={`text-slate-500 ${refreshing === 'busy' ? 'animate-spin' : ''}`} />
+                {refreshing === 'busy' ? 'Refreshing…' : refreshing === 'done' ? 'Plan and credits updated' : 'Refresh plan & credits'}
+              </button>
+            </div>
+          </>
+        )}
       </div>
       <nav className="flex-1 space-y-1 overflow-y-auto" aria-label="Main">
         <NavLink to="/" end className={({ isActive }) => `${item} ${isActive ? active : ''}`}><Icon name="home" />Home</NavLink>
+        <NavLink to="/scratch" className={({ isActive }) => `${item} ${isActive ? active : ''}`}><Icon name="scratch" />Create from scratch</NavLink>
         <NavLink to="/created" className={({ isActive }) => `${item} ${isActive ? active : ''}`}><Icon name="created" />Created by me</NavLink>
         <NavLink to="/templates" className={({ isActive }) => `${item} ${isActive ? active : ''}`}><Icon name="templates" />Templates</NavLink>
         <NavLink to="/shared" className={({ isActive }) => `${item} ${isActive ? active : ''}`}><Icon name="shared" />Shared with me</NavLink>
@@ -132,6 +156,7 @@ export function Sidebar() {
         </button>
         {user.role === 'admin' && <Link to="/admin" className={`${item} text-primary font-medium`}><Icon name="admin" />Owner dashboard</Link>}
       </nav>
+      <button onClick={() => setReviewing(true)} className={`${item} text-left`}><Star size={20} strokeWidth={1.8} aria-hidden className="shrink-0 text-slate-500" />Rate SlidesDone</button>
       <button
         onClick={async () => {
           await api.auth.signOut()
@@ -160,12 +185,13 @@ export function Sidebar() {
         <div className="lg:hidden fixed inset-0 z-50">
           <div className="absolute inset-0 bg-black/40" onClick={() => setOpen(false)} />
           <aside role="dialog" aria-modal="true" aria-label="Menu" className="absolute left-0 top-0 bottom-0 w-[290px] max-w-[85vw] bg-white flex flex-col p-3 shadow-xl overflow-y-auto text-slate-800">
-            <button type="button" aria-label="Close menu" onClick={() => setOpen(false)} className="absolute right-2 top-2 w-10 h-10 grid place-items-center rounded-lg hover:bg-black/5 text-2xl leading-none">×</button>
+            <button type="button" aria-label="Close menu" onClick={() => setOpen(false)} className="absolute right-2 top-2 w-10 h-10 grid place-items-center rounded-lg hover:bg-black/5 text-2xl leading-none"><X aria-hidden size={24} /></button>
             {body}
           </aside>
         </div>
       )}
       {newProject && <NewProjectDialog onClose={() => setNewProject(false)} />}
+      {reviewing && <ReviewDialog onClose={() => setReviewing(false)} />}
     </>
   )
 }

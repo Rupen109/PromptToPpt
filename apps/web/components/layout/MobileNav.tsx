@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { MobileAuth } from './AuthActions'
+import { LanguageSelect } from './LanguageSelect'
 
 /** Below `lg` the inline nav is hidden: this hamburger opens the same links plus the sign-in actions. */
 export function MobileNav({ items }: { items: { label: string; href: string }[] }) {
@@ -25,6 +26,7 @@ export function MobileNav({ items }: { items: { label: string; href: string }[] 
       {open && (
         <nav id="mobile-nav" aria-label="Mobile" className="absolute left-0 right-0 top-full bg-white border-b-2 border-foreground shadow-lg px-5 py-4 flex flex-col">
           {items.map((i) => <Link key={i.label} href={i.href} onClick={() => setOpen(false)} className="py-3 font-heading font-bold text-base text-foreground border-b border-border">{i.label}</Link>)}
+          <div className="py-3 border-b border-border sm:hidden"><LanguageSelect variant="full" /></div>
           <MobileAuth onNavigate={() => setOpen(false)} />
         </nav>
       )}

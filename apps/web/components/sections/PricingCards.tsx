@@ -1,5 +1,6 @@
 'use client'
 
+import { X, Flame } from '@prompttoppt/ui/icons'
 import { useEffect, useState } from 'react'
 import { planHighlights, priceFor, type BillingInterval, type PlansResponse } from '@prompttoppt/api-client'
 import { api } from '@/lib/api'
@@ -13,7 +14,7 @@ const Tick = ({ dark }: { dark?: boolean }) => (
     <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M1 4.2 3.2 6.4 7 1.6" stroke="#181b25" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
   </span>
 )
-const Cross = () => <span className="w-5 h-5 rounded-full grid place-items-center shrink-0 bg-[#e2e8f0] border border-[#94a3b8] text-[11px] font-bold text-foreground" aria-hidden>✕</span>
+const Cross = () => <span className="w-5 h-5 rounded-full grid place-items-center shrink-0 bg-[#e2e8f0] border border-[#94a3b8] text-foreground" aria-hidden><X size={11} strokeWidth={3} /></span>
 
 const CARD: Record<'starter' | 'pro' | 'gold', { label: string; tone: CardTone; labelColor: string; desc: string }> = {
   starter: { label: 'Free explorer', tone: 'cream', labelColor: 'text-[#475569]', desc: 'Try the AI presentation engine with 100 free credits.' },
@@ -46,7 +47,7 @@ export function PricingCards({ initial }: { initial: PlansResponse | null }) {
       <div className="mt-8 flex justify-center">
         <div role="group" aria-label="Billing period" className={`inline-flex items-center gap-1 bg-[#f3f4f9] border-2 border-foreground rounded-2xl p-1.5 ${HARD.sm}`}>
           <Button size="sm" depth={interval === 'month' ? 'sm' : 'none'} variant={interval === 'month' ? 'yellow' : 'ghost'} aria-pressed={interval === 'month'} onClick={() => setInterval('month')} className="!text-foreground">Monthly</Button>
-          <Button size="sm" depth={interval === 'year' ? 'sm' : 'none'} variant={interval === 'year' ? 'yellow' : 'ghost'} aria-pressed={interval === 'year'} onClick={() => setInterval('year')} className="!text-foreground">Annual{savingPct ? ` (Save ${savingPct} 🔥)` : ''}</Button>
+          <Button size="sm" depth={interval === 'year' ? 'sm' : 'none'} variant={interval === 'year' ? 'yellow' : 'ghost'} aria-pressed={interval === 'year'} onClick={() => setInterval('year')} className="!text-foreground"><span className="inline-flex items-center gap-1">Annual{savingPct ? <> (Save {savingPct} <Flame aria-hidden size={14} />)</> : ''}</span></Button>
         </div>
       </div>
 
@@ -76,7 +77,7 @@ export function PricingCards({ initial }: { initial: PlansResponse | null }) {
               </div>
               <ul className="mt-8 flex flex-col gap-3 flex-1">
                 {items.map((t) => {
-                  const no = /^(No export|Watermark)/i.test(t) // limitations are shown as greyed ✕, not as benefits
+                  const no = /^(No export|Watermark)/i.test(t) // limitations are shown as greyed crosses, not as benefits
                   return (
                     <li key={t} className={`flex items-start gap-2.5 text-sm leading-5 font-medium ${no ? 'text-foreground opacity-75' : pro ? 'text-[#e2e8f0]' : 'text-foreground'}`}>{no ? <Cross /> : <Tick dark={pro} />}<span>{t}</span></li>
                   )

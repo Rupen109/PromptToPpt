@@ -1,3 +1,4 @@
+import { ArrowLeft, Check } from '@prompttoppt/ui/icons'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Navigate, useNavigate } from 'react-router'
 import { ApiError, isGateError, type AnalyzeResult, type BrandKit, type JobStatus, type JobView, type ModelOption } from '@prompttoppt/api-client'
@@ -65,7 +66,7 @@ function PickLength({ result, direction, models, modelId, lengths, perSlide, onS
       <ModelPicker
         models={models} value={modelId}
         highlight={chosen !== null}
-        hint={chosen !== null ? `✓ ${chosen} slides selected — click an AI model to start (the highlighted one is your default).` : undefined}
+        hint={chosen !== null ? `${chosen} slides selected — click an AI model to start (the highlighted one is your default).` : undefined}
         onChange={(id) => { if (chosen === null) setNudge(true); else onStart(chosen, id) }}
       />
       <p className="mt-3 text-xs text-slate-500">You have {result.creditBalance.toLocaleString()} credits. Failed or cancelled generations are refunded.</p>
@@ -182,7 +183,7 @@ export function CreatePage() {
 
   return (
     <div className="min-h-screen bg-[#f6f6f6] relative">
-      <button onClick={() => navigate('/')} aria-label="Back" className="absolute top-5 left-5 w-10 h-10 rounded-full bg-white border border-border grid place-items-center hover:bg-slate-50">←</button>
+      <button onClick={() => navigate('/')} aria-label="Back" className="absolute top-5 left-5 w-10 h-10 rounded-full bg-white border border-border grid place-items-center hover:bg-slate-50"><ArrowLeft aria-hidden size={18} /></button>
       <main className="max-w-[820px] mx-auto pt-8 sm:pt-16 pb-16 sm:pb-24 px-4 sm:px-6">
         {prompt && <div className="ml-auto max-w-[85%] bg-[#ececec] rounded-2xl px-5 py-4 text-[17px] leading-relaxed whitespace-pre-wrap break-words">{prompt}</div>}
 
@@ -243,7 +244,7 @@ export function CreatePage() {
                 const state = n < at ? 'done' : n === at ? 'now' : 'next'
                 return (
                   <li key={status} className="flex flex-col items-center gap-1.5" aria-current={state === 'now' ? 'step' : undefined}>
-                    <span className={`w-6 h-6 rounded-full grid place-items-center text-[11px] font-bold transition-colors ${state === 'done' ? 'bg-primary text-white' : state === 'now' ? 'bg-white text-primary border-2 border-primary pt-step-now' : 'bg-slate-100 text-slate-400'}`}>{state === 'done' ? '✓' : n + 1}</span>
+                    <span className={`w-6 h-6 rounded-full grid place-items-center text-[11px] font-bold transition-colors ${state === 'done' ? 'bg-primary text-white' : state === 'now' ? 'bg-white text-primary border-2 border-primary pt-step-now' : 'bg-slate-100 text-slate-400'}`}>{state === 'done' ? <Check aria-hidden size={13} strokeWidth={3} /> : n + 1}</span>
                     <span className={`text-[11px] sm:text-xs leading-tight ${state === 'next' ? 'text-slate-400' : 'text-slate-700 font-medium'}`}>{label}</span>
                   </li>
                 )

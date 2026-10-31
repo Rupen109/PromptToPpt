@@ -4,13 +4,35 @@ import Link from 'next/link'
 import Script from 'next/script'
 import { useState, type FormEvent } from 'react'
 import { safeRedirect } from '@prompttoppt/api-client'
+import { Button } from '@/components/ui/Button'
 import { api } from '@/lib/api'
-import { EDITOR_URL, GOOGLE_AUTH, SITE_URL, TURNSTILE_SITE_KEY } from '@/lib/env'
+import { EDITOR_URL, GOOGLE_AUTH, MICROSOFT_AUTH, SITE_URL, TURNSTILE_SITE_KEY } from '@/lib/env'
 
 type Mode = 'login' | 'signup'
+type Provider = 'google' | 'microsoft'
+const NAMES: Record<Provider, string> = { google: 'Google', microsoft: 'Microsoft' }
+const failedText = (p: Provider) => `${NAMES[p]} sign-in did not finish. Please try again, or use your email and password.`
+const UNREACHABLE = 'We could not reach the sign-in service. Check your connection and try again.'
 
-export function AuthForm({ mode, next, defaultEmail }: { mode: Mode; next?: string; defaultEmail?: string }) {
-  const [error, setError] = useState<string | null>(null)
+/** the Microsoft four-square logo (brand mark: keeps its own colours) */
+const MicrosoftMark = () => (
+  <svg aria-hidden width="18" height="18" viewBox="0 0 23 23"><path fill="#F25022" d="M1 1h10v10H1z"/><path fill="#7FBA00" d="M12 1h10v10H12z"/><path fill="#00A4EF" d="M1 12h10v10H1z"/><path fill="#FFB900" d="M12 12h10v10H12z"/></svg>
+)
+
+/** the Google "G" (brand mark: must keep its own four colours) */
+const GoogleMark = () => (
+  <svg aria-hidden width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.1C12.4 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4.1 7.1-10.1 7.1-17.5z"/><path fill="#FBBC05" d="M10.5 28.7c-.5-1.5-.8-3-.8-4.7s.3-3.2.8-4.7l-7.9-6.1C.9 16.4 0 20.1 0 24s.9 7.6 2.6 10.8l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.5-5.8c-2.1 1.4-4.8 2.3-8.4 2.3-6.3 0-11.6-4.1-13.5-9.8l-7.9 6.1C6.5 42.6 14.6 48 24 48z"/></svg>
+)
+
+/** which buttons exist: each needs its keys on the API and its NEXT_PUBLIC_*_AUTH flag on the website */
+const providers: { id: Provider; Mark: () => React.JSX.Element }[] = [
+  ...(GOOGLE_AUTH ? [{ id: 'google' as const, Mark: GoogleMark }] : []),
+  ...(MICROSOFT_AUTH ? [{ id: 'microsoft' as const, Mark: MicrosoftMark }] : []),
+]
+
+export function AuthForm({ mode, next, defaultEmail, failed }: { mode: Mode; next?: string; defaultEmail?: string; failed?: Provider }) {
+  const [error, setError] = useState<string | null>(failed ? failedText(failed) : null)
+  const [socialBusy, setSocialBusy] = useState<Provider | null>(null)
   const [busy, setBusy] = useState(false)
   const [checkEmail, setCheckEmail] = useState<string | null>(null)
 
@@ -44,8 +66,17 @@ export function AuthForm({ mode, next, defaultEmail }: { mode: Mode; next?: stri
     window.location.assign(destination) // full navigation: the destination may be the editor subdomain
   }
 
-  async function google() {
-    await api.auth.signIn.social({ provider: 'google', callbackURL: destination })
+  async function social(provider: Provider) {
+    setError(null)
+    setSocialBusy(provider)
+    try {
+      // on success the browser is sent to the provider; if the answer is an error the person stays here and is told
+      const { error } = await api.auth.signIn.social({ provider, callbackURL: destination, errorCallbackURL: `${SITE_URL}/${mode}${next ? `?next=${encodeURIComponent(next)}&` : '?'}error=${provider}` })
+      if (error) { setError(error.message || failedText(provider)); setSocialBusy(null) }
+    } catch {
+      setError(UNREACHABLE) // the request never got an answer (service down or offline)
+      setSocialBusy(null)
+    }
   }
 
   const field =
@@ -68,12 +99,16 @@ export function AuthForm({ mode, next, defaultEmail }: { mode: Mode; next?: stri
         {mode === 'login' ? 'Log in to continue to your presentations.' : 'Start generating presentations in seconds.'}
       </p>
 
-      {GOOGLE_AUTH && (
+      {providers.length > 0 && (
         <>
-          <button type="button" onClick={google} className="w-full border-2 border-foreground rounded-md py-3 font-bold hover:bg-slate-50">
-            Continue with Google
-          </button>
-          <div className="my-5 text-center text-xs font-bold text-slate-500">OR</div>
+          <div className="space-y-3">
+            {providers.map(({ id, Mark }) => (
+              <Button key={id} type="button" variant="white" size="lg" block loading={socialBusy === id} disabled={socialBusy !== null} onClick={() => void social(id)} className="!normal-case !tracking-normal !text-base !font-bold">
+                {socialBusy !== id && <Mark />}Continue with {NAMES[id]}
+              </Button>
+            ))}
+          </div>
+          <div className="my-5 flex items-center gap-3 text-xs font-bold text-slate-500"><span aria-hidden className="h-px flex-1 bg-slate-200" />OR<span aria-hidden className="h-px flex-1 bg-slate-200" /></div>
         </>
       )}
 
@@ -89,7 +124,7 @@ export function AuthForm({ mode, next, defaultEmail }: { mode: Mode; next?: stri
           <input name="email" type="email" required autoComplete="email" defaultValue={defaultEmail ?? ''} className={field} />
         </label>
         <label className="block">
-          <span className="block text-sm font-bold mb-1">Password</span>
+          <span className="flex items-baseline justify-between text-sm font-bold mb-1">Password{mode === 'login' && <Link href="/forgot-password" className="font-bold text-primary hover:underline">Forgot password?</Link>}</span>
           <input
             name="password"
             type="password"

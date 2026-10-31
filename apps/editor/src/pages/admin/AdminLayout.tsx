@@ -1,3 +1,4 @@
+import { House } from '@prompttoppt/ui/icons'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router'
 import { useUser } from '@/lib/session'
 import { CurrencyProvider, CurrencyToggle } from './currency'
@@ -6,7 +7,8 @@ const NAV = [
   ['Usage', [['/admin', 'Overview'], ['/admin/tokens', 'Tokens'], ['/admin/models', 'Models'], ['/admin/providers', 'Providers'], ['/admin/cloud', 'Google Cloud'], ['/admin/performance', 'Performance'], ['/admin/errors', 'Errors']]],
   ['Business', [['/admin/sales', 'Sales & revenue'], ['/admin/subscriptions', 'Subscriptions'], ['/admin/margin', 'Cost & margin'], ['/admin/users', 'Users'], ['/admin/countries', 'Countries']]],
   ['Product', [['/admin/presentations', 'Presentations'], ['/admin/prompts', 'Prompts / use cases'], ['/admin/images', 'Images'], ['/admin/exports', 'Exports']]],
-  ['Control', [['/admin/flags', 'Feature flags'], ['/admin/audit', 'Audit logs']]],
+  ['Content', [['/admin/posts', 'Blog, news & guides']]],
+  ['Control', [['/admin/support', 'Support'], ['/admin/reviews', 'Reviews'], ['/admin/flags', 'Feature flags'], ['/admin/audit', 'Audit logs']]],
 ] as const
 
 const ALL_PATHS: string[] = NAV.flatMap(([, items]) => items.map(([to]) => to as string))
@@ -30,9 +32,9 @@ export default function AdminLayout() {
     <div className="flex flex-col lg:flex-row min-h-screen bg-[#f7f7f8]">
       {/* phone / tablet: sections as a jump menu instead of a fixed sidebar */}
       <div className="lg:hidden sticky top-0 z-30 bg-white border-b border-border flex items-center gap-2 px-3 h-14">
-        <a href="/" aria-label="Back to the app" className="font-bold text-lg w-8 grid place-items-center">⌂</a>
+        <a href="/" aria-label="Back to the app" className="w-8 grid place-items-center"><House aria-hidden size={20} /></a>
         <label className="sr-only" htmlFor="admin-section">Dashboard section</label>
-        <select id="admin-section" value={ALL_PATHS.includes(pathname) ? pathname : '/admin'} onChange={(e) => navigate(e.target.value)} className="flex-1 min-w-0 border border-border rounded-lg h-10 px-3 text-sm bg-white">
+        <select id="admin-section" value={ALL_PATHS.find((p) => pathname === p || (p !== '/admin' && pathname.startsWith(`${p}/`))) ?? '/admin'} onChange={(e) => navigate(e.target.value)} className="flex-1 min-w-0 border border-border rounded-lg h-10 px-3 text-sm bg-white">
           {NAV.map(([group, items]) => <optgroup key={group} label={group}>{items.map(([to, label]) => <option key={to} value={to}>{label}</option>)}</optgroup>)}
         </select>
       </div>

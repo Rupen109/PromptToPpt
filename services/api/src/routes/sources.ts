@@ -15,6 +15,7 @@ import { busyAnswer, uploadGate } from '../middleware/upload-gate.ts'
 import { readLink } from '../sources/link.ts'
 import { saveSource } from '../sources/store.ts'
 import { canonicalYouTubeUrl, fromTranscript, youtubeId } from '../sources/transcript.ts'
+import { MEDIA_MAX_BYTES, MediaError, inspectMedia, mediaBlocks, mediaReadOutput, mediaReadPrompt } from '../sources/media-read.ts'
 import { IMAGE_MAX_BYTES, ImageError, imageReadOutput, imageReadPrompt, inspectImage } from '../sources/image-read.ts'
 import { AIUnavailableError } from '@prompttoppt/ai'
 import { aiConfigured, gateway } from '../ai/gateway.ts'
@@ -182,6 +183,43 @@ sources.post('/image', uploadGate, rateLimit({ windowMs: 60_000, max: 8, key: by
     if (e instanceof AIUnavailableError) return c.json({ success: false, error: { code: 'AI_UNAVAILABLE', message: 'The AI service is busy or unavailable. You were not charged — please try again.' } }, 503)
     console.error('[image-read]', e)
     return fail(c, 422, 'PARSE_FAILED', 'I could not read that picture. You were not charged.')
+  }
+})
+
+/**
+ * "Video to slides": the person's own audio or video recording is listened to by a model and becomes a timed transcript source (the file is never
+ * stored). 6 credits per started 4 MB, refunded if it fails. What is said in the recording is data, never instructions.
+ */
+const MEDIA_PER_DAY = 40
+sources.post('/media', uploadGate, rateLimit({ windowMs: 60_000, max: 4, key: byUser('mediaread'), message: 'You are adding recordings very quickly. Wait a moment and try again.' }), bodyLimit({ maxSize: MEDIA_MAX_BYTES + 64 * 1024, onError: (c) => fail(c, 413, 'TOO_LARGE', 'That recording is larger than 12 MB. Save a shorter part, or export just the audio, and try again.') }), async (c) => {
+  const userId = c.get('session')!.user.id
+  const file = (await c.req.parseBody())['file']
+  if (!(file instanceof File)) return fail(c, 400, 'NO_FILE', 'Attach a recording as "file"')
+  const bytes = new Uint8Array(await file.arrayBuffer())
+  let info
+  try { info = inspectMedia(bytes) } catch (e) { return fail(c, 422, 'PARSE_FAILED', e instanceof MediaError ? e.message : 'Could not read that recording') }
+  const maint = await refuseIfOn('maintenance_mode', c, userId)
+  if (maint) return maint
+  if (!aiConfigured) return c.json({ success: false, error: { code: 'AI_NOT_CONFIGURED', message: 'AI is not configured on this server' } }, 503)
+  const [{ n: today } = { n: 0 }] = await db.select({ n: count() }).from(aiUsageEvent).where(and(eq(aiUsageEvent.userId, userId), eq(aiUsageEvent.requestType, 'media_read'), gte(aiUsageEvent.createdAt, new Date(Date.now() - 24 * 3600_000))))
+  if (today >= MEDIA_PER_DAY) throw new GateError('LIMIT_REACHED', `You have reached today's limit of ${MEDIA_PER_DAY} recordings. Please try again tomorrow.`, 429, { feature: 'read_media', limit: MEDIA_PER_DAY })
+  const price = (await creditPrice('read_media', 'starter')) * mediaBlocks(bytes.length)
+  const ref = nanoid()
+  await reserveCredits(userId, price, 'read_media', ref, { strict: true }) // 402 INSUFFICIENT_CREDITS before any model call
+  try {
+    const out = await gateway.run({ route: 'fast', requestType: 'media_read', ...mediaReadPrompt(file.name || 'recording', info.kind), media: [{ kind: info.kind, mimeType: info.mime, data: bytes }], schema: mediaReadOutput, maxOutputTokens: 24_000, timeoutMs: 240_000, ctx: { userId } })
+    if (!out.hasSpeech || out.text.trim().length < 20) {
+      await refundCredits(userId, 'read_media', ref)
+      return fail(c, 422, 'NO_SPEECH', "I couldn't hear any speech in that recording to build a deck from. Try a clearer recording with someone talking. You were not charged.")
+    }
+    const title = (out.title || file.name.replace(/\.[a-z0-9]+$/i, '') || 'Recording').slice(0, 200)
+    const saved = await saveSource(userId, 'transcript', fromTranscript(title, out.text, 120, 1))
+    return c.json({ success: true, data: { ...saved, creditsCharged: price } }, 201)
+  } catch (e) {
+    await refundCredits(userId, 'read_media', ref)
+    if (e instanceof AIUnavailableError) return c.json({ success: false, error: { code: 'AI_UNAVAILABLE', message: 'The AI service is busy or unavailable. You were not charged — please try again.' } }, 503)
+    console.error('[media-read]', e)
+    return fail(c, 422, 'PARSE_FAILED', 'I could not transcribe that recording. You were not charged.')
   }
 })
 

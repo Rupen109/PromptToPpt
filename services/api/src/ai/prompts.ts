@@ -41,10 +41,24 @@ Return JSON: {"topic": string, "objective"?: string, "audience"?: string, "tone"
 "facts": string[] (EVERY concrete thing the user said — what they did, learned, built, tools, results, names, constraints — as short standalone statements in the user's language; never add anything they did not say),
 "keepDesign": true only if they ask to keep/not change the current design, theme, colours or fonts,
 "palette": {"primary":"#RRGGBB","accent":"#RRGGBB"} — two colours that fit the TOPIC's mood, meaning and culture so the deck looks made for it: nature/environment → deep forest green + fresh lime or teal; ocean/water → deep teal/blue + aqua; a national figure or national day of India → saffron/deep orange + India green or navy; finance → navy + gold; health → teal + soft green; technology → indigo/blue + cyan; energy → amber + deep orange; food → warm red/orange; education → blue + amber. "primary" is a rich, saturated, medium-dark colour (it becomes the main brand fill); "accent" contrasts with it. Always provide it,
-"lightMode": true ONLY if the user explicitly asks for a light / white / bright deck (decks are dark by default),
+"lightMode": true ONLY if the user explicitly asks for a light / white / bright deck,
+"darkMode": true ONLY if the user explicitly asks for a dark / black / night-mode deck (otherwise leave both out: the template's own look is used),
 "specificity": "broad_topic" | "detailed", "missing": subset of ["audience","objective","slideCount","duration","tone","sections"]}.
 Use "broad_topic" when the request is only a subject/name with no goals, audience, structure or constraints. Only fill fields the user actually stated.`,
   prompt: `<user_request>\n${neutralise(prompt)}\n</user_request>`,
+})
+
+/** Which template (visual design) fits THIS topic: one small, cheap call over the category's shortlist. */
+export const designPickPrompt = (i: { analysis: PromptAnalysis; userPrompt: string; designs: { id: string; name: string; tagline: string; mode: string; headingFont: string; bodyFont: string }[] }) => ({
+  system: `[task:design_pick]
+You choose the visual template for a presentation. ${DATA_RULES}
+Read the topic, audience and tone, then pick the ONE template from the list whose look and feel fits them best (a playful topic gets a playful look, a board report a sober one, an arts or lifestyle topic an editorial one, engineering a technical one). Judge by the template's tagline, its light/dark mode and its fonts. Prefer the template whose personality matches the topic over the first one in the list.
+Return JSON: {"designId": one of the listed ids, "reason": one short sentence}.`,
+  prompt: [
+    `<params>${JSON.stringify({ topic: i.analysis.topic, audience: i.analysis.audience, tone: i.analysis.tone, visualStyle: i.analysis.visualStyle, category: i.analysis.category, lightRequested: i.analysis.lightMode, darkRequested: i.analysis.darkMode })}</params>`,
+    `<user_request>\n${neutralise(i.userPrompt).slice(0, 1500)}\n</user_request>`,
+    `<templates>\n${i.designs.map((d) => `${d.id} | ${d.name} | ${d.tagline} | ${d.mode} | ${d.headingFont} + ${d.bodyFont}`).join('\n')}\n</templates>`,
+  ].join('\n'),
 })
 
 export const directionsPrompt = (analysis: PromptAnalysis) => ({
@@ -112,7 +126,8 @@ For each outline entry return one slide object whose "layout" equals the outline
 - roadmap: {layout,title,phases[3-5]:{label,heading,bullets[1-3]}}  - architecture: {layout,title,layers[2-4]:{name,items[2-5]},note?}
 - case-study: {layout,title,client?,challenge,approach[1-4],results[1-4],headline:{value,label}}
 Every slide may also include "speakerNotes" (2-4 spoken sentences) and "sources": [{"sourceId","locator"?,"quote"?}] when a <source> supports it.
-Bullets are short phrases (max ~14 words), not paragraphs. imagePrompt describes a concrete, text-free photographic or illustrative scene.
+Size budget (the slides use large type, so words are the scarce thing): titles at most 8 words; 3 to 5 bullets per slide, each at most 12 words; card, step, phase and column text at most 14 words; agenda labels at most 5 words; nothing longer than one short sentence per box. Cut a point rather than lengthen the slide.
+Bullets are short phrases, not paragraphs. imagePrompt describes a concrete, text-free photographic or illustrative scene.
 ${GROUNDING_RULES}
 ${DESIGN_RULES}
 ${i.repair?.length ? `REPAIR: a previous version of these slides had problems. Fix exactly these and keep everything else: ${i.repair.map((r) => `slide ${r.slide}: ${r.problem}`).join(' | ')}\n` : ''}Return JSON: {"slides": [ ... exactly ${i.outlineSlides.length} slide objects, in outline order ... ]}.`,

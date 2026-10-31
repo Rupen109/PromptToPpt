@@ -96,14 +96,15 @@ describe('comments: writing', () => {
 })
 
 describe('comments: mentions and email', () => {
-  it('C2 a mention emails the person once, as plain text with an excerpt and a link; the author is not emailed', async () => {
+  it('C2 a mention emails the person once, with an excerpt and a link (text and a branded HTML copy that shows typed tags as plain text); the author is not emailed', async () => {
     const t = await team(); const fe = await emailOf(t.friend.id); const oe = await emailOf(t.owner.id)
     mailOutbox.length = 0
     const r = await post(t.owner, t.deck.id, { slideId: t.slide, body: `Please check <b>this</b> @{${t.friend.id}} and @{${t.owner.id}}` }); expect(r.status).toBe(201)
     await new Promise((x) => setTimeout(x, 150))
     expect(mailsTo(fe)).toHaveLength(1); expect(mailsTo(oe)).toHaveLength(0)
     const m = mailsTo(fe)[0]!
-    expect(m.text).toContain('Please check <b>this</b> @'); expect(m.text).toContain(`/edit/${t.deck.id}`); expect(m.html).toBeUndefined()
+    expect(m.text).toContain('Please check <b>this</b> @'); expect(m.text).toContain(`/edit/${t.deck.id}`)
+    expect(m.html).toContain('&lt;b&gt;this&lt;/b&gt;'); expect(m.html).not.toContain('<b>this</b>') // what people type can never become markup
     expect(m.text).not.toContain(`@{${t.friend.id}}`)
   })
   it('C4 many mentions of the same person within ten minutes still send one email; C3 stranger ids become plain "@unknown" and send nothing', async () => {

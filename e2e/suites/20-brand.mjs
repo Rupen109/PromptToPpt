@@ -10,7 +10,7 @@ export default async function () {
   const root = new URL('../..', import.meta.url).pathname
   const email = JSON.parse(readFileSync(ACCOUNT, 'utf8')).email
   const plan = (p) => execSync(`pnpm --filter @prompttoppt/api exec tsx --env-file-if-exists=.env scripts/qa-grant-plan.ts ${email} ${p}`, { cwd: root, stdio: 'pipe' })
-  let id = JSON.parse(readFileSync(DECKS, 'utf8')).ai.split('?')[0]
+  let id = (((d) => d.ai ?? d.template)(JSON.parse(readFileSync(DECKS, 'utf8')))).split('?')[0] // the AI-made deck when suite 03 got one, else its template deck
   const PNG = new URL('../../apps/web/public/apple-touch-icon.png', import.meta.url).pathname // a real 180×180 PNG
   const b = await launch()
   const ctx = await b.newContext({ viewport: { width: 1500, height: 950 }, storageState: STATE })

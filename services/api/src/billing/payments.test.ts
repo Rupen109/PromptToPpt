@@ -4,9 +4,10 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { app } from '../app.ts'
 import { db } from '../db/index.ts'
 import { payment, planPrice, subscription, webhookEvent } from '../db/schema.ts'
+import { mailOutbox } from '../lib/mailer.ts'
 import { api, json, rid, signUp } from '../test-utils.ts'
 import { getEntitlements } from './entitlements.ts'
-import { razorpay, verifyCheckoutSignature, verifyWebhookSignature, type RzpPayment, type RzpSubscription } from './razorpay.ts'
+import { RazorpayApiError, razorpay, verifyCheckoutSignature, verifyWebhookSignature, type RzpPayment, type RzpSubscription } from './razorpay.ts'
 
 const KEY_SECRET = 'unit-test-key-secret'
 const WEBHOOK_SECRET = 'unit-test-webhook-secret-0123456789'
@@ -129,6 +130,31 @@ describe('POST /billing/checkout', () => {
     expect(create.mock.calls[0]![0]).toMatchObject({ period: 'monthly', amount: 49900, currency: 'INR' })
     expect((await db.select().from(planPrice).where(eq(planPrice.id, 'pro-INR-month')))[0]!.providerPriceId).toBe('plan_lazy_1')
     await db.update(planPrice).set({ providerPriceId: 'plan_pro_m' }).where(eq(planPrice.id, 'pro-INR-month'))
+  })
+})
+
+describe('checkout self-heals a provider plan id that does not exist in the connected account', () => {
+  it('forgets the stored id, creates the plan again and opens the payment (keys switched / plan deleted in the dashboard)', async () => {
+    await db.update(planPrice).set({ providerPriceId: 'plan_from_an_old_account' }).where(eq(planPrice.id, 'pro-INR-month'))
+    const create = vi.spyOn(razorpay, 'createPlan').mockResolvedValue({ id: 'plan_fresh_1' })
+    let first = true
+    vi.spyOn(razorpay, 'createSubscription').mockImplementation(async (p) => {
+      if (first) { first = false; throw new RazorpayApiError(400, 'The ID provided is invalid or could not be found.') }
+      return { id: 'sub_healed', plan_id: p.planId, status: 'created', current_start: null, current_end: null, notes: p.notes }
+    })
+    const u = await signUp('heal')
+    const r = await app.request('/api/v1/billing/checkout', { method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: u.cookie, 'x-debug-country': 'IN' }, body: JSON.stringify({ planId: 'pro', interval: 'month' }) })
+    expect(r.status).toBe(200)
+    expect((await json(r)).data.subscriptionId).toBe('sub_healed')
+    expect(create).toHaveBeenCalledTimes(1)
+    expect((await db.select().from(planPrice).where(eq(planPrice.id, 'pro-INR-month')))[0]!.providerPriceId).toBe('plan_fresh_1')
+    await db.update(planPrice).set({ providerPriceId: 'plan_pro_m' }).where(eq(planPrice.id, 'pro-INR-month'))
+  })
+  it('any other provider refusal is still reported, not retried', async () => {
+    vi.spyOn(razorpay, 'createSubscription').mockRejectedValue(new RazorpayApiError(400, 'Authentication failed'))
+    const u = await signUp('nohe')
+    const r = await app.request('/api/v1/billing/checkout', { method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: u.cookie, 'x-debug-country': 'IN' }, body: JSON.stringify({ planId: 'pro', interval: 'year' }) })
+    expect(r.status).toBe(502)
   })
 })
 
@@ -381,5 +407,84 @@ describe('money going back revokes access (security S28/S29)', () => {
     const big = JSON.stringify({ event: 'x', pad: 'a'.repeat(300_000) })
     const r = await app.request('/api/v1/webhooks/razorpay', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Razorpay-Signature': 'x' }, body: big })
     expect(r.status).toBe(413)
+  })
+})
+
+describe('the customer is e-mailed about money (receipt, failure, cancel, refund)', () => {
+  const mailsTo = (userEmail: string) => mailOutbox.filter((m) => m.to === userEmail)
+  const emailOf = async (u: { id: string }) => (await db.query.user.findFirst({ where: (t, { eq: e }) => e(t.id, u.id) }))!.email
+
+  it('a receipt goes out ONCE per payment — a repeated webhook, a different event for the same payment and the checkout confirmation add nothing', async () => {
+    const u = await signUp('em')
+    const to = await emailOf(u)
+    const s = rzpSub({ userId: u.id, planId: 'gold' })
+    const pay = rzpPay({ amount: 120000, subscription_id: s.id } as Partial<RzpPayment>)
+    await subEvent('subscription.activated', s)
+    await subEvent('subscription.charged', s, pay)
+    await subEvent('subscription.charged', s, pay) // a second event id for the same payment
+    await subEvent('subscription.charged', s, pay, { eventId: 'fixed-event' })
+    await subEvent('subscription.charged', s, pay, { eventId: 'fixed-event' }) // the very same event again
+    const receipts = mailsTo(to).filter((m) => /^Payment received/.test(m.subject))
+    expect(receipts).toHaveLength(1)
+    expect(receipts[0]!.subject).toBe('Payment received: SlidesDone Gold')
+    expect(receipts[0]!.text).toContain('₹1,200.00')
+    expect(receipts[0]!.text).toContain(pay.id)
+    expect(receipts[0]!.html).toContain('Payment received')
+  })
+
+  it('a failed payment sends one "did not go through" mail with the reason; paying later sends the receipt', async () => {
+    const u = await signUp('em')
+    const to = await emailOf(u)
+    const s = rzpSub({ userId: u.id })
+    await subEvent('subscription.activated', s)
+    const failed = rzpPay({ status: 'failed', error_description: 'Insufficient funds', subscription_id: s.id })
+    await webhook('payment.failed', { payment: { entity: failed } })
+    await webhook('payment.failed', { payment: { entity: failed } })
+    const fails = mailsTo(to).filter((m) => /could not process/.test(m.subject))
+    expect(fails).toHaveLength(1)
+    expect(fails[0]!.text).toContain('Insufficient funds')
+    expect(fails[0]!.text).toMatch(/not been charged/)
+    await subEvent('subscription.charged', s, { ...failed, status: 'captured', error_description: null } as unknown as RzpPayment)
+    expect(mailsTo(to).filter((m) => /^Payment received/.test(m.subject))).toHaveLength(1)
+  })
+
+  it('cancelling renewal sends one notice with the date access ends; clicking cancel twice does not mail twice', async () => {
+    vi.spyOn(razorpay, 'cancelSubscription').mockResolvedValue({} as RzpSubscription)
+    const u = await signUp('em')
+    const to = await emailOf(u)
+    await subEvent('subscription.activated', rzpSub({ userId: u.id }))
+    await api(u.cookie, 'POST', '/billing/cancel')
+    await api(u.cookie, 'POST', '/billing/cancel')
+    const ending = mailsTo(to).filter((m) => /will not renew/.test(m.subject))
+    expect(ending).toHaveLength(1)
+    expect(ending[0]!.text).toMatch(/keep your Pro plan until \d{1,2} \w+ \d{4}/)
+  })
+
+  it('a full refund sends one refund mail; a partial refund and a repeated refund event send none', async () => {
+    vi.spyOn(razorpay, 'cancelSubscription').mockResolvedValue({} as RzpSubscription)
+    const u = await signUp('em')
+    const to = await emailOf(u)
+    const sub = rzpSub({ userId: u.id })
+    const pay = rzpPay({ subscription_id: sub.id } as Partial<RzpPayment>)
+    await subEvent('subscription.activated', sub, pay)
+    await webhook('refund.processed', { refund: { entity: { id: `rfnd_${rid()}`, payment_id: pay.id, amount: 1000 } } })
+    expect(mailsTo(to).filter((m) => /refund/.test(m.subject))).toHaveLength(0)
+    await webhook('refund.processed', { refund: { entity: { id: `rfnd_${rid()}`, payment_id: pay.id, amount: pay.amount } } })
+    await webhook('refund.processed', { refund: { entity: { id: `rfnd_${rid()}`, payment_id: pay.id, amount: pay.amount } } })
+    const refunds = mailsTo(to).filter((m) => /refund was processed/.test(m.subject))
+    expect(refunds).toHaveLength(1)
+    expect(refunds[0]!.text).toContain('₹499.00')
+  })
+
+  it('a mail problem never fails the payment: the webhook still answers 200 and the plan is active', async () => {
+    const mailer = await import('../lib/mailer.ts')
+    const u = await signUp('em')
+    const s = rzpSub({ userId: u.id })
+    const spy = vi.spyOn(mailOutbox, 'push').mockImplementation(() => { throw new Error('mail service down') })
+    try {
+      expect((await subEvent('subscription.charged', s, rzpPay({ subscription_id: s.id } as Partial<RzpPayment>))).status).toBe(200)
+    } finally { spy.mockRestore() }
+    expect((await getEntitlements(u.id)).plan.id).toBe('pro')
+    void mailer
   })
 })

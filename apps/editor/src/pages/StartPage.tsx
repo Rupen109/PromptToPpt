@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Navigate, useNavigate, useSearchParams } from 'react-router'
 import { api } from '@/lib/api'
-import { setPendingPrompt, setPendingSources } from '@/lib/pending-prompt'
+import { deckLanguage } from '@prompttoppt/validation'
+import { setPendingLanguage, setPendingPrompt, setPendingSources } from '@/lib/pending-prompt'
 
 /**
  * Landing-page handoff: /start?draft=<id>. Exchanges the opaque id for the visitor's prompt
@@ -21,11 +22,13 @@ export function StartPage() {
       .claimDraft(draft)
       .then(({ prompt, sourceIds }) => {
         setPendingPrompt(prompt)
+        const lang = params.get('lang') // picked in the website header; only a known language code is accepted
+        if (deckLanguage(lang)) setPendingLanguage(lang!)
         setPendingSources(sourceIds) // files / links attached on the landing page ride along into generation
         navigate('/create', { replace: true })
       })
       .catch(() => setFailed(true))
-  }, [draft, navigate])
+  }, [draft, navigate, params])
 
   if (!draft) return <Navigate to="/" replace />
   if (failed)

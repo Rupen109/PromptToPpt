@@ -11,7 +11,7 @@ export default async function () {
   const run = (cmd) => execSync(`pnpm --filter @prompttoppt/api exec tsx --env-file-if-exists=.env ${cmd}`, { cwd, stdio: 'pipe' }).toString().trim().split('\n').pop()
   const owner = JSON.parse(readFileSync(ACCOUNT, 'utf8'))
   run(`scripts/qa-grant-plan.ts ${owner.email} pro`)
-  const id = JSON.parse(readFileSync(DECKS, 'utf8')).ai.split('?')[0]
+  const id = (((d) => d.ai ?? d.template)(JSON.parse(readFileSync(DECKS, 'utf8')))).split('?')[0] // the AI-made deck when suite 03 got one, else its template deck
   const b = await launch()
   const octx = await b.newContext({ viewport: { width: 1400, height: 900 }, storageState: STATE })
   const op = await octx.newPage()

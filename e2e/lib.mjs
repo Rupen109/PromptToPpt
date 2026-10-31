@@ -11,7 +11,21 @@ export const RESULTS = join(here, 'results')
 mkdirSync(RESULTS, { recursive: true })
 
 const CHROMIUM = process.env.E2E_CHROMIUM ?? `${process.env.HOME}/Library/Caches/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-mac-arm64/chrome-headless-shell`
-export const launch = () => chromium.launch({ executablePath: CHROMIUM })
+/** The website loads Google's translate script quietly for every visitor. Tests do not need it (and hundreds of loads from one machine make Google answer "unusual traffic"), so it is blocked unless a suite asks for the real thing: `launch({ google: true })`. */
+const GOOGLE_TRANSLATE = /translate\.google\.com|translate\.googleapis\.com|translate-pa\.googleapis\.com|www\.gstatic\.com\/(_\/translate|images\/branding)/
+export async function launch({ google = false } = {}) {
+  const browser = await chromium.launch({ executablePath: CHROMIUM })
+  if (!google) {
+    const make = browser.newContext.bind(browser)
+    // answered empty (not failed) so the console stays clean
+    browser.newContext = async (options) => {
+      const ctx = await make(options)
+      await ctx.route(GOOGLE_TRANSLATE, (r) => void r.fulfill({ status: 200, contentType: 'application/javascript', body: '' }))
+      return ctx
+    }
+  }
+  return browser
+}
 
 /** Ignorable noise: dev-only warnings that are not product defects. */
 const NOISE = [/Download the React DevTools/, /\[vite\]/, /Fast Refresh/, /favicon/i]

@@ -1,3 +1,4 @@
+import { ArrowLeft, ArrowRight, Lock, Maximize } from '@prompttoppt/ui/icons'
 import { useEffect, useState, type FormEvent } from 'react'
 import { CANVAS } from '@prompttoppt/validation'
 import { ApiError, type PublicDeck } from '@prompttoppt/api-client'
@@ -64,7 +65,7 @@ export function SharedViewPage() {
   if (failed === 'password') return (
     <div className="min-h-screen grid place-items-center bg-[#111] text-white p-6">
       <form onSubmit={unlock} className="w-full max-w-sm text-center">
-        <div className="text-3xl mb-3" aria-hidden>🔒</div>
+        <div className="mb-3 flex justify-center" aria-hidden><Lock size={32} /></div>
         <h1 className="text-xl font-semibold mb-1">This presentation is password-protected</h1>
         <p className="text-white/70 text-sm mb-5">Enter the password the owner gave you.</p>
         <input type="password" autoFocus autoComplete="off" value={pw} onChange={(e) => setPw(e.target.value)} aria-label="Password" className="w-full rounded-lg px-4 py-3 text-black text-base" placeholder="Password" maxLength={200} />
@@ -86,7 +87,7 @@ export function SharedViewPage() {
   const doc = deck.document
   const slide = doc.slides[i]!
   const { width: W, height: H } = CANVAS[doc.aspectRatio]
-  const chrome = 96 // title bar + controls
+  const chrome = 152 // title bar (48) + controls (84) + the padding around the slide (16) + a little air: a taller slide would sit on top of the Previous / Next buttons
   const width = Math.floor(Math.max(200, Math.min(size.w - 16, ((size.h - chrome) * W) / H)))
   const btn = 'w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-30 text-xl grid place-items-center'
 
@@ -102,14 +103,14 @@ export function SharedViewPage() {
         </div>
       </main>
       <footer className="h-[84px] shrink-0 flex items-center justify-center gap-4">
-        <button type="button" className={btn} aria-label="Previous slide" disabled={i === 0} onClick={() => setI((x) => Math.max(0, x - 1))}>←</button>
+        <button type="button" className={btn} aria-label="Previous slide" disabled={i === 0} onClick={() => setI((x) => Math.max(0, x - 1))}><ArrowLeft aria-hidden size={18} /></button>
         <span className="text-sm tabular-nums text-white/70 min-w-16 text-center" aria-live="polite">{i + 1} / {n}</span>
-        <button type="button" className={btn} aria-label="Next slide" disabled={i === n - 1} onClick={() => setI((x) => Math.min(n - 1, x + 1))}>→</button>
+        <button type="button" className={btn} aria-label="Next slide" disabled={i === n - 1} onClick={() => setI((x) => Math.min(n - 1, x + 1))}><ArrowRight aria-hidden size={18} /></button>
         <details className="absolute right-3 bottom-2 text-[11px] text-white/60 max-w-[60vw] max-sm:max-w-[80vw]">
           <summary className="cursor-pointer hover:text-white/90 list-none text-right">Privacy</summary>
           <p className="mt-1 rounded-lg bg-black/80 border border-white/10 p-2.5 text-white/80 leading-snug" data-testid="view-notice">The owner of this link can see that it was opened, how long each slide was on screen and roughly where from (device type, website, country). No name, e-mail address, IP address or cookie is recorded. Browsers with “Do Not Track” turned on are not measured.</p>
         </details>
-        <button type="button" className={`${btn} text-base max-sm:hidden`} aria-label="Full screen" onClick={() => void (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.())}>⛶</button>
+        <button type="button" className={`${btn} text-base max-sm:hidden`} aria-label="Full screen" onClick={() => void (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.())}><Maximize aria-hidden size={18} /></button>
       </footer>
     </div>
   )
