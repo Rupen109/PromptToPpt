@@ -16,7 +16,7 @@ umask 077
   echo "COOKIE_DOMAIN=.$DOMAIN"
   echo "TRUSTED_PROXY_HOPS=1"
   echo "RUN_WORKER=true"
-  echo "AI_PROVIDER=openrouter"
+  echo "AI_PROVIDER=vertex" # Gemini on Vertex for now (key GEMINI_API_KEY); OpenRouter later: store AI_PROVIDER=openrouter + OPENROUTER_API_KEY in Parameter Store (it overrides this)
   echo "ASSET_STORAGE=s3"
   echo "ASSET_BUCKET=$ASSETS_BUCKET"
   echo "ASSET_REGION=$AWS_REGION"
