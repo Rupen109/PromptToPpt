@@ -8,7 +8,7 @@ import { Card, type CardTone } from '@/components/ui/Card'
 
 export const metadata: Metadata = {
   title: 'Free Presentation & PDF Tools',
-  description: 'Free tools for presentations: outline generator, PDF to presentation, PDF to PPT converter, YouTube transcript to slides, audio and video to slides, script to slides and free templates. No sign-up needed.',
+  description: 'Free tools for presentations: outline generator, PDF to presentation, PDF to PPT, YouTube and video to slides, script to slides. No sign-up needed.',
   alternates: { canonical: '/free-tools' },
 }
 

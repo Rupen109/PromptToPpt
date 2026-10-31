@@ -1,5 +1,7 @@
 import { LayoutList, Clapperboard, Ruler, Pencil } from '@prompttoppt/ui/icons'
 import type { Metadata } from 'next'
+import { JsonLd } from '@/components/seo/JsonLd'
+import { breadcrumbLd, fit } from '@/lib/seo'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { CATEGORIES, DESIGNS, SKELETONS, designById } from '@prompttoppt/theme'
@@ -20,8 +22,8 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   if (!d) return {}
   const cat = categoryOf(d.category)
   return {
-    title: `${d.name} — ${cat.name} presentation template`,
-    description: `${d.tagline}. A ready-made ${SKELETONS[d.category].length}-slide ${cat.name.toLowerCase()} deck (${cat.covers}) with animated transitions — open it in the editor and make it yours.`,
+    title: fit(`${d.name}: ${cat.name} presentation template`, 47),
+    description: fit(`${d.tagline}. A ready-made ${SKELETONS[d.category].length}-slide ${cat.name.toLowerCase()} deck with animated transitions. Open it in the editor and make it yours.`, 155),
     alternates: { canonical: `/templates/${d.id}` },
   }
 }
@@ -36,6 +38,7 @@ export default async function TemplatePage({ params }: { params: Promise<{ id: s
   const motion = d.theme.motion
   return (
     <div className="flex flex-col min-h-screen bg-[#f3f4f9]">
+      <JsonLd data={breadcrumbLd([['Home', '/'], ['Templates', '/templates'], [d.name, `/templates/${d.id}`]])} />
       <Header />
       <main className="max-w-[1280px] w-full mx-auto px-5 md:px-10 py-8 md:py-12">
         <nav aria-label="Breadcrumb" className="text-sm text-slate-600 mb-6"><Link href="/templates" className="text-primary underline underline-offset-2 hover:no-underline">Templates</Link> <span aria-hidden>/</span> <span>{cat.name}</span> <span aria-hidden>/</span> <span className="text-foreground font-semibold">{d.name}</span></nav>

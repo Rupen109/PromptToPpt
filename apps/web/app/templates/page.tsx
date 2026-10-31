@@ -8,7 +8,7 @@ import { TemplateGallery } from '@/components/templates/TemplateGallery'
 
 export const metadata: Metadata = {
   title: 'Presentation templates',
-  description: `${DESIGNS.length} professionally designed, animated presentation templates for pitch decks, sales proposals, marketing plans, strategy, product roadmaps, tech reviews, reports, training, case studies and team onboarding.`,
+  description: `${DESIGNS.length} designer-made, animated presentation templates for pitch decks, sales, marketing, strategy, reports and training. Free to start.`,
   alternates: { canonical: '/templates' },
 }
 

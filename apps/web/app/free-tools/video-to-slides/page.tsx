@@ -3,8 +3,8 @@ import { MediaTool } from '@/components/free-tools/MediaTool'
 import { ToolShell } from '@/components/free-tools/ToolShell'
 
 export const metadata: Metadata = {
-  title: 'Free Audio & Video to Slides: Transcribe a Recording and Make a Presentation',
-  description: 'Upload your own lecture, meeting or voice recording, get a timed transcript in its own language, and turn it into a designed, editable presentation. Free to try, no sign-up.',
+  title: 'Free Audio & Video to Slides Converter',
+  description: 'Upload a lecture, meeting or voice recording, get a timed transcript in its own language, then turn it into an editable presentation. Free to try.',
   alternates: { canonical: '/free-tools/video-to-slides' },
 }
 

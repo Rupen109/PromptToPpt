@@ -4,7 +4,7 @@ import { ToolShell } from '@/components/free-tools/ToolShell'
 
 export const metadata: Metadata = {
   title: 'Free Sitemap Generator — Create sitemap.xml Online',
-  description: 'Generate a sitemap.xml for your website free. We visit your pages like a search-engine bot, respect robots.txt and noindex, and give you a file ready for Google. No sign-up.',
+  description: 'Generate a sitemap.xml for your website free. We crawl your pages like a search bot, respect robots.txt and noindex, and give you a file ready for Google.',
   alternates: { canonical: '/free-tools/sitemap-generator' },
 }
 

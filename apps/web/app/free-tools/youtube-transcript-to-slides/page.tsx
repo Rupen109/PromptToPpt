@@ -3,7 +3,7 @@ import { ToolShell } from '@/components/free-tools/ToolShell'
 import { TranscriptTool } from '@/components/free-tools/TranscriptTool'
 
 export const metadata: Metadata = {
-  title: 'Free YouTube Transcript Cleaner and Transcript to Slides',
+  title: 'Free YouTube Transcript to Slides Converter',
   description: 'Paste a YouTube transcript, clean it up (time stamps, repeats, [Music]), copy or download it, and turn it into a designed, editable presentation. Free, no sign-up.',
   alternates: { canonical: '/free-tools/youtube-transcript-to-slides' },
 }

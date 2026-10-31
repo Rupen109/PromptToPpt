@@ -3,7 +3,9 @@ import localFont from 'next/font/local'
 import './globals.css'
 import '@prompttoppt/ui/prose.css'
 import { SiteTranslate } from '@/components/layout/SiteTranslate'
+import { JsonLd } from '@/components/seo/JsonLd'
 import { SITE_URL } from '@/lib/env'
+import { siteGraph } from '@/lib/seo'
 
 // ─── Fonts ────────────────────────────────────────────────────────────────
 
@@ -90,6 +92,7 @@ export const metadata: Metadata = {
       'Create stunning presentations in seconds with AI.',
     images: ['/og-image.png'],
     creator: '@slidesdone',
+    site: '@slidesdone',
   },
   icons: {
     icon: [{ url: '/favicon.svg', type: 'image/svg+xml' }, { url: '/favicon-32x32.png', sizes: '32x32', type: 'image/png' }, { url: '/favicon.ico', sizes: 'any' }],
@@ -125,26 +128,8 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
 
-        {/* JSON-LD: Organization structured data */}
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{
-            __html: JSON.stringify({
-              '@context': 'https://schema.org',
-              '@type': 'SoftwareApplication',
-              name: 'SlidesDone',
-              applicationCategory: 'BusinessApplication',
-              description:
-                'AI-powered presentation maker. Create beautiful presentations from a prompt.',
-              operatingSystem: 'Web',
-              offers: {
-                '@type': 'Offer',
-                price: '0',
-                priceCurrency: 'USD',
-              },
-            }),
-          }}
-        />
+        {/* Structured data: organisation, website and product (lib/seo.ts) */}
+        <JsonLd data={siteGraph()} />
       </head>
       {/* Browser extensions (ColorZilla's cz-shortcut-listen, Grammarly…) add attributes to <body> before React loads; that is not our markup, so don't warn about it. */}
       <body suppressHydrationWarning>

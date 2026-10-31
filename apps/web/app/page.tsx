@@ -15,7 +15,7 @@ import FaqSection from '@/components/sections/FaqSection'
 import { ReviewsSection } from '@/components/sections/ReviewsSection'
 
 export const metadata: Metadata = {
-  title: 'SlidesDone — AI Presentation Maker | Create Stunning Slides in Seconds',
+  title: 'SlidesDone: AI Presentation Maker | Slides in Seconds',
   description:
     'Transform any topic or prompt into a beautiful, editable presentation with AI. Upload PDFs, paste text, or enter a YouTube URL — get a professional deck in seconds.',
   alternates: {

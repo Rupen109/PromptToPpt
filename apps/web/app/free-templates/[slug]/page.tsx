@@ -1,5 +1,6 @@
 import { ArrowRight } from '@prompttoppt/ui/icons'
 import type { Metadata } from 'next'
+import { fit } from '@/lib/seo'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { CATEGORIES, DESIGNS, SKELETONS } from '@prompttoppt/theme'
@@ -20,8 +21,8 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   if (!l) return {}
   const n = DESIGNS.filter((d) => d.category === l.category).length
   return {
-    title: `Free ${l.noun} Presentation Templates — Edit Online`,
-    description: `${n} designed ${l.noun.toLowerCase()} presentation templates. Open one, edit it in your browser and let AI fill it in for your topic. No design skills needed.`,
+    title: fit(`Free ${l.noun} Presentation Templates`, 47),
+    description: fit(`${n} designed ${l.noun.toLowerCase()} presentation templates. Edit one in your browser and let AI fill it in for your topic. No design skills needed.`, 155),
     alternates: { canonical: `/free-templates/${l.slug}` },
   }
 }

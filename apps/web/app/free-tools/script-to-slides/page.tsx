@@ -3,8 +3,8 @@ import { ScriptTool } from '@/components/free-tools/ScriptTool'
 import { ToolShell } from '@/components/free-tools/ToolShell'
 
 export const metadata: Metadata = {
-  title: 'Free Video & Reel Script to Slides: Turn a Script into a Presentation',
-  description: 'Paste the script of your Reel, YouTube video, talk or podcast and get a slide-by-slide outline that follows it, then open a designed, editable presentation. Free, no sign-up.',
+  title: 'Free Script to Slides: Turn a Script into a Deck',
+  description: 'Paste the script of your Reel, video, talk or podcast and get a slide-by-slide outline, then open it as an editable presentation. Free.',
   alternates: { canonical: '/free-tools/script-to-slides' },
 }
 
