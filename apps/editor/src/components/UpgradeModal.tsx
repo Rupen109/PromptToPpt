@@ -1,4 +1,4 @@
-import { Check, X } from '@prompttoppt/ui/icons'
+import { CalendarClock, Check, Coins, Layers, Sparkles, X } from '@prompttoppt/ui/icons'
 import { useEffect, useState } from 'react'
 import { planHighlights, priceFor, type BillingInterval, type PlansResponse } from '@prompttoppt/api-client'
 import type { PlanId } from '@prompttoppt/validation'
@@ -14,7 +14,7 @@ export function UpgradeModal() {
   const [busy, setBusy] = useState<PlanId | null>(null)
   const [interval, setInterval] = useState<BillingInterval>('year')
   const [error, setError] = useState<string | null>(null)
-  const [paid, setPaid] = useState<string | null>(null)
+  const [paid, setPaid] = useState<{ plan: string; credits: number; slides: number; renews: string } | null>(null)
   const [testHint, setTestHint] = useState(false)
   const close = () => {
     setError(null)
@@ -38,7 +38,7 @@ export function UpgradeModal() {
     try {
       const e = await subscribe(id, interval, (c) => setTestHint(c.testMode))
       await refresh()
-      setPaid(`You're on ${e.plan.name} now — ${e.credits.balance.toLocaleString()} credits are ready.`)
+      setPaid({ plan: e.plan.name, credits: e.credits.balance, slides: e.limits.maxSlides, renews: new Date(e.credits.resetsAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) })
     } catch (e) {
       setError(checkoutErrorMessage(e))
     } finally {
@@ -48,15 +48,33 @@ export function UpgradeModal() {
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 grid place-items-center p-4" onMouseDown={(e) => e.target === e.currentTarget && close()}>
-      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Upgrade your plan" className="bg-white rounded-2xl w-full max-w-3xl p-6 shadow-xl max-h-[90vh] overflow-y-auto outline-none">
-        <div className="flex items-start justify-between mb-1">
-          <h2 className="font-heading font-bold text-2xl">{paid ? 'Payment successful' : 'Upgrade to continue'}</h2>
-          <button onClick={close} aria-label="Close" className="text-slate-500 hover:text-slate-800 text-2xl leading-none"><X aria-hidden size={24} /></button>
-        </div>
+      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Upgrade your plan" className={`bg-white rounded-2xl w-full ${paid ? 'max-w-md p-0 overflow-hidden' : 'max-w-3xl p-6 overflow-y-auto'} shadow-xl max-h-[90vh] outline-none`}>
+        {!paid && (
+          <div className="flex items-start justify-between mb-1">
+            <h2 className="font-heading font-bold text-2xl">Upgrade to continue</h2>
+            <button onClick={close} aria-label="Close" className="text-slate-500 hover:text-slate-800 text-2xl leading-none"><X aria-hidden size={24} /></button>
+          </div>
+        )}
         {paid ? (
-          <div className="py-6">
-            <p className="text-lg text-slate-800 mb-4" role="status">{paid}</p>
-            <button onClick={close} className="bg-primary text-white rounded-lg px-5 py-2 font-semibold">Start creating</button>
+          <div data-testid="payment-success">
+            <div className="relative px-8 pt-10 pb-8 text-center bg-gradient-to-b from-emerald-50 to-white">
+              <button onClick={close} aria-label="Close" className="absolute top-4 right-4 text-slate-400 hover:text-slate-700"><X aria-hidden size={22} /></button>
+              <div className="mx-auto w-20 h-20 rounded-full bg-emerald-100 grid place-items-center ring-8 ring-emerald-50">
+                <span className="w-14 h-14 rounded-full bg-emerald-500 text-white grid place-items-center shadow-md"><Check aria-hidden size={32} strokeWidth={3} /></span>
+              </div>
+              <p className="mt-5 text-xs font-bold tracking-widest text-emerald-700 uppercase">Payment successful</p>
+              <h2 className="mt-1 font-heading font-extrabold text-3xl">Welcome to {paid.plan}</h2>
+              <p className="mt-2 text-slate-600" role="status">You&apos;re on {paid.plan} now — {paid.credits.toLocaleString()} credits are ready.</p>
+            </div>
+            <dl className="mx-8 grid grid-cols-3 gap-3 text-center border-y border-border py-5">
+              <div><Coins aria-hidden size={18} className="mx-auto text-primary" /><dd className="mt-1 font-bold text-lg tabular-nums">{paid.credits.toLocaleString()}</dd><dt className="text-xs text-slate-500">credits</dt></div>
+              <div><Layers aria-hidden size={18} className="mx-auto text-primary" /><dd className="mt-1 font-bold text-lg tabular-nums">{paid.slides}</dd><dt className="text-xs text-slate-500">slides per deck</dt></div>
+              <div><CalendarClock aria-hidden size={18} className="mx-auto text-primary" /><dd className="mt-1 font-bold text-lg">{paid.renews}</dd><dt className="text-xs text-slate-500">credits renew</dt></div>
+            </dl>
+            <div className="px-8 py-6">
+              <button onClick={close} className="w-full h-12 rounded-xl bg-primary text-white font-semibold inline-flex items-center justify-center gap-2"><Sparkles aria-hidden size={18} />Start creating</button>
+              {testHint && <p className="mt-3 text-center text-xs text-amber-700">Test payment: no real money was charged.</p>}
+            </div>
           </div>
         ) : (
           <>
