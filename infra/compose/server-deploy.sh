@@ -3,12 +3,14 @@
 set -euo pipefail
 cd /opt/slidesdone
 source ./config.env
-aws s3 sync "s3://$ASSETS_BUCKET/deploy/" /opt/slidesdone/ --region "$AWS_REGION" --no-progress
+# --exact-timestamps: by default sync SKIPS a same-sized file unless the local copy is newer. images.env always has the same size (every tag is the same length),
+# so the server kept an old image list, pulled an image that no longer exists, and the deploy failed. Compare by time exactly, so any change is fetched.
+aws s3 sync "s3://$ASSETS_BUCKET/deploy/" /opt/slidesdone/ --region "$AWS_REGION" --exact-timestamps --no-progress
 chmod +x ./*.sh
 EDITOR_BUCKET="${ASSETS_BUCKET/-assets-/-editor-}"
 mkdir -p editor
-aws s3 sync "s3://$EDITOR_BUCKET/" /opt/slidesdone/editor/ --delete --region "$AWS_REGION" --no-progress
-# index.html always has the same size (only the script hashes inside it change), so sync can wrongly skip it and leave a page that asks for scripts which no longer exist
+aws s3 sync "s3://$EDITOR_BUCKET/" /opt/slidesdone/editor/ --delete --region "$AWS_REGION" --exact-timestamps --no-progress
+# index.html always has the same size (only the script hashes inside it change): copied explicitly as well, so a page never asks for scripts that no longer exist
 aws s3 cp "s3://$EDITOR_BUCKET/index.html" /opt/slidesdone/editor/index.html --region "$AWS_REGION" --no-progress
 bash ./render-env.sh
 REGISTRY="$(cut -d/ -f1 <<<"$(grep '^API_IMAGE=' images.env | cut -d= -f2-)")"

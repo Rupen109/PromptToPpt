@@ -72,7 +72,7 @@ if has api || has web || has config || has editor; then
   grep -q API_IMAGE "$TMP/images.env" && grep -q WEB_IMAGE "$TMP/images.env" || { echo "Both images are needed once: run  infra/scripts/deploy.sh api web"; exit 1; }
   aws s3 sync "$TMP" "s3://$ASSETS/deploy/" --no-progress --delete >/dev/null
   echo "== starting on the server"
-  CMD_ID="$(aws ssm send-command --instance-ids "$INSTANCE" --document-name AWS-RunShellScript --comment "slidesdone deploy $TAG" --parameters 'commands=["bash -c \"mkdir -p /opt/slidesdone && aws s3 sync s3://'"$ASSETS"'/deploy/ /opt/slidesdone/ --region '"$AWS_REGION"' --no-progress && chmod +x /opt/slidesdone/*.sh && /opt/slidesdone/server-deploy.sh\""]' --timeout-seconds 900 --query Command.CommandId --output text)"
+  CMD_ID="$(aws ssm send-command --instance-ids "$INSTANCE" --document-name AWS-RunShellScript --comment "slidesdone deploy $TAG" --parameters 'commands=["bash -c \"mkdir -p /opt/slidesdone && aws s3 sync s3://'"$ASSETS"'/deploy/ /opt/slidesdone/ --region '"$AWS_REGION"' --exact-timestamps --no-progress && chmod +x /opt/slidesdone/*.sh && /opt/slidesdone/server-deploy.sh\""]' --timeout-seconds 900 --query Command.CommandId --output text)"
   for _ in $(seq 1 90); do
     ST="$(aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$INSTANCE" --query Status --output text 2>/dev/null || echo Pending)"
     case "$ST" in Success|Failed|Cancelled|TimedOut) break ;; esac; sleep 10

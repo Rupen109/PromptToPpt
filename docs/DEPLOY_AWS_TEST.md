@@ -30,6 +30,10 @@ Built 2026-10-31. Domain `slidesdone.app` (bought at Hostinger, 1 year, renews 2
 - **AI on the test server:** Gemini on Vertex (`AI_PROVIDER=vertex`, key `GEMINI_API_KEY` in Parameter Store). To switch to OpenRouter later, store `AI_PROVIDER=openrouter` and a real `OPENROUTER_API_KEY` there (they override the default) and run a `config` deploy.
 - **Live check after a deploy:** `LIVE_EMAIL=<verified account> LIVE_PASSWORD=... node e2e/live-smoke.mjs` runs 16 checks through a real browser (pages, login, scratch editor, pictures in S3, share link, support form, AI). It tests what a free-plan person can do.
 
+## Lessons (deploy)
+- **`aws s3 sync` skips same-sized files** unless the local copy is newer. The image list (`images.env`) is always the same size (every tag has the same length), so on 2026-11-02 the server kept the 31 Oct list, tried to pull an image the registry had already expired (it keeps the last 5) and the deploy failed with "manifest unknown". Every server-side download now uses `--exact-timestamps` (`deploy.sh`, `server-deploy.sh`). Any new sync from S3 to a machine must too.
+- To see what a server runs: `aws ssm send-command` with `cat /opt/slidesdone/images.env; docker ps`.
+
 ## Known limits
 - 1 GB is tight for API, website and Postgres together. Watch `free -m` and the budget mails; step up to `t4g.small` (2 GB) by changing `instance_type`.
 - There is no CloudFront in front of the API or website yet, so no country header: prices use the default currency until an edge is added (`EDGE_SHARED_SECRET` is set but unused). Add it before real launch (see PRODUCTION_RELEASE_CHECKLIST).
