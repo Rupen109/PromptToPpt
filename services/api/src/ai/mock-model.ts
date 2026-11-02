@@ -1,6 +1,7 @@
 import { crc32, deflateSync } from 'node:zlib'
 import { ProviderError, type TextRequest } from '@prompttoppt/ai'
 import { DESIGNS } from '@prompttoppt/theme'
+import { mockUnderstand, mockWrite } from './mock-assistant.ts'
 
 /**
  * Deterministic stand-in for a model (AI_PROVIDER=mock). Understands the [task:*] marker and the
@@ -116,6 +117,8 @@ export function mockRespond(req: TextRequest): string {
     const tag = (s: unknown) => (typeof s === 'string' ? `${s} ✎` : s)
     return JSON.stringify({ slide: { ...slide, ...(slide.title ? { title: tag(slide.title) } : {}), ...(slide.bullets ? { bullets: slide.bullets.map(tag) } : {}) } })
   }
+  if (task === 'assist_understand') return mockUnderstand(req.prompt)
+  if (task === 'assist_write') return mockWrite(req.system, req.prompt)
   if (task === 'aiassist') {
     const ins = (req.prompt.match(/<instruction>\n([\s\S]*?)\n<\/instruction>/)?.[1] ?? '').toLowerCase()
     if (ins.includes('fail_please')) throw new Error('mock model failure')

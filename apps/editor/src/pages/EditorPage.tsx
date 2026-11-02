@@ -1,4 +1,4 @@
-import { AlertTriangle, Ban, ChevronDown, ChevronRight, Home, Lock, MessageSquare, MoreVertical, Palette, Play, Redo2, Sparkles, Undo2, Users } from '@prompttoppt/ui/icons'
+import { AlertTriangle, Ban, ChevronDown, ChevronRight, Home, Lock, MessageSquare, MoreVertical, Palette, Play, Sparkles, Users } from '@prompttoppt/ui/icons'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { ApiError, isGateError } from '@prompttoppt/api-client'

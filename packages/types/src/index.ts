@@ -122,6 +122,8 @@ export type AIRequestType =
   | 'design_pick'
   | 'deck_critic'
   | 'ai_assist'
+  | 'assist_understand'
+  | 'assist_write'
   | 'ask_deck'
   | 'image_read'
   | 'media_read'

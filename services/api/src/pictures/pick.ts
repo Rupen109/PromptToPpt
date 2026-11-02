@@ -391,18 +391,18 @@ export type EditorSearch = { ok: true; photos: EditorStockPhoto[]; page: number;
  * A person typing in the Media library asks for pictures directly (not through a slide). It shares the Unsplash hourly quota and the per-user
  * budget with deck generation, so one person cannot spend everybody's searches; results are cached for 30 minutes per query and page.
  */
-export async function searchStockForEditor(query: string, userId: string, page: number, over: Partial<PickerDeps> = {}): Promise<EditorSearch> {
+export async function searchStockForEditor(query: string, userId: string, page: number, over: Partial<PickerDeps> = {}, orientation?: 'landscape' | 'portrait' | 'squarish'): Promise<EditorSearch> {
   const deps = await resolveDeps(over)
   const { unsplashKey, pexelsKey } = deps.config
   const q = query.trim().slice(0, 80)
   const asEditor = (name: 'unsplash' | 'pexels', provider: StockProvider, list: StockPhoto[]): EditorStockPhoto[] => list.map((p) => ({ id: p.id, provider: name, thumb: p.thumbUrl ?? p.imageUrl, full: p.imageUrl, alt: p.alt, author: p.author, authorUrl: p.authorUrl, pageUrl: p.pageUrl, trackUrl: p.trackUrl, attribution: provider.attribution(p) }))
   const now = deps.now()
   if (unsplashKey && now >= unsplashBlockedUntil) {
-    const ck = `editor|unsplash|${q}|${page}`
+    const ck = `editor|unsplash|${q}|${page}|${orientation ?? ''}`
     const hit = cached(ck, now)
     if (hit) return { ok: true, photos: asEditor('unsplash', unsplashProvider(unsplashKey), hit), page, hasMore: hit.length >= 24 }
     if (takeStockSearch(userId, now, deps.config.stockLimits)) {
-      const res = await deps.fetch(`https://api.unsplash.com/search/photos?${new URLSearchParams({ query: q, page: String(page), per_page: '24', content_filter: 'high' })}`, { headers: { Authorization: `Client-ID ${unsplashKey}`, 'Accept-Version': 'v1' }, signal: AbortSignal.timeout(SEARCH_BUDGET_MS) }).catch(() => null)
+      const res = await deps.fetch(`https://api.unsplash.com/search/photos?${new URLSearchParams({ query: q, page: String(page), per_page: '24', content_filter: 'high', ...(orientation ? { orientation } : {}) })}`, { headers: { Authorization: `Client-ID ${unsplashKey}`, 'Accept-Version': 'v1' }, signal: AbortSignal.timeout(SEARCH_BUDGET_MS) }).catch(() => null)
       if (res && (res.status === 403 || res.status === 429)) unsplashBlockedUntil = now + 15 * 60_000
       else if (res?.ok) {
         if (Number(res.headers.get('x-ratelimit-remaining') ?? '99') <= 1) unsplashBlockedUntil = now + 10 * 60_000
@@ -418,7 +418,7 @@ export async function searchStockForEditor(query: string, userId: string, page: 
     }
   }
   if (pexelsKey) {
-    const res = await deps.fetch(`https://api.pexels.com/v1/search?${new URLSearchParams({ query: q, page: String(page), per_page: '24', size: 'large' })}`, { headers: { Authorization: pexelsKey }, signal: AbortSignal.timeout(SEARCH_BUDGET_MS) }).catch(() => null)
+    const res = await deps.fetch(`https://api.pexels.com/v1/search?${new URLSearchParams({ query: q, page: String(page), per_page: '24', size: 'large', ...(orientation ? { orientation: orientation === 'squarish' ? 'square' : orientation } : {}) })}`, { headers: { Authorization: pexelsKey }, signal: AbortSignal.timeout(SEARCH_BUDGET_MS) }).catch(() => null)
     if (res?.ok) {
       const body = (await res.json().catch(() => null)) as { photos?: PexelsPhoto[] } | null
       const found = (body?.photos ?? []).flatMap((p): StockPhoto[] => (p && typeof p.id === 'number' && typeof p.url === 'string' && (p.src?.large2x ?? p.src?.large) ? [{ id: String(p.id), alt: p.alt ?? '', imageUrl: (p.src?.large2x ?? p.src?.large)!, thumbUrl: p.src?.medium, pageUrl: p.url, author: p.photographer ?? '' }] : []))

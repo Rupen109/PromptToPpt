@@ -13,7 +13,7 @@ import { useUi } from '@/editor/ui'
 
 type Msg =
   | { role: 'user'; text: string }
-  | { role: 'ai'; reply: string; applied: string[]; notes: string[]; credits: number; images?: AiImageProposal[]; askAbout?: string; undo?: string; revertedUndo?: string[] }
+  | { role: 'ai'; reply: string; applied: string[]; notes: string[]; credits: number; images?: AiImageProposal[]; askAbout?: string; options?: { label: string; reply: string }[]; undo?: string; revertedUndo?: string[] }
   | { role: 'error'; text: string }
 
 /** What the assistant changed (newest last), per presentation, kept for the whole page session so closing the panel does not lose it; rebuilt from the saved chat after a reload. */
@@ -130,10 +130,10 @@ export function AiPanel({ doc, slide, presentationId, onClose, onBeforeSend, onR
           for (const r of res.reverts ?? []) { const e = log[log.length - 1 - r.change]; if (e) { C.revertAssist(d, e, r.part, r.slideId); if (r.part === 'all') reverted.push(e.id) } }
         }) // live, one undo step
         const after = useDoc.getState().doc
-        const didEdit = !!res.theme || res.edits.length > 0 || (res.additions?.length ?? 0) > 0 || (res.backgrounds?.length ?? 0) > 0 || (res.readability?.length ?? 0) > 0
+        const didEdit = !!res.theme || res.edits.length > 0 || [res.additions, res.backgrounds, res.pictures, res.readability, res.gradients, res.clearPictures, res.removals, res.moves, res.duplicates, res.locks].some((x) => (x?.length ?? 0) > 0)
         let next = log.filter((u) => !reverted.includes(u.id))
         if (before && after && didEdit) {
-          const u = C.snapshotAssist(before, after, !!res.theme, res.applied, undefined, [...(res.backgrounds ?? []).map((b) => b.slideId), ...(res.readability ?? [])])
+          const u = C.snapshotAssist(before, after, !!res.theme, res.applied, undefined, [...(res.backgrounds ?? []).map((b) => b.slideId), ...(res.gradients ?? []).map((g) => g.slideId), ...(res.clearPictures ?? []), ...(res.pictures ?? []).map((x) => x.slideId), ...(res.readability ?? [])])
           next = [...next, u]
           const json = JSON.stringify(u)
           if (json.length <= MAX_UNDO_JSON) undoInfo = { undo: json }
@@ -141,7 +141,7 @@ export function AiPanel({ doc, slide, presentationId, onClose, onBeforeSend, onR
         if (reverted.length) undoInfo = { ...undoInfo, revertedUndo: reverted }
         UNDO_STACKS.set(presentationId, next.slice(-MAX_UNDO))
       }
-      const aiMsg: Msg = { role: 'ai', reply: res.reply, applied: res.applied, notes: res.notes, credits: res.creditsCharged, images: res.images, ...(res.ask ? { askAbout: t } : {}), ...undoInfo }
+      const aiMsg: Msg = { role: 'ai', reply: res.reply, applied: res.applied, notes: res.notes, credits: res.creditsCharged, images: res.images, ...(res.ask ? (res.options ? { options: res.options } : { askAbout: t }) : {}), ...undoInfo }
       setMsgs((m) => [...m, aiMsg])
       remember(userMsg, aiMsg)
       void refresh()
@@ -220,6 +220,11 @@ export function AiPanel({ doc, slide, presentationId, onClose, onBeforeSend, onR
                 <ul className="text-xs text-green-800 space-y-0.5">{m.applied.map((a) => <li key={a} className="flex items-start gap-1.5"><Check aria-hidden size={14} className="mt-0.5 shrink-0" />{a}</li>)}</ul>
               )}
               {m.notes.length > 0 && <ul className="text-xs text-amber-800 space-y-0.5">{m.notes.map((n) => <li key={n}>• {n}</li>)}</ul>}
+              {m.options && m.options.length > 0 && i === msgs.length - 1 && !pending && (
+                <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Choose an answer">
+                  {m.options.map((o) => <button key={o.label} onClick={() => void send(o.reply)} className="text-xs border border-border rounded-full px-3 py-1 hover:border-primary text-left">{o.label}</button>)}
+                </div>
+              )}
               {m.askAbout && i === msgs.length - 1 && !pending && (
                 <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Which slide?">
                   <button onClick={() => void send(`${m.askAbout} (slide ${slideNo})`)} className="text-xs border border-primary text-primary rounded-full px-3 py-1 hover:bg-primary hover:text-white">Slide {slideNo} (this one)</button>

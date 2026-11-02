@@ -90,7 +90,7 @@ export default async function () {
     const before = await deck(); const last = before.slides[before.slides.length - 1]
     await send('undo that')
     const after = await deck(); const now = after.slides[after.slides.length - 1]
-    expect(bgOf(now) !== bgOf(last), 'background did not change back')
+    expect(bgOf(now) !== bgOf(last), `background did not change back | ${(await panel().getByRole('log').innerText()).slice(-350).replace(/\s+/g, ' ')}`)
     expect(after.slides.length === n0 + 1, 'slide count changed')
   }))
 

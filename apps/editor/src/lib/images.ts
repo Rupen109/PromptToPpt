@@ -18,7 +18,7 @@ export function aspectFor(placement: C.ImagePlacement, deck: AspectRatio): '16:9
 /** Puts a generated picture on a slide according to the chosen placement. Call inside `apply()` so it is one undo step. */
 export function placeImage(d: C.D, slide: Slide, placement: C.ImagePlacement, img: C.PlacedImage, elementId?: string) {
   switch (placement) {
-    case 'background': return C.setImageBackground(d, slide.id, img.url)
+    case 'background': return C.setBackgroundPicture(d, slide.id, img.url)
     case 'beside': return C.placeImageBeside(d, slide.id, img)
     case 'replace': return elementId ? C.setImageElementSrc(d, slide.id, elementId, img) : undefined
     case 'floating': return void C.insertImageElement(d, slide.id, img)

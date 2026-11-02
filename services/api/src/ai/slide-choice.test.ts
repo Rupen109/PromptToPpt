@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { needsSlideChoice } from './ai-assist.ts'
+import { aimsAtOneSlide, needsSlideChoice } from './ai-assist.ts'
 
 describe('needsSlideChoice: ask which slide instead of guessing', () => {
   it.each([
@@ -43,5 +43,22 @@ describe('needsSlideChoice: ask which slide instead of guessing', () => {
   it('never asks when the user is already working on a single slide, or when the message is long (a topic, not an edit)', () => {
     expect(needsSlideChoice('make the title shorter', 'slide')).toBe(false)
     expect(needsSlideChoice('rewrite the content ' + 'about our coffee roastery and its four stores '.repeat(4), 'deck')).toBe(false)
+  })
+
+  it('a picture or background request uses the slide the person is on (no question), but still asks when no slide is open', () => {
+    for (const t of ['update the bg image', 'change the background image', 'new background photo', 'replace the picture with a city', 'put a photo of a lake behind it', 'use a different image', 'set the background to a forest photo']) {
+      expect(needsSlideChoice(t, 'deck', true), t).toBe(false)
+    }
+    expect(needsSlideChoice('update the bg image', 'deck', false)).toBe(true)
+    // text edits still ask, even with a slide open (an edit to the wrong slide is worse than one extra click)
+    expect(needsSlideChoice('make the title shorter', 'deck', true)).toBe(true)
+    expect(needsSlideChoice('make the picture bigger', 'deck', true)).toBe(true)
+  })
+
+  it('a picture or background request on the slide you are on is priced as ONE slide; "every slide" is not', () => {
+    expect(aimsAtOneSlide('update the bg image', true)).toBe(true)
+    expect(aimsAtOneSlide('update the bg image', false)).toBe(false)
+    expect(aimsAtOneSlide('change the background of every slide', true)).toBe(false)
+    expect(aimsAtOneSlide('make the whole deck warmer', true)).toBe(false)
   })
 })

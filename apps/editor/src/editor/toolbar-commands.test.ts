@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { contrastRatio, getTheme, resolveColor } from '@prompttoppt/theme'
+import { composeSlide, contrastRatio, getTheme, resolveColor } from '@prompttoppt/theme'
 import { SHAPE_LIBRARY, presentationSchema, type Presentation } from '@prompttoppt/validation'
 import * as C from './commands'
 import * as T from './toolbar-commands'
@@ -131,5 +131,58 @@ describe('toolbar commands: backgrounds', () => {
     apply('g', (d) => T.setBackgroundGradient(d, 's0', '#FFFFFF', '#F5F5F5'))
     expect(readable('#FFFFFF')).toBeGreaterThanOrEqual(4.5)
     expect(presentationSchema.safeParse(doc()).success).toBe(true)
+  })
+})
+
+describe('assistant pictures: a photo behind any slide, and taking it back', () => {
+  it('a manual (blank) slide gets the picture straight behind its elements and its text stays readable', () => {
+    apply('t', (d) => void T.addTextBox(d, 's0'))
+    apply('ai', (d) => C.applyAssist(d, { theme: null, edits: [], pictures: [{ slideId: 's0', url: 'https://api.example.com/api/v1/assets/abc' }] } as never))
+    expect(doc().slides[0]!.background).toMatchObject({ type: 'image', value: 'https://api.example.com/api/v1/assets/abc' })
+    expect(presentationSchema.safeParse(doc()).success).toBe(true)
+  })
+  it('a designed title slide gets its picture layout (dark wash), a card slide gets a plain picture background; both are one undo step', () => {
+    const theme = getTheme('cobalt')
+    const designed = { id: 'd1', locked: false, validation: { status: 'pending' as const, issues: [] }, ...composeSlide({ layout: 'title', title: 'Hello', subtitle: 'World', speakerNotes: '', sources: [] }, theme, '16:9') }
+    const cards = { id: 'd2', locked: false, validation: { status: 'pending' as const, issues: [] }, ...composeSlide({ layout: 'process', title: 'Steps', steps: [1, 2, 3].map((i) => ({ label: `S${i}`, detail: 'd' })), speakerNotes: '', sources: [] }, theme, '16:9') }
+    useDoc.getState().load({ ...mk(), slides: [designed, cards] } as Presentation, 1)
+    apply('ai', (d) => C.applyAssist(d, { theme: null, edits: [], pictures: [{ slideId: 'd1', url: 'https://x/a.jpg' }, { slideId: 'd2', url: 'https://x/b.jpg' }] } as never))
+    expect(doc().slides.every((sl) => sl.background?.type === 'image')).toBe(true)
+    expect(presentationSchema.safeParse(doc()).success).toBe(true)
+    useDoc.getState().undo()
+    expect(doc().slides.every((sl) => sl.background?.type !== 'image')).toBe(true)
+  })
+  it('the assistant history can put a picture background back (the designed slide is laid out again)', () => {
+    const theme = getTheme('cobalt')
+    const designed = { id: 'd1', locked: false, validation: { status: 'pending' as const, issues: [] }, ...composeSlide({ layout: 'title', title: 'Hello', subtitle: 'World', speakerNotes: '', sources: [] }, theme, '16:9') }
+    useDoc.getState().load({ ...mk(), slides: [designed] } as Presentation, 1)
+    const before = doc(); const shapeOf = (sl: Presentation['slides'][number]) => JSON.stringify(sl.elements.map((e) => [e.type, Math.round(e.x), Math.round(e.y), Math.round(e.width), Math.round(e.height)])); const elementsBefore = shapeOf(before.slides[0]!)
+    apply('ai', (d) => C.applyAssist(d, { theme: null, edits: [], pictures: [{ slideId: 'd1', url: 'https://x/a.jpg' }] } as never))
+    const undo = C.snapshotAssist(before, doc(), false, ['Put a photo behind slide 1'], undefined, ['d1'])
+    expect(doc().slides[0]!.background?.type).toBe('image')
+    apply('revert', (d) => C.revertAssist(d, undo, 'all'))
+    expect(doc().slides[0]!.background?.type).not.toBe('image')
+    expect(shapeOf(doc().slides[0]!)).toBe(elementsBefore) // laid out as before (element ids are new, positions are the same)
+  })
+  it('floating and beside placements: a floating photo is a picture element, beside only on text layouts (else it floats); the history can take each back', () => {
+    const theme = getTheme('cobalt')
+    const body = { id: 'b1', locked: false, validation: { status: 'pending' as const, issues: [] }, ...composeSlide({ layout: 'title-body', title: 'Body', bullets: ['a', 'b'], speakerNotes: '', sources: [] }, theme, '16:9') }
+    const steps = { id: 'p1', locked: false, validation: { status: 'pending' as const, issues: [] }, ...composeSlide({ layout: 'process', title: 'Steps', steps: [1, 2, 3].map((i) => ({ label: `S${i}`, detail: 'd' })), speakerNotes: '', sources: [] }, theme, '16:9') }
+    useDoc.getState().load({ ...mk(), slides: [body, steps] } as Presentation, 1)
+    const before = doc()
+    apply('ai', (d) => C.applyAssist(d, { theme: null, edits: [], pictures: [{ slideId: 'b1', url: 'https://x/a.jpg', alt: 'a', placement: 'beside' }, { slideId: 'p1', url: 'https://x/b.jpg', alt: 'b', placement: 'beside' }] } as never))
+    expect(doc().slides[0]!.layoutId).toBe('split-image-text') // the text slide became picture + text
+    const floating = doc().slides[1]!.elements.filter((e) => e.type === 'image')
+    expect(floating).toHaveLength(1) // the process slide cannot take a picture beside the text: it floats
+    expect(presentationSchema.safeParse(doc()).success).toBe(true)
+    const undo = C.snapshotAssist(before, doc(), false, ['Put photos'], undefined, ['b1', 'p1'])
+    apply('revert', (d) => C.revertAssist(d, undo, 'all'))
+    expect(doc().slides[0]!.layoutId).toBe('title-body')
+    expect(doc().slides[1]!.elements.filter((e) => e.type === 'image')).toHaveLength(0)
+    expect(doc().slides[1]!.manual).toBeFalsy() // the slide is not left marked as hand-edited
+  })
+  it('the media-library "background" placement and the AI image placement now exist for every slide', () => {
+    const slide = doc().slides[0]!
+    expect(C.imagePlacements(slide).map((p) => p.id)).toContain('background')
   })
 })

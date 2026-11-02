@@ -212,6 +212,123 @@ describe('editing a bulleted text box keeps its bullets (and can add and remove 
   })
 })
 
+describe('assistant v2 changes: slide management in one undo step, and "undo that" puts it all back', () => {
+  const ids = () => useDoc.getState().doc!.slides.map((s) => s.id)
+  it('new slides carry the server\'s id and can go at the start; a later change in the same answer can target them', () => {
+    const before = structuredClone(useDoc.getState().doc!)
+    const content = { layout: 'thank-you', title: 'Thank you', speakerNotes: '', sources: [] } as never
+    useDoc.getState().apply('AI assistant', (d) => C.applyAssist(d, { theme: null, edits: [], additions: [{ afterSlideId: null, content, id: 'srv1', atStart: true }], backgrounds: [{ slideId: 'srv1', color: '#7C2D12' }] }))
+    const after = useDoc.getState().doc!
+    expect(after.slides[0]!.id).toBe('srv1')
+    expect(after.slides[0]!.background).toEqual({ type: 'color', value: '#7C2D12' })
+    expect(C.snapshotAssist(before, after, false, ['Added a slide']).added).toEqual(['srv1'])
+    useDoc.getState().undo()
+  })
+  it('delete, move, duplicate, lock and a gradient apply together; the assistant history restores slides, order and locks', () => {
+    const before = structuredClone(useDoc.getState().doc!)
+    const [a, b, c] = ids()
+    useDoc.getState().apply('AI assistant', (d) => C.applyAssist(d, { theme: null, edits: [], removals: [a!], moves: [{ slideId: c!, afterSlideId: null }], duplicates: [{ slideId: b!, newId: 'dup1' }], locks: [{ slideId: b!, locked: true }], gradients: [{ slideId: c!, from: '#111111', to: '#333333' }] }))
+    const after = useDoc.getState().doc!
+    expect(after.slides.some((s) => s.id === a)).toBe(false)
+    expect(after.slides[0]!.id).toBe(c)
+    expect(after.slides[0]!.background?.type).toBe('gradient')
+    expect(after.slides.find((s) => s.id === b)!.locked).toBe(true)
+    const dup = after.slides.find((s) => s.id === 'dup1')!
+    expect(dup.locked).toBe(false)
+    expect(new Set(dup.elements.map((e) => e.id)).size).toBe(dup.elements.length) // the copy's elements got fresh ids of their own
+    const undo = C.snapshotAssist(before, after, false, ['Several slide changes'], undefined, [c!])
+    expect(undo.removed?.map((r) => r.slide.id)).toEqual([a])
+    expect(undo.order).toBeTruthy()
+    expect(undo.locks).toEqual({ [b!]: false })
+    useDoc.getState().apply('put back', (d) => C.revertAssist(d, undo, 'all'))
+    const back = useDoc.getState().doc!
+    expect(back.slides.map((s) => s.id)).toEqual(before.slides.map((s) => s.id))
+    expect(back.slides.find((s) => s.id === b)!.locked).toBe(false)
+    expect(back.slides.find((s) => s.id === c)!.background).toEqual(before.slides.find((s) => s.id === c)!.background)
+    useDoc.getState().undo(); useDoc.getState().undo()
+  })
+  it('"duplicate slide 2 and make the copy blue": the copy exists before the colour is applied', () => {
+    const [, b] = ids()
+    useDoc.getState().apply('AI assistant', (d) => C.applyAssist(d, { theme: null, edits: [], duplicates: [{ slideId: b!, newId: 'dup2' }], backgrounds: [{ slideId: 'dup2', color: '#1E3A8A' }] }))
+    expect(useDoc.getState().doc!.slides.find((s) => s.id === 'dup2')!.background).toEqual({ type: 'color', value: '#1E3A8A' })
+    useDoc.getState().undo()
+  })
+  it('a picture behind an ordinary text slide stays when its words change and when the theme changes', () => {
+    const slide = useDoc.getState().doc!.slides.find((s) => s.layoutId === 'title-body' && s.content && !s.manual)
+    if (!slide) return
+    const url = 'https://example.com/photo.jpg'
+    useDoc.getState().apply('picture', (d) => C.setBackgroundPicture(d, slide.id, url))
+    const content = { ...(slide.content as object), title: 'A new title' } as never
+    useDoc.getState().apply('AI assistant', (d) => C.applyAssist(d, { theme: null, edits: [{ slideId: slide.id, content }] }))
+    expect(useDoc.getState().doc!.slides.find((s) => s.id === slide.id)!.background).toEqual({ type: 'image', value: url })
+    useDoc.getState().apply('theme', (d) => C.applyTheme(d, 'midnight'))
+    expect(useDoc.getState().doc!.slides.find((s) => s.id === slide.id)!.background).toEqual({ type: 'image', value: url })
+    useDoc.getState().undo(); useDoc.getState().undo(); useDoc.getState().undo()
+  })
+  it('a locked slide is never deleted, and the last slide never goes', () => {
+    const [a] = ids()
+    useDoc.getState().apply('lock', (d) => C.setSlideLocked(d, a!, true))
+    useDoc.getState().apply('AI assistant', (d) => C.applyAssist(d, { theme: null, edits: [], removals: [a!] }))
+    expect(ids()).toContain(a)
+    useDoc.getState().undo(); useDoc.getState().undo()
+  })
+})
+
+describe('a slide the assistant adds or re-lays-out keeps the look of the deck', () => {
+  const brown = '#7C2D12'
+  const paint = () => useDoc.getState().apply('paint', (d) => { for (const s of d.slides) C.setSlideBackground(d, s.id, brown) })
+  it('"add a thank you page": the new slide gets the background the other slides share', () => {
+    paint()
+    const n = useDoc.getState().doc!.slides.length
+    const content = { layout: 'thank-you', title: 'Thank you', subtitle: 'Questions?', speakerNotes: '', sources: [] } as never
+    useDoc.getState().apply('AI assistant', (d) => C.applyAssist(d, { theme: null, edits: [], additions: [{ afterSlideId: null, content }] }))
+    const after = useDoc.getState().doc!
+    expect(after.slides.length).toBe(n + 1)
+    expect(after.slides[n]!.background).toEqual({ type: 'color', value: brown })
+    useDoc.getState().undo(); useDoc.getState().undo()
+  })
+  it('re-laying out a slide keeps its own background colour', () => {
+    paint()
+    const base = useDoc.getState().doc!
+    const idx = base.slides.findIndex((s) => s.layoutId === 'title-body' && s.content && !s.manual)
+    if (idx < 0) { useDoc.getState().undo(); return }
+    const steps = { layout: 'process', title: 'How it works', steps: [{ label: 'One', detail: 'first' }, { label: 'Two', detail: 'second' }, { label: 'Three', detail: 'third' }], speakerNotes: '', sources: [] } as never
+    useDoc.getState().apply('AI assistant', (d) => C.applyAssist(d, { theme: null, edits: [{ slideId: base.slides[idx]!.id, content: steps }], additions: [] }))
+    expect(useDoc.getState().doc!.slides[idx]!.background).toEqual({ type: 'color', value: brown })
+    useDoc.getState().undo(); useDoc.getState().undo()
+  })
+})
+
+describe('the assistant can change a slide to another layout (restructure_slide) and Undo brings the old one back', () => {
+  it('a content slide becomes a process slide, then goes back to its own layout and words', () => {
+    const base = useDoc.getState().doc!
+    const idx = base.slides.findIndex((s) => s.layoutId === 'title-body' && s.content && !s.manual)
+    if (idx < 0) return // the starter deck has no plain content slide
+    const slide = base.slides[idx]!
+    const before = structuredClone(base)
+    const steps = { layout: 'process', title: 'How it works', steps: [{ label: 'One', detail: 'first' }, { label: 'Two', detail: 'second' }, { label: 'Three', detail: 'third' }], speakerNotes: '', sources: [] } as never
+    useDoc.getState().apply('AI assistant', (d) => C.applyAssist(d, { theme: null, edits: [{ slideId: slide.id, content: steps }], additions: [] }))
+    const after = useDoc.getState().doc!
+    expect(after.slides[idx]!.layoutId).toBe('process')
+    expect((after.slides[idx]!.content as { layout: string }).layout).toBe('process')
+    const undo = C.snapshotAssist(before, after, false, ['Changed slide to the process layout'])
+    useDoc.getState().apply('put back', (d) => C.revertAssist(d, undo, 'all'))
+    const back = useDoc.getState().doc!.slides[idx]!
+    expect(back.layoutId).toBe('title-body')
+    expect(back.content).toEqual(slide.content)
+    useDoc.getState().undo(); useDoc.getState().undo()
+  })
+  it('replaceContent still refuses a layout change unless the caller says the server checked it', () => {
+    const base = useDoc.getState().doc!
+    const slide = base.slides.find((s) => s.layoutId === 'title-body' && s.content)
+    if (!slide) return
+    const other = { layout: 'quote', quote: 'q', speakerNotes: '', sources: [] } as never
+    useDoc.getState().apply('x', (d) => C.replaceContent(d, slide.id, other))
+    expect(useDoc.getState().doc!.slides.find((s) => s.id === slide.id)!.layoutId).toBe('title-body')
+    useDoc.getState().undo()
+  })
+})
+
 describe('text stays readable when a slide background moves (the thank-you page bug)', () => {
   it('a slide whose text has FIXED dark colours (cover / thank-you) gets readable text when its background turns dark; the other slides keep their colours', () => {
     const base = useDoc.getState().doc!
@@ -484,11 +601,11 @@ describe('snapping & resizing (pure)', () => {
 describe('picture commands', () => {
   const img = { url: 'https://api.example.com/api/v1/assets/abcdefghijklmnopqrstuvwxyz012345', alt: 'A red car', prompt: 'a red car' }
 
-  it('lists only the placements that make sense for the slide', () => {
+  it('lists the placements that make sense for the slide (a background fits every slide, picture+text only text layouts)', () => {
     const ids = (i: number, sel?: string | null) => C.imagePlacements(doc().slides[i]!, sel).map((p) => p.id)
     expect(ids(0)).toEqual(['background', 'floating']) // title slide: photo background, no picture+text conversion
-    expect(ids(1)).toEqual(['beside', 'floating']) // title-body: converts to picture+text
-    expect(ids(2)).toEqual(['floating']) // process: cards → no background, no conversion
+    expect(ids(1)).toEqual(['background', 'beside', 'floating']) // title-body: converts to picture+text
+    expect(ids(2)).toEqual(['background', 'floating']) // process: cards → a picture can still go behind them, no conversion
     apply('add', (d) => { C.insertImageElement(d, 's2', img, gen) })
     const imageId = doc().slides[2]!.elements.find((e) => e.type === 'image')!.id
     expect(ids(2, imageId)[0]).toBe('replace')

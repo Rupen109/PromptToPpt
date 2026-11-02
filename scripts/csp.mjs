@@ -15,6 +15,8 @@ export function securityHeaders({ app, apiUrl, webUrl, editorUrl, dev = false })
   // The website's language button translates the page with Google's free translate widget (the page text is sent to Google; stated in docs/PRIVACY notes)
   const gtranslate = app === 'web' ? ['https://translate.google.com', 'https://translate.googleapis.com', 'https://translate-pa.googleapis.com'] : []
   const gstatic = app === 'web' ? ['https://www.gstatic.com'] : []
+  // Google Analytics (website only): its script comes from googletagmanager.com; it sends page views to *.google-analytics.com / analytics.google.com
+  const ga = { script: app === 'web' ? ['https://www.googletagmanager.com'] : [], img: app === 'web' ? ['https://*.google-analytics.com', 'https://*.googletagmanager.com'] : [], connect: app === 'web' ? ['https://*.google-analytics.com', 'https://*.analytics.google.com', 'https://*.googletagmanager.com'] : [] }
   const fonts = { style: 'https://fonts.googleapis.com', font: 'https://fonts.gstatic.com' }
   const list = (...xs) => xs.flat().filter(Boolean).join(' ')
 
@@ -22,12 +24,12 @@ export function securityHeaders({ app, apiUrl, webUrl, editorUrl, dev = false })
     'default-src': ["'self'"],
     // Next.js renders inline bootstrap scripts, so the website needs 'unsafe-inline' until a nonce middleware is added (tracked in docs/SECURITY_PLAN.md).
     // The editor is a pure bundle: scripts only from itself and the payment widget.
-    'script-src': app === 'web' ? ["'self'", "'unsafe-inline'", dev ? "'unsafe-eval'" : '', turnstile, ...gtranslate, ...gstatic] : ["'self'", razorpay, dev ? "'unsafe-eval' 'unsafe-inline'" : ''],
+    'script-src': app === 'web' ? ["'self'", "'unsafe-inline'", dev ? "'unsafe-eval'" : '', turnstile, ...gtranslate, ...gstatic, ...ga.script] : ["'self'", razorpay, dev ? "'unsafe-eval' 'unsafe-inline'" : ''],
     'style-src': ["'self'", "'unsafe-inline'", fonts.style, ...gtranslate, ...gstatic],
     'font-src': ["'self'", 'data:', fonts.font],
-    'img-src': ["'self'", 'data:', 'blob:', api, web, ...photos, app === 'editor' ? razorpay : '', ...gtranslate, ...gstatic, app === 'web' ? 'https://www.google.com' : '', app === 'web' ? fonts.font : ''],
+    'img-src': ["'self'", 'data:', 'blob:', api, web, ...photos, app === 'editor' ? razorpay : '', ...gtranslate, ...gstatic, app === 'web' ? 'https://www.google.com' : '', app === 'web' ? fonts.font : '', ...ga.img],
     // the editor also fetches pictures and fonts with fetch() when it renders exports (PDF/PNG/JPG/HTML)
-    'connect-src': app === 'web' ? ["'self'", api, turnstile, ...gtranslate, dev ? 'ws:' : ''] : ["'self'", api, web, ...photos, fonts.style, fonts.font, razorpay, dev ? 'ws:' : ''],
+    'connect-src': app === 'web' ? ["'self'", api, turnstile, ...gtranslate, ...ga.connect, dev ? 'ws:' : ''] : ["'self'", api, web, ...photos, fonts.style, fonts.font, razorpay, dev ? 'ws:' : ''],
     'frame-src': app === 'web' ? [turnstile, ...gtranslate] : [razorpay],
     'frame-ancestors': ["'none'"], // nobody may embed our pages: no clickjacking of checkout, login or the editor
     'object-src': ["'none'"],

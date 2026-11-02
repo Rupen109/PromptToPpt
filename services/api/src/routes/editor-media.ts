@@ -1,10 +1,10 @@
 import { zValidator } from '@hono/zod-validator'
-import { and, count, desc, eq, isNull } from 'drizzle-orm'
+import { and, desc, eq, isNull } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
 import { z } from 'zod'
-import { checkRaster, InvalidImageError, storeAsset } from '../brand/assets.ts'
-import { BrandReadError, fetchLimited } from '../brand/find.ts'
+import { assetUrl, checkRaster, InvalidImageError, storeAsset } from '../brand/assets.ts'
+import { BrandReadError } from '../brand/find.ts'
 import { resolveAccess } from '../collab/access.ts'
 import { db } from '../db/index.ts'
 import { generatedAsset } from '../db/schema.ts'
@@ -12,7 +12,8 @@ import { env } from '../env.ts'
 import { rateLimit } from '../middleware/rate-limit.ts'
 import { requireAuth, type AppEnv } from '../middleware/session.ts'
 import { LIBRARY_TAGS } from '../pictures/library-tags.ts'
-import { pingStockUse, searchStockForEditor } from '../pictures/pick.ts'
+import { searchStockForEditor } from '../pictures/pick.ts'
+import { hasPictureRoom, importStockPhoto, isStockHost, MAX_KEPT_PICTURES, MAX_PICTURE_BYTES } from '../pictures/stock-import.ts'
 import { BlockedUrlError } from '../sources/ssrf.ts'
 
 /**
@@ -21,16 +22,9 @@ import { BlockedUrlError } from '../sources/ssrf.ts'
  */
 export const editorMedia = new Hono<AppEnv>()
 
-export const MAX_UPLOAD_BYTES = 8 * 1024 * 1024
-export const MAX_KEPT_PICTURES = 300
-const assetUrl = (id: string) => `${env.API_URL}/api/v1/assets/${id}`
 const err = (c: any, status: 400 | 404 | 413 | 422 | 503, code: string, message: string) => c.json({ success: false, error: { code, message } }, status)
 const uid = (c: any) => (c.get('session') as { user: { id: string } }).user.id
 
-async function roomFor(userId: string): Promise<boolean> {
-  const [held] = await db.select({ n: count() }).from(generatedAsset).where(and(eq(generatedAsset.userId, userId), eq(generatedAsset.kind, 'brand'), isNull(generatedAsset.deletedAt)))
-  return (held?.n ?? 0) < MAX_KEPT_PICTURES
-}
 const FULL = `You can keep up to ${MAX_KEPT_PICTURES} pictures. Delete a few of your uploads first.`
 
 /** Add media from the computer: one PNG or JPEG (checked by its first bytes, not its name), up to 8 MB. */
@@ -38,17 +32,17 @@ editorMedia.post(
   '/presentations/:id/images/upload',
   requireAuth,
   rateLimit({ windowMs: 3_600_000, max: 120, key: (c) => `mediaup:${uid(c)}` }),
-  bodyLimit({ maxSize: MAX_UPLOAD_BYTES + 256 * 1024, onError: (c) => c.json({ success: false, error: { code: 'TOO_LARGE', message: 'That picture is larger than 8 MB.' } }, 413) }),
+  bodyLimit({ maxSize: MAX_PICTURE_BYTES + 256 * 1024, onError: (c) => c.json({ success: false, error: { code: 'TOO_LARGE', message: 'That picture is larger than 8 MB.' } }, 413) }),
   async (c) => {
     const access = await resolveAccess(c.req.param('id'), uid(c))
     if (!access) return err(c, 404, 'NOT_FOUND', 'Presentation not found')
-    if (!(await roomFor(access.ownerId))) return err(c, 422, 'LIMIT_REACHED', FULL)
+    if (!(await hasPictureRoom(access.ownerId))) return err(c, 422, 'LIMIT_REACHED', FULL)
     const form = await c.req.parseBody().catch(() => null)
     const f = form?.['file']
     if (!(f instanceof File)) return err(c, 400, 'INVALID_INPUT', 'Choose a picture to add.')
     try {
       const bytes = Buffer.from(await f.arrayBuffer())
-      const { mime, aspect } = checkRaster(bytes, { maxBytes: MAX_UPLOAD_BYTES, minSide: 16, maxAspect: 20 })
+      const { mime, aspect } = checkRaster(bytes, { maxBytes: MAX_PICTURE_BYTES, minSide: 16, maxAspect: 20 })
       const label = f.name.replace(/\.[^.]+$/, '').slice(0, 120) || 'upload'
       const id = await storeAsset(access.ownerId, 'brand', bytes, mime, label)
       return c.json({ success: true, data: { assetId: id, url: assetUrl(id), mime, aspect, name: label } })
@@ -99,25 +93,17 @@ const stockInput = z.object({
   author: z.string().max(200).default(''),
   pageUrl: z.string().url().max(2000).optional(),
 })
-const STOCK_HOSTS = { unsplash: /^images\.unsplash\.com$/, pexels: /^images\.pexels\.com$/ } as const
-
 /** Use a stock photo: copied to our storage; Unsplash is told the photo was used (their API terms). Only the providers' own picture hosts are accepted. */
 editorMedia.post('/presentations/:id/images/stock', requireAuth, rateLimit({ windowMs: 60_000, max: 20, key: (c) => `mediastock:${uid(c)}` }), zValidator('json', stockInput), async (c) => {
   const access = await resolveAccess(c.req.param('id'), uid(c))
   if (!access) return err(c, 404, 'NOT_FOUND', 'Presentation not found')
   const input = c.req.valid('json')
-  let host = ''
-  try { host = new URL(input.imageUrl).hostname } catch { /* validated above */ }
-  if (!STOCK_HOSTS[input.provider].test(host)) return err(c, 422, 'NOT_A_PICTURE', 'That picture is not from the photo library.')
-  if (!(await roomFor(access.ownerId))) return err(c, 422, 'LIMIT_REACHED', FULL)
+  if (!isStockHost(input.provider, input.imageUrl)) return err(c, 422, 'NOT_A_PICTURE', 'That picture is not from the photo library.')
+  if (!(await hasPictureRoom(access.ownerId))) return err(c, 422, 'LIMIT_REACHED', FULL)
   try {
-    const got = await fetchLimited(input.imageUrl, { accept: /^(image\/(png|jpe?g)|application\/octet-stream|binary\/octet-stream)$/, maxBytes: MAX_UPLOAD_BYTES, timeoutMs: 15_000, headerAccept: 'image/jpeg,image/png,*/*;q=0.5' })
+    const got = await importStockPhoto(access.ownerId, { provider: input.provider, full: input.imageUrl, ...(input.trackUrl ? { trackUrl: input.trackUrl } : {}), alt: input.alt, author: input.author, ...(input.pageUrl ? { pageUrl: input.pageUrl } : {}) })
     if (!got) return err(c, 422, 'NOT_A_PICTURE', 'We could not download that picture. Try another one.')
-    const { mime, aspect } = checkRaster(got.bytes, { maxBytes: MAX_UPLOAD_BYTES, minSide: 16, maxAspect: 20 })
-    const id = await storeAsset(access.ownerId, 'brand', got.bytes, mime, `${input.provider} photo by ${input.author || 'unknown'}`.slice(0, 200))
-    void pingStockUse(input.trackUrl)
-    const source = input.provider === 'unsplash' ? `Photo by ${input.author || 'an Unsplash photographer'} on Unsplash` : `Photo by ${input.author || 'a Pexels photographer'} on Pexels`
-    return c.json({ success: true, data: { assetId: id, url: assetUrl(id), mime, aspect, alt: input.alt, attribution: { source, license: input.provider === 'unsplash' ? 'Unsplash License' : 'Pexels License', ...(input.pageUrl ? { url: input.pageUrl } : {}) } } })
+    return c.json({ success: true, data: got })
   } catch (e) {
     if (e instanceof InvalidImageError || e instanceof BrandReadError || e instanceof BlockedUrlError) return err(c, 422, 'NOT_A_PICTURE', e.message)
     throw e

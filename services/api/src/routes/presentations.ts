@@ -7,7 +7,8 @@ import { z } from 'zod'
 import { AIUnavailableError } from '@prompttoppt/ai'
 import { PREMIUM_THEME_IDS, composeSlide, designById, getTheme, templateSlides } from '@prompttoppt/theme'
 import { findUrls, presentationSchema, type AccessTier, type Presentation, type SlideContent } from '@prompttoppt/validation'
-import { aiAssistInput, aiAssistOutput, aiAssistPrompt, compileAssist, isSmallTalk, LIST_SHORTFALL, morePointsAsked, namesOneSlide, needsSlideChoice } from '../ai/ai-assist.ts'
+import { aiAssistInput, aiAssistOutput, aiAssistPrompt, compileAssist, isSmallTalk, LIST_SHORTFALL, morePointsAsked, aimsAtOneSlide, namesOneSlide, needsSlideChoice, photoApplied } from '../ai/ai-assist.ts'
+import { resolvePhoto } from '../ai/photo-resolve.ts'
 import { readLinkedPages } from '../ai/linked-pages.ts'
 import { aiEditInput, aiEditOutput, aiEditPrompt } from '../ai/ai-edit.ts'
 import { askDeckInput, askDeckOutput, askDeckPrompt, deckDigest } from '../ai/ask-deck.ts'
@@ -20,7 +21,7 @@ import { assertAiEdits, assertAskDeck, assertModelTier, assertPresentationQuota,
 import { BillingError, ConflictError, GateError } from '../billing/errors.ts'
 import { db } from '../db/index.ts'
 import { env } from '../env.ts'
-import { refuseIfOff, refuseIfOn } from '../flags/flags.ts'
+import { isFlagOn, refuseIfOff, refuseIfOn } from '../flags/flags.ts'
 import { audit, ipOf } from '../lib/audit.ts'
 import { aiChatMessage, creditLedger, generationJob, presentation, presentationVersion, project } from '../db/schema.ts'
 import { hasNumbers, sanitizeContent } from '../generation/policy.ts'
@@ -31,6 +32,8 @@ import { enrichSlides, loadChunks } from '../ai/enrich.ts'
 import { byUser, rateLimit } from '../middleware/rate-limit.ts'
 import { requireAuth, type AppEnv } from '../middleware/session.ts'
 import { defaultModel } from './models.ts'
+import { intentSchema } from '../assistant/understand.ts'
+import { runAssistant } from '../assistant/pipeline.ts'
 
 export const presentations = new Hono<AppEnv>()
 presentations.use('*', requireAuth)
@@ -402,8 +405,8 @@ presentations.post('/:id/ai-edit', rateLimit({ windowMs: 60_000, max: 20, key: b
  * output), idempotent by requestId, refunded when it fails or when nothing could be applied.
  */
 /** Built from what really happened, never from model prose (which can describe things it didn't do). */
-const replyFor = (changes: number, pictures: number) =>
-  [changes > 0 ? `Done — ${changes === 1 ? 'one change' : `${changes} changes`} applied to your deck.` : '', pictures > 0 ? (changes > 0 ? 'I also prepared' : 'I prepared') + ` ${pictures === 1 ? 'a picture' : `${pictures} pictures`} for you to confirm below.` : ''].filter(Boolean).join(' ')
+const replyFor = (changes: number, pictures: number, done: string[] = []) =>
+  [changes > 0 ? (changes === 1 && done.length === 1 ? `Done — ${done[0]!.charAt(0).toLowerCase()}${done[0]!.slice(1).replace(/\.$/, '')}.` : `Done — ${changes === 1 ? 'one change' : `${changes} changes`} applied to your deck.`) : '', pictures > 0 ? (changes > 0 ? 'I also prepared' : 'I prepared') + ` ${pictures === 1 ? 'a picture' : `${pictures} pictures`} for you to confirm below.` : ''].filter(Boolean).join(' ')
 
 /** Shown when no operation applied: lists what the assistant CAN do, so a greeting, a question or an unsupported ask is never met with a bare refusal. */
 export const CAPABILITIES_REPLY = 'Hey! Tell me what to update — slide text, add a slide, pictures, theme, colours, fonts or animation.\nFor example: "make slide 3 shorter".'
@@ -432,8 +435,10 @@ presentations.post('/:id/ai-assist', rateLimit({ windowMs: 60_000, max: 15, key:
     if (s.locked) return c.json({ success: false, error: { code: 'SLIDE_LOCKED', message: 'This slide is locked. Unlock it to use AI.' } }, 409)
   }
 
+  if (await isFlagOn('assistant_v2', { userId })) return assistV2(c, { id, userId, isOwner, input, ent, doc })
+
   // A request about ONE slide that does not say which: ask before anything is read, charged or guessed (see needsSlideChoice)
-  if (needsSlideChoice(input.instruction, input.scope)) {
+  if (needsSlideChoice(input.instruction, input.scope, Boolean(input.activeSlideId))) {
     const at = input.activeSlideId ? doc.slides.findIndex((x) => x.id === input.activeSlideId) : -1
     return c.json({ success: true, data: { reply: at >= 0 ? `Which slide should I change — slide ${at + 1} (the one you're on), every slide, or another one?` : 'Which slide should I change — one slide, or every slide?', ask: true, theme: null, edits: [], additions: [], reverts: [], images: [], applied: [], notes: [], rewrite: null, creditsCharged: 0, model: input.model ?? '', sources: [] } })
   }
@@ -450,7 +455,7 @@ presentations.post('/:id/ai-assist', rateLimit({ windowMs: 60_000, max: 15, key:
   // (the prompt carries up to ~12k characters of page text per link).
   const pages = await readLinkedPages(findUrls(input.instruction))
   const readCount = pages.filter((p) => p.status === 'read').length
-  const price = (await creditPrice('ai_edit', tier)) * ((input.scope === 'deck' && !namesOneSlide(input.instruction) ? 2 : 1) + readCount) // a message that names one slide costs one edit, a deck-wide one two
+  const price = (await creditPrice('ai_edit', tier)) * ((input.scope === 'deck' && !aimsAtOneSlide(input.instruction, Boolean(input.activeSlideId)) ? 2 : 1) + readCount) // a message that names one slide costs one edit, a deck-wide one two
   await reserveCredits(userId, price, 'ai_assist', input.requestId, { strict: true })
 
   try {
@@ -465,7 +470,6 @@ presentations.post('/:id/ai-assist', rateLimit({ windowMs: 60_000, max: 15, key:
       schema: aiAssistOutput, ctx: { userId, presentationId: id },
     })
     const compileFor = (o: Awaited<ReturnType<typeof runModel>>) => compileAssist({ ...doc, sources: [...(doc.sources ?? []), ...added] }, o, ent, input.scope, input.slideId, [...pages.filter((p) => p.status === 'read').map((p) => p.text), ...sources.map((x) => x.text)], input.recent, input.instruction)
-    let enrichCharged = 0
     let out = await runModel(input.instruction)
     let result = compileFor(out)
     // "add 2 more points" answered by only rewording the points: ask the model once more, precisely, before telling the person it did not work
@@ -480,24 +484,7 @@ presentations.post('/:id/ai-assist', rateLimit({ windowMs: 60_000, max: 15, key:
       await refundPlanning(userId, input.requestId)
       return c.json({ success: true, data: { reply: 'Only the owner can rebuild the whole presentation. I can still change individual slides, colours and fonts for you.', theme: null, edits: [], additions: [], reverts: [], images: [], applied: [], notes: [], rewrite: null, creditsCharged: 0, model: picked.id, sources: [] } })
     }
-    // "add more content from my document": expanded per slide from its own excerpts (retrieval), verified to really differ from the old text
-    if (result.enrich) {
-      result.applied = result.applied.filter((a) => a !== 'Adding detail from your attached sources')
-      const chunks = await loadChunks([...new Set([...deckIds, ...input.sourceIds])], userId)
-      if (chunks.length === 0) result.notes.push('There is no attached document to take content from — attach a PDF or link with the 📎 button, then ask again.')
-      else {
-        const slidesN = input.scope === 'slide' ? 1 : doc.slides.length
-        const extra = (await creditPrice('ai_edit', tier)) * Math.max(1, Math.ceil(slidesN / 3))
-        await reserveCredits(userId, extra, 'ai_assist', `${input.requestId}:enrich`, { strict: true }) // throws INSUFFICIENT_CREDITS (402) → the outer catch refunds the planning charge and passes it on
-        const charged = true
-        const r = await enrichSlides({ doc, chunks, instruction: input.instruction, onlySlideId: input.scope === 'slide' ? input.slideId : undefined, userId, model: picked.id, known: new Set([...(doc.sources ?? []).map((x) => x.id), ...added.map((x) => x.id)]), allTexts: sources.map((x) => x.text) })
-        if (r.edits.length === 0 && charged) await refundCredits(userId, 'ai_assist', `${input.requestId}:enrich`)
-        for (const e of r.edits) { const i = result.edits.findIndex((x) => x.slideId === e.slideId); if (i >= 0) result.edits[i] = e; else result.edits.push(e) }
-        if (r.edits.length) result.applied.push(`Added detail from your document to ${r.edits.length === 1 ? 'slide ' + (doc.slides.findIndex((x) => x.id === r.edits[0]!.slideId) + 1) : `${r.edits.length} slides`}`)
-        if (r.unchanged.length) result.notes.push(`${r.unchanged.length === 1 ? 'Slide' : 'Slides'} ${r.unchanged.join(', ')}: I couldn't find more relevant detail in the document, so ${r.unchanged.length === 1 ? 'it was' : 'they were'} left as is.`)
-        enrichCharged = r.edits.length ? extra : 0
-      }
-    }
+    const enrichCharged = result.enrich ? await enrichFromSources(result, { doc, userId, requestId: input.requestId, tier, model: picked.id, onlySlideId: input.scope === 'slide' ? input.slideId : undefined, instruction: input.instruction, sourceIds: [...new Set([...deckIds, ...input.sourceIds])], known: new Set([...(doc.sources ?? []).map((x) => x.id), ...added.map((x) => x.id)]), allTexts: sources.map((x) => x.text) }) : 0
     for (const p of pages) if (p.status === 'failed') result.notes.push(`Couldn't read ${p.url} — ${p.reason ?? 'unknown problem'}`)
     if (result.applied.length === 0 && out.ask) {
       // the request needs a slide (or a choice) the user didn't give: ask instead of guessing; nothing changed, nothing charged
@@ -519,7 +506,8 @@ presentations.post('/:id/ai-assist', rateLimit({ windowMs: 60_000, max: 15, key:
       await refundPlanning(userId, input.requestId)
       return c.json({ success: true, data: { reply: result.rewrite.picturesOnly ? "On it — I'll pick new pictures that match each slide and keep your text." : "Got it — I'll rebuild every slide from your details, keeping this design.", theme: null, edits: [], additions: [], reverts: [], images: [], rewrite: result.rewrite, applied: result.applied, notes: result.notes, creditsCharged: 0, model: picked.id, sources: added } })
     }
-    return c.json({ success: true, data: { reply: replyFor(result.applied.length - result.images.length, result.images.length), theme: result.theme, edits: result.edits, additions: result.additions, reverts: result.reverts, backgrounds: result.backgrounds, readability: result.readability, images: result.images, rewrite: result.rewrite, applied: result.applied, notes: result.notes, creditsCharged: price + enrichCharged, model: picked.id, sources: added } })
+    const pictures = await placePhotos(result, c.get('session')!.user.id, userId) // only now: an answer that asks or changes nothing never stores a photo
+    return c.json({ success: true, data: { reply: replyFor(result.applied.length - result.images.length, result.images.length, result.applied.filter((a) => !a.startsWith('Proposed a picture'))), theme: result.theme, edits: result.edits, additions: result.additions, reverts: result.reverts, backgrounds: result.backgrounds, readability: result.readability, pictures, images: result.images, rewrite: result.rewrite, applied: result.applied, notes: result.notes, creditsCharged: price + enrichCharged, model: picked.id, sources: added } })
   } catch (e) {
     await refundCredits(userId, 'ai_assist', input.requestId)
     if (e instanceof BillingError || e instanceof GateError) throw e
@@ -529,6 +517,108 @@ presentations.post('/:id/ai-assist', rateLimit({ windowMs: 60_000, max: 15, key:
   }
 })
 
+
+/**
+ * The assistant v2 (docs/AI_ASSISTANT_V2_ARCHITECTURE.md): understand (cheapest model) → resolve (code) → do (capabilities) → check → validate.
+ * Credits: one AI-edit unit (plus one per link read) is reserved before anything runs; a second unit is reserved before any writing call when
+ * more than one slide will be written. Nothing applied, a question back, or putting back the assistant's own change = refunded.
+ */
+async function assistV2(c: any, o: { id: string; userId: string; isOwner: boolean; input: z.infer<typeof aiAssistInput>; ent: Awaited<ReturnType<typeof getEntitlements>>; doc: Presentation }) {
+  const { id, userId, isOwner, input, ent, doc } = o
+  const empty = { theme: null, edits: [], additions: [], reverts: [], images: [], applied: [], notes: [], rewrite: null, creditsCharged: 0, sources: [] as unknown[] }
+  const { rows } = await catalog()
+  const picked = input.model ? rows.find((r) => r.id === input.model && r.kind === 'text') : defaultModel(ent, rows)
+  if (!picked) return c.json({ success: false, error: { code: 'INVALID_MODEL', message: 'That model is not available.' } }, 400)
+  const tier = picked.accessTier as AccessTier
+  assertModelTier(ent, tier)
+  const pages = await readLinkedPages(findUrls(input.instruction))
+  const readCount = pages.filter((p) => p.status === 'read').length
+  const unit = await creditPrice('ai_edit', tier)
+  const base = unit * (1 + readCount)
+  await reserveCredits(userId, base, 'ai_assist', input.requestId, { strict: true })
+  let extra = 0
+  const refundAll = async () => { await refundPlanning(userId, input.requestId); if (extra) await refundCredits(userId, 'ai_assist', `${input.requestId}:more`) }
+  try {
+    const deckIds = (doc.sources ?? []).map((x) => x.id)
+    const sources = await loadSources(userId, [...new Set([...deckIds, ...input.sourceIds])])
+    const added = sources.filter((x) => !deckIds.includes(x.id)).map((x) => ({ id: x.id, type: (['pdf', 'url', 'text'].includes(x.type) ? x.type : 'text') as 'pdf' | 'url' | 'text', title: x.title.slice(0, 300), ...(x.url ? { url: x.url } : {}) }))
+    const material = [...pages.filter((p) => p.status === 'read').map((p) => ({ id: p.id, title: p.title, text: p.text })), ...trimSources(sources, 10_000).map((x) => ({ id: x.id, title: `DECK SOURCE: ${x.title}`, text: x.text }))]
+    const ctx = { userId, presentationId: id }
+    const outcome = await runAssistant(
+      { doc: { ...doc, sources: [...(doc.sources ?? []), ...added] }, ent, instruction: input.instruction, conversation: input.conversation, activeSlideId: input.activeSlideId, onlySlideId: input.scope === 'slide' ? input.slideId : undefined, recent: input.recent, material, hasSources: sources.length > 0 },
+      {
+        understand: (p) => gateway.run({ route: 'fast', requestType: 'assist_understand', ...p, schema: intentSchema, ctx, maxOutputTokens: 900, thinkingBudget: 0 }),
+        write: (p, schema, route) => gateway.run({ route, ...(route === 'quality' ? { model: picked.id } : {}), requestType: 'assist_write', ...p, schema, ctx, maxOutputTokens: 8000 }),
+        authorize: async (units) => { if (units > 1) { extra = unit * (units - 1); await reserveCredits(userId, extra, 'ai_assist', `${input.requestId}:more`, { strict: true }) } },
+      },
+    )
+    const reply = (data: Record<string, unknown>) => c.json({ success: true, data: { ...empty, model: picked.id, sources: added, ...data } })
+    if (outcome.kind !== 'done') {
+      await refundAll()
+      if (outcome.kind === 'ask') return reply({ reply: outcome.question.text, ask: true, options: outcome.question.options })
+      if (outcome.kind === 'answer') return reply({ reply: outcome.text })
+      return reply({ reply: CAPABILITIES_REPLY })
+    }
+    const result = outcome.compiled
+    if (!isOwner && result.rewrite) { await refundAll(); return reply({ reply: 'Only the owner can rebuild the whole presentation. I can still change individual slides, colours and fonts for you.' }) }
+    const enrichCharged = result.enrich ? await enrichFromSources(result, { doc, userId, requestId: input.requestId, tier, model: picked.id, onlySlideId: input.scope === 'slide' ? input.slideId : undefined, instruction: input.instruction, sourceIds: [...new Set([...deckIds, ...input.sourceIds])], known: new Set([...(doc.sources ?? []).map((x) => x.id), ...added.map((x) => x.id)]), allTexts: sources.map((x) => x.text) }) : 0
+    for (const p of pages) if (p.status === 'failed') outcome.notes.push(`Couldn't read ${p.url} — ${p.reason ?? 'unknown problem'}`)
+    const pictures = await placePhotos(result, c.get('session')!.user.id, userId)
+    const allApplied = [...result.applied, ...outcome.applied]
+    const notes = [...new Set([...outcome.notes, ...result.notes])]
+    if (allApplied.length === 0) { await refundAll(); return reply({ reply: notes.length ? "I couldn't do that — see the note below." : CAPABILITIES_REPLY, notes }) }
+    if (outcome.units === 0 || (result.reverts.length > 0 && allApplied.length === result.reverts.length)) { await refundAll(); return reply({ reply: "Sorry about that — I've put it back the way it was.", reverts: result.reverts, applied: allApplied, notes }) }
+    if (result.rewrite && allApplied.length === 1) { await refundAll(); return reply({ reply: result.rewrite.picturesOnly ? "On it — I'll pick new pictures that match each slide and keep your text." : "Got it — I'll rebuild every slide from your details, keeping this design.", rewrite: result.rewrite, applied: allApplied, notes }) }
+    return reply({
+      reply: replyFor(allApplied.length - result.images.length, result.images.length, allApplied.filter((a) => !a.startsWith('Proposed a picture'))),
+      theme: result.theme, edits: result.edits, additions: result.additions, reverts: result.reverts, backgrounds: result.backgrounds, readability: result.readability, pictures, images: result.images, rewrite: result.rewrite,
+      ...outcome.slideOps, applied: allApplied, notes, creditsCharged: base + extra + enrichCharged,
+    })
+  } catch (e) {
+    await refundAll().catch(() => {})
+    await refundCredits(userId, 'ai_assist', `${input.requestId}:enrich`).catch(() => {}) // a no-op unless the enrichment had already reserved its credits
+    if (e instanceof BillingError || e instanceof GateError) throw e
+    if (e instanceof AIUnavailableError) return c.json({ success: false, error: { code: 'AI_UNAVAILABLE', message: 'The AI service is busy or unavailable. You were not charged — please try again.' } }, 503)
+    console.error('[ai-assist v2]', e)
+    return c.json({ success: false, error: { code: 'AI_EDIT_FAILED', message: 'The AI could not complete that. You were not charged.' } }, 502)
+  }
+}
+
+type Compiled = ReturnType<typeof compileAssist>
+type PlacedPicture = { slideId: string; placement: 'background' | 'beside' | 'floating'; url: string; alt: string; source: 'stock' | 'library'; credit?: string }
+
+/** Free photos the answer asked for, looked up and copied into our storage now; if none can be found, say so and propose a generated one instead. */
+async function placePhotos(result: Compiled, sessionUserId: string, ownerId: string): Promise<PlacedPicture[]> {
+  const pictures: PlacedPicture[] = []
+  if (result.photos.length === 0) return pictures
+  const found = await Promise.all(result.photos.map((ph) => resolvePhoto(ph.query, { userId: sessionUserId, ownerId })))
+  result.photos.forEach((ph, i) => {
+    const r = found[i]!
+    const line = photoApplied(ph)
+    if (r.ok) { pictures.push({ slideId: ph.slideId, placement: ph.placement, url: r.photo.url, alt: r.photo.alt || ph.alt, source: r.photo.source, ...(r.photo.credit ? { credit: r.photo.credit } : {}) }); return }
+    result.applied = result.applied.filter((a) => a !== line)
+    result.notes.push(`I couldn't find a free photo for "${ph.query}", so I prepared a generated picture for slide ${ph.slideNumber} instead (it uses credits, confirm below).`)
+    result.images.push({ slideId: ph.slideId, slideNumber: ph.slideNumber, placement: ph.placement, prompt: `${ph.query}${ph.placement === 'background' ? ', wide background photograph' : ''}, no text`, alt: ph.alt })
+    result.applied.push(`Proposed a picture for slide ${ph.slideNumber} — confirm below to generate it`)
+  })
+  return pictures
+}
+
+/** "Add more content from my document": each slide expanded from its own excerpts (retrieval), charged separately, refunded when nothing changed. Returns the credits charged. */
+async function enrichFromSources(result: Compiled, o: { doc: Presentation; userId: string; requestId: string; tier: AccessTier; model: string; onlySlideId: string | undefined; instruction: string; sourceIds: string[]; known: Set<string>; allTexts: string[] }): Promise<number> {
+  result.applied = result.applied.filter((a) => a !== 'Adding detail from your attached sources')
+  const chunks = await loadChunks(o.sourceIds, o.userId)
+  if (chunks.length === 0) { result.notes.push('There is no attached document to take content from — attach a PDF or link with the 📎 button, then ask again.'); return 0 }
+  const slidesN = o.onlySlideId ? 1 : o.doc.slides.length
+  const extra = (await creditPrice('ai_edit', o.tier)) * Math.max(1, Math.ceil(slidesN / 3))
+  await reserveCredits(o.userId, extra, 'ai_assist', `${o.requestId}:enrich`, { strict: true }) // throws INSUFFICIENT_CREDITS (402) → the caller refunds the planning charge and passes it on
+  const r = await enrichSlides({ doc: o.doc, chunks, instruction: o.instruction, onlySlideId: o.onlySlideId, userId: o.userId, model: o.model, known: o.known, allTexts: o.allTexts })
+  if (r.edits.length === 0) await refundCredits(o.userId, 'ai_assist', `${o.requestId}:enrich`)
+  for (const e of r.edits) { const i = result.edits.findIndex((x) => x.slideId === e.slideId); if (i >= 0) result.edits[i] = e; else result.edits.push(e) }
+  if (r.edits.length) result.applied.push(`Added detail from your document to ${r.edits.length === 1 ? 'slide ' + (o.doc.slides.findIndex((x) => x.id === r.edits[0]!.slideId) + 1) : `${r.edits.length} slides`}`)
+  if (r.unchanged.length) result.notes.push(`${r.unchanged.length === 1 ? 'Slide' : 'Slides'} ${r.unchanged.join(', ')}: I couldn't find more relevant detail in the document, so ${r.unchanged.length === 1 ? 'it was' : 'they were'} left as is.`)
+  return r.edits.length ? extra : 0
+}
 
 /** Trim source text for a prompt: each source keeps its start (locator-tagged), the total stays under `budget` characters. */
 function trimSources(list: { id: string; title: string; text: string }[], budget: number) {

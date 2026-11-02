@@ -1,9 +1,10 @@
 import { eq } from 'drizzle-orm'
-import { describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { DESIGNS, composeSlide, contrastRatio, getTheme } from '@prompttoppt/theme'
 import { findUrls, themeSchema, type Entitlements, type Presentation, type SlideContent } from '@prompttoppt/validation'
 import { db } from '../db/index.ts'
-import { creditBalance, generatedAsset } from '../db/schema.ts'
+import { creditBalance, featureFlag, generatedAsset } from '../db/schema.ts'
+import { invalidateFlags } from '../flags/flags.ts'
 import { api, json, makeDeck, rid, setPlan, signUp } from '../test-utils.ts'
 import { aiAssistOutput, aiAssistPrompt, compileAssist, isSmallTalk, keepShape, morePointsAsked, namesOneSlide, type AiAssistOutput } from './ai-assist.ts'
 import { pageReader } from './linked-pages.ts'
@@ -11,9 +12,15 @@ import { pageReader } from './linked-pages.ts'
 const balance = async (id: string) => (await db.select().from(creditBalance).where(eq(creditBalance.userId, id)))[0]!.balance
 const ask = (cookie: string, deckId: string, instruction: string, extra: object = {}) => api(cookie, 'POST', `/presentations/${deckId}/ai-assist`, { instruction, requestId: `req-${rid()}-${rid()}`, ...extra })
 const free = { features: { premiumTemplates: false } } as unknown as Entitlements
+/** These route tests cover the v1 assistant, kept as the fallback behind the assistant_v2 flag (v2: src/assistant/*.test.ts). */
+const onV1 = () => {
+  beforeAll(async () => { await db.insert(featureFlag).values({ key: 'assistant_v2', enabled: false }).onConflictDoUpdate({ target: featureFlag.key, set: { enabled: false } }); invalidateFlags() })
+  afterAll(async () => { await db.delete(featureFlag).where(eq(featureFlag.key, 'assistant_v2')); invalidateFlags() })
+}
 const out = (o: Partial<AiAssistOutput>): AiAssistOutput => ({ reply: 'ok', operations: [], unsupported: [], onTopic: true, ...o })
 
-describe('POST /presentations/:id/ai-assist', () => {
+describe('POST /presentations/:id/ai-assist (v1 fallback)', () => {
+  onV1()
   it('a request about one slide that names none gets a free "which slide?" question — no model call, no charge, nothing changed', async () => {
     const u = await signUp('as')
     const { id } = await makeDeck(u.id)
@@ -188,7 +195,8 @@ describe('POST /presentations/:id/ai-assist', () => {
   })
 })
 
-describe('linked web pages in the assistant', () => {
+describe('linked web pages in the assistant (v1 fallback)', () => {
+  onV1()
   const PAGE_TEXT = 'Tata Aeris launch — a new urban EV with 450 km range. '.repeat(6)
   it('reads a pasted link server-side, uses it for the edit, and charges one extra unit per page read', async () => {
     const read = vi.spyOn(pageReader, 'read').mockResolvedValue({ title: 'Tata Aeris launch', parts: [{ locator: null, text: PAGE_TEXT }] })
@@ -443,7 +451,7 @@ describe('compileAssist (the trust boundary between model output and the deck)',
     expect(r.notes).toEqual(['no images'])
   })
 
-  it('add_image: placement is downgraded to what the layout allows; locked/missing slides and >3 proposals are refused', () => {
+  it('add_image: a background is allowed on ANY slide, beside only on text layouts; locked/missing slides and >3 proposals are refused', () => {
     const d = withSlides([
       { id: 'a', layoutId: 'title', locked: false, manual: false, content: { layout: 'title', title: 'T', speakerNotes: '', sources: [] } },
       { id: 'b', layoutId: 'title-body', locked: false, manual: false, content },
@@ -452,7 +460,7 @@ describe('compileAssist (the trust boundary between model output and the deck)',
     ])
     const img = (slideId: string, placement: 'background' | 'beside' | 'floating') => ({ op: 'add_image' as const, slideId, placement, prompt: 'a calm lake' })
     const r = compileAssist(d, out({ operations: [img('a', 'background'), img('b', 'background'), img('c', 'beside'), img('d', 'background'), img('ghost', 'floating'), img('a', 'floating'), img('b', 'floating')] }), free, 'deck')
-    expect(r.images.map((i) => `${i.slideNumber}:${i.placement}`)).toEqual(['1:background', '2:beside', '3:floating']) // b: background not allowed → beside; c: beside not allowed → floating
+    expect(r.images.map((i) => `${i.slideNumber}:${i.placement}`)).toEqual(['1:background', '2:background', '3:floating']) // a picture can go behind any slide; c: beside is not allowed on a process slide → floating
     expect(r.notes.join('|')).toMatch(/is locked/)
     expect(r.notes.join('|')).toMatch(/does not exist/)
     expect(r.notes.join('|')).toMatch(/At most 3/)
@@ -464,6 +472,64 @@ describe('compileAssist (the trust boundary between model output and the deck)',
     const r = compileAssist(d, out({ operations: [{ op: 'add_image', slideId: 'b', placement: 'background', prompt: 'x y z' }, { op: 'add_image', slideId: 'a', placement: 'background', prompt: 'x y z' }] }), free, 'slide', 'a')
     expect(r.images.map((i) => i.slideId)).toEqual(['a'])
   })
+
+    describe('add_image: the words decide whether a picture goes behind the slide', () => {
+    const d2 = () => withSlides([{ id: 'a', layoutId: 'title', locked: false, manual: false, content: { layout: 'title', title: 'T', speakerNotes: '', sources: [] } }, { id: 'b', layoutId: 'title-body', locked: false, manual: false, content }])
+    const run = (instruction: string, slideId: string) => compileAssist(d2(), out({ operations: [{ op: 'add_image', slideId, placement: 'background', prompt: 'a calm lake' }] }), free, 'deck', undefined, [], [], instruction).images[0]!.placement
+    it('a plain "add an image" is never a background, even when the model chose one', () => {
+      expect(run('add an image to this slide', 'a')).toBe('floating')
+      expect(run('add a picture here', 'b')).toBe('beside')
+    })
+    it('"background / bg / behind / backdrop / wallpaper" keeps it behind the slide', () => {
+      for (const t of ['generate an AI image for the background', 'AI picture as the bg', 'put a generated image behind the text', 'a lake backdrop made with AI', 'make a wallpaper with AI']) expect(run(t, 'a'), t).toBe('background')
+    })
+  })
+
+  describe('add_photo: a free photo on one slide', () => {
+    const slide = (id: string, layoutId = 'title', extra: object = {}) => ({ id, layoutId, locked: false, manual: false, content, ...extra })
+    const photo = (slideId: string, placement: 'background' | 'beside' | 'floating', query = 'calm lake') => ({ op: 'add_photo' as const, slideId, placement, query })
+    it('is accepted for any slide and asks for exactly the photo that was described', () => {
+      const d = withSlides([slide('a'), slide('b', 'process')])
+      const r = compileAssist(d, out({ operations: [{ op: 'add_photo', slideId: 'b', placement: 'background', query: 'mumbai skyline night', alt: 'Mumbai at night' }] }), free, 'deck', undefined, [], [], 'put a mumbai skyline photo in the background')
+      expect(r.photos).toEqual([{ slideId: 'b', slideNumber: 2, placement: 'background', query: 'mumbai skyline night', alt: 'Mumbai at night' }])
+      expect(r.applied.join('|')).toMatch(/photo behind slide 2/)
+      expect(r.images).toEqual([]) // nothing paid, nothing proposed
+    })
+    it('beside the text on text layouts, floating elsewhere; the words decide whether it goes behind the slide', () => {
+      const d = withSlides([slide('t', 'title-body'), slide('p', 'process'), slide('c', 'title')])
+      const r = compileAssist(d, out({ operations: [photo('t', 'beside'), photo('p', 'beside')] }), free, 'deck', undefined, [], [], 'add a picture of a lake')
+      expect(r.photos.map((x) => `${x.slideNumber}:${x.placement}`)).toEqual(['1:beside', '2:floating'])
+      expect(r.notes.join('|')).toMatch(/can't take a picture beside the text/)
+      // the model chose "background" but the person only said "add a picture": it is not a background
+      const w = compileAssist(d, out({ operations: [photo('c', 'background')] }), free, 'deck', undefined, [], [], 'add a picture of a lake to this slide')
+      expect(w.photos[0]!.placement).toBe('floating')
+      const bg = compileAssist(d, out({ operations: [photo('c', 'background')] }), free, 'deck', undefined, [], [], 'update the bg image')
+      expect(bg.photos[0]!.placement).toBe('background')
+    })
+    it('refuses a locked or unknown slide, repeats for the same slide, and stops at 2 per answer', () => {
+      const d = withSlides([slide('a'), slide('b'), slide('c'), slide('l', 'title', { locked: true })])
+      const r = compileAssist(d, out({ operations: [photo('l', 'background'), photo('ghost', 'background'), photo('a', 'background'), photo('a', 'background'), photo('b', 'background'), photo('c', 'background')] }), free, 'deck', undefined, [], [], 'new background photos')
+      expect(r.photos.map((p) => p.slideId)).toEqual(['a', 'b'])
+      expect(r.notes.join('|')).toMatch(/is locked/)
+      expect(r.notes.join('|')).toMatch(/does not exist/)
+      expect(r.notes.join('|')).toMatch(/At most 2/)
+    })
+    it('in single-slide scope only the selected slide may change', () => {
+      const d = withSlides([slide('a'), slide('b')])
+      const r = compileAssist(d, out({ operations: [photo('b', 'background', 'forest'), photo('a', 'background', 'forest')] }), free, 'slide', 'a')
+      expect(r.photos.map((p) => p.slideId)).toEqual(['a'])
+    })
+    it('the AI is told what each slide looks like now (a picture background, pictures on it) and the picture rules', () => {
+      const d = withSlides([slide('a', 'title', { background: { type: 'image', value: 'https://x/y.jpg' }, elements: [{ id: 'i', type: 'image', decorative: false }] })])
+      const prompt = aiAssistPrompt({ instruction: 'update the bg image', scope: 'deck', focusSlideId: undefined, doc: d })
+      expect(prompt.prompt).toContain('"background":"a picture"')
+      expect(prompt.prompt).toContain('"pictures":1')
+      expect(prompt.system).toContain('add_photo')
+      expect(prompt.system).toMatch(/generate \/ generated.*add_image, ALWAYS/)
+      expect(prompt.system).toMatch(/NEVER choose "background" unless the message says so/)
+      expect(prompt.system).not.toMatch(/finding stock photos/)
+    })
+  })
 })
 
 describe('model output: null means "not used"', () => {
@@ -472,4 +538,5 @@ describe('model output: null means "not used"', () => {
     expect(r.success).toBe(true)
     if (r.success) { expect(r.data.ask).toBeUndefined(); expect(r.data.reply).toBe(''); expect(r.data.unsupported).toEqual([]) }
   })
+
 })

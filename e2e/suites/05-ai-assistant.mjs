@@ -71,10 +71,15 @@ export default async function () {
     const log = (await panel().getByRole('log').innerText()).toLowerCase()
     expect(/can.?t|cannot|unable|not able|isn.?t|doesn.?t|unsupported|no way|export button|couldn.?t/.test(log), `no honest refusal: ${log.slice(-250)}`)
   })
-  await s.check('pictures: "add a picture" proposes an image (with Generate / Open image studio) instead of silently doing nothing', p, async () => {
+  await s.check('pictures: "add a picture" places a free photo (or proposes an AI image) instead of silently doing nothing', p, async () => {
     await thumbs().nth(1).click(); await settle(300)
     await send('Add a picture of a modern city skyline at dawn to this slide')
-    const card = p.getByLabel(/Picture proposal for slide/); expect(await card.count() >= 1, 'no picture proposal card')
+    // a plain "add a picture" is answered with a FREE real photo placed on the slide; the paid AI proposal is for requests that say AI / generate
+    const card = p.getByLabel(/Picture proposal for slide/)
+    const placed = /photo (beside the text on|on) slide 2/.test(await p.getByRole('complementary', { name: 'AI assistant' }).innerText())
+    expect(await card.count() >= 1 || placed, 'neither a picture proposal nor a placed photo')
+    // a slide with a hand-placed picture is protected from AI text edits, so put it back before the checks that edit this slide
+    if (placed) { await p.getByText('Undo', { exact: true }).last().click(); await settle(800) }
   })
   await s.check('add a slide: "please add the thank you page at last" appends a Thank you slide (one undo step)', p, async () => {
     const count = () => thumbs().count()

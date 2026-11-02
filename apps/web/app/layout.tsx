@@ -4,7 +4,7 @@ import './globals.css'
 import '@prompttoppt/ui/prose.css'
 import { SiteTranslate } from '@/components/layout/SiteTranslate'
 import { JsonLd } from '@/components/seo/JsonLd'
-import { SITE_URL } from '@/lib/env'
+import { GA_MEASUREMENT_ID, SITE_URL } from '@/lib/env'
 import { siteGraph } from '@/lib/seo'
 
 // ─── Fonts ────────────────────────────────────────────────────────────────
@@ -130,6 +130,17 @@ export default function RootLayout({
 
         {/* Structured data: organisation, website and product (lib/seo.ts) */}
         <JsonLd data={siteGraph()} />
+        {/* Google Analytics (Google tag): page views only, no slide content, prompts or files are ever sent. Off outside the real site (lib/env.ts) */}
+        {GA_MEASUREMENT_ID && (
+          <>
+            <script async src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`} />
+            <script
+              dangerouslySetInnerHTML={{
+                __html: `window.dataLayer = window.dataLayer || [];function gtag(){dataLayer.push(arguments);}gtag('js', new Date());gtag('config', '${GA_MEASUREMENT_ID}');`,
+              }}
+            />
+          </>
+        )}
       </head>
       {/* Browser extensions (ColorZilla's cz-shortcut-listen, Grammarly…) add attributes to <body> before React loads; that is not our markup, so don't warn about it. */}
       <body suppressHydrationWarning>

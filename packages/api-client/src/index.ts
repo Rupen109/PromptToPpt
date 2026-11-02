@@ -150,12 +150,25 @@ export interface AiAssistResult {
   /** full replacement theme (null = unchanged) */
   theme: Theme | null
   edits: { slideId: string; content: SlideContent }[]
-  /** new slides to insert (afterSlideId null = at the end) */
-  additions?: { afterSlideId: string | null; content: SlideContent }[]
+  /** new slides to insert (afterSlideId null = at the end, unless atStart); `id` is given by the server so other changes in the same answer can refer to the new slide */
+  additions?: { afterSlideId: string | null; content: SlideContent; id?: string; atStart?: boolean }[]
   /** the assistant is asking which slide (or what) you mean; the reply is the question */
   ask?: boolean
+  /** answers to the question, shown as buttons; each sends its `reply` as the next message (absent on the older assistant: the editor then offers its "which slide?" choices) */
+  options?: { label: string; reply: string }[]
+  /** slides to delete, move (after another slide; null = to the start), duplicate (as `newId`), lock or unlock */
+  removals?: string[]
+  moves?: { slideId: string; afterSlideId: string | null }[]
+  duplicates?: { slideId: string; newId: string }[]
+  locks?: { slideId: string; locked: boolean }[]
+  /** two-colour gradient backgrounds for single slides */
+  gradients?: { slideId: string; from: string; to: string }[]
+  /** slides whose pictures go: the background picture and the photos placed on them */
+  clearPictures?: string[]
   /** new background colours for single slides (applied with the editor's setSlideBackground, so the text stays readable) */
   backgrounds?: { slideId: string; color: string }[]
+  /** free photos found for slides (the editor places each one: behind the slide, beside the text, or floating) */
+  pictures?: { slideId: string; placement: 'background' | 'beside' | 'floating'; url: string; alt: string; source: 'stock' | 'library'; credit?: string }[]
   /** slides whose text must be made readable on what is behind it (the editor recolours only the text that does not read) */
   readability?: string[]
   /** earlier assistant changes to put back (the editor holds the "before" of each) */

@@ -26,7 +26,7 @@ export async function activity(from: Date, to: Date) {
   const fx = env.INR_PER_USD
   const costRows = (await db.execute(sql`
     SELECT CASE WHEN request_type LIKE 'free\\_%' THEN 'free_tools' WHEN user_id IS NULL THEN 'internal' WHEN job_id IS NOT NULL THEN 'deck_generation'
-                WHEN request_type IN ('ai_edit','ai_assist') THEN request_type
+                WHEN request_type IN ('ai_edit','ai_assist') THEN request_type WHEN request_type IN ('assist_understand','assist_write') THEN 'ai_assist'
                 WHEN request_type IN ('image','image_generation') THEN 'image' ELSE 'other' END AS action,
            count(*)::int AS calls, count(*) FILTER (WHERE status='error')::int AS errors,
            coalesce(sum(input_tokens),0)::float8 AS input_tokens, coalesce(sum(output_tokens),0)::float8 AS output_tokens,

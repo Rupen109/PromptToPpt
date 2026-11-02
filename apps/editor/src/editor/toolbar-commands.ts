@@ -1,6 +1,6 @@
-import { IMAGE_BG_LAYOUTS, mix } from '@prompttoppt/theme'
+import { mix } from '@prompttoppt/theme'
 import { CANVAS, shapeDef, type Slide } from '@prompttoppt/validation'
-import { addElement, clearImageBackground, makeElement, makeSlideReadable, newId, setImageBackground, setSlideBackground, type D, type IdGen } from './commands'
+import { addElement, clearImageBackground, makeElement, newId, setSlideBackground, type D, type IdGen } from './commands'
 
 /** Commands of the top toolbar (Text, Shapes, Table, Chart, Background). Pure mutators like the ones in commands.ts: the store makes undo / redo from them. */
 
@@ -118,21 +118,7 @@ export function setBackgroundColor(d: D, slideId: string, color: string, opacity
   setSlideBackground(d, slideId, tint(d, color, opacityPct))
 }
 
-export function setBackgroundGradient(d: D, slideId: string, from: string, to: string, angle = 135) {
-  const s = findSlide(d, slideId)
-  if (!s) return
-  s.background = { type: 'gradient', value: from, gradient: { from, to, angle } }
-  makeSlideReadable(d, slideId)
-}
-
-/** A picture behind the whole slide. Designed slides use their picture layout (with the dark wash that keeps text readable); any other slide gets the picture straight behind its elements. */
-export function setBackgroundPicture(d: D, slideId: string, url: string) {
-  const s = findSlide(d, slideId)
-  if (!s || s.locked) return
-  if (!s.manual && s.content && (IMAGE_BG_LAYOUTS as readonly string[]).includes(s.layoutId)) { setImageBackground(d, slideId, url); return }
-  s.background = { type: 'image', value: url }
-  makeSlideReadable(d, slideId)
-}
+export { setBackgroundGradient, setBackgroundPicture } from './commands'
 
 /** Back to the deck's own background. */
 export function removeBackground(d: D, slideId: string) {

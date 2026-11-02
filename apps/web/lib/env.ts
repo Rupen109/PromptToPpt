@@ -8,3 +8,5 @@ export const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? 
 // Where people can reach us besides the form. The e-mail is shown as a link; the WhatsApp number (digits with country code, e.g. 919876543210) only if set.
 export const SUPPORT_EMAIL = process.env.NEXT_PUBLIC_SUPPORT_EMAIL ?? 'support@slidesdone.app'
 export const SUPPORT_WHATSAPP = process.env.NEXT_PUBLIC_SUPPORT_WHATSAPP ?? ''
+// Google Analytics (website only). On only for the real site: the id is public, and local, test and staging builds send nothing, so development never pollutes the reports. Override with NEXT_PUBLIC_GA_ID ('' = off).
+export const GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_ID ?? (SITE_URL.startsWith('https://slidesdone.app') ? 'G-J8GE062BB6' : '')

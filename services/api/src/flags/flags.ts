@@ -70,6 +70,7 @@ export async function effectiveFlags(ctx: FlagCtx): Promise<Record<FlagKey, bool
 const MESSAGES: Record<FlagKey, { status: 403 | 503; code: string; message: string }> = {
   maintenance_mode: { status: 503, code: 'MAINTENANCE', message: "We're doing some quick maintenance, so AI features are paused for a short while. Your work is safe — please try again soon." },
   ai_assistant: { status: 403, code: 'FEATURE_DISABLED', message: 'The AI assistant is switched off right now.' },
+  assistant_v2: { status: 403, code: 'FEATURE_DISABLED', message: 'The AI assistant is switched off right now.' },
   image_generation: { status: 403, code: 'FEATURE_DISABLED', message: 'Image generation is switched off right now.' },
   exports: { status: 403, code: 'FEATURE_DISABLED', message: 'Exporting is switched off right now.' },
 }
