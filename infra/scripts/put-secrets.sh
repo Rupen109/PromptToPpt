@@ -59,7 +59,8 @@ ask REVALIDATE_SECRET "REVALIDATE_SECRET" generate # the API refreshes the websi
 echo "RAZORPAY_WEBHOOK_SECRET was generated: copy the SAME value into the Razorpay dashboard webhook later (I will show you how to read it back safely)."
 echo
 echo "Typed by you (hidden as you type):"
-ask OPENROUTER_API_KEY "OpenRouter API key" required "needed for AI in the test environment"
+ask GEMINI_API_KEY "Gemini API key (Vertex AI / AI Studio key)" required "the AI of the app: without it every deck fails with 'AI service is busy or unavailable'"
+ask OPENROUTER_API_KEY "OpenRouter API key" optional "only if you later switch AI_PROVIDER to openrouter; skip for Gemini"
 ask RAZORPAY_KEY_ID "Razorpay key id (rzp_test_...)" required "TEST keys only for the test environment"
 ask RAZORPAY_KEY_SECRET "Razorpay key secret" required
 ask RESEND_API_KEY "Resend API key" optional "mail provider option 1 (sign-up, password, invitation emails); skip if you use Brevo"

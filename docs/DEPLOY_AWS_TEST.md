@@ -27,7 +27,7 @@ Built 2026-10-31. Domain `slidesdone.app` (bought at Hostinger, 1 year, renews 2
 - **From the Mac:** `colima start`, then `infra/scripts/deploy.sh [api] [web] [editor] [config]`.
 - First live deploy: 2026-10-31. Checked in a real browser: home, pricing, login, signup and the editor's login redirect load over HTTPS; containers up, 417 of 910 MB used.
 
-- **AI on the test server:** Gemini on Vertex (`AI_PROVIDER=vertex`, key `GEMINI_API_KEY` in Parameter Store). To switch to OpenRouter later, store `AI_PROVIDER=openrouter` and a real `OPENROUTER_API_KEY` there (they override the default) and run a `config` deploy.
+- **AI on the test server:** Gemini through AI Studio (`AI_PROVIDER=gemini`, same as local dev, key `GEMINI_API_KEY` in Parameter Store). To switch to OpenRouter later, store `AI_PROVIDER=openrouter` and a real `OPENROUTER_API_KEY` there (they override the default) and run a `config` deploy.
 - **Live check after a deploy:** `LIVE_EMAIL=<verified account> LIVE_PASSWORD=... node e2e/live-smoke.mjs` runs 16 checks through a real browser (pages, login, scratch editor, pictures in S3, share link, support form, AI). It tests what a free-plan person can do.
 
 ## Lessons (deploy)

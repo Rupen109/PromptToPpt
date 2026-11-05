@@ -7,7 +7,7 @@ import { loadCatalog } from './registry-db.ts'
 
 /**
  * Exactly one backend serves the catalogue per deployment (mock serves all, for tests/key-less dev):
- *   local dev → vertex | gemini     production → openrouter     load tests → ollama (open models, covered by the Ollama plan)
+ *   local dev and the AWS servers → vertex | gemini (Gemini)     openrouter only if AI_PROVIDER=openrouter is set     load tests → ollama (open models, covered by the Ollama plan)
  * Catalogue rows on any other provider are simply not offered.
  */
 function buildProviders(): Record<string, AIProvider> {

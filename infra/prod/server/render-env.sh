@@ -17,7 +17,7 @@ umask 077
   echo "COOKIE_DOMAIN=.$DOMAIN"
   # one proxy (Caddy) in front of the API; behind CloudFront the visitor's IP comes from CloudFront-Viewer-Address (checked with EDGE_SHARED_SECRET)
   echo "TRUSTED_PROXY_HOPS=1"
-  echo "AI_PROVIDER=openrouter" # production default; a value stored in Parameter Store overrides it (it is written later in this file)
+  echo "AI_PROVIDER=gemini" # Gemini through AI Studio (key GEMINI_API_KEY in Parameter Store; vertex only with a Vertex AI key); a value stored there (e.g. AI_PROVIDER=openrouter) overrides it, it is written later in this file
   echo "ASSET_STORAGE=s3"
   echo "ASSET_BUCKET=$ASSETS_BUCKET"
   echo "ASSET_REGION=$AWS_REGION"
