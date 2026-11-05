@@ -63,11 +63,9 @@ ask GEMINI_API_KEY "Gemini API key (Vertex AI / AI Studio key)" required "the AI
 ask OPENROUTER_API_KEY "OpenRouter API key" optional "only if you later switch AI_PROVIDER to openrouter; skip for Gemini"
 ask RAZORPAY_KEY_ID "Razorpay key id (rzp_test_...)" required "TEST keys only for the test environment"
 ask RAZORPAY_KEY_SECRET "Razorpay key secret" required
-ask RESEND_API_KEY "Resend API key" optional "mail provider option 1 (sign-up, password, invitation emails); skip if you use Brevo"
 ask BREVO_API_KEY "Brevo API key" optional "mail provider option 2 (used first if both are set); skip until you have one"
 ask EMAIL_FROM "Sender address, e.g. SlidesDone <hello@yourdomain.com>" optional
 ask UNSPLASH_ACCESS_KEY "Unsplash access key" optional
-ask PEXELS_API_KEY "Pexels API key" optional
 ask TURNSTILE_SECRET_KEY "Cloudflare Turnstile secret" optional
 ask GOOGLE_CLIENT_ID "Google sign-in client id" optional
 ask GOOGLE_CLIENT_SECRET "Google sign-in client secret" optional
