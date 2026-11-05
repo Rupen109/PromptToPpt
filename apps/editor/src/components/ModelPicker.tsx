@@ -1,6 +1,6 @@
 import type { ModelOption } from '@prompttoppt/api-client'
 
-const TIER_LABEL = { starter: 'Starter', premium: 'Pro', frontier: 'Gold' } as const
+const TIER_LABEL = { starter: 'Starter', premium: 'Premium', frontier: 'Premium' } as const
 
 /**
  * Model chooser: ONLY the models the user's plan can use are shown (no locked, greyed-out Gold/Pro rows). The server still

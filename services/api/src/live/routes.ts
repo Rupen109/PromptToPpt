@@ -16,6 +16,9 @@ const MAX_PER_USER_DECK = 3 // tabs
 const MAX_PER_DECK = 25
 const MAX_PER_PROCESS = 2000
 const HEARTBEAT_MS = 20_000
+let heartbeatMs = HEARTBEAT_MS
+/** Test hook: a short heartbeat, so the presence refresh can be watched without waiting 20 s. */
+export const setLiveHeartbeatForTests = (ms: number | null) => { heartbeatMs = ms ?? HEARTBEAT_MS }
 const RECHECK_MS = 60_000
 const perUser = new Map<string, number>()
 
@@ -69,9 +72,13 @@ live.get('/:id/live', async (c) => {
     send('hello', { you: { clientId, userId: actor.id, name: actor.name, color: colorFor(actor.id) }, role: access.role, revision: row?.revision ?? 0, peers: peersOf(id).filter((p) => !(p.userId === actor.id && p.clientId === clientId)) })
     let since = Date.now()
     while (open && !stream.aborted) {
-      await stream.sleep(HEARTBEAT_MS)
+      await stream.sleep(heartbeatMs)
       if (!open || stream.aborted) break
       send('ping', { t: Date.now() })
+      // an open stream IS the proof that this tab is still here: the server re-announces its last known place, so presence never goes stale and the
+      // browser does not need a keepalive request every few seconds (it only posts when its slide, selection, text or pointer changes)
+      const me = peersOf(id).find((p) => p.userId === actor.id && p.clientId === clientId)
+      if (me) void bus().publish({ t: 'presence', deck: id, peer: { ...me, at: Date.now() } }).catch(() => {})
       if (Date.now() - since >= RECHECK_MS) {
         since = Date.now()
         const still = await resolveAccess(id, actor.id).catch(() => null)

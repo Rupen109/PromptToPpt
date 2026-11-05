@@ -9,7 +9,7 @@ import { breadcrumbLd } from '@/lib/seo'
 
 export const metadata: Metadata = {
   title: 'Pricing and plans',
-  description: 'Start free with 100 credits. Upgrade to Pro or Gold for export, premium models, AI edits and more.',
+  description: 'Start free with 100 credits. Upgrade to Pro, Gold or Premium for export, premium models, AI edits and more.',
   alternates: { canonical: '/pricing' },
 }
 

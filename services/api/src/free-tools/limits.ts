@@ -7,12 +7,11 @@ import { env } from '../env.ts'
 import { clientIp, rateLimit } from '../middleware/rate-limit.ts'
 
 /**
- * Cost guard for the public free tools. They call a paid model for visitors who have not signed up, so three independent caps apply:
+ * Cost guard for the public free tools. They call a paid model for visitors who have not signed up, so two independent caps apply:
  *  1. per visitor: a short burst limit and a daily call cap (per IP, in memory);
  *  2. all free tools together: at most FREE_TOOLS_USD_DAY of provider spend in any rolling 24h, read from the usage ledger
  *     (`free_*` request types) — a botnet with many IPs can still only burn that much;
- *  3. the app-wide AI circuit breaker, which also pauses free tools.
- * When any cap trips the tool says it is busy; signed-in customers are never affected by 1 or 2.
+ * When either cap trips the tool says it is busy; signed-in customers are never affected by them.
  */
 const TTL_MS = 15_000
 let cache: { at: number; usd: number } | null = null

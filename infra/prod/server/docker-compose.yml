@@ -1,0 +1,126 @@
+# Production server (EC2 t4g.small: 2 GB + 2 GB swap), behind CloudFront. Memory limits keep one hungry container from taking the others down.
+# Postgres data lives on its own EBS disk mounted at /data (it survives the server being replaced); its WAL goes to S3 continuously (WAL-G).
+# The deck worker is its own container: deck building never competes with page requests, and it can move to its own server with one setting.
+x-logging: &logging
+  driver: json-file
+  options: { max-size: 10m, max-file: '3' } # logs stay on the server, rotated (no CloudWatch Logs bill)
+
+services:
+  caddy:
+    image: ${CADDY_IMAGE}
+    restart: unless-stopped
+    ports: ['443:443']
+    env_file: .env.caddy
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    mem_limit: 96m
+    logging: *logging
+    depends_on: [web, api]
+
+  postgres:
+    image: ${POSTGRES_IMAGE}
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: slidesdone
+      POSTGRES_DB: slidesdone
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      # WAL-G: where WAL and base backups go; the server's IAM role supplies the credentials
+      WALG_S3_PREFIX: s3://${BACKUPS_BUCKET}/wal-g
+      AWS_REGION: ${AWS_REGION}
+      WALG_COMPRESSION_METHOD: brotli
+      PGHOST: /var/run/postgresql
+      PGUSER: slidesdone
+      PGDATABASE: slidesdone
+    command:
+      - postgres
+      - -c
+      - shared_buffers=128MB
+      - -c
+      - effective_cache_size=512MB
+      - -c
+      - work_mem=4MB
+      - -c
+      - maintenance_work_mem=48MB
+      - -c
+      - max_connections=60
+      - -c
+      - wal_level=replica
+      - -c
+      - wal_compression=on
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_timeout=60 # a WAL segment is shipped at least every minute: at most about a minute of data at risk
+      - -c
+      - archive_command=wal-g wal-push %p
+    volumes:
+      - /data/postgres:/var/lib/postgresql/data
+    shm_size: 128m
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U slidesdone -d slidesdone']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    mem_limit: 384m
+    logging: *logging
+
+  api:
+    image: ${API_IMAGE}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_OPTIONS: --max-old-space-size=448
+      RUN_WORKER: 'false'
+      DB_POOL_MAX: '15'
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:4000/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 20s
+    depends_on:
+      postgres: { condition: service_healthy }
+    mem_limit: 900m # the upload parser's worker threads need room on top of the main heap
+    logging: *logging
+
+  worker:
+    image: ${API_IMAGE}
+    command: ['node', 'dist/worker.js']
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_OPTIONS: --max-old-space-size=384
+      WORKER_PORT: '4100'
+      WORKER_SLOTS: '12'
+      DB_POOL_MAX: '12'
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:4100/healthz').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 20s
+    depends_on:
+      postgres: { condition: service_healthy }
+    mem_limit: 512m
+    logging: *logging
+
+  web:
+    image: ${WEB_IMAGE}
+    restart: unless-stopped
+    environment:
+      NODE_OPTIONS: --max-old-space-size=200
+      REVALIDATE_SECRET: ${REVALIDATE_SECRET:-}
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:3000/').then((r) => process.exit(r.status < 500 ? 0 : 1), () => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 20s
+    mem_limit: 256m
+    logging: *logging
+
+volumes:
+  caddy_data:
+  caddy_config:

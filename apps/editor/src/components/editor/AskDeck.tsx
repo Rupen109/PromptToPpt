@@ -14,7 +14,7 @@ const STARTERS = ['Summarise this deck in 3 bullets', 'What are the key numbers?
 
 /**
  * "Chat with your presentation": ask about the deck's own words, get a short answer plus buttons that jump to the slides it came from.
- * Read-only — it never edits the deck (the Edit tab does that). Pro/Gold; each question costs a few credits and failed ones are refunded.
+ * Read-only — it never edits the deck (the Edit tab does that). Paid plans; each question costs a few credits and failed ones are refunded.
  */
 export function AskDeck({ doc, presentationId }: { doc: Presentation; presentationId: string }) {
   const { ent, refresh, upgrade } = useEntitlements()

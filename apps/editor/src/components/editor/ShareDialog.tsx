@@ -10,7 +10,7 @@ import { useDialog } from '@/lib/useDialog'
 type Tab = 'people' | 'link'
 const msg = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback)
 
-/** Share: invite people to edit together (Pro / Gold; their AI use is charged to the owner) or create a view-only link (every plan). Owner only. */
+/** Share: invite people to edit together (Pro / Gold; their AI use is charged to the owner) or create a view-only link (plans with live preview, not Starter). Owner only. */
 export function ShareDialog({ deckId, onClose }: { deckId: string; onClose: () => void }) {
   const ref = useDialog<HTMLDivElement>(true, onClose)
   const { ent, upgrade } = useEntitlements()
@@ -121,9 +121,9 @@ export function ShareDialog({ deckId, onClose }: { deckId: string; onClose: () =
               </>
             ) : (
               <div className="rounded-xl bg-slate-50 border border-border p-4 text-sm">
-                <p className="font-semibold mb-1">Edit together with Pro or Gold</p>
-                <p className="text-slate-600 mb-3">Invite friends and teammates to edit the same presentation. Pro allows 3 collaborators per deck, Gold 10.</p>
-                <button onClick={() => { onClose(); upgrade.show('Inviting people to edit together is available on Pro and Gold.') }} className="px-4 py-2 rounded-lg bg-primary text-white font-semibold">See plans</button>
+                <p className="font-semibold mb-1">Edit together with Pro, Gold or Premium</p>
+                <p className="text-slate-600 mb-3">Invite friends and teammates to edit the same presentation. Pro allows 3 collaborators per deck, Gold and Premium 10.</p>
+                <button onClick={() => { onClose(); upgrade.show('Inviting people to edit together is available on Pro, Gold and Premium.') }} className="px-4 py-2 rounded-lg bg-primary text-white font-semibold">See plans</button>
               </div>
             )
           )}
@@ -152,7 +152,7 @@ export function ShareDialog({ deckId, onClose }: { deckId: string; onClose: () =
                       <label className="block text-sm font-medium" htmlFor="share-pw">Password {linkInfo?.hasPassword && <span className="text-green-700 text-xs font-semibold">· on</span>}</label>
                       <div className="mt-1 flex gap-2">
                         <input id="share-pw" type="password" autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder={linkInfo?.hasPassword ? 'Enter a new password to change it' : '6 or more characters'} minLength={6} maxLength={72} className="flex-1 min-w-0 border border-border rounded-lg px-3 py-2 text-sm" />
-                        <button disabled={busy || pw.length < 6} onClick={() => canInvite ? void protect({ password: pw }, 'Password saved. Viewers must enter it to open the link.') : (onClose(), upgrade.show('Password-protected links are available on Pro and Gold.'))} className="px-3 py-2 rounded-lg bg-primary text-white text-sm font-semibold disabled:opacity-50">{linkInfo?.hasPassword ? 'Change' : 'Set'}</button>
+                        <button disabled={busy || pw.length < 6} onClick={() => canInvite ? void protect({ password: pw }, 'Password saved. Viewers must enter it to open the link.') : (onClose(), upgrade.show('Password-protected links are available on Pro, Gold and Premium.'))} className="px-3 py-2 rounded-lg bg-primary text-white text-sm font-semibold disabled:opacity-50">{linkInfo?.hasPassword ? 'Change' : 'Set'}</button>
                       </div>
                       {linkInfo?.hasPassword && <button disabled={busy} onClick={() => void protect({ password: null }, 'Password removed. Anyone with the link can open it.')} className="mt-1 text-xs text-slate-600 underline disabled:opacity-50">Remove password</button>}
                     </div>
@@ -162,7 +162,7 @@ export function ShareDialog({ deckId, onClose }: { deckId: string; onClose: () =
                         const v = e.target.value
                         if (v === 'custom') return
                         const days: ShareExpiry = v === 'never' ? null : (Number(v) as ShareExpiry)
-                        if (days !== null && !canInvite) { onClose(); upgrade.show('Expiring links are available on Pro and Gold.'); return }
+                        if (days !== null && !canInvite) { onClose(); upgrade.show('Expiring links are available on Pro, Gold and Premium.'); return }
                         void protect({ expiresInDays: days }, days === null ? 'The link no longer expires.' : `The link will stop working in ${days} day${days === 1 ? '' : 's'}.`)
                       }} className="mt-1 w-full border border-border rounded-lg px-3 py-2 text-sm bg-white">
                         <option value="never">Never</option>

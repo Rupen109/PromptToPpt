@@ -6,13 +6,18 @@ resource "aws_route53_record" "mx" {
   ttl     = 300
   records = ["10 mx1.improvmx.com", "20 mx2.improvmx.com"]
 }
-# Sending: who may send as @slidesdone.app (ImprovMX forwarding, Gmail "send as", Brevo for the app's own mail).
+# The apex TXT record set. Route 53 keeps every TXT value of one name in ONE record set, so all apex TXT values live here.
+#   SPF: who may send as @slidesdone.app (ImprovMX forwarding, Gmail "send as", Brevo for the app's own mail).
+#   google-site-verification: proves ownership of the domain to Google Search Console (domain property). Removing it un-verifies the site.
 resource "aws_route53_record" "spf" {
   zone_id = aws_route53_zone.main.zone_id
   name    = var.domain
   type    = "TXT"
   ttl     = 300
-  records = ["v=spf1 include:spf.improvmx.com include:_spf.google.com include:spf.brevo.com ~all"]
+  records = [
+    "v=spf1 include:spf.improvmx.com include:_spf.google.com include:spf.brevo.com ~all",
+    "google-site-verification=_6OcL66spK7Ip3tVENon2PVhFV9m46FOkEV-17sBpCU",
+  ]
 }
 resource "aws_route53_record" "dmarc" {
   zone_id = aws_route53_zone.main.zone_id

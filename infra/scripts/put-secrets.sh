@@ -16,7 +16,7 @@ while [ $# -gt 0 ]; do case "$1" in --from-env-file) ENVFILE="${2:-}"; shift 2 ;
 command -v aws >/dev/null || { echo "aws CLI is not installed"; exit 1; }
 command -v openssl >/dev/null || { echo "openssl is not installed"; exit 1; }
 aws sts get-caller-identity --profile "$PROFILE" >/dev/null || { echo "Cannot use AWS profile '$PROFILE'. Run: aws configure --profile $PROFILE"; exit 1; }
-# this account may only use Sydney; override with AWS_REGION=... if that ever changes
+# Test and production secrets both live in Sydney (this account's Region); production is the 'prod' environment:  infra/scripts/put-secrets.sh goldenhour prod
 export AWS_DEFAULT_REGION="${AWS_REGION:-ap-southeast-2}"
 PREFIX="/prompttoppt/$ENVNAME"
 
@@ -55,6 +55,7 @@ ask AUTH_SECRET "AUTH_SECRET" generate
 ask POSTGRES_PASSWORD "POSTGRES_PASSWORD" generate
 ask EDGE_SHARED_SECRET "EDGE_SHARED_SECRET" generate
 ask RAZORPAY_WEBHOOK_SECRET "RAZORPAY_WEBHOOK_SECRET" generate
+ask REVALIDATE_SECRET "REVALIDATE_SECRET" generate # the API refreshes the website's blog / news cache with it
 echo "RAZORPAY_WEBHOOK_SECRET was generated: copy the SAME value into the Razorpay dashboard webhook later (I will show you how to read it back safely)."
 echo
 echo "Typed by you (hidden as you type):"

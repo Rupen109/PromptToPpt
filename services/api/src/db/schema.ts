@@ -174,9 +174,13 @@ export const generationJob = pgTable(
     options: jsonb('options').$type<Record<string, unknown>>().notNull(),
     /** stage outputs (analysis, outline, slide contents) saved as we go: a retry resumes instead of re-paying for AI */
     checkpoint: jsonb('checkpoint').$type<Record<string, unknown>>().notNull().default({}),
+    /** the deck exactly as generation last wrote it into the live presentation: the common ancestor for merging with whatever the person changed meanwhile */
+    shown: jsonb('shown').$type<Record<string, unknown>>(),
     /** client-supplied; (user, key) is unique so a retried request cannot create a second deck or double-bill */
     idempotencyKey: text('idempotency_key').notNull(),
     attempts: integer('attempts').notNull().default(0),
+    /** which line the job waits in: 0 = Gold (ultra), 1 = Pro (fast), 2 = Starter. Set from the plan when the job is created; the worker shares its slots between lanes by weight */
+    lane: integer('lane').notNull().default(1),
     error: text('error'),
     runAfter: timestamp('run_after').notNull().defaultNow(),
     lockedUntil: timestamp('locked_until'),
@@ -186,6 +190,8 @@ export const generationJob = pgTable(
   (t) => [
     uniqueIndex('generation_job_idem_uq').on(t.userId, t.idempotencyKey),
     index('generation_job_queue_idx').on(t.status, t.runAfter),
+    // the claim query: the oldest runnable job of one lane; finished jobs are not in the index
+    index('generation_job_lane_idx').on(t.lane, t.createdAt).where(sql`status not in ('completed', 'failed', 'cancelled')`),
   ],
 )
 
@@ -264,6 +270,8 @@ export const aiUsageEvent = pgTable(
     latencyMs: integer('latency_ms').notNull(),
     status: text('status').$type<'success' | 'error'>().notNull(),
     errorCode: text('error_code'),
+    /** why a failed attempt failed (first 300 characters of the validation paths / provider message; never the prompt or the answer) */
+    errorDetail: text('error_detail'),
     /** USD computed by us from the pricing snapshot (auditable against the provider invoice) */
     providerCostUsd: numeric('provider_cost_usd', { precision: 14, scale: 8 }).notNull().default('0'),
     /** what the provider itself said it charged (OpenRouter reports this); kept beside our computed cost for reconciliation */
@@ -314,7 +322,7 @@ export const sourceChunk = pgTable(
 // ─── Plans, subscriptions, credits (spec §15) — configuration lives in the DB, not in code ─────────
 
 export const plan = pgTable('plan', {
-  id: text('id').primaryKey(), // 'starter' | 'pro' | 'gold'
+  id: text('id').primaryKey(), // 'starter' | 'pro' | 'gold' | 'premium'
   name: text('name').notNull(),
   sortOrder: integer('sort_order').notNull().default(0),
   monthlyCredits: integer('monthly_credits').notNull(),
@@ -338,6 +346,8 @@ export const planPrice = pgTable(
     amountMinor: integer('amount_minor').notNull(),
     /** id of the price at the payment provider (Razorpay plan / Stripe price) — set in the billing phase */
     providerPriceId: text('provider_price_id'),
+    /** the amount (minor units) the provider plan above was created for: a price edited afterwards must get a NEW provider plan, or people would be charged the old amount */
+    providerAmountMinor: integer('provider_amount_minor'),
     isActive: boolean('is_active').notNull().default(true),
   },
   (t) => [uniqueIndex('plan_price_uq').on(t.planId, t.currency, t.interval)],

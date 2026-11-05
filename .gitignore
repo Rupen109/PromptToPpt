@@ -31,3 +31,7 @@ infra/tofu/.terraform/
 infra/tofu/*.tfstate
 infra/tofu/*.tfstate.*
 infra/tofu/*.tfplan
+infra/prod/tofu/.terraform/
+infra/prod/tofu/*.tfstate
+infra/prod/tofu/*.tfstate.*
+infra/prod/tofu/*.tfplan

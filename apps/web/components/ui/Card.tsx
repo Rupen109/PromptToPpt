@@ -14,7 +14,6 @@ const TONE = {
   lavender: 'bg-[#f5f3ff]',
   mist: 'bg-[#f3f4f9]',
   yellow: 'bg-secondary',
-  ink: 'bg-foreground text-white',
 } as const
 const SHADOW = {
   none: { rest: '', hover: '' },

@@ -40,7 +40,7 @@ export function UseTemplateButton({ designId, premium }: { designId: string; pre
   return (
     <div className="flex flex-col gap-3">
       <Button href={`${EDITOR_URL}/templates?open=${encodeURIComponent(designId)}`} variant="accent" size="lg" arrow>Use this template</Button>
-      <p className="text-xs text-slate-600">{premium ? 'A Pro template — included with Pro and Gold.' : 'Free on every plan.'} You’ll sign in (or sign up free) and it opens in the editor.</p>
+      <p className="text-xs text-slate-600">{premium ? 'A Pro template — included with every paid plan.' : 'Free on every plan.'} You’ll sign in (or sign up free) and it opens in the editor.</p>
     </div>
   )
 }

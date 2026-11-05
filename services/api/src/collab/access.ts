@@ -5,7 +5,7 @@ import { livePlanFor } from '../billing/entitlements.ts'
 import { GateError } from '../billing/errors.ts'
 
 /** Collaborators allowed per deck, by the OWNER's plan (the plan flag `advancedSharing` switches collaboration on at all). */
-export const COLLABORATOR_LIMITS: Record<string, number> = { pro: 3, gold: 10 }
+export const COLLABORATOR_LIMITS: Record<string, number> = { pro: 3, gold: 10, premium: 10 }
 
 export type Role = 'owner' | 'editor'
 

@@ -33,7 +33,7 @@ async function accepted() {
 
 describe('view-only share links (level 1)', () => {
   it('owner shares, anyone can view without login, notes and sources are not exposed, revoke kills the link at once', async () => {
-    const owner = await signUp('sh') // Starter: share links are available on every plan
+    const owner = await signUp('sh'); await setPlan(owner.id, 'pro') // share links need live preview (not Starter)
     const deck = await makeDeck(owner.id, 3)
     const made = await json(await api(owner.cookie, 'POST', `/presentations/${deck.id}/share`))
     expect(made.data.url).toMatch(/\/s\/[A-Za-z0-9_-]{32}$/)
@@ -44,7 +44,7 @@ describe('view-only share links (level 1)', () => {
     expect(view.headers.get('x-robots-tag')).toMatch(/noindex/)
     const body = await json(view)
     expect(body.data.document.slides.length).toBe(3)
-    expect(body.data.watermark).toBe(true) // Starter owner
+    expect(body.data.watermark).toBe(false) // Pro owner: no watermark
     for (const s of body.data.document.slides) { expect(s.speakerNotes).toBe(''); expect(s.content).toBeUndefined(); expect(s.sources).toEqual([]) }
     expect(body.data.document.sources).toEqual([])
     await api(owner.cookie, 'DELETE', `/presentations/${deck.id}/share`)
@@ -54,9 +54,11 @@ describe('view-only share links (level 1)', () => {
     expect(again.data.url).not.toBe(made.data.url)
     expect((await publicGet(tokenOf(made.data.url))).status).toBe(404)
     expect((await publicGet(tokenOf(again.data.url))).status).toBe(200)
+    await setPlan(owner.id, 'starter') // downgraded later: the live link keeps working, now with the watermark, and a new one cannot be made
+    expect((await json(await publicGet(tokenOf(again.data.url)))).data.watermark).toBe(true)
   })
   it('only the owner can manage a link; guessing tokens finds nothing; a deleted deck stops being viewable', async () => {
-    const a = await signUp('sh'), b = await signUp('sh')
+    const a = await signUp('sh'), b = await signUp('sh'); await setPlan(a.id, 'pro')
     const deck = await makeDeck(a.id, 2)
     expect((await api(b.cookie, 'POST', `/presentations/${deck.id}/share`)).status).toBe(404)
     expect((await api(b.cookie, 'GET', `/presentations/${deck.id}/share`)).status).toBe(404)
@@ -197,12 +199,13 @@ describe('password-protected and expiring links (Pro / Gold)', () => {
   const share = (owner: { cookie: string }, deckId: string, body?: object) => api(owner.cookie, 'POST', `/presentations/${deckId}/share`, body)
   const proDeck = async () => { const owner = await signUp('pw'); await setPlan(owner.id, 'pro'); return { owner, deck: await makeDeck(owner.id, 3) } }
 
-  it('Starter can make a plain link but not set a password or expiry; Pro can', async () => {
+  it('Starter cannot make a share link at all (no live preview); Pro can, with a password and expiry', async () => {
     const free = await signUp('pw'); const fd = await makeDeck(free.id, 2)
-    expect((await share(free, fd.id, { password: 'secret123' })).status).toBe(403)
-    expect((await share(free, fd.id, { expiresInDays: 7 })).status).toBe(403)
-    expect((await share(free, fd.id)).status).toBe(201)
-    expect((await api(free.cookie, 'PATCH', `/presentations/${fd.id}/share`, { password: 'secret123' })).status).toBe(403)
+    for (const body of [undefined, { password: 'secret123' }, { expiresInDays: 7 }]) {
+      const r = await share(free, fd.id, body)
+      expect(r.status).toBe(403)
+      expect((await json(r)).error.details).toMatchObject({ feature: 'livePreview' })
+    }
     const { owner, deck } = await proDeck()
     const r = await json(await share(owner, deck.id, { password: 'secret123', expiresInDays: 7 }))
     expect(r.data).toMatchObject({ hasPassword: true })

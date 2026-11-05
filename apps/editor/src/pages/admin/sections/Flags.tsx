@@ -7,7 +7,7 @@ interface Flag {
   rolloutPercent: number; plans: string[]; note: string | null; updatedBy: string | null; updatedAt: string | null
 }
 type Draft = Pick<Flag, 'enabled' | 'rolloutPercent' | 'plans' | 'note'>
-const PLANS = ['starter', 'pro', 'gold'] as const
+const PLANS = ['starter', 'pro', 'gold', 'premium'] as const
 
 const draftOf = (f: Flag): Draft => ({ enabled: f.enabled, rolloutPercent: f.rolloutPercent, plans: f.plans, note: f.note })
 const same = (a: Draft, b: Draft) => a.enabled === b.enabled && a.rolloutPercent === b.rolloutPercent && (a.note ?? '') === (b.note ?? '') && a.plans.join() === b.plans.join()

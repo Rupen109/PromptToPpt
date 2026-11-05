@@ -5,11 +5,13 @@ import { db } from '../db/index.ts'
 import { aiUsageEvent, creditBalance, generatedAsset } from '../db/schema.ts'
 import { S3Storage, assertSafeKey, extensionFor, LocalDiskStorage } from '../storage/index.ts'
 import { api, json, makeDeck, rid, setPlan, signUp } from '../test-utils.ts'
+import type { PlanId } from '@prompttoppt/validation'
 import { composeImagePrompt } from './images.ts'
 
 const balance = async (id: string) => (await db.select().from(creditBalance).where(eq(creditBalance.userId, id)))[0]!.balance
 const gen = (cookie: string, deckId: string, body: object = {}) => api(cookie, 'POST', `/presentations/${deckId}/images`, { prompt: 'a red electric car on a mountain road', requestId: `img-${rid()}-${rid()}`, ...body })
-const setup = async (plan: 'starter' | 'pro' | 'gold' = 'starter') => {
+/** Pro by default: Starter has no AI pictures (its pictures are the free photos); Pro has 10 a deck / 60 a month, Gold and Premium 20 / 100 */
+const setup = async (plan: PlanId = 'pro') => {
   const u = await signUp('im')
   if (plan !== 'starter') await setPlan(u.id, plan)
   const { id } = await makeDeck(u.id)
@@ -24,7 +26,7 @@ describe('POST /presentations/:id/images', () => {
     const res = await gen(u.cookie, id, { style: 'illustration', aspect: '4:3' })
     const body = await json(res)
     expect(res.status).toBe(200)
-    expect(body.data).toMatchObject({ mime: 'image/png', creditsCharged: 20, usage: { deck: { used: 1, max: 3 }, month: { used: 1, max: 6 } } })
+    expect(body.data).toMatchObject({ mime: 'image/png', creditsCharged: 20, usage: { deck: { used: 1, max: 10 }, month: { used: 1, max: 60 } } })
     expect(await balance(u.id)).toBe(before - 20)
 
     const img = await app.request(new URL(body.data.url).pathname) // no cookie: capability URL
@@ -43,15 +45,27 @@ describe('POST /presentations/:id/images', () => {
     expect(events[0]).toMatchObject({ status: 'success', imageCount: 1 })
   })
 
-  it('per-deck limit: Starter gets 3 pictures per presentation; the 4th is refused and costs nothing', async () => {
+  it('Starter has no AI pictures: refused (403), nothing charged, nothing stored', async () => {
+    const { u, id } = await setup('starter')
+    const before = await balance(u.id)
+    const res = await gen(u.cookie, id)
+    expect(res.status).toBe(403)
+    expect((await json(res)).error).toMatchObject({ code: 'UPGRADE_REQUIRED', details: { feature: 'images' } })
+    expect(await balance(u.id)).toBe(before)
+    expect((await db.select().from(generatedAsset).where(eq(generatedAsset.presentationId, id)))).toHaveLength(0)
+  })
+
+  it('per-deck limit: Pro gets 10 pictures per presentation; the 11th is refused and costs nothing', async () => {
     const { u, id } = await setup()
-    for (let i = 0; i < 3; i++) expect((await gen(u.cookie, id)).status).toBe(200)
+    expect((await gen(u.cookie, id)).status).toBe(200) // the first one really is generated
+    // the other nine are recorded directly: the route also allows only 10 generations a minute per person (a burst guard of its own), which would answer before the plan limit does
+    for (let i = 0; i < 9; i++) await db.insert(generatedAsset).values({ id: `d${rid()}${rid()}${rid()}`.padEnd(32, 'x'), userId: u.id, presentationId: id, status: 'ready', provider: 'vertex', model: 'm', prompt: 'p', mime: 'image/png', bytes: 1, storageKey: `deck${i}` })
     const before = await balance(u.id)
     const res = await gen(u.cookie, id)
     expect(res.status).toBe(429)
     const e = (await json(res)).error
     expect(e.code).toBe('LIMIT_REACHED')
-    expect(e.message).toMatch(/3 AI images/)
+    expect(e.message).toMatch(/10 AI images/)
     expect(await balance(u.id)).toBe(before)
     // a different deck still has its own allowance
     const other = await makeDeck(u.id)
@@ -60,7 +74,7 @@ describe('POST /presentations/:id/images', () => {
 
   it('per-month limit counts pictures across all decks', async () => {
     const { u, id } = await setup()
-    for (let i = 0; i < 6; i++) await db.insert(generatedAsset).values({ id: `m${rid()}${rid()}${rid()}`.padEnd(32, 'x'), userId: u.id, presentationId: `other-deck-${i}`, status: 'ready', provider: 'vertex', model: 'm', prompt: 'p', mime: 'image/png', bytes: 1, storageKey: 'k' })
+    for (let i = 0; i < 60; i++) await db.insert(generatedAsset).values({ id: `m${rid()}${rid()}${rid()}`.padEnd(32, 'x'), userId: u.id, presentationId: `other-deck-${i}`, status: 'ready', provider: 'vertex', model: 'm', prompt: 'p', mime: 'image/png', bytes: 1, storageKey: `k${i}` })
     const res = await gen(u.cookie, id)
     expect(res.status).toBe(429)
     expect((await json(res)).error.message).toMatch(/this month/)
@@ -69,12 +83,12 @@ describe('POST /presentations/:id/images', () => {
   it('parallel requests cannot exceed the limit (slot reservation is serialised)', async () => {
     const { u, id } = await setup()
     const before = await balance(u.id)
-    const results = await Promise.all(Array.from({ length: 6 }, () => gen(u.cookie, id)))
+    const results = await Promise.all(Array.from({ length: 14 }, () => gen(u.cookie, id)))
     const ok = results.filter((r) => r.status === 200).length
-    expect(ok).toBe(3)
-    expect(results.filter((r) => r.status === 429)).toHaveLength(3)
-    expect(await balance(u.id)).toBe(before - 3 * 20)
-    expect((await db.select().from(generatedAsset).where(eq(generatedAsset.presentationId, id))).filter((a) => a.status === 'ready')).toHaveLength(3)
+    expect(ok).toBe(10)
+    expect(results.filter((r) => r.status === 429)).toHaveLength(4)
+    expect(await balance(u.id)).toBe(before - 10 * 20)
+    expect((await db.select().from(generatedAsset).where(eq(generatedAsset.presentationId, id))).filter((a) => a.status === 'ready')).toHaveLength(10)
   })
 
   it('retrying the same requestId returns the same picture and charges once', async () => {
@@ -96,7 +110,7 @@ describe('POST /presentations/:id/images', () => {
     expect(res.status).toBe(422)
     expect((await json(res)).error.code).toBe('IMAGE_BLOCKED')
     expect(await balance(u.id)).toBe(before)
-    for (let i = 0; i < 3; i++) expect((await gen(u.cookie, id)).status).toBe(200) // all 3 slots still available
+    for (let i = 0; i < 3; i++) expect((await gen(u.cookie, id)).status).toBe(200) // the slots are still available
   })
 
   it('a provider failure is refunded and frees the slot', async () => {
@@ -108,7 +122,7 @@ describe('POST /presentations/:id/images', () => {
     expect((await db.select().from(generatedAsset).where(eq(generatedAsset.presentationId, id)))).toHaveLength(0)
   })
 
-  it('tier gate: Starter cannot pick a premium image model; Pro can', async () => {
+  it('tier gate: Pro cannot pick a premium image model; Premium can, at the premium price, with its own picture allowance', async () => {
     const { u, id } = await setup()
     const models = (await json(await api(u.cookie, 'GET', '/models?kind=image'))).data.models as { id: string; tier: string; creditsPerImage: number; allowed: boolean }[]
     expect(models.every((m) => ['starter', 'premium', 'frontier'].includes(m.tier))).toBe(true)
@@ -118,10 +132,10 @@ describe('POST /presentations/:id/images', () => {
     expect(denied.status).toBe(403)
     expect((await json(denied)).error.code).toBe('UPGRADE_REQUIRED')
 
-    const pro = await setup('pro')
-    const ok = await json(await gen(pro.u.cookie, pro.id, { model: premium.id }))
+    const top = await setup('premium')
+    const ok = await json(await gen(top.u.cookie, top.id, { model: premium.id }))
     expect(ok.data.creditsCharged).toBe(premium.creditsPerImage)
-    expect(ok.data.usage.deck.max).toBe(10)
+    expect(ok.data.usage.deck.max).toBe(20)
   })
 
   it('insufficient credits: 402, nothing stored, slot released', async () => {
@@ -145,7 +159,7 @@ describe('POST /presentations/:id/images', () => {
     const { u, id } = await setup()
     await gen(u.cookie, id)
     const r = await json(await api(u.cookie, 'GET', `/presentations/${id}/images/usage`))
-    expect(r.data).toMatchObject({ enabled: true, deck: { used: 1, max: 3 }, month: { used: 1, max: 6 } })
+    expect(r.data).toMatchObject({ enabled: true, deck: { used: 1, max: 10 }, month: { used: 1, max: 60 } })
   })
 
   it('validates input (too short / too long prompt, bad aspect)', async () => {

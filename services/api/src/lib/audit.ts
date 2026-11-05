@@ -2,6 +2,7 @@ import { nanoid } from 'nanoid'
 import { env } from '../env.ts'
 import { db } from '../db/index.ts'
 import { auditLog } from '../db/schema.ts'
+import { viewerIpFromHeaders } from './country.ts'
 
 /**
  * Records an important business/security event in the audit log. Fire-and-forget and never throws: failing to audit must
@@ -25,6 +26,8 @@ export function audit(actorUserId: string, action: string, meta: Record<string, 
  * otherwise anyone can write any address into the audit trail.
  */
 export const ipOf = (headers: Headers): string | null => {
+  const viewer = viewerIpFromHeaders(headers) // behind our CloudFront edge (proven by the edge secret)
+  if (viewer) return viewer
   if (env.TRUSTED_PROXY_HOPS <= 0) return null
   const parts = (headers.get('x-forwarded-for') ?? '').split(',').map((p) => p.trim()).filter(Boolean)
   return parts[parts.length - env.TRUSTED_PROXY_HOPS] ?? null

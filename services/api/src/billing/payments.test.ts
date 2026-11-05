@@ -1,5 +1,5 @@
 import { createHmac } from 'node:crypto'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { app } from '../app.ts'
 import { db } from '../db/index.ts'
@@ -25,7 +25,7 @@ const rzpSub = (o: Partial<RzpSubscription> & { userId: string; planId?: 'pro' |
     notes: { userId: o.userId, planId, interval, currency: 'INR' },
   }
 }
-const rzpPay = (o: Partial<RzpPayment> = {}): RzpPayment => ({ id: `pay_${rid()}`, amount: 49900, currency: 'INR', status: 'captured', method: 'card', created_at: T0, ...o })
+const rzpPay = (o: Partial<RzpPayment> = {}): RzpPayment => ({ id: `pay_${rid()}`, amount: 30000, currency: 'INR', status: 'captured', method: 'card', created_at: T0, ...o })
 
 let eventN = 0
 const webhook = async (event: string, payload: object, opts: { secret?: string; eventId?: string | null } = {}) => {
@@ -38,7 +38,7 @@ const subEvent = (event: string, s: RzpSubscription, p?: RzpPayment, opts?: Para
 const subRow = async (userId: string) => (await db.select().from(subscription).where(eq(subscription.userId, userId)))[0]
 
 beforeAll(async () => {
-  for (const [id, pid] of Object.entries(PLAN_IDS)) await db.update(planPrice).set({ providerPriceId: pid }).where(eq(planPrice.id, id))
+  for (const [id, pid] of Object.entries(PLAN_IDS)) await db.update(planPrice).set({ providerPriceId: pid, providerAmountMinor: sql`amount_minor` }).where(eq(planPrice.id, id))
 })
 afterAll(async () => {
   await db.update(planPrice).set({ providerPriceId: null })
@@ -104,7 +104,7 @@ describe('POST /billing/checkout', () => {
     })
     const body = await json(res)
     expect(res.status).toBe(200)
-    expect(body.data).toMatchObject({ keyId: 'rzp_test_unitkey00000', subscriptionId: 'sub_new', currency: 'INR', amountMinor: 1152000, interval: 'year', testMode: true })
+    expect(body.data).toMatchObject({ keyId: 'rzp_test_unitkey00000', subscriptionId: 'sub_new', currency: 'INR', amountMinor: 624000, interval: 'year', testMode: true })
     expect(body.data).not.toHaveProperty('keySecret')
     expect(razorpay.createSubscription).toHaveBeenCalledWith({ planId: 'plan_gold_y', totalCount: 10, notes: { userId: u.id, planId: 'gold', interval: 'year', currency: 'INR' } })
   })
@@ -127,15 +127,28 @@ describe('POST /billing/checkout', () => {
     expect((await go()).status).toBe(200)
     expect((await go()).status).toBe(200)
     expect(create).toHaveBeenCalledTimes(1)
-    expect(create.mock.calls[0]![0]).toMatchObject({ period: 'monthly', amount: 49900, currency: 'INR' })
+    expect(create.mock.calls[0]![0]).toMatchObject({ period: 'monthly', amount: 30000, currency: 'INR' })
     expect((await db.select().from(planPrice).where(eq(planPrice.id, 'pro-INR-month')))[0]!.providerPriceId).toBe('plan_lazy_1')
-    await db.update(planPrice).set({ providerPriceId: 'plan_pro_m' }).where(eq(planPrice.id, 'pro-INR-month'))
+    await db.update(planPrice).set({ providerPriceId: 'plan_pro_m', providerAmountMinor: sql`amount_minor` }).where(eq(planPrice.id, 'pro-INR-month'))
+  })
+
+  it('a provider plan made for an OLD amount is never reused after a price change: a new one is made for the current price', async () => {
+    await db.update(planPrice).set({ providerPriceId: 'plan_old_price', providerAmountMinor: 49900 }).where(eq(planPrice.id, 'pro-INR-month'))
+    const create = vi.spyOn(razorpay, 'createPlan').mockResolvedValue({ id: 'plan_new_price' })
+    const u = await signUp('co')
+    const r = await app.request('/api/v1/billing/checkout', { method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: u.cookie, 'x-debug-country': 'IN' }, body: JSON.stringify({ planId: 'pro', interval: 'month' }) })
+    expect(r.status).toBe(200)
+    expect(create).toHaveBeenCalledTimes(1)
+    expect(create.mock.calls[0]![0]).toMatchObject({ amount: 30000 })
+    const [row] = await db.select().from(planPrice).where(eq(planPrice.id, 'pro-INR-month'))
+    expect(row).toMatchObject({ providerPriceId: 'plan_new_price', providerAmountMinor: 30000 })
+    await db.update(planPrice).set({ providerPriceId: 'plan_pro_m', providerAmountMinor: sql`amount_minor` }).where(eq(planPrice.id, 'pro-INR-month'))
   })
 })
 
 describe('checkout self-heals a provider plan id that does not exist in the connected account', () => {
   it('forgets the stored id, creates the plan again and opens the payment (keys switched / plan deleted in the dashboard)', async () => {
-    await db.update(planPrice).set({ providerPriceId: 'plan_from_an_old_account' }).where(eq(planPrice.id, 'pro-INR-month'))
+    await db.update(planPrice).set({ providerPriceId: 'plan_from_an_old_account', providerAmountMinor: sql`amount_minor` }).where(eq(planPrice.id, 'pro-INR-month'))
     const create = vi.spyOn(razorpay, 'createPlan').mockResolvedValue({ id: 'plan_fresh_1' })
     let first = true
     vi.spyOn(razorpay, 'createSubscription').mockImplementation(async (p) => {
@@ -148,7 +161,7 @@ describe('checkout self-heals a provider plan id that does not exist in the conn
     expect((await json(r)).data.subscriptionId).toBe('sub_healed')
     expect(create).toHaveBeenCalledTimes(1)
     expect((await db.select().from(planPrice).where(eq(planPrice.id, 'pro-INR-month')))[0]!.providerPriceId).toBe('plan_fresh_1')
-    await db.update(planPrice).set({ providerPriceId: 'plan_pro_m' }).where(eq(planPrice.id, 'pro-INR-month'))
+    await db.update(planPrice).set({ providerPriceId: 'plan_pro_m', providerAmountMinor: sql`amount_minor` }).where(eq(planPrice.id, 'pro-INR-month'))
   })
   it('any other provider refusal is still reported, not retried', async () => {
     vi.spyOn(razorpay, 'createSubscription').mockRejectedValue(new RazorpayApiError(400, 'Authentication failed'))
@@ -190,12 +203,12 @@ describe('POST /billing/verify (browser callback)', () => {
     const body = await json(res)
     expect(res.status).toBe(200)
     expect(body.data.plan.id).toBe('pro')
-    expect(body.data.credits.balance).toBe(3000)
+    expect(body.data.credits.balance).toBe(900)
     expect(body.data.features.watermark).toBe(false)
     expect((await call(u.cookie, s.id, p.id, sig)).status).toBe(200) // user double-clicks / retries
     const pays = await db.select().from(payment).where(eq(payment.userId, u.id))
     expect(pays).toHaveLength(1)
-    expect(pays[0]).toMatchObject({ amountMinor: 49900, currency: 'INR', status: 'captured', planId: 'pro', interval: 'month' })
+    expect(pays[0]).toMatchObject({ amountMinor: 30000, currency: 'INR', status: 'captured', planId: 'pro', interval: 'month' })
   })
 
   it('an unpaid (created) subscription cannot be confirmed even with a valid-looking signature flow', async () => {
@@ -228,7 +241,7 @@ describe('POST /webhooks/razorpay', () => {
     expect(row).toMatchObject({ planId: 'gold', status: 'active', provider: 'razorpay', providerRef: s.id, currency: 'INR', interval: 'month', cancelAtPeriodEnd: false })
     expect(row.currentPeriodEnd.getTime()).toBe((T0 + 30 * DAY) * 1000)
     const ent = await getEntitlements(u.id)
-    expect(ent).toMatchObject({ plan: { id: 'gold' }, credits: { balance: 10000 }, features: { watermark: false, modelTiers: ['starter', 'premium', 'frontier'] } })
+    expect(ent).toMatchObject({ plan: { id: 'gold' }, credits: { balance: 2000 }, features: { watermark: false, modelTiers: ['starter'] } })
     expect(await db.select().from(payment).where(eq(payment.userId, u.id))).toHaveLength(1)
 
     // next month: Razorpay charges again and moves the period → lazily grants a new allowance (no rollover)
@@ -473,7 +486,7 @@ describe('the customer is e-mailed about money (receipt, failure, cancel, refund
     await webhook('refund.processed', { refund: { entity: { id: `rfnd_${rid()}`, payment_id: pay.id, amount: pay.amount } } })
     const refunds = mailsTo(to).filter((m) => /refund was processed/.test(m.subject))
     expect(refunds).toHaveLength(1)
-    expect(refunds[0]!.text).toContain('₹499.00')
+    expect(refunds[0]!.text).toContain('₹300.00')
   })
 
   it('a mail problem never fails the payment: the webhook still answers 200 and the plan is active', async () => {

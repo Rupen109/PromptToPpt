@@ -16,13 +16,10 @@ export function redirectToLogin() {
   window.location.assign(`${WEB_URL}/login?next=${encodeURIComponent(window.location.href)}`)
 }
 
-/** How often a visible tab re-checks who is signed in (it also checks the moment it regains focus). */
-const SESSION_CHECK_MS = 30_000
-
 /**
  * The session cookie is shared by every tab. If you sign out, or sign in as someone else, in another tab, this tab would keep showing
- * the old account while its requests run as the new one. So the tab re-checks when it regains focus and every 30 s while visible, and
- * stops with a clear message instead of carrying on as the wrong person. (The server also refuses writes from a tab whose account
+ * the old account while its requests run as the new one. So the tab re-checks the moment it regains focus or becomes visible (the only
+ * moments another tab can have switched the account under it), and stops with a clear message instead of carrying on as the wrong person. (The server also refuses writes from a tab whose account
  * no longer matches, which covers the moment between the switch and the next check.)
  */
 function SessionWatcher({ user }: { user: CurrentUser }) {
@@ -41,12 +38,10 @@ function SessionWatcher({ user }: { user: CurrentUser }) {
   useEffect(() => {
     setSessionUser(user.id)
     const onVisible = () => { if (document.visibilityState === 'visible') void check() }
-    const timer = window.setInterval(onVisible, SESSION_CHECK_MS)
     window.addEventListener('focus', check)
     window.addEventListener(SESSION_CHANGED_EVENT, check)
     document.addEventListener('visibilitychange', onVisible)
     return () => {
-      window.clearInterval(timer)
       window.removeEventListener('focus', check)
       window.removeEventListener(SESSION_CHANGED_EVENT, check)
       document.removeEventListener('visibilitychange', onVisible)

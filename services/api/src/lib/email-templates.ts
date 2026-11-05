@@ -98,7 +98,7 @@ const money = (minor: number, currency: string) => {
   try { return new Intl.NumberFormat(currency === 'INR' ? 'en-IN' : 'en-US', { style: 'currency', currency }).format(minor / 100) } catch { return `${(minor / 100).toFixed(2)} ${currency}` }
 }
 const day = (d: Date) => new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(d)
-const PLAN_NAME: Record<string, string> = { starter: 'Starter', pro: 'Pro', gold: 'Gold' }
+const PLAN_NAME: Record<string, string> = { starter: 'Starter', pro: 'Pro', gold: 'Gold', premium: 'Premium' }
 export const planName = (id: string | null | undefined) => PLAN_NAME[id ?? ''] ?? (id ? id.charAt(0).toUpperCase() + id.slice(1) : 'your')
 
 // ── account ─────────────────────────────────────────────────────────────────────────────────────────────────────────────

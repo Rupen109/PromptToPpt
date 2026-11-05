@@ -1,3 +1,4 @@
+import type { PaidPlanId } from '@prompttoppt/validation'
 import { ApiError, type CheckoutSession, type Entitlements, type RazorpayResult } from '@prompttoppt/api-client'
 import { api } from './api'
 
@@ -60,7 +61,7 @@ function openCheckout(s: CheckoutSession): Promise<RazorpayResult> {
  * the signed result and activates the plan. Resolves with the new entitlements; rejects with CheckoutDismissed if the
  * user closed the window.
  */
-export async function subscribe(planId: 'pro' | 'gold', interval: 'month' | 'year', onSession?: (s: CheckoutSession) => void): Promise<Entitlements> {
+export async function subscribe(planId: PaidPlanId, interval: 'month' | 'year', onSession?: (s: CheckoutSession) => void): Promise<Entitlements> {
   const session = await api.startCheckout(planId, interval)
   simulatorMode = !!session.simulated
   onSession?.(session)

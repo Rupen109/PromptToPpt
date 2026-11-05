@@ -13,9 +13,10 @@ const call = (path: string, body: unknown, o: { ua?: string; cookie?: string; he
 
 /** an owner (Pro) with a 4-slide deck and a live link */
 async function shared(plan: 'starter' | 'pro' = 'pro') {
-  const owner = await signUp('san'); if (plan !== 'starter') await setPlan(owner.id, plan)
+  const owner = await signUp('san'); await setPlan(owner.id, 'pro') // only plans with live preview can make a link
   const deck = await makeDeck(owner.id, 4)
   const made = await json(await api(owner.cookie, 'POST', `/presentations/${deck.id}/share`))
+  if (plan === 'starter') await setPlan(owner.id, 'starter') // downgraded afterwards: the link lives on, analytics show the total only
   const token = made.data.url.split('/s/')[1] as string
   const slides = deck.doc.slides.map((s) => s.id)
   const start = async (v = vid(), o: Parameters<typeof call>[2] & { referrer?: string; vw?: number } = {}) => json(await call(`/share/${token}/analytics/start`, { vid: v, ...(o.referrer ? { referrer: o.referrer } : {}), ...(o.vw ? { vw: o.vw } : {}) }, o))

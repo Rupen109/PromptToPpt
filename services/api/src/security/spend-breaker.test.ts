@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { nanoid } from 'nanoid'
 import { resetBudgetCache } from '../ai/budget.ts'
 import { db } from '../db/index.ts'
@@ -19,7 +19,7 @@ afterEach(async () => {
 
 const analyze = (cookie: string) => api(cookie, 'POST', '/generation/analyze', { prompt: 'A short deck about coffee roasting for a local shop owner', sourceIds: [] })
 
-describe('AI spend circuit breaker (security S3)', () => {
+describe('AI spend guard: per-account limit, alert-only shared ceilings', () => {
   it('a single account that has burned its daily budget is stopped (429) while others keep working', async () => {
     const abuser = await signUp('brk'); await setPlan(abuser.id, 'pro')
     const honest = await signUp('brk'); await setPlan(honest.id, 'pro')
@@ -31,19 +31,22 @@ describe('AI spend circuit breaker (security S3)', () => {
     expect((await json(r)).error.code).toBe('DAILY_AI_LIMIT')
     expect((await analyze(honest.cookie)).status).toBe(200)
   })
-  it('when the shared budget is exhausted AI pauses for everyone (503 AI_PAUSED) on every costly route, however many accounts exist', async () => {
+  it('when the SHARED budget is exceeded nobody is paused (every costly route keeps working); the owner gets an alert, at most once an hour', async () => {
     const u = await signUp('brk'); await setPlan(u.id, 'pro')
     await spend(null, 1)
     env.AI_BUDGET_USD_DAY = 0.5
     resetBudgetCache()
+    const alert = vi.spyOn(console, 'error').mockImplementation(() => {})
     for (const [method, path, body] of [
       ['POST', '/generation/analyze', { prompt: 'A short deck about coffee roasting for a local shop', sourceIds: [] }],
       ['POST', '/generation/jobs', { prompt: 'A short deck about coffee roasting for a local shop', idempotencyKey: nanoid(), slideCount: 5 }],
     ] as const) {
       const r = await api(u.cookie, method, path, body)
-      expect(r.status, path).toBe(503)
-      expect((await json(r)).error.code).toBe('AI_PAUSED')
+      expect(r.status, path).toBeLessThan(300)
     }
+    const alerts = alert.mock.calls.filter((c) => String(c[0]).startsWith('[budget] ALERT'))
+    expect(alerts).toHaveLength(1) // two requests, one alert
+    alert.mockRestore()
   })
   it('stays out of the way under budget', async () => {
     const u = await signUp('brk'); await setPlan(u.id, 'pro')

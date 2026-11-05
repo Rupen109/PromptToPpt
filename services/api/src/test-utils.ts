@@ -4,7 +4,7 @@ import { app } from './app.ts'
 import { db } from './db/index.ts'
 import { presentation, presentationVersion, subscription } from './db/schema.ts'
 import { composeSlide, getTheme } from '@prompttoppt/theme'
-import type { Presentation, SlideContent } from '@prompttoppt/validation'
+import type { PlanId, Presentation, SlideContent } from '@prompttoppt/validation'
 
 export const origin = process.env['WEB_URL'] ?? 'http://localhost:3000'
 export const rid = () => Math.random().toString(36).slice(2, 10)
@@ -19,7 +19,7 @@ export async function signUp(prefix = 't') {
 }
 
 /** Puts a user on a plan directly in the DB (what a verified payment webhook will do in production). */
-export async function setPlan(userId: string, planId: 'starter' | 'pro' | 'gold') {
+export async function setPlan(userId: string, planId: PlanId) {
   await db.delete(subscription).where(eq(subscription.userId, userId))
   if (planId === 'starter') return
   const now = new Date()

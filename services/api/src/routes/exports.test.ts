@@ -1,11 +1,13 @@
 import { strFromU8, unzipSync } from 'fflate'
 import { describe, expect, it } from 'vitest'
+import { eq } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { DESIGNS, SAMPLES, composeDeck } from '@prompttoppt/theme'
 import type { Presentation } from '@prompttoppt/validation'
 import { db } from '../db/index.ts'
 import { presentation, presentationVersion } from '../db/schema.ts'
 import { api, setPlan, signUp } from '../test-utils.ts'
+import { attachment } from './exports.ts'
 
 /** a deck in an animated template design (the default test theme has no motion) */
 async function animatedDeck(userId: string, slides = 4) {
@@ -34,5 +36,23 @@ describe('POST /exports (pptx)', () => {
     expect(xml.split('presetClass="entr"').length - 1).toBeGreaterThanOrEqual(animated)
     expect(xml).toMatch(/<p:transition spd="\w+"><p:\w+/)
     expect(xml.split('<p:timing>').length - 1).toBe(4)
+  })
+})
+
+describe('the download name, in any language', () => {
+  it('a Hindi or Gujarati title exports (it crashed with a 500: headers carry only Latin-1) and keeps its real name', async () => {
+    const u = await signUp('exphi')
+    await setPlan(u.id, 'pro')
+    const { id } = await animatedDeck(u.id, 3)
+    await db.update(presentation).set({ title: 'गुजरात में पर्यटन' }).where(eq(presentation.id, id))
+    const res = await api(u.cookie, 'POST', '/exports', { presentationId: id, format: 'pptx' })
+    expect(res.status).toBe(200)
+    const cd = res.headers.get('content-disposition')!
+    expect(cd).toMatch(/^attachment; filename="presentation\.pptx"; filename\*=UTF-8''/)
+    expect(decodeURIComponent(cd.split("UTF-8''")[1]!)).toBe('गुजरात-में-पर्यटन.pptx')
+  })
+  it('an English title is unchanged; a mixed title keeps its Latin part as the fallback', () => {
+    expect(attachment('Quarterly Review', 'pptx')).toBe(`attachment; filename="Quarterly-Review.pptx"; filename*=UTF-8''Quarterly-Review.pptx`)
+    expect(attachment('Q3 रिपोर्ट', 'pptx')).toMatch(/^attachment; filename="Q3\.pptx"; /)
   })
 })

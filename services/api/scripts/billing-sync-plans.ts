@@ -15,7 +15,7 @@ if (!razorpayEnabled()) {
 }
 const currencies = env.RAZORPAY_INTERNATIONAL ? (['INR', 'USD'] as const) : (['INR'] as const)
 let failed = false
-for (const planId of ['pro', 'gold']) {
+for (const planId of ['pro', 'gold', 'premium']) {
   for (const currency of currencies) {
     for (const interval of ['month', 'year'] as const) {
       try {

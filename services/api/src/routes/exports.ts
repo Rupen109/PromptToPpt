@@ -15,7 +15,17 @@ import { requireAuth, type AppEnv } from '../middleware/session.ts'
 export const exportsRoute = new Hono<AppEnv>()
 exportsRoute.use('*', requireAuth)
 
-const fileName = (title: string, ext: string) => `${title.replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'presentation'}.${ext}`
+/** letters, combining marks (Hindi and Gujarati vowel signs are marks, not letters) and digits are kept */
+const fileName = (title: string, ext: string) => `${title.replace(/[^\p{L}\p{M}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'presentation'}.${ext}`
+/**
+ * Download header for any title. HTTP headers carry only Latin-1, so a Hindi or Gujarati title in `filename` crashed the export (500).
+ * RFC 6266: `filename` gets an ASCII fallback for old clients, `filename*` the real name, UTF-8 percent-encoded.
+ */
+export const attachment = (title: string, ext: string) => {
+  const name = fileName(title, ext)
+  const ascii = name.replace(/[^\x20-\x7e]+/g, '-').replace(/-+/g, '-').replace(/^-|-(?=\.)/g, '')
+  return `attachment; filename="${ascii.startsWith('.') ? `presentation${ascii}` : ascii}"; filename*=UTF-8''${encodeURIComponent(name)}`
+}
 
 /**
  * The plan gate lives here for every format. PPTX is built on the server and streamed back. PDF / PNG / JPG / HTML are rendered
@@ -48,7 +58,7 @@ exportsRoute.post('/', rateLimit({ windowMs: 60_000, max: 20, key: (c) => `expor
     await db.update(exportEvent).set({ status: 'success', bytes: file.length, slideCount: parsed.data.slides.length, durationMs: Date.now() - t0 }).where(eq(exportEvent.id, eventId))
     return c.body(new Uint8Array(file), 200, {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-      'Content-Disposition': `attachment; filename="${fileName(p.title, 'pptx')}"`,
+      'Content-Disposition': attachment(p.title, 'pptx'),
       'Cache-Control': 'no-store',
     })
   } catch (e) {

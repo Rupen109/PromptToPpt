@@ -50,8 +50,8 @@ describe('free plan cannot reach paid features', () => {
 
   it('parallel "create presentation" calls cannot overshoot the monthly allowance', async () => {
     const u = await newUser()
-    await setPlan(u.id, 'pro') // 50 decks / month
-    for (let i = 0; i < 45; i++) await makeDeck(u.id, 2)
+    await setPlan(u.id, 'pro') // 15 decks / month
+    for (let i = 0; i < 10; i++) await makeDeck(u.id, 2)
     const results = await Promise.all(Array.from({ length: 12 }, () => api(u.cookie, 'POST', '/presentations', { templateId: free.id })))
     expect(results.filter((r) => r.status === 201)).toHaveLength(5)
     expect(results.filter((r) => r.status === 429)).toHaveLength(7)

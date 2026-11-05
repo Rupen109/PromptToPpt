@@ -9,7 +9,7 @@ import { getStorage } from '../storage/index.ts'
 import { imageSize } from '../export/png.ts'
 
 /** How many brand kits a plan may keep (business decision: Pro 1, Gold 5; Starter none). */
-export const MAX_KITS: Record<string, number> = { starter: 0, pro: 1, gold: 5 }
+export const MAX_KITS: Record<string, number> = { starter: 0, pro: 1, gold: 5, premium: 5 }
 export const MAX_IMAGES_PER_KIT = 20
 export const MAX_LOGO_BYTES = 2 * 1024 * 1024
 export const MAX_IMAGE_BYTES = 3 * 1024 * 1024
@@ -80,7 +80,7 @@ async function logoFromUrl(userId: string, url: string): Promise<{ assetId: stri
 
 export async function createKit(userId: string, planId: string, input: KitInput): Promise<KitView> {
   const cap = MAX_KITS[planId] ?? 0
-  if (cap === 0) throw new GateError('UPGRADE_REQUIRED', 'Brand kits are available on Pro and Gold.', 403, { feature: 'brand' })
+  if (cap === 0) throw new GateError('UPGRADE_REQUIRED', 'Brand kits are available on Pro, Gold and Premium.', 403, { feature: 'brand' })
   const logo = input.logoUrl ? await logoFromUrl(userId, input.logoUrl) : null
   const id = nanoid(16)
   await db.transaction(async (tx) => {

@@ -5,7 +5,7 @@ const run = (a: TimeAccumulator, from: number, seconds: number, slide: string, v
 
 describe('time accumulator', () => {
   it('C1/C7 time accrues on the slide being shown, adds up when the visitor comes back to a slide', () => {
-    const a = new TimeAccumulator(0); let t = run(a, 0, 4, 's1'); t = run(a, t, 3, 's2'); t = run(a, t, 2, 's1')
+    const a = new TimeAccumulator(0); let t = run(a, 0, 4, 's1'); t = run(a, t, 3, 's2'); run(a, t, 2, 's1')
     expect(Object.fromEntries(a.take().map((x) => [x.id, x.ms]))).toEqual({ s1: 6000, s2: 3000 })
   })
   it('C4 nothing accrues while the page is hidden; it resumes when visible again', () => {

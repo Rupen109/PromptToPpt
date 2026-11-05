@@ -64,3 +64,24 @@ export const expect = (cond, msg) => { if (!cond) throw new Error(msg) }
 // no `+tag`: the server treats `qa+1@…` and `qa+2@…` as the same mailbox (account-farming protection), so every test account needs its own local part
 export const uniqueEmail = (p = 'qa') => `${p}${Date.now()}${Math.floor(Math.random() * 1e4)}@example.com`
 export const PASSWORD = 'Passw0rd!qa-test'
+
+/**
+ * The create screen, after the prompt was submitted. `choicesReady` waits until the analysis is done and the person can choose; `startBuild` then gets the build going whatever this
+ * plan's flow looks like: "Let AI decide" when directions are offered, then the summary's Start button (the prompt named its length) or a length (choosing one starts the build);
+ * on a plan with model choice (Premium) the length is only selected and a model (default Gemini 3.6 Flash) starts it.
+ */
+export async function choicesReady(p) {
+  const dir = p.getByRole('button', { name: /Let AI decide/ }), len = p.getByRole('radio', { name: /\d+ slides/ }).first(), start = p.getByRole('button', { name: 'Start', exact: true })
+  await Promise.race([dir.waitFor({ timeout: 90000 }), len.waitFor({ timeout: 90000 }), start.waitFor({ timeout: 90000 })])
+}
+export async function startBuild(p, { model = /3\.6 Flash/ } = {}) {
+  const dir = p.getByRole('button', { name: /Let AI decide/ }), len = p.getByRole('radio', { name: /\d+ slides/ }).first(), start = p.getByRole('button', { name: 'Start', exact: true }), models = p.getByRole('radiogroup', { name: 'AI model' })
+  await choicesReady(p)
+  if (await dir.count()) { await dir.click(); await Promise.race([len.waitFor({ timeout: 90000 }), start.waitFor({ timeout: 90000 })]) }
+  if (await models.count()) {
+    if (await len.count()) await len.click()
+    const radios = models.getByRole('radio'), names = await radios.allInnerTexts()
+    await radios.nth(Math.max(0, names.findIndex((n) => model.test(n)))).click()
+  } else if (await start.count()) await start.click()
+  else await len.click()
+}

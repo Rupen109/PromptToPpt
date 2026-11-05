@@ -5,7 +5,6 @@ import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { HeroSection } from '@/components/sections/HeroSection'
 import { LiveSimulatorSection } from '@/components/sections/LiveSimulatorSection'
-import { TrustedBySection } from '@/components/sections/TrustedBySection'
 import { ModalitiesSection } from '@/components/sections/ModalitiesSection'
 import StudioMockupSection from '@/components/sections/StudioMockupSection'
 import WorkflowSection from '@/components/sections/WorkflowSection'
@@ -37,7 +36,7 @@ export default function HomePage() {
       <main>
         <HeroSection />
         <LiveSimulatorSection />
-        <TrustedBySection />
+        {/* "Trusted by" logos are left out until there are real customers to show (components/sections/TrustedBySection.tsx is kept for then) */}
         <ModalitiesSection />
         <StudioMockupSection />
         <WorkflowSection />

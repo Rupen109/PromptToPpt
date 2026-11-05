@@ -107,12 +107,13 @@ describe('images', () => {
   it('quota pressure lists users at / near their plan limit for the current period', async () => {
     const admin = await adminUser()
     const full = await signUp('quota'), near = await signUp('quota'), low = await signUp('quota')
+    for (const x of [full, near, low]) await setPlan(x.id, 'pro') // Pro: 60 pictures a month (Starter has none)
     const mk = (userId: string, n: number) => Array.from({ length: n }, (): typeof generatedAsset.$inferInsert => ({ id: nanoid(), userId, provider: 'vertex', model: 'img-a', prompt: 'p', mime: 'image/png', bytes: 1, storageKey: 'k', status: 'ready' }))
-    await db.insert(generatedAsset).values([...mk(full.id, 6), ...mk(near.id, 5), ...mk(low.id, 2)]) // Starter limit is 6
+    await db.insert(generatedAsset).values([...mk(full.id, 60), ...mk(near.id, 50), ...mk(low.id, 2)]) // Pro limit is 60
     const q = await get(admin.cookie, `/images/quota?threshold=0.8&limit=50&userIds=${[full.id, near.id, low.id].join(',')}`)
     const byId = Object.fromEntries(q.users.map((x: any) => [x.userId, x]))
-    expect(byId[full.id]).toMatchObject({ used: 6, limit: 6, ratio: 1, plan: 'starter' })
-    expect(byId[near.id]).toMatchObject({ used: 5, limit: 6 })
+    expect(byId[full.id]).toMatchObject({ used: 60, limit: 60, ratio: 1, plan: 'pro' })
+    expect(byId[near.id]).toMatchObject({ used: 50, limit: 60 })
     expect(byId[low.id]).toBeUndefined()
     expect(q.atLimit).toBeGreaterThanOrEqual(1)
     expect(q.nearLimit).toBeGreaterThanOrEqual(1)

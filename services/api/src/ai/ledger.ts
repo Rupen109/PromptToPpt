@@ -60,6 +60,7 @@ export async function recordUsage(r: UsageRecord): Promise<void> {
     latencyMs: r.latencyMs,
     status: r.status,
     errorCode: r.errorCode ?? null,
+    errorDetail: r.errorDetail ?? null,
     providerCostUsd: r.providerCostUsd.toFixed(8),
     providerReportedCostUsd: r.reportedCostUsd === undefined ? null : r.reportedCostUsd.toFixed(8),
     pricingSnapshotId,

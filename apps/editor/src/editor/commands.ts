@@ -26,6 +26,26 @@ const touch = (s: Draft<Slide>) => {
   s.manual = true
 }
 
+/**
+ * A slide's OWN LOOK: the background (colour, gradient or picture) and the text colours that go with it, chosen for THIS slide by a person or by the
+ * assistant. It is not "hand-edited" (that is about moved or edited elements, and stops the slide from being laid out again): the slide stays a designed
+ * slide, its words and layout can still change, and whenever it is composed again (new words, new layout, new theme) the chosen look is put back on
+ * top of the fresh layout. One mechanism for every place a slide is composed again.
+ */
+interface OwnLook { background: NonNullable<Slide['background']>; themeOverrides: Slide['themeOverrides'] }
+const ownLookOf = (s: Draft<Slide> | Slide): OwnLook | null => (s.ownLook && s.background ? { background: plain(s.background) as OwnLook['background'], themeOverrides: s.themeOverrides ? plain(s.themeOverrides) : undefined } : null)
+
+/** Puts the chosen look back on a slide that was just composed again. A colour is applied afresh (its text colours are worked out against the theme in force); a gradient or picture is restored as it was. */
+function reapplyOwnLook(d: D, s: Draft<Slide>, look: OwnLook | null, mapColor: (value: string) => string = (v) => v) {
+  if (!look) return
+  if (look.background.type === 'color') { setSlideBackground(d, s.id, mapColor(look.background.value)); return }
+  s.background = look.background as Draft<Slide>['background']
+  if (look.themeOverrides) s.themeOverrides = look.themeOverrides as Draft<Slide>['themeOverrides']
+  else delete s.themeOverrides
+  s.ownLook = true
+  makeSlideReadable(d, s.id)
+}
+
 export function updateElement(d: D, slideId: string, elId: string, patch: Partial<SlideElement>) {
   const s = findSlide(d, slideId)
   const e = s && findEl(s, elId)
@@ -162,16 +182,6 @@ export function toggleLock(d: D, slideId: string, elId: string) {
 
 /** The slide's picture background URL, if it has one (kept across theme / content re-composition). */
 const photoOf = (s: Draft<Slide> | Slide): string | undefined => (s.background?.type === 'image' ? s.background.value : undefined)
-
-/**
- * A picture put behind a slide whose layout has no picture-background design (setBackgroundPicture) is the slide's own background, not part
- * of the layout: when the slide is laid out again (new words, new theme) the layout gives it a plain colour, so the picture is put back.
- */
-function keepBackgroundPicture(d: D, s: Draft<Slide>, url: string | undefined) {
-  if (!url || s.background?.type === 'image') return
-  s.background = { type: 'image', value: url }
-  makeSlideReadable(d, s.id)
-}
 
 /** The catalogue/generated picture a photo-styled slide shows (kept across theme / content re-composition). */
 export const slidePhoto = (s: Draft<Slide> | Slide) => {
@@ -310,7 +320,7 @@ export function setSlideBackground(d: D, slideId: string, value: string) {
   if (Object.keys(overrides).length) s.themeOverrides = overrides as typeof s.themeOverrides
   else delete s.themeOverrides
   makeSlideReadable(d, slideId)
-  touch(s)
+  s.ownLook = true // the slide's own look, not hand-editing: its words and layout can still be changed (see OwnLook)
 }
 
 /**
@@ -389,12 +399,13 @@ export function applyThemeObject(d: D, incoming: Theme, opts: { keepBrand?: bool
   const aspect = d.aspectRatio
   for (const s of d.slides) {
     if (!s.manual && s.content) {
-      const picture = photoOf(s)
-      const fresh = composeSlide(s.content as SlideContent, next, aspect, undefined, { backgroundImage: picture, photo: slidePhoto(s) })
+      const look = ownLookOf(s)
+      const fresh = composeSlide(s.content as SlideContent, next, aspect, undefined, { backgroundImage: photoOf(s), photo: slidePhoto(s) })
       s.elements = fresh.elements as Draft<Slide>['elements']
       s.background = fresh.background
       s.transition = fresh.transition as Draft<Slide>['transition']
-      keepBackgroundPicture(d, s, picture)
+      // a colour chosen from the old palette (the deck's own background, its primary…) follows the new palette; any other colour stays
+      reapplyOwnLook(d, s, look, (value) => { const k = colorKey(old, value); return k ? next.colors[k] : value })
     } else {
       if (s.background?.type === 'color') {
         const k = colorKey(old, s.background.value)
@@ -495,13 +506,14 @@ export function setBackgroundGradient(d: D, slideId: string, from: string, to: s
   const s = findSlide(d, slideId)
   if (!s) return
   s.background = { type: 'gradient', value: from, gradient: { from, to, angle } }
+  s.ownLook = true
   makeSlideReadable(d, slideId)
 }
 
 /** Takes the pictures off a slide: its background picture, and on a hand-made slide the photos placed on it (a designed slide's own frames are its layout). */
 export function clearPictures(d: D, slideId: string) {
   const s = findSlide(d, slideId)
-  if (!s || s.locked) return
+  if (!s || s.locked || s.writing) return
   if (s.background?.type === 'image') { if (!s.manual && s.content) clearImageBackground(d, slideId); else { setSlideBackground(d, slideId, d.theme.colors.background); delete s.themeOverrides } }
   if (s.manual || !s.content) s.elements = s.elements.filter((e) => e.type !== 'image' || e.decorative || e.locked) as typeof s.elements
 }
@@ -524,18 +536,39 @@ export interface AssistUndo {
   theme: Theme | null
   contents: Record<string, SlideContent>
   /** slides whose background the change set: how each one was (background + its own readable-colour overrides) */
-  backgrounds?: Record<string, { background: Slide['background'] | null; themeOverrides: Slide['themeOverrides'] | null; textColors: Record<string, string> }>
+  backgrounds?: Record<string, { background: Slide['background'] | null; themeOverrides: Slide['themeOverrides'] | null; textColors: Record<string, string>; ownLook?: boolean }>
   /** pictures placed on a slide as new elements (floating): their ids and whether the slide was hand-edited before, so the change can be taken back */
   placed?: Record<string, { elementIds: string[]; manual: boolean }>
   /** slides the change deleted, with where they were */
   removed?: { index: number; slide: Slide }[]
-  /** the slide order before the change, when it moved slides */
+  /** the slide order before the change, when it moved slides, and which slides were moved */
   order?: string[]
+  moved?: string[]
   /** slides whose lock the change switched: how each one was */
   locks?: Record<string, boolean>
   added: string[]
   /** what the change did, in words (also shown to the model as context) */
   summary: string[]
+}
+
+/**
+ * The slides that were MOVED between two orders of the same slides: those that are not part of the longest run that kept its relative order
+ * (moving one slide to the end moves that one slide, not all the others after it).
+ */
+export function movedSlideIds(before: string[], after: string[]): string[] {
+  const pos = new Map(after.map((id, i) => [id, i]))
+  const common = before.filter((id) => pos.has(id)) // the slides in both, in the old order
+  const seq = common.map((id) => pos.get(id)!) // where each one is now
+  // longest increasing run of new positions = the slides that kept their order relative to each other; the rest were moved
+  const tails: number[] = [], tailAt: number[] = [], prev: number[] = new Array(seq.length).fill(-1)
+  seq.forEach((v, i) => {
+    let lo = 0, hi = tails.length
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (tails[mid]! < v) lo = mid + 1; else hi = mid }
+    tails[lo] = v; tailAt[lo] = i; prev[i] = lo > 0 ? tailAt[lo - 1]! : -1
+  })
+  const stay = new Set<number>()
+  for (let i = tailAt[tails.length - 1] ?? -1; i >= 0; i = prev[i]!) stay.add(i)
+  return common.filter((_, i) => !stay.has(i))
 }
 
 /** Records what an assistant answer changed (call with the deck from BEFORE and AFTER applying it). */
@@ -551,7 +584,7 @@ export function snapshotAssist(before: Presentation, after: Presentation, themeC
   // slides whose LOOK the change touched (background, own colours, the colour of their text): enough to put each one back
   for (const s of before.slides.filter((x) => lookIds.includes(x.id))) {
     const now = after.slides.find((x) => x.id === s.id)
-    if (now && (JSON.stringify(now.background) !== JSON.stringify(s.background) || JSON.stringify(now.themeOverrides) !== JSON.stringify(s.themeOverrides) || JSON.stringify(colorsOf(now)) !== JSON.stringify(colorsOf(s)))) backgrounds[s.id] = { background: structuredClone(s.background ?? null), themeOverrides: structuredClone(s.themeOverrides ?? null), textColors: colorsOf(s) }
+    if (now && (JSON.stringify(now.background) !== JSON.stringify(s.background) || JSON.stringify(now.themeOverrides) !== JSON.stringify(s.themeOverrides) || JSON.stringify(colorsOf(now)) !== JSON.stringify(colorsOf(s)))) backgrounds[s.id] = { background: structuredClone(s.background ?? null), themeOverrides: structuredClone(s.themeOverrides ?? null), textColors: colorsOf(s), ownLook: !!s.ownLook }
   }
   const placed: NonNullable<AssistUndo['placed']> = {}
   for (const s of before.slides.filter((x) => lookIds.includes(x.id))) {
@@ -562,25 +595,24 @@ export function snapshotAssist(before: Presentation, after: Presentation, themeC
   }
   const kept = new Set(after.slides.map((s) => s.id))
   const removed = before.slides.flatMap((s, index) => (kept.has(s.id) ? [] : [{ index, slide: structuredClone(s) as Slide }]))
-  const both = (list: Presentation['slides']) => list.filter((s) => had.has(s.id) && kept.has(s.id)).map((s) => s.id).join('|')
-  const moved = both(before.slides) !== both(after.slides)
+  const moved = movedSlideIds(before.slides.map((x) => x.id), after.slides.map((x) => x.id))
   const locks: Record<string, boolean> = {}
   for (const s of before.slides) { const now = after.slides.find((x) => x.id === s.id); if (now && !!now.locked !== !!s.locked) locks[s.id] = !!s.locked }
   return {
     id, ...(Object.keys(placed).length ? { placed } : {}), theme: themeChanged ? (structuredClone(before.theme) as Theme) : null, contents, ...(Object.keys(backgrounds).length ? { backgrounds } : {}),
-    ...(removed.length ? { removed } : {}), ...(moved ? { order: before.slides.map((s) => s.id) } : {}), ...(Object.keys(locks).length ? { locks } : {}),
+    ...(removed.length ? { removed } : {}), ...(moved.length ? { order: before.slides.map((s) => s.id), moved } : {}), ...(Object.keys(locks).length ? { locks } : {}),
     added: after.slides.filter((s) => !had.has(s.id)).map((s) => s.id), summary,
   }
 }
 /** Ids of every slide the change touched (rewritten or added). */
-export const undoSlideIds = (u: AssistUndo) => [...new Set([...Object.keys(u.contents), ...Object.keys(u.backgrounds ?? {}), ...Object.keys(u.placed ?? {}), ...Object.keys(u.locks ?? {}), ...(u.removed ?? []).map((r) => r.slide.id), ...u.added])]
+export const undoSlideIds = (u: AssistUndo) => [...new Set([...Object.keys(u.contents), ...Object.keys(u.backgrounds ?? {}), ...Object.keys(u.placed ?? {}), ...Object.keys(u.locks ?? {}), ...(u.moved ?? []), ...(u.removed ?? []).map((r) => r.slide.id), ...u.added])]
 
 /** Puts back (all of, or part of) an assistant change. Slides first (added ones are removed), then the design so everything is recomposed together. */
 export function revertAssist(d: D, undo: AssistUndo, part: 'all' | 'theme' | 'slide', slideId?: string) {
   const ids = part === 'theme' ? [] : part === 'slide' ? (slideId ? [slideId] : []) : undoSlideIds(undo)
   // deleted slides come back where they were, then the old order and locks are restored
   for (const r of [...(undo.removed ?? [])].sort((a, b) => a.index - b.index)) if (ids.includes(r.slide.id) && !d.slides.some((s) => s.id === r.slide.id)) d.slides.splice(Math.min(r.index, d.slides.length), 0, structuredClone(r.slide) as Draft<Slide>)
-  if (part === 'all' && undo.order) {
+  if (undo.order && (part === 'all' || (part === 'slide' && !!slideId && !!undo.moved?.includes(slideId)))) {
     const rank = new Map(undo.order.map((id, i) => [id, i]))
     let last = -1
     const keyed = d.slides.map((s) => { const k = rank.get(s.id); last = k ?? last + 0.001; return { s, k: k ?? last } })
@@ -603,7 +635,7 @@ export function revertAssist(d: D, undo: AssistUndo, part: 'all' | 'theme' | 'sl
     const bg = undo.backgrounds?.[id]
     const slide = bg ? d.slides.find((x) => x.id === id) : undefined
     if (bg && slide && !slide.locked && slide.background?.type === 'image' && bg.background?.type !== 'image' && !slide.manual && slide.content) clearImageBackground(d, id) // a picture background re-laid the slide out: undo that first
-    if (bg && slide && !slide.locked) { if (bg.background) slide.background = structuredClone(bg.background); else delete slide.background; if (bg.themeOverrides) slide.themeOverrides = structuredClone(bg.themeOverrides); else delete slide.themeOverrides; for (const e of slide.elements) if (e.type === 'text' && bg.textColors[e.id] !== undefined) (e as TextElement).color = bg.textColors[e.id] as TextElement['color'] }
+    if (bg && slide && !slide.locked) { if (bg.background) slide.background = structuredClone(bg.background); else delete slide.background; if (bg.themeOverrides) slide.themeOverrides = structuredClone(bg.themeOverrides); else delete slide.themeOverrides; if (bg.ownLook) slide.ownLook = true; else delete slide.ownLook; for (const e of slide.elements) if (e.type === 'text' && bg.textColors[e.id] !== undefined) (e as TextElement).color = bg.textColors[e.id] as TextElement['color'] }
   }
   if ((part === 'theme' || part === 'all') && undo.theme) applyThemeObject(d, structuredClone(undo.theme))
 }
@@ -640,20 +672,22 @@ export function relayout(d: D, slideId: string, to: LayoutId) {
   if (!s?.content) return
   const converted = convertContent(s.content as SlideContent, to)
   if (!converted) return
+  const look = ownLookOf(s)
   const fresh = composeSlide(converted, d.theme as Theme, d.aspectRatio)
   s.layoutId = fresh.layoutId
   s.content = fresh.content
   s.elements = fresh.elements as Draft<Slide>['elements']
   s.background = fresh.background
   s.manual = false
+  reapplyOwnLook(d, s, look)
 }
 
 /** Apply AI-edited content (already validated server-side) through the layout engine. */
 export function replaceContent(d: D, slideId: string, content: SlideContent, allowLayoutChange = false) {
   const s = findSlide(d, slideId)
   if (!s || s.locked || (content.layout !== s.layoutId && !allowLayoutChange)) return
-  const picture = photoOf(s)
-  const fresh = composeSlide(content, d.theme as Theme, d.aspectRatio, undefined, { backgroundImage: picture, photo: slidePhoto(s) })
+  const look = ownLookOf(s)
+  const fresh = composeSlide(content, d.theme as Theme, d.aspectRatio, undefined, { backgroundImage: photoOf(s), photo: slidePhoto(s) })
   s.layoutId = fresh.layoutId
   s.content = fresh.content
   s.elements = fresh.elements as Draft<Slide>['elements']
@@ -661,7 +695,7 @@ export function replaceContent(d: D, slideId: string, content: SlideContent, all
   s.transition = fresh.transition as Draft<Slide>['transition']
   if (content.speakerNotes) s.speakerNotes = content.speakerNotes
   s.manual = false
-  keepBackgroundPicture(d, s, picture)
+  reapplyOwnLook(d, s, look)
 }
 
 // ─── pictures ────────────────────────────────────────────────────────────────
@@ -693,6 +727,7 @@ export function setBackgroundPicture(d: D, slideId: string, url: string) {
   if (!s || s.locked) return
   if (!s.manual && s.content && (IMAGE_BG_LAYOUTS as readonly string[]).includes(s.layoutId)) { setImageBackground(d, slideId, url); return }
   s.background = { type: 'image', value: url }
+  s.ownLook = true
   makeSlideReadable(d, slideId)
 }
 
@@ -711,6 +746,7 @@ export function clearImageBackground(d: D, slideId: string) {
   const fresh = composeSlide(s.content as SlideContent, d.theme as Theme, d.aspectRatio)
   s.elements = fresh.elements as Draft<Slide>['elements']
   s.background = fresh.background
+  delete s.ownLook // the person took the picture away: the layout's own background is back
 }
 
 /** Picture + text layout with the picture filled in; the URL lives in the slide CONTENT so theme changes keep it. */
@@ -720,12 +756,14 @@ export function placeImageBeside(d: D, slideId: string, img: PlacedImage) {
   const converted = convertContent(s.content as SlideContent, 'split-image-text')
   if (!converted || converted.layout !== 'split-image-text') return
   const content = { ...converted, imageUrl: img.url, imageAlt: img.alt.slice(0, 200) || converted.imageAlt, imagePrompt: img.prompt.slice(0, 300) || converted.imagePrompt }
+  const look = ownLookOf(s)
   const fresh = composeSlide(content, d.theme as Theme, d.aspectRatio)
   s.layoutId = fresh.layoutId
   s.content = fresh.content
   s.elements = fresh.elements as Draft<Slide>['elements']
   s.background = fresh.background
   s.manual = false
+  reapplyOwnLook(d, s, look)
 }
 
 /** Fill an existing picture frame (placeholder or previous picture). On composed picture+text slides the content is updated too. */

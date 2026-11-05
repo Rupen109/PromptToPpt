@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError, isGateError } from '@prompttoppt/api-client'
 import type { Presentation } from '@prompttoppt/validation'
 import { api } from '@/lib/api'
-import { mergeDocs } from './docdiff'
+import { mergeDocs } from '@prompttoppt/validation'
 import { useLive, othersOf } from './live'
 import { useDoc } from './store'
 
@@ -128,7 +128,11 @@ export function useAutosave(id: string, onAdopt: (doc: Presentation, revision: n
     if (pulling.current || inflight.current) { pullAgain.current = true; return }
     pulling.current = true
     try {
-      const latest = await api.getPresentation(id)
+      const known = useDoc.getState().revision
+      // asking "only if changed" keeps a deck being written (or edited by others) cheap: the common answer is a few bytes
+      const got = force ? await api.getPresentation(id) : await api.getPresentationIfChanged(id, known)
+      if ('unchanged' in got) return
+      const latest = got
       const st = useDoc.getState()
       if (!st.doc || (!force && latest.revision <= st.revision)) return
       const dirty = st.seq !== savedSeq.current

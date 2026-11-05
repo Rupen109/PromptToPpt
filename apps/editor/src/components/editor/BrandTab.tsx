@@ -65,7 +65,7 @@ export function BrandTab({ doc, slideId }: { doc: Presentation; slideId: string 
       <div className="rounded-xl border border-border p-4 space-y-2" aria-label="Brand kit">
         <h3 className="font-semibold">Your brand, on every slide</h3>
         <p className="text-sm text-slate-600">Save your company's colours, fonts and logo once, or read them from your website, and apply them to any presentation. Available on Pro and Gold.</p>
-        <button onClick={() => upgrade.show('Brand kits are available on Pro and Gold.')} className="bg-primary text-white rounded-lg px-4 py-2 text-sm font-semibold">See plans</button>
+        <button onClick={() => upgrade.show('Brand kits are available on Pro, Gold and Premium.')} className="bg-primary text-white rounded-lg px-4 py-2 text-sm font-semibold">See plans</button>
       </div>
     )
   }

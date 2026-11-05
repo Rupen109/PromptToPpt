@@ -1,7 +1,7 @@
 import { produce, type Draft } from 'immer'
 import { create } from 'zustand'
 import type { Presentation } from '@prompttoppt/validation'
-import { applyDiff, diffDocs } from './docdiff'
+import { applyDiff, diffDocs } from '@prompttoppt/validation'
 
 /** One undo step = the deck before and after (they share almost all their memory). The change itself is derived by id on demand, so history survives collaborators' edits. */
 interface Entry {

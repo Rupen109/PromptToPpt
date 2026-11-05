@@ -1,0 +1,2 @@
+ALTER TABLE "generation_job" ADD COLUMN "lane" integer DEFAULT 1 NOT NULL;--> statement-breakpoint
+CREATE INDEX "generation_job_lane_idx" ON "generation_job" USING btree ("lane","created_at") WHERE status not in ('completed', 'failed', 'cancelled');

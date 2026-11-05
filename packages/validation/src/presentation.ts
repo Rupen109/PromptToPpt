@@ -308,6 +308,14 @@ export const slideSchema = z.object({
   locked: z.boolean().default(false),
   /** true once the user hand-edited geometry/text: theme/layout swaps then preserve their elements instead of recomposing */
   manual: z.boolean().optional(),
+  /**
+   * true once a person (or the assistant) chose this slide's OWN look: its background (colour, gradient or picture) and the text colours that go with it.
+   * This is NOT hand-editing: the slide stays a designed slide (its words and layout can still be changed, by the assistant too), and whenever the layout is
+   * composed again (new words, new layout, new theme) the chosen look is put back on top of the fresh layout.
+   */
+  ownLook: z.boolean().optional(),
+  /** set while generation has not written this slide yet: the slide is a titled placeholder (no elements) that the editor shows as "being written" and does not let anyone edit; the writer replaces the whole slide when its text lands */
+  writing: z.object({ title: z.string().max(200) }).optional(),
   background: z.object({ type: z.enum(['color', 'gradient', 'image']), value: z.string().max(2048), gradient: z.object({ from: hex, to: hex, angle: z.number().min(0).max(360).default(135) }).optional() }).refine((b) => b.type !== 'image' || /^https?:\/\//i.test(b.value), { message: 'an image background must be an http(s) URL' }).optional(),
   transition: transitionSchema.optional(),
   themeOverrides: themeSchema.shape.colors.partial().optional(),

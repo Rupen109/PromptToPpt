@@ -18,7 +18,7 @@ describe('POST /presentations (new deck from a template)', () => {
     const got = (await json(await api(u.cookie, 'GET', `/presentations/${id}`))).data
     expect(presentationSchema.safeParse(got.document).success).toBe(true)
     expect(got.document.theme.templateId).toBe(free.id)
-    expect(got.document.slides).toHaveLength(SKELETONS[free.category].length)
+    expect(got.document.slides).toHaveLength(Math.min(SKELETONS[free.category].length, 10)) // Starter holds 10 slides: a longer template story is cut to fit, not refused
     expect(got.document.title).toBe(free.name)
     expect(got.revision).toBe(1)
     const list = (await json(await api(u.cookie, 'GET', '/presentations'))).data
@@ -58,7 +58,7 @@ describe('POST /presentations (new deck from a template)', () => {
     const { id } = (await json(await api(pro.cookie, 'POST', '/presentations', { templateId: premium.id }))).data
     await setPlan(pro.id, 'starter') // downgrade: the deck stays editable
     const got = (await json(await api(pro.cookie, 'GET', `/presentations/${id}`))).data
-    const keep = await api(pro.cookie, 'PUT', `/presentations/${id}`, { baseRevision: got.revision, document: { ...got.document, title: 'renamed' } })
+    const keep = await api(pro.cookie, 'PUT', `/presentations/${id}`, { baseRevision: got.revision, document: { ...got.document, title: 'renamed', slides: got.document.slides.slice(0, 10) } }) // (Starter holds 10 slides: the premium look is what this test is about)
     expect(keep.status).toBe(200)
 
     const u = await signUp('tp')

@@ -2,16 +2,16 @@ import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 import { db } from '../db/index.ts'
 import { creditBalance } from '../db/schema.ts'
-import { api, json, makeDeck, rid, signUp } from '../test-utils.ts'
+import { api, json, makeDeck, rid, setPlan, signUp } from '../test-utils.ts'
 
-/** POST /ai-assist on the v2 pipeline (the default), with the mock model (src/ai/mock-assistant.ts). Starter tier: one unit = 2 credits. */
+/** POST /ai-assist on the v2 pipeline (the default), with the mock model (src/ai/mock-assistant.ts). Pro plan, Gemini Flash credit class: one unit = 2 credits. */
 const balance = async (id: string) => (await db.select().from(creditBalance).where(eq(creditBalance.userId, id)))[0]!.balance
 const ask = async (cookie: string, deckId: string, instruction: string, extra: object = {}) => {
   const res = await api(cookie, 'POST', `/presentations/${deckId}/ai-assist`, { instruction, requestId: `req-${rid()}-${rid()}`, ...extra })
   return { status: res.status, body: await json(res) }
 }
 async function setup(tag: string, slides = 4) {
-  const u = await signUp(tag)
+  const u = await signUp(tag); await setPlan(u.id, 'pro') // AI edits are a paid feature (Starter has none)
   const { id, doc } = await makeDeck(u.id, slides)
   await api(u.cookie, 'GET', '/me/entitlements')
   return { u, id, doc, start: await balance(u.id) }
@@ -86,11 +86,17 @@ describe('POST /ai-assist (v2): understand → resolve → do → check', () => 
     expect(await balance(u.id)).toBe(start)
   })
 
-  it('premium templates stay gated by plan; unsupported parts are said plainly', async () => {
+  it('Starter has no AI assistant (403, nothing charged); Pro applies premium templates; unsupported parts are said plainly', async () => {
+    const free = await signUp('v2i0')
+    const { id: freeDeck } = await makeDeck(free.id, 4)
+    await api(free.cookie, 'GET', '/me/entitlements')
+    const denied = await ask(free.cookie, freeDeck, 'animate every slide')
+    expect(denied.status).toBe(403)
+    expect(denied.body.error.code).toBe('UPGRADE_REQUIRED')
+    expect(await balance(free.id)).toBe(100)
     const { u, id } = await setup('v2i')
     const t = await ask(u.cookie, id, 'use a premium template')
-    expect(t.body.data.theme).toBeNull()
-    expect(t.body.data.notes.join(' ')).toMatch(/Pro template/)
+    expect(t.body.data.theme).not.toBeNull()
     const ex = await ask(u.cookie, id, 'export it to pdf')
     expect(ex.body.data.notes).toContain('I cannot export.')
   })

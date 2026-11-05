@@ -24,6 +24,7 @@ import { useLive, useLiveSync } from '@/editor/live'
 import { useDoc } from '@/editor/store'
 import { useUi } from '@/editor/ui'
 import { api } from '@/lib/api'
+import { useDeckBuild } from '@/lib/useDeckBuild'
 import { PRESENT_LOCKED, useEntitlements } from '@/lib/entitlements'
 import { useFlag } from '@/lib/flags'
 import { download, exportClient, type ClientFormat } from '@/lib/export'
@@ -98,13 +99,17 @@ export function EditorPage() {
   const autosave = useAutosave(id, (d, r) => useDoc.getState().load(d, r))
   // live editing: presence + "someone saved" nudges. Works for the owner too, whenever anyone else is in the deck.
   useLiveSync(id, load === 'ready', autosave.pull)
+  // a deck that is still being written: its slides arrive one after another; this follows the job until the last one lands
+  const writing = doc ? doc.slides.filter((s) => s.writing).length : 0
+  useDeckBuild(id, load === 'ready' ? writing : 0, autosave.pull, flash)
   const liveEnded = useLive((s) => s.ended)
-  // comments: read when the deck opens, again when the tab regains focus and every minute (the live channel makes it instant while it is connected)
+  // comments: read when the deck opens and when the tab regains focus. While the live channel is connected it announces every change instantly,
+  // so the once-a-minute fallback read only runs while that channel is down
   useEffect(() => {
     if (load !== 'ready') return
     useComments.getState().start(id)
     const again = () => useComments.getState().refresh()
-    const iv = setInterval(again, 60_000); window.addEventListener('focus', again)
+    const iv = setInterval(() => { if (!useLive.getState().connected) again() }, 60_000); window.addEventListener('focus', again)
     return () => { clearInterval(iv); window.removeEventListener('focus', again); useComments.getState().stop() }
   }, [id, load])
   const cThreads = useComments((s) => s.threads)
@@ -204,7 +209,7 @@ export function EditorPage() {
   ]
 
   // Present mode belongs to the paid plans, like export (the Starter plan has no export formats)
-  const canPresent = !ent || ent.features.exportFormats.length > 0
+  const canPresent = !ent || ent.features.livePreview
 
   async function doExport(format: ExportFormat) {
     setExportMenu(false)
@@ -251,6 +256,9 @@ export function EditorPage() {
           </div>}
         </div>
       </header>
+      {writing > 0 && (
+        <div role="status" className="px-4 py-2 text-sm bg-primary/10 text-primary font-medium flex items-center gap-2"><Sparkles aria-hidden size={16} className="animate-pulse" />Writing your presentation: {doc.slides.length - writing} of {doc.slides.length} slides ready. Finished slides can be edited now.</div>
+      )}
       <TopToolbar doc={doc} slide={slide} presentationId={id} requireAdvanced={requireAdvanced} onHistory={() => setVersions(true)} flash={flash} />
 
       {(autosave.status === 'conflict' || autosave.status === 'error' || autosave.status === 'offline') && autosave.message && (

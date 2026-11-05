@@ -4,48 +4,70 @@ import type { PlanFeatures } from '@prompttoppt/validation'
 import { seedCatalog } from '../ai/catalog-seed.ts'
 
 const base: PlanFeatures = {
-  watermark: true, exportFormats: [], aiEdits: true, advancedEditor: false, premiumTemplates: false, advancedSharing: false,
+  watermark: true, exportFormats: [], aiEdits: false, advancedEditor: true, premiumTemplates: false, advancedSharing: false,
   modelTiers: ['starter'], brandKit: false, knowledgeBase: false, support: 'community', speed: 'standard', projects: false, askDeck: false, webData: 'none',
+  livePreview: false, modelChoice: false, fixedModels: [],
 }
 const ALL_EXPORTS = ['pptx', 'pdf', 'png', 'jpg', 'html'] as const
+/** the Gemini models the plans write decks with, as names without the provider (the first one the deployment serves is used) */
+const STARTER_MODELS = ['gemini-3.6-flash', 'gemini-3.1-flash-lite'] // 2.5 Flash is closed to new Google accounts
+const PAID_MODELS = ['gemini-3.6-flash', 'gemini-3.8-flash']
 
 /**
- * Plan catalogue v2 (2026-10-02). Inserted only if missing — owner edits survive restarts; existing databases get these
- * values from migration 0011. Credit amounts and image caps come from docs/PRICING_MODEL.md (margin analysis), not guesswork.
- * Starter can generate AND use AI edits on its credits, but cannot export and keeps the watermark.
+ * Plan catalogue v5 (2026-11-03): the owner's spec, docs/PLANS_AND_FEATURES_V5.md. Inserted only if missing: owner edits survive restarts, and an existing database gets
+ * these values from migration 0037 (seeds never overwrite).
+ *  · Starter is free and not shown on the pricing page: it can build a deck and watch it being written, and build or edit one in the editor, but cannot present or share it
+ *    ("live preview"), has no AI edits, and cannot export (asking shows the upgrade prompt); the watermark stays.
+ *  · Pro, Gold and Premium are paid. Pro and Gold write with fixed Gemini models and are never asked which model; Premium chooses from the OpenRouter models.
+ *  · Google Slides export and Clone Slide (image → editable slide, counted per month) are decided but deferred: not in the data until they exist.
+ *  · `maxSlides` for Premium is the system's per-deck ceiling (60): credits are what really limit it.
  */
 export const PLAN_SEED = [
-  { id: 'starter', name: 'Starter', sortOrder: 0, monthlyCredits: 100, maxSlides: 20, maxPresentationsPerMonth: null, maxImagesPerPresentation: 3, maxImagesPerMonth: 6, features: base },
+  { id: 'starter', name: 'Starter', sortOrder: 0, monthlyCredits: 100, maxSlides: 10, maxPresentationsPerMonth: 5, maxImagesPerPresentation: 0, maxImagesPerMonth: 0, features: { ...base, fixedModels: STARTER_MODELS } },
   {
-    id: 'pro', name: 'Pro', sortOrder: 1, monthlyCredits: 3000, maxSlides: 40, maxPresentationsPerMonth: 50, maxImagesPerPresentation: 10, maxImagesPerMonth: 60,
-    features: { ...base, watermark: false, exportFormats: [...ALL_EXPORTS], advancedEditor: true, premiumTemplates: true, advancedSharing: true, modelTiers: ['starter', 'premium'], support: 'whatsapp', speed: 'fast', projects: true, askDeck: true, webData: 'wikipedia' },
+    id: 'pro', name: 'Pro', sortOrder: 1, monthlyCredits: 900, maxSlides: 15, maxPresentationsPerMonth: 15, maxImagesPerPresentation: 10, maxImagesPerMonth: 60,
+    features: { ...base, watermark: false, exportFormats: ['pdf', 'pptx', 'jpg'], aiEdits: true, premiumTemplates: true, advancedSharing: true, support: 'whatsapp', speed: 'fast', projects: true, askDeck: true, webData: 'wikipedia', livePreview: true, fixedModels: PAID_MODELS },
   },
   {
-    id: 'gold', name: 'Gold', sortOrder: 2, monthlyCredits: 10000, maxSlides: 60, maxPresentationsPerMonth: null, maxImagesPerPresentation: 20, maxImagesPerMonth: 100,
-    features: { ...base, watermark: false, exportFormats: [...ALL_EXPORTS], advancedEditor: true, premiumTemplates: true, advancedSharing: true, modelTiers: ['starter', 'premium', 'frontier'], brandKit: true, knowledgeBase: true, support: 'whatsapp', speed: 'ultra', projects: true, askDeck: true, webData: 'web' },
+    id: 'gold', name: 'Gold', sortOrder: 2, monthlyCredits: 2000, maxSlides: 25, maxPresentationsPerMonth: 50, maxImagesPerPresentation: 20, maxImagesPerMonth: 100,
+    features: { ...base, watermark: false, exportFormats: [...ALL_EXPORTS], aiEdits: true, premiumTemplates: true, advancedSharing: true, brandKit: true, knowledgeBase: true, support: 'whatsapp', speed: 'ultra', projects: true, askDeck: true, webData: 'web', livePreview: true, fixedModels: PAID_MODELS },
+  },
+  {
+    id: 'premium', name: 'Premium', sortOrder: 3, monthlyCredits: 3700, maxSlides: 60, maxPresentationsPerMonth: 50, maxImagesPerPresentation: 20, maxImagesPerMonth: 100,
+    features: { ...base, watermark: false, exportFormats: [...ALL_EXPORTS], aiEdits: true, premiumTemplates: true, advancedSharing: true, modelTiers: ['starter', 'premium', 'frontier'], brandKit: true, knowledgeBase: true, support: 'whatsapp', speed: 'ultra', projects: true, askDeck: true, webData: 'web', livePreview: true, modelChoice: true },
   },
 ] as const
 
-/** Minor units. Monthly as stated by the owner (India ₹499/₹1,200 · elsewhere $15/$30); annual = monthly × 12 × 0.80. */
+/**
+ * Minor units. Monthly India as stated by the owner (₹300 / ₹650 / ₹1,200); annual = monthly × 12 × 0.80 (two months free).
+ * The US-dollar prices ($10 / $19 / $35) and all annual prices are PROVISIONAL (not yet decided by the owner). Create the matching Razorpay plans before going live.
+ */
 export const PRICE_SEED = [
   { planId: 'starter', currency: 'USD', interval: 'month', amountMinor: 0 },
   { planId: 'starter', currency: 'USD', interval: 'year', amountMinor: 0 },
   { planId: 'starter', currency: 'INR', interval: 'month', amountMinor: 0 },
   { planId: 'starter', currency: 'INR', interval: 'year', amountMinor: 0 },
-  { planId: 'pro', currency: 'USD', interval: 'month', amountMinor: 1500 },
-  { planId: 'pro', currency: 'USD', interval: 'year', amountMinor: 14400 },
-  { planId: 'pro', currency: 'INR', interval: 'month', amountMinor: 49900 },
-  { planId: 'pro', currency: 'INR', interval: 'year', amountMinor: 479000 },
-  { planId: 'gold', currency: 'USD', interval: 'month', amountMinor: 3000 },
-  { planId: 'gold', currency: 'USD', interval: 'year', amountMinor: 28800 },
-  { planId: 'gold', currency: 'INR', interval: 'month', amountMinor: 120000 },
-  { planId: 'gold', currency: 'INR', interval: 'year', amountMinor: 1152000 },
+  { planId: 'pro', currency: 'USD', interval: 'month', amountMinor: 1000 },
+  { planId: 'pro', currency: 'USD', interval: 'year', amountMinor: 9600 },
+  { planId: 'pro', currency: 'INR', interval: 'month', amountMinor: 30000 },
+  { planId: 'pro', currency: 'INR', interval: 'year', amountMinor: 288000 },
+  { planId: 'gold', currency: 'USD', interval: 'month', amountMinor: 1900 },
+  { planId: 'gold', currency: 'USD', interval: 'year', amountMinor: 18240 },
+  { planId: 'gold', currency: 'INR', interval: 'month', amountMinor: 65000 },
+  { planId: 'gold', currency: 'INR', interval: 'year', amountMinor: 624000 },
+  { planId: 'premium', currency: 'USD', interval: 'month', amountMinor: 3500 },
+  { planId: 'premium', currency: 'USD', interval: 'year', amountMinor: 33600 },
+  { planId: 'premium', currency: 'INR', interval: 'month', amountMinor: 120000 },
+  { planId: 'premium', currency: 'INR', interval: 'year', amountMinor: 1152000 },
 ] as const
 
-/** Credits per action × model tier. Chosen against worst-case India margins — see docs/PRICING_MODEL.md. */
+/**
+ * Credits per action × model tier. The tier is the model's CREDIT CLASS (docs/PLANS_AND_FEATURES_V5.md, section 5): starter = the Gemini Flash models (2 a slide), premium = Haiku 4.5 and
+ * GLM-5.2 (3 a slide), frontier = Sonnet 4.6 and Opus (12 a slide: Sonnet is slightly over its cost, Opus slightly under; both inside the margin).
+ */
 export const CREDIT_COST_SEED = [
   { action: 'generate_slide', tier: 'starter', credits: 2 },
-  { action: 'generate_slide', tier: 'premium', credits: 5 },
+  { action: 'generate_slide', tier: 'premium', credits: 3 },
   { action: 'generate_slide', tier: 'frontier', credits: 12 },
   { action: 'ai_edit', tier: 'starter', credits: 2 },
   { action: 'ai_edit', tier: 'premium', credits: 4 },

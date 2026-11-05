@@ -1,13 +1,16 @@
 import type { Context, MiddlewareHandler } from 'hono'
 import { env } from '../env.ts'
+import { viewerIpFromHeaders } from '../lib/country.ts'
 import { getConnInfo } from '@hono/node-server/conninfo'
 
 /**
- * Client IP. X-Forwarded-For is client-controlled for every hop except the ones our own
- * infrastructure appended, so only trust the entry TRUSTED_PROXY_HOPS from the right
- * (0 = no proxy → use the socket address; ALB only = 1; CloudFront + ALB = 2).
+ * Client IP. Behind our CloudFront edge it is the edge's `CloudFront-Viewer-Address` (trusted only with the edge secret).
+ * Otherwise X-Forwarded-For is client-controlled for every hop except the ones our own infrastructure appended, so only trust the
+ * entry TRUSTED_PROXY_HOPS from the right (0 = no proxy → use the socket address; one reverse proxy = 1).
  */
 export function clientIp(c: Context): string {
+  const viewer = viewerIpFromHeaders(c.req.raw.headers)
+  if (viewer) return viewer
   if (env.TRUSTED_PROXY_HOPS > 0) {
     const parts = (c.req.header('x-forwarded-for') ?? '').split(',').map((p) => p.trim()).filter(Boolean)
     const ip = parts[parts.length - env.TRUSTED_PROXY_HOPS]

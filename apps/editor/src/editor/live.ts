@@ -32,7 +32,6 @@ export const editorOf = (elementId: string) => { const { peers, you } = useLive.
 export const pointer: { current: { x: number; y: number } | null; poke: () => void } = { current: null, poke: () => {} }
 
 const THROTTLE_MS = 120
-const KEEPALIVE_MS = 15_000
 
 export function useLiveSync(deckId: string, enabled: boolean, pull: () => void) {
   useEffect(() => {
@@ -43,7 +42,6 @@ export function useLiveSync(deckId: string, enabled: boolean, pull: () => void) 
     let timer: ReturnType<typeof setTimeout> | null = null
     let last = 0
     let lastSent = ''
-    let lastAt = 0
     let stopped = false
 
     const upsert = (p: LivePeer) => useLive.setState((s) => ({ peers: { ...s.peers, [peerKey(p)]: p } }))
@@ -76,9 +74,9 @@ export function useLiveSync(deckId: string, enabled: boolean, pull: () => void) 
       const body = snapshot()
       const base = JSON.stringify({ ...body, cursor: null })
       const sig = alone ? base : base + JSON.stringify(body.cursor) // pointer moves are only worth sending when somebody is there to see them
-      const now = Date.now()
-      if (!force && sig === lastSent && now - lastAt < KEEPALIVE_MS) return
-      lastSent = sig; lastAt = now
+      // only a change is sent: while the stream is open the server keeps this tab's presence fresh by itself (no keepalive requests)
+      if (!force && sig === lastSent) return
+      lastSent = sig
       void api.sendPresence(deckId, body).catch(() => {})
     }
     const schedule = () => {
@@ -87,10 +85,9 @@ export function useLiveSync(deckId: string, enabled: boolean, pull: () => void) 
     }
     pointer.poke = schedule
     const offUi = useUi.subscribe(schedule)
-    const ka = setInterval(() => send(true), KEEPALIVE_MS)
     return () => {
       stopped = true
-      es.close(); offUi(); clearInterval(ka)
+      es.close(); offUi()
       if (timer) clearTimeout(timer)
       pointer.poke = () => {}; pointer.current = null
       useLive.setState({ connected: false, peers: {}, you: null })

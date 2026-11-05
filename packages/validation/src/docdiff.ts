@@ -1,4 +1,4 @@
-import type { Presentation, Slide, SlideElement } from '@prompttoppt/validation'
+import type { Presentation, Slide, SlideElement } from './presentation'
 
 /**
  * Id-addressed differences between two versions of a deck. Undo history and live merging are built on this instead of index-based patches:

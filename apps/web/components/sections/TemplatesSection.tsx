@@ -7,7 +7,8 @@ import { CATEGORIES, DESIGNS, SKELETONS, type CategoryId } from '@prompttoppt/th
 import { TemplateThumb } from '@/components/templates/TemplateThumb'
 import { Button, type ButtonVariant } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
-import { Badge, Section } from './ui'
+import { CardCarousel } from '@/components/ui/Carousel'
+import { Section, SectionHeader } from './ui'
 
 const pick = (cat: CategoryId, ...idx: number[]) => idx.map((i) => DESIGNS.filter((d) => d.category === cat)[i]!.id)
 /** Each filter shows real designs from the catalogue; every card opens that template's own page. */
@@ -28,20 +29,21 @@ export function TemplatesSection() {
   const ids = FILTERS.find((f) => f.id === filter)!.ids
   return (
     <Section id="templates" bg="bg-[#f3f4f9]">
-      <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-8">
-        <div className="max-w-[656px] flex flex-col gap-3 items-start">
-          <Badge>Pre-engineered blueprints</Badge>
-          <h2 className="font-heading font-extrabold text-3xl md:text-4xl leading-[1.1] text-foreground">Curated Decks Crafted for Every Kind of Presentation</h2>
-          <p className="text-base leading-6 text-[#475569]">{DESIGNS.length} animated designs across 10 categories — each one a ready-made story you can open in the editor and make yours.</p>
-        </div>
-        <div className="flex flex-wrap gap-2 lg:max-w-[476px] lg:justify-end" role="group" aria-label="Template filters">
-          {FILTERS.map((f) => (
-            <Button key={f.id} size="sm" variant={filter === f.id ? 'ink' : 'white'} aria-pressed={filter === f.id} onClick={() => setFilter(f.id)}>{f.label}</Button>
-          ))}
-        </div>
-      </div>
+      <SectionHeader
+        align="left" max="max-w-[600px]"
+        title="Curated Decks Crafted for Every Kind of Presentation"
+        subtitle={`${DESIGNS.length} animated designs across 10 categories — each one a ready-made story you can open in the editor and make yours.`}
+        aside={
+          <div className="flex flex-wrap gap-2 xl:justify-end" role="group" aria-label="Template filters">
+            {FILTERS.map((f) => (
+              <Button key={f.id} size="sm" variant={filter === f.id ? 'ink' : 'white'} aria-pressed={filter === f.id} onClick={() => setFilter(f.id)}>{f.label}</Button>
+            ))}
+          </div>
+        }
+      />
 
-      <div className="mt-16 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+      {/* keyed by the filter, so a new filter starts the carousel back at its first card */}
+      <CardCarousel key={filter} from="lg" label="Template designs" className="mt-4 lg:mt-16" gridClassName="lg:grid lg:grid-cols-3 lg:gap-8 lg:p-0">
         {ids.map((id, i) => {
           const d = DESIGNS.find((x) => x.id === id)!
           const cat = CATEGORIES.find((c) => c.id === d.category)!
@@ -63,8 +65,8 @@ export function TemplatesSection() {
             </Card>
           )
         })}
-      </div>
-      <p className="mt-10 text-center"><Link href="/templates" className="font-heading font-extrabold text-sm text-foreground underline underline-offset-4 decoration-2 hover:text-primary inline-flex items-center gap-1.5">Browse all {DESIGNS.length} templates<ArrowRight aria-hidden size={14} /></Link></p>
+      </CardCarousel>
+      <p className="mt-6 lg:mt-10 text-center"><Link href="/templates" className="font-heading font-extrabold text-sm text-foreground underline underline-offset-4 decoration-2 hover:text-primary inline-flex items-center gap-1.5">Browse all {DESIGNS.length} templates<ArrowRight aria-hidden size={14} /></Link></p>
     </Section>
   )
 }

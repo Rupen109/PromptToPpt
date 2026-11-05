@@ -24,7 +24,7 @@ describe('test payments: the checkout', () => {
     const r = await checkout(u.cookie)
     expect(r.status).toBe(200)
     const d = (await json(r)).data
-    expect(d).toMatchObject({ simulated: true, testMode: true, currency: 'INR', amountMinor: 49900, keyId: 'rzp_test_simulator' })
+    expect(d).toMatchObject({ simulated: true, testMode: true, currency: 'INR', amountMinor: 30000, keyId: 'rzp_test_simulator' })
     expect(d.subscriptionId).toMatch(/^sub_sim_/)
   })
 
@@ -40,7 +40,7 @@ describe('test payments: the checkout', () => {
     const [row] = await db.select().from(subscription).where(eq(subscription.userId, u.id))
     expect(row).toMatchObject({ planId: 'pro', status: 'active', provider: 'razorpay' })
     const [p] = await db.select().from(payment).where(eq(payment.userId, u.id))
-    expect(p).toMatchObject({ status: 'captured', amountMinor: 49900, currency: 'INR' })
+    expect(p).toMatchObject({ status: 'captured', amountMinor: 30000, currency: 'INR' })
     const to = await emailOf(u.id)
     expect(mailOutbox.some((m) => m.to === to && /payment|receipt/i.test(m.subject))).toBe(true)
   })

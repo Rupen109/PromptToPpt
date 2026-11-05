@@ -22,7 +22,7 @@ const out = (o: Partial<AiAssistOutput>): AiAssistOutput => ({ reply: 'ok', oper
 describe('POST /presentations/:id/ai-assist (v1 fallback)', () => {
   onV1()
   it('a request about one slide that names none gets a free "which slide?" question — no model call, no charge, nothing changed', async () => {
-    const u = await signUp('as')
+    const u = await signUp('as'); await setPlan(u.id, 'pro')
     const { id } = await makeDeck(u.id)
     await api(u.cookie, 'GET', '/me/entitlements')
     const before = await balance(u.id)
@@ -39,7 +39,7 @@ describe('POST /presentations/:id/ai-assist (v1 fallback)', () => {
   })
 
   it('"add 2 more bullet points" answered by only rewording makes the server ask the model once more, and the points are added', async () => {
-    const u = await signUp('asr')
+    const u = await signUp('asr'); await setPlan(u.id, 'pro')
     const { id } = await makeDeck(u.id)
     await api(u.cookie, 'GET', '/me/entitlements')
     const doc = (await json(await api(u.cookie, 'GET', `/presentations/${id}`))).data.document
@@ -52,7 +52,7 @@ describe('POST /presentations/:id/ai-assist (v1 fallback)', () => {
   })
 
   it('if the model never adds them, the person is told plainly (nothing is faked)', async () => {
-    const u = await signUp('asq')
+    const u = await signUp('asq'); await setPlan(u.id, 'pro')
     const { id } = await makeDeck(u.id)
     await api(u.cookie, 'GET', '/me/entitlements')
     const doc = (await json(await api(u.cookie, 'GET', `/presentations/${id}`))).data.document
@@ -61,7 +61,7 @@ describe('POST /presentations/:id/ai-assist (v1 fallback)', () => {
   })
 
   it('small talk ("hey", "thanks") is answered for free with what the assistant can do — never a change, never the last action again', async () => {
-    const u = await signUp('ast')
+    const u = await signUp('ast'); await setPlan(u.id, 'pro')
     const { id } = await makeDeck(u.id)
     await api(u.cookie, 'GET', '/me/entitlements')
     const before = await balance(u.id)
@@ -75,7 +75,7 @@ describe('POST /presentations/:id/ai-assist (v1 fallback)', () => {
   })
 
   it('a message that names ONE slide costs one edit (2 credits on the starter tier); a deck-wide one costs two (4)', async () => {
-    const u = await signUp('asp')
+    const u = await signUp('asp'); await setPlan(u.id, 'pro')
     const { id } = await makeDeck(u.id)
     await api(u.cookie, 'GET', '/me/entitlements')
     const slideId = (await json(await api(u.cookie, 'GET', `/presentations/${id}`))).data.document.slides[1].id
@@ -90,7 +90,7 @@ describe('POST /presentations/:id/ai-assist (v1 fallback)', () => {
   })
 
   it('animates the deck: one charge (2× an edit on the starter tier), a valid full theme comes back', async () => {
-    const u = await signUp('as')
+    const u = await signUp('as'); await setPlan(u.id, 'pro')
     const { id } = await makeDeck(u.id)
     const before = await (async () => { await api(u.cookie, 'GET', '/me/entitlements'); return balance(u.id) })()
     const res = await ask(u.cookie, id, 'please animate every slide')
@@ -104,7 +104,7 @@ describe('POST /presentations/:id/ai-assist (v1 fallback)', () => {
   })
 
   it('"change the colours" yields an accessible generated palette (text reads on background and surface)', async () => {
-    const u = await signUp('as')
+    const u = await signUp('as'); await setPlan(u.id, 'pro')
     const { id } = await makeDeck(u.id)
     const body = await json(await ask(u.cookie, id, "I don't like the colours"))
     const c = body.data.theme.colors
@@ -115,7 +115,7 @@ describe('POST /presentations/:id/ai-assist (v1 fallback)', () => {
   })
 
   it('a picture request becomes a PROPOSAL: nothing is generated or spent on images until the user confirms', async () => {
-    const u = await signUp('as')
+    const u = await signUp('as'); await setPlan(u.id, 'pro')
     const deck = await makeDeck(u.id)
     await api(u.cookie, 'GET', '/me/entitlements')
     const before = await balance(u.id)
@@ -130,7 +130,7 @@ describe('POST /presentations/:id/ai-assist (v1 fallback)', () => {
   })
 
   it('unsupported requests are explained and cost nothing', async () => {
-    const u = await signUp('as')
+    const u = await signUp('as'); await setPlan(u.id, 'pro')
     const { id } = await makeDeck(u.id)
     await api(u.cookie, 'GET', '/me/entitlements')
     const before = await balance(u.id)
@@ -142,7 +142,7 @@ describe('POST /presentations/:id/ai-assist (v1 fallback)', () => {
   })
 
   it('mixed request: does what it can, proposes the picture, charges once', async () => {
-    const u = await signUp('as')
+    const u = await signUp('as'); await setPlan(u.id, 'pro')
     const { id } = await makeDeck(u.id)
     const body = await json(await ask(u.cookie, id, 'change colours, animate everything and add a photo'))
     expect(body.data.applied).toHaveLength(3)
@@ -152,7 +152,7 @@ describe('POST /presentations/:id/ai-assist (v1 fallback)', () => {
   })
 
   it('a model failure is refunded', async () => {
-    const u = await signUp('as')
+    const u = await signUp('as'); await setPlan(u.id, 'pro')
     const { id } = await makeDeck(u.id)
     await api(u.cookie, 'GET', '/me/entitlements')
     const before = await balance(u.id)
@@ -162,7 +162,7 @@ describe('POST /presentations/:id/ai-assist (v1 fallback)', () => {
   })
 
   it('retrying the same requestId is charged once', async () => {
-    const u = await signUp('as')
+    const u = await signUp('as'); await setPlan(u.id, 'pro')
     const { id } = await makeDeck(u.id)
     await api(u.cookie, 'GET', '/me/entitlements')
     const before = await balance(u.id)
@@ -172,20 +172,24 @@ describe('POST /presentations/:id/ai-assist (v1 fallback)', () => {
     expect(await balance(u.id)).toBe(before - 4)
   })
 
-  it('premium templates are gated by plan; the gate holds even when the model asks for one', async () => {
-    const u = await signUp('as')
+  it('Starter has no AI assistant at all (403, nothing charged); Pro has it, with every template (the premium-template gate itself is checked in compileAssist below)', async () => {
+    const free = await signUp('as')
+    const { id: freeDeck } = await makeDeck(free.id)
+    await api(free.cookie, 'GET', '/me/entitlements')
+    const before = await balance(free.id)
+    const denied = await ask(free.cookie, freeDeck, 'animate every slide')
+    expect(denied.status).toBe(403)
+    expect((await json(denied)).error.code).toBe('UPGRADE_REQUIRED')
+    expect(await balance(free.id)).toBe(before)
+    const u = await signUp('as'); await setPlan(u.id, 'pro')
     const { id } = await makeDeck(u.id)
-    const denied = await json(await ask(u.cookie, id, 'use a premium template'))
-    expect(denied.data.theme).toBeNull()
-    expect(denied.data.notes[0]).toMatch(/Pro template/)
-    await setPlan(u.id, 'pro')
     const ok = await json(await ask(u.cookie, id, 'use a premium template'))
     expect(ok.data.theme).toMatchObject({ templateId: DESIGNS.find((d) => d.premium)!.id })
   })
 
   it("you can't use someone else's deck, and slide scope needs a real unlocked slide", async () => {
-    const owner = await signUp('as')
-    const other = await signUp('as')
+    const owner = await signUp('as'); await setPlan(owner.id, 'pro')
+    const other = await signUp('as'); await setPlan(other.id, 'pro')
     const { id, doc } = await makeDeck(owner.id)
     expect((await ask(other.cookie, id, 'animate')).status).toBe(404)
     expect((await ask(owner.cookie, id, 'animate', { scope: 'slide', slideId: 'nope' })).status).toBe(404)
@@ -200,7 +204,7 @@ describe('linked web pages in the assistant (v1 fallback)', () => {
   const PAGE_TEXT = 'Tata Aeris launch — a new urban EV with 450 km range. '.repeat(6)
   it('reads a pasted link server-side, uses it for the edit, and charges one extra unit per page read', async () => {
     const read = vi.spyOn(pageReader, 'read').mockResolvedValue({ title: 'Tata Aeris launch', parts: [{ locator: null, text: PAGE_TEXT }] })
-    const u = await signUp('as')
+    const u = await signUp('as'); await setPlan(u.id, 'pro')
     const { id, doc } = await makeDeck(u.id)
     await api(u.cookie, 'GET', '/me/entitlements')
     const before = await balance(u.id)
@@ -216,7 +220,7 @@ describe('linked web pages in the assistant (v1 fallback)', () => {
 
   it("an unreadable page is reported (never guessed at) and costs nothing when nothing else changed", async () => {
     const read = vi.spyOn(pageReader, 'read').mockRejectedValue(new Error('Could not load that page (HTTP 403).'))
-    const u = await signUp('as')
+    const u = await signUp('as'); await setPlan(u.id, 'pro')
     const { id } = await makeDeck(u.id)
     await api(u.cookie, 'GET', '/me/entitlements')
     const before = await balance(u.id)
@@ -229,7 +233,7 @@ describe('linked web pages in the assistant (v1 fallback)', () => {
   })
 
   it('private / internal addresses are refused by the same SSRF guard as deck sources (no stub: real fetcher)', async () => {
-    const u = await signUp('as')
+    const u = await signUp('as'); await setPlan(u.id, 'pro')
     const { id } = await makeDeck(u.id)
     const body = await json(await ask(u.cookie, id, 'update the content from http://127.0.0.1:5432/secret and http://169.254.169.254/latest/meta-data'))
     expect(body.data.notes.filter((n: string) => n.startsWith("Couldn't read"))).toHaveLength(2)

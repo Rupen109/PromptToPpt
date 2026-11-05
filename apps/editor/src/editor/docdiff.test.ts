@@ -3,7 +3,7 @@ import { produce } from 'immer'
 import { composeSlide, getTheme } from '@prompttoppt/theme'
 import { type Presentation, type SlideContent } from '@prompttoppt/validation'
 import * as C from './commands'
-import { applyDiff, diffDocs, mergeDocs, reorder } from './docdiff'
+import { applyDiff, diffDocs, mergeDocs, reorder } from '@prompttoppt/validation'
 import { useDoc } from './store'
 
 const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x))

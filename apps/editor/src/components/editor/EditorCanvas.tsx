@@ -141,7 +141,7 @@ export function EditorCanvas({ slide, theme, aspect, watermark, requireAdvanced 
   const [resize, setResize] = useState<{ id: string; box: C.Box } | null>(null)
   const gesture = useRef<{ kind: 'move' | 'resize'; sx: number; sy: number; ids: string[]; base: Record<string, C.Box>; handle?: C.Handle; moved: boolean; blocked: boolean } | null>(null)
 
-  const locked = slide.locked
+  const locked = slide.locked || !!slide.writing // a slide still being written cannot be edited until its text lands
   const shown = useMemo<SlideElement[]>(
     () => slide.elements.map((e) => (drag?.ids.includes(e.id) ? { ...e, x: e.x + drag.dx, y: e.y + drag.dy } : resize?.id === e.id ? { ...e, ...resize.box } : e)),
     [slide.elements, drag, resize],

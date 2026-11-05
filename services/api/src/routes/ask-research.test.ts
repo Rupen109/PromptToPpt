@@ -33,9 +33,9 @@ describe('Chat with your presentation (askDeck)', () => {
     const r = await json(await api(u.cookie, 'POST', `/presentations/${id}/ask`, payload))
     expect(r.data.answer).toContain('Quarterly Review')
     expect(r.data.slides).toEqual([{ n: 1, id: doc.slides[0]!.id }])
-    expect(r.data.creditsCharged).toBe(2) // default Pro model is premium tier
+    expect(r.data.creditsCharged).toBe(1) // Pro's fixed model is a starter-tier model
     const after = await balance(u.id)
-    expect(after).toBe(3000 - 2)
+    expect(after).toBe(900 - 1)
     await api(u.cookie, 'POST', `/presentations/${id}/ask`, payload)
     expect(await balance(u.id)).toBe(after)
   })
@@ -93,10 +93,10 @@ describe('Wikipedia & web data (/sources/research)', () => {
     const rows = await db.select().from(sourceDocument).where(eq(sourceDocument.userId, u.id))
     expect(rows).toHaveLength(2)
     expect((await db.select().from(sourceChunk).where(eq(sourceChunk.sourceId, rows[0]!.id))).length).toBeGreaterThan(0)
-    expect(await balance(u.id)).toBe(3000)
+    expect(await balance(u.id)).toBe(900)
     const web = await research(u.cookie, { query: 'solar power', mode: 'web' })
     expect(web.status).toBe(403)
-    expect(await balance(u.id)).toBe(3000)
+    expect(await balance(u.id)).toBe(900)
   })
 
   it('no article → plain NO_RESULTS; Wikipedia down → plain RESEARCH_FAILED; nothing saved either way', async () => {
@@ -117,14 +117,14 @@ describe('Wikipedia & web data (/sources/research)', () => {
     const r = await json(await api(u.cookie, 'POST', '/sources/research', body))
     expect(r.data.creditsCharged).toBe(60)
     expect(r.data.sources).toHaveLength(1)
-    expect(await balance(u.id)).toBe(10000 - 60)
+    expect(await balance(u.id)).toBe(2000 - 60)
     const [doc] = await db.select().from(sourceDocument).where(eq(sourceDocument.userId, u.id))
     const text = (await db.select().from(sourceChunk).where(eq(sourceChunk.sourceId, doc!.id))).map((c) => c.text).join('\n')
     expect(text).toContain('https://example.com/mock-page')
     const ev = (await db.select().from(aiUsageEvent).where(eq(aiUsageEvent.userId, u.id))).find((e) => e.requestType === 'web_research')
     expect(Number(ev!.providerCostUsd)).toBeGreaterThanOrEqual(0.035)
     await api(u.cookie, 'POST', '/sources/research', body) // client retry
-    expect(await balance(u.id)).toBe(10000 - 60)
+    expect(await balance(u.id)).toBe(2000 - 60)
   })
 
   it('Gold: a failed web search refunds the credits and saves nothing', async () => {
@@ -132,7 +132,7 @@ describe('Wikipedia & web data (/sources/research)', () => {
     await json(await api(u.cookie, 'GET', '/me/entitlements'))
     const r = await research(u.cookie, { query: 'FAIL_PLEASE topic', mode: 'web' })
     expect(r.status).toBe(503)
-    expect(await balance(u.id)).toBe(10000)
+    expect(await balance(u.id)).toBe(2000)
     expect(await db.select().from(sourceDocument).where(eq(sourceDocument.userId, u.id))).toHaveLength(0)
   })
 

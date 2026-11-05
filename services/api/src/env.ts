@@ -16,6 +16,25 @@ const schema = z
     GENERATION_DAILY_LIMIT: z.coerce.number().int().min(1).default(20),
     /** run the generation worker inside the API process (fine for 1 task; split into services/worker to scale) */
     RUN_WORKER: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
+    /** decks one worker process builds at the same time (each slot is one deck: mostly waiting for the AI, so many fit in one small process) */
+    WORKER_SLOTS: z.coerce.number().int().min(1).max(256).default(8),
+    /** how busy slots are shared between the lines (Gold, Pro, Starter): a line below its share is served first, a line with nobody waiting lends its share to the others */
+    LANE_SHARES: z.string().regex(/^\d+,\d+,\d+$/, 'three whole numbers, e.g. 30,40,30').default('30,40,30'),
+    /**
+     * What each AI provider/model allows, per PROCESS (divide the account's quota by the number of API and worker processes): JSON keyed by "provider:model", "provider:*" or "*",
+     * e.g. {"vertex:*":{"concurrency":120,"rpm":1500,"tpm":2000000}}. Empty = no fixed limit; the limiter still backs off on every 429 and recovers by itself.
+     */
+    AI_LIMITS: z.string().default('{}').refine((v) => { try { const o = JSON.parse(v); return typeof o === 'object' && o !== null && !Array.isArray(o) } catch { return false } }, 'must be a JSON object'),
+    /** load tests only (AI_PROVIDER=mock): make the mock model as slow as a real one, with a capacity that answers 429 above it and a share of random refusals */
+    MOCK_AI_LATENCY: z.enum(['off', 'realistic']).default('off'),
+    MOCK_AI_CAPACITY: z.coerce.number().int().min(1).default(100000),
+    MOCK_AI_REFUSE_RATE: z.coerce.number().min(0).max(1).default(0),
+    /** multiplies every stand-in answer time (0.1 = ten times faster) */
+    MOCK_AI_SCALE: z.coerce.number().min(0.001).default(1),
+    /** database connections per process (a worker with many slots needs more than an API-only task) */
+    DB_POOL_MAX: z.coerce.number().int().min(2).max(200).default(10),
+    /** the worker answers /healthz and /metrics here (the separate worker service; 0 = off) */
+    WORKER_PORT: z.coerce.number().int().min(0).default(0),
     TRUSTED_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(0),
     COOKIE_DOMAIN: optional(z.string().regex(/^\.[a-z0-9.-]+$/i, 'must start with a dot, e.g. .slidesdone.app')),
     DATABASE_URL: z.string().startsWith('postgres'),
@@ -29,9 +48,14 @@ const schema = z
     /** AI Studio key (AI_PROVIDER=gemini) or Vertex AI / Agent Platform express key (AI_PROVIDER=vertex) */
     GEMINI_API_KEY: optional(z.string()),
     OPENROUTER_API_KEY: optional(z.string()),
+    /** Ollama cloud key (AI_PROVIDER=ollama: load tests and open-model experiments). Sent as a Bearer header from the server only. */
+    OLLAMA_API_KEY: optional(z.string()),
+    OLLAMA_BASE_URL: z.string().url().default('https://ollama.com'),
+    /** a local Ollama (http://localhost:11434) serves its own model whatever the catalogue row says, e.g. qwen2.5:7b-instruct */
+    OLLAMA_MODEL_OVERRIDE: optional(z.string()),
     /** 'mock' runs the deterministic MockProvider (no key needed; used by tests and key-less dev) */
-    /** which backend serves the model catalogue: gemini (AI Studio) | vertex | openrouter (production) | mock (all, deterministic) */
-    AI_PROVIDER: z.enum(['gemini', 'vertex', 'openrouter', 'mock']).default('gemini'),
+    /** which backend serves the model catalogue: gemini (AI Studio) | vertex | openrouter (production) | ollama (load tests) | mock (all, deterministic) */
+    AI_PROVIDER: z.enum(['gemini', 'vertex', 'openrouter', 'ollama', 'mock']).default('gemini'),
     /** Razorpay (test keys start rzp_test_). Key id is public (sent to checkout.js); the secret and webhook secret never leave the server. */
     RAZORPAY_KEY_ID: optional(z.string().regex(/^rzp_(test|live)_/, 'must look like rzp_test_… or rzp_live_…')),
     RAZORPAY_KEY_SECRET: optional(z.string().min(8)),
@@ -100,6 +124,7 @@ const schema = z
     /** support messages one visitor may send per hour */
     SUPPORT_IP_HOUR: z.coerce.number().int().min(1).default(5),
     FREE_MEDIA_IP_DAY: z.coerce.number().int().min(0).default(3),
+    /** ALERT levels for the shared AI spend (all users): crossing one logs an alert, at most once an hour; nobody is refused. Set them from expected traffic. */
     AI_BUDGET_USD_HOUR: z.coerce.number().positive().default(15),
     AI_BUDGET_USD_DAY: z.coerce.number().positive().default(75),
     /** per account, rolling 24 h: stops one abuser spending the shared budget */
@@ -152,6 +177,8 @@ const schema = z
   .refine((e) => e.NODE_ENV !== 'production' || (new Set(e.AUTH_SECRET).size >= 12 && !/(ci-only|change-?me|secret|password|example|test)/i.test(e.AUTH_SECRET)), { message: 'AUTH_SECRET looks like a placeholder: generate one with `openssl rand -base64 48`' })
   .refine((e) => e.NODE_ENV !== 'production' || (e.REQUIRE_EMAIL_VERIFICATION && (!!e.RESEND_API_KEY || !!e.BREVO_API_KEY) && !!e.EMAIL_FROM), { message: 'production requires REQUIRE_EMAIL_VERIFICATION=true with RESEND_API_KEY or BREVO_API_KEY, and EMAIL_FROM (unverified accounts would be unlimited free-credit farms)' })
   .refine((e) => e.AI_PROVIDER !== 'openrouter' || !!e.OPENROUTER_API_KEY, { message: 'AI_PROVIDER=openrouter requires OPENROUTER_API_KEY' })
+  .refine((e) => e.AI_PROVIDER !== 'ollama' || !!e.OLLAMA_API_KEY || /^https?:\/\/(localhost|127\.0\.0\.1)/.test(e.OLLAMA_BASE_URL), { message: 'AI_PROVIDER=ollama requires OLLAMA_API_KEY (a local Ollama needs none)' })
+  .refine((e) => e.NODE_ENV !== 'production' || e.AI_PROVIDER !== 'ollama', { message: 'AI_PROVIDER=ollama is for load tests and must never run in production' })
   .refine((e) => e.NODE_ENV !== 'production' || (e.API_URL.startsWith('https://') && !!e.COOKIE_DOMAIN), {
     message: 'production requires https URLs and COOKIE_DOMAIN',
   })

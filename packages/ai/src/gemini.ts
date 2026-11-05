@@ -1,4 +1,4 @@
-import { base64ToBytes, imageToBase64, ProviderError, type AIProvider, type ImageRequest, type ImageResponse, type TextRequest, type TextResponse } from './types'
+import { base64ToBytes, imageToBase64, ProviderError, retryAfterMs, type AIProvider, type ImageRequest, type ImageResponse, type TextRequest, type TextResponse } from './types'
 
 interface GeminiResponse {
   candidates?: { content?: { parts?: { text?: string; thought?: boolean; inlineData?: { mimeType?: string; data?: string } }[] }; finishReason?: string; groundingMetadata?: { groundingChunks?: { web?: { uri?: string; title?: string } }[] } }[]
@@ -70,7 +70,7 @@ export class GeminiProvider implements AIProvider {
       // Vertex answers a wrong path/model with an HTML 404 → body is {} → fall through to statusText
       const retryable = res.status === 429 || res.status >= 500
       // Never echo the key; Google's messages don't include it, but cap length defensively.
-      throw new ProviderError(this.scrub(body.error?.message ?? res.statusText).slice(0, 300), body.error?.status ?? `http_${res.status}`, retryable, res.status)
+      throw new ProviderError(this.scrub(body.error?.message ?? res.statusText).slice(0, 300), body.error?.status ?? `http_${res.status}`, retryable, res.status, retryAfterMs(res))
     }
     if (body.promptFeedback?.blockReason) throw new ProviderError(`blocked: ${body.promptFeedback.blockReason}`, 'blocked', false)
 
@@ -113,7 +113,7 @@ export class GeminiProvider implements AIProvider {
       throw new ProviderError(aborted ? 'request timed out' : this.scrub(`network error: ${(e as Error).message}`), aborted ? 'timeout' : 'network', true)
     }
     const body = (await res.json().catch(() => ({}))) as GeminiResponse
-    if (!res.ok) throw new ProviderError(this.scrub(body.error?.message ?? res.statusText).slice(0, 300), body.error?.status ?? `http_${res.status}`, res.status === 429 || res.status >= 500, res.status)
+    if (!res.ok) throw new ProviderError(this.scrub(body.error?.message ?? res.statusText).slice(0, 300), body.error?.status ?? `http_${res.status}`, res.status === 429 || res.status >= 500, res.status, retryAfterMs(res))
     if (body.promptFeedback?.blockReason) throw new ProviderError(`blocked: ${body.promptFeedback.blockReason}`, 'blocked', false)
     const cand = body.candidates?.[0]
     const part = cand?.content?.parts?.find((p) => p.inlineData?.data)

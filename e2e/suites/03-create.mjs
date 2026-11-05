@@ -1,7 +1,7 @@
 import { execSync } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { EDITOR, RESULTS, WEB, expect, launch, suite } from '../lib.mjs'
+import { EDITOR, RESULTS, WEB, choicesReady, expect, launch, startBuild, suite } from '../lib.mjs'
 import { ACCOUNT, STATE } from './02-auth.mjs'
 
 export const DECKS = join(RESULTS, 'decks.json')
@@ -161,34 +161,35 @@ export default async function () {
     await p.getByLabel('Presentation prompt').fill('A 5 slide pitch for Aroma Coffee Roasters, a small-batch coffee roastery with 4 stores, for local investors. Do not use any statistics.')
     await p.getByRole('button', { name: 'Create Presentation' }).click()
     await p.waitForURL(/\/create/, { timeout: 8000 })
-    // directions (broad) or lengths (specific) – accept either, then continue
+    // directions (broad), the brief with a Start button (the prompt names its length) or lengths (specific): accept any, then continue. Choosing starts the build directly.
     for (let i = 0; i < 6; i++) {
       if (/\/edit\//.test(p.url())) break
       const dir = p.getByRole('button', { name: /Let AI decide/ })
-      const len = p.getByRole('radio', { name: /slides · ~/ }).first()
-      await Promise.race([dir.waitFor({ timeout: 60000 }), len.waitFor({ timeout: 60000 }), p.waitForURL(/\/edit\//, { timeout: 60000 })]).catch(() => {})
+      const len = p.getByRole('radio', { name: /\d+ slides/ }).first()
+      const start = p.getByRole('button', { name: 'Start', exact: true })
+      await Promise.race([dir.waitFor({ timeout: 60000 }), len.waitFor({ timeout: 60000 }), start.waitFor({ timeout: 60000 }), p.waitForURL(/\/edit\//, { timeout: 60000 })]).catch(() => {})
       if (/\/edit\//.test(p.url())) break
-      if (await len.count()) { await len.click(); await p.getByRole('radiogroup', { name: 'AI model' }).getByRole('radio').first().click(); break }
+      if (await start.count()) { await start.click(); break }
+      if (await len.count()) { await len.click(); break }
       if (await dir.count()) await dir.click()
     }
+    // the person watches the progress screen while the deck is written; the editor opens by itself when it is complete
     await p.waitForURL(/\/edit\//, { timeout: 240000 })
     decks.ai = p.url().split('/edit/')[1]
     await p.locator('[aria-label^="Slide "]').first().waitFor({ timeout: 15000 })
   })
 
-  await s.check('create: choosing a length only SELECTS it (nothing starts); a model click starts; only models allowed on the plan are listed', p, async () => {
+  await s.check('create: a prompt with no length lists the lengths; there is no model step on a plan without model choice; choosing a length starts the build (progress screen); Cancel stops it and keeps nothing', p, async () => {
     await p.goto(EDITOR + '/', { waitUntil: 'networkidle' })
-    await p.getByLabel('Presentation prompt').fill('Quarterly marketing review for a small team, 6 slides')
+    await p.getByLabel('Presentation prompt').fill('Quarterly marketing review for a small team')
     await p.getByRole('button', { name: 'Create Presentation' }).click(); await p.waitForURL(/\/create/)
-    const group = p.getByRole('radiogroup', { name: 'AI model' }); await group.waitFor({ timeout: 90000 })
-    const models = await group.getByRole('radio').allInnerTexts(); expect(models.length >= 1, 'no models')
-    expect(!models.some((m) => /🔒|GOLD|PRO/i.test(m)), `locked models are listed: ${models.join(' | ')}`)
-    expect(!/GOLD MODELS|PRO MODELS/i.test(await p.locator('main').innerText()) || true, '')
-    const len = p.getByRole('radio', { name: /slides · ~/ }).first(); await len.click()
-    expect(await len.getAttribute('aria-checked') === 'true', 'length not highlighted as selected'); await p.waitForTimeout(800)
-    expect(/\/create/.test(p.url()) && await p.getByRole('progressbar').count() === 0, 'choosing a length started the build')
-    expect(/click an AI model to start/i.test(await p.locator('main').innerText()), 'no prompt to pick a model')
-    await p.getByRole('button', { name: 'Back' }).click()
+    const len = p.getByRole('radio', { name: /\d+ slides/ }).first(); await len.waitFor({ timeout: 90000 })
+    expect(await p.getByRole('radiogroup', { name: 'AI model' }).count() === 0, 'a model step is shown on a plan without model choice')
+    await len.click()
+    await p.getByRole('progressbar').waitFor({ timeout: 10000 })
+    expect(/\/create/.test(p.url()), 'the editor opened before the deck was written')
+    await p.getByRole('button', { name: 'Cancel' }).click()
+    await p.getByText(/cancelled/i).waitFor({ timeout: 15000 })
   })
   await s.check('AI: generation cancel + back button on the create screen are wired', p, async () => {
     await p.goto(EDITOR + '/', { waitUntil: 'networkidle' })

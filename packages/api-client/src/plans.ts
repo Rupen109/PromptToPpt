@@ -35,14 +35,15 @@ const FORMATS: Record<string, string> = { pptx: 'PPTX', pdf: 'PDF', png: 'PNG', 
 export function planHighlights(plan: PlanView, previous?: PlanView): { lead: string | null; items: string[] } {
   const f = plan.features
   const items: string[] = [`${plan.monthlyCredits.toLocaleString('en-US')} credits / month`]
-  items.push(f.modelTiers.includes('frontier') ? 'Frontier AI models and agents' : f.modelTiers.includes('premium') ? 'Premium AI models' : 'Starter AI model and agent')
+  items.push(f.modelChoice ? 'Choose your AI model: Claude Sonnet and Opus, GLM, Haiku and more' : f.modelTiers.includes('premium') ? 'Premium AI models' : 'Fast, high-quality AI models picked for you')
   items.push(plan.maxPresentationsPerMonth ? `${plan.maxPresentationsPerMonth} presentations / month` : `Up to ${plan.maxSlides} slides per presentation`)
   if (plan.maxPresentationsPerMonth) items.push(`Up to ${plan.maxSlides} slides per presentation`)
   if (f.premiumTemplates) items.push('Premium templates')
-  items.push(`Up to ${plan.maxImagesPerPresentation} AI images per presentation`)
+  if (plan.maxImagesPerPresentation > 0) items.push(`Up to ${plan.maxImagesPerPresentation} AI images per presentation`)
+  items.push(f.livePreview ? 'Live preview, present mode and share links' : 'Build and edit in the editor (no preview)')
   items.push(f.watermark ? 'Watermark on presentations' : 'No watermark')
   items.push(f.exportFormats.length ? `Export in ${f.exportFormats.map((x) => FORMATS[x] ?? x).join(', ')}` : 'No export — upgrade to export')
-  items.push(f.advancedSharing ? `Edit together: invite up to ${plan.id === 'gold' ? 10 : 3} people per presentation` : 'Share view-only links')
+  items.push(f.advancedSharing ? `Edit together: invite up to ${plan.id === 'gold' || plan.id === 'premium' ? 10 : 3} people per presentation` : f.livePreview ? 'Share view-only links' : 'No share links')
   if (f.advancedSharing) items.push('Password-protected & expiring share links')
   if (f.advancedEditor) items.push('Advanced editor')
   if (f.aiEdits) items.push('AI edits')
@@ -51,7 +52,7 @@ export function planHighlights(plan: PlanView, previous?: PlanView): { lead: str
   if (f.webData === 'web') items.push('Wikipedia & live web search data')
   else if (f.webData === 'wikipedia') items.push('Wikipedia data with citations')
   // brand kits: Pro 1, Gold 5 (the server's limit is MAX_KITS in services/api/src/brand/kits.ts). The shared knowledge base is not built yet, so it is not advertised.
-  const kits = plan.id === 'gold' ? 5 : plan.id === 'pro' ? 1 : 0
+  const kits = plan.id === 'gold' || plan.id === 'premium' ? 5 : plan.id === 'pro' ? 1 : 0
   if (kits) items.push(kits === 1 ? 'Brand kit: your logo, colours and fonts' : `Up to ${kits} brand kits (logo, colours, fonts)`)
   if (f.speed !== 'standard') items.push(`Generation speed: ${f.speed}`)
   if (f.support === 'whatsapp') items.push('24/7 support · WhatsApp')

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { unzipSync, strFromU8 } from 'fflate'
-import { API, EDITOR, RESULTS, WEB, expect, launch, suite } from '../lib.mjs'
+import { API, EDITOR, RESULTS, WEB, choicesReady, expect, launch, startBuild, suite } from '../lib.mjs'
 import { api, applyBox, assetOk, deleteAllKits, details, file, kitsOf, logos, newDeck, openBrand, openDeck, person, plan, png, saved, stage, tsx } from '../kits-lib.mjs'
 
 /**
@@ -35,11 +35,9 @@ export default async function () {
     await pg.goto(EDITOR + '/', { waitUntil: 'networkidle' })
     await pg.getByLabel('Presentation prompt').fill(PROMPT)
     await pg.getByRole('button', { name: 'Create Presentation' }).click(); await pg.waitForURL(/\/create/)
-    if (expectOffer !== null) { const box = pg.getByLabel('Build it in my brand'); await box.waitFor({ state: expectOffer ? 'visible' : 'detached', timeout: 90000 }) } else await pg.getByRole('radiogroup', { name: 'AI model' }).waitFor({ timeout: 90000 })
+    if (expectOffer !== null) { const box = pg.getByLabel('Build it in my brand'); await box.waitFor({ state: expectOffer ? 'visible' : 'detached', timeout: 90000 }) } else await choicesReady(pg)
     return { sent, start: async () => {
-      const radios = pg.getByRole('radiogroup', { name: 'AI model' }).getByRole('radio'); const names = await radios.allInnerTexts()
-      const i = Math.max(0, names.findIndex((n) => /3\.6 Flash/.test(n)))
-      await radios.nth(i).click()
+      await startBuild(pg)
       await pg.waitForURL(/\/edit\//, { timeout: 300000 })
       return new URL(pg.url()).pathname.split('/').pop()
     } }

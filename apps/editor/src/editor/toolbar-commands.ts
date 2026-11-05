@@ -127,4 +127,5 @@ export function removeBackground(d: D, slideId: string) {
   if (s.background?.type === 'image' && !s.manual && s.content) { clearImageBackground(d, slideId); return }
   setSlideBackground(d, slideId, d.theme.colors.background)
   delete s.themeOverrides
+  delete s.ownLook // back to the deck's own background: nothing of the slide's own look is kept
 }

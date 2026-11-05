@@ -45,7 +45,7 @@ export function SourcesDialog({ count, language, initialTab, initialUrl, onAdd, 
   async function runResearch(query: string) {
     const have = ent?.features.webData ?? 'none'
     if (mode === 'wikipedia' && have === 'none') return upgrade.show('Wikipedia data is available on the Pro plan.')
-    if (mode === 'web' && have !== 'web') return upgrade.show('Live web search is available on the Gold plan.')
+    if (mode === 'web' && have !== 'web') return upgrade.show('Live web search is available on Gold and Premium.')
     if (count >= MAX_SOURCES) return setError(`You can attach up to ${MAX_SOURCES} sources.`)
     setBusy(true)
     setError(null)

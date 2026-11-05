@@ -2,6 +2,9 @@
 
 Status: **BUILT 2026-11-01 (approved by the owner), switched on by default, NOT yet tested with the real model.** The owner tests it (real-model evaluation, browser suites, cost readings) before v1 is deleted.
 
+### Update 2026-11-02 (after the 1,500-user test, `docs/LOAD_TEST_AI_2026-11-02.md`)
+Fixed at the cause: a slide's own look is separate from "hand-edited" (`ownLook`); undo is a whole-change history operation and the history records moves, deletes and locks; task details are checked inside the understand step (repaired with the exact reason); writer answers are accepted slide by slide; every rejected AI attempt stores its reason (`ai_usage_event.error_detail`); "busy" is only for provider failures.
+
 ### Build status
 | Part | Where | State |
 |---|---|---|

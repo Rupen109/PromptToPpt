@@ -31,12 +31,13 @@ export function RemixDialog({ presentationId, title, slideCount, handEdited, bef
   const clamp = (v: string) => Math.max(3, Math.min(cap, Math.round(Number(v)) || 3))
   const [models, setModels] = useState<ModelOption[]>([])
   const [modelId, setModelId] = useState<string | null>(null)
+  const [choice, setChoice] = useState(false) // only Premium picks the model; the other plans' model is fixed
   const perSlide = models.find((m) => m.id === modelId)?.creditsPerSlide ?? null
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const idem = useRef(crypto.randomUUID())
   const ref = useDialog<HTMLDivElement>(true, () => { if (!busy) onClose() })
-  useEffect(() => { api.models().then((r) => { setModels(r.models); setModelId(r.default) }).catch(() => {}) }, [])
+  useEffect(() => { api.models().then((r) => { setModels(r.models); setChoice(r.choice); setModelId(r.default) }).catch(() => {}) }, [])
 
   async function start() {
     const instruction = text.trim()
@@ -68,7 +69,7 @@ export function RemixDialog({ presentationId, title, slideCount, handEdited, bef
           <input type="number" inputMode="numeric" aria-label="Slides in the new version" min={3} max={cap} value={count} onChange={(e) => { setTouched(true); setCount(e.target.value) }} onBlur={() => setCount(String(clamp(count)))} className="w-20 border border-border rounded-lg px-2 py-1.5" />
           <span className="text-slate-500">(now {slideCount})</span>
         </label>
-        {models.filter((m) => m.allowed).length > 0 && (
+        {choice && models.filter((m) => m.allowed).length > 0 && (
           <label className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">AI model
             <select aria-label="AI model" value={modelId ?? ''} onChange={(e) => setModelId(e.target.value)} className="min-w-0 flex-1 border border-border rounded-lg px-2 py-1.5 bg-white">
               {models.filter((m) => m.allowed).map((m) => <option key={m.id} value={m.id}>{m.displayName} · {m.creditsPerSlide} credits/slide</option>)}

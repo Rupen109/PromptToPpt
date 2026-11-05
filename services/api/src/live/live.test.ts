@@ -5,6 +5,7 @@ import { db, pool } from '../db/index.ts'
 import { presentationMember, user } from '../db/schema.ts'
 import { api, json, makeDeck, rid, setPlan, signUp } from '../test-utils.ts'
 import { PgBus, type LiveEvent } from './bus.ts'
+import { setLiveHeartbeatForTests } from './routes.ts'
 
 /** Reads a Server-Sent-Events response into a queue of { event, data }. */
 function sse(res: Response) {
@@ -89,6 +90,24 @@ describe('live editing stream', () => {
     // a late joiner is told who is already here
     const late = track(await open(t.owner.cookie, t.deck.id))
     expect((await late.next('hello')).peers.map((p: { userId: string }) => p.userId)).toContain(t.friend.id)
+  })
+
+  it('an open stream keeps its presence fresh by itself: the server re-announces it on every heartbeat, with no keepalive request from the browser', async () => {
+    setLiveHeartbeatForTests(150)
+    try {
+      const t = await team()
+      const o = track(await open(t.owner.cookie, t.deck.id))
+      await o.next('hello')
+      const f = track(await open(t.friend.cookie, t.deck.id))
+      await f.next('hello')
+      expect((await presence(t.friend.cookie, t.deck.id, { clientId: f.client, slideId: null, selection: ['e1'], editing: null, cursor: null })).status).toBe(200)
+      const first = await o.next('presence')
+      expect(first.peer).toMatchObject({ userId: t.friend.id, clientId: f.client, selection: ['e1'] })
+      // no further POST from the friend: the next announcements come from the friend's open stream, same place, newer time
+      const again = await o.next('presence')
+      expect(again.peer).toMatchObject({ userId: t.friend.id, clientId: f.client, selection: ['e1'] })
+      expect(again.peer.at).toBeGreaterThan(first.peer.at)
+    } finally { setLiveHeartbeatForTests(null) }
   })
 
   it('a save by one person is announced to the others (revision events), not to nobody', async () => {

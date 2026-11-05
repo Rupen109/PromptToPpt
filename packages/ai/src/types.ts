@@ -91,6 +91,8 @@ export class ProviderError extends Error {
     public readonly code: string,
     public readonly retryable: boolean,
     public readonly status?: number,
+    /** how long the provider asked us to wait (Retry-After), when it said */
+    public readonly retryAfterMs?: number,
   ) {
     super(message)
   }
@@ -142,3 +144,12 @@ export const bytesToBase64 = (b: Uint8Array): string => {
   return btoa(bin)
 }
 export const imageToBase64 = (i: ImageInput | MediaInput): string => (typeof i.data === 'string' ? i.data : bytesToBase64(i.data))
+
+/** Retry-After header → milliseconds (seconds or an HTTP date), capped at two minutes */
+export function retryAfterMs(res: { headers: { get(name: string): string | null } }): number | undefined {
+  const h = res.headers.get('retry-after')
+  if (!h) return undefined
+  const secs = Number(h)
+  const ms = Number.isFinite(secs) ? secs * 1000 : Date.parse(h) - Date.now()
+  return Number.isFinite(ms) && ms > 0 ? Math.min(ms, 120_000) : undefined
+}

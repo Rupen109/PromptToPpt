@@ -3,7 +3,7 @@ import { nanoid } from 'nanoid'
 import { applyValidation, composeDeck, designById, pickDesign, type Photo } from '@prompttoppt/theme'
 import {
   SCHEMA_VERSION, SOURCE_TYPES, accessTierSchema, deckLanguage, directionSchema, outlineSchema, promptAnalysisSchema, slideContentSchema,
-  type Direction, type Outline, type Presentation, type PromptAnalysis, type Slide, type SlideContent,
+  presentationSchema, type Direction, type Outline, type Presentation, type PromptAnalysis, type Slide, type SlideContent,
 } from '@prompttoppt/validation'
 import { z } from 'zod'
 import { runPool } from './pool.ts'
@@ -23,8 +23,11 @@ import { publishRevision } from '../live/bus.ts'
 import { condense, hasNumbers, resolveSlideCount, sanitizeContent, sanitizeOutline } from './policy.ts'
 import { loadSources } from './sources.ts'
 import { chooseDesign } from './design-pick.ts'
+import { DeckWriteCancelled, placeholderSlide, stableElementIds, writeDeck } from './progress.ts'
 
 const BATCH = 4
+/** the first batch is small so real text lands within seconds; the rest run in bigger batches side by side */
+const FIRST_BATCH = 2
 /** Independent model calls (slide batches, repair rewrites) that may run at once. Same prompts and models as before — only the waiting is shared. */
 const PARALLEL_CALLS = 3
 const LEASE_SECONDS = 120
@@ -55,8 +58,11 @@ const optionsSchema = z.object({
   /** keep every word of the existing deck and only replace its pictures (assistant "fix the pictures") */
   picturesOnly: z.boolean().default(false),
   sourceIds: z.array(z.string()).max(10).default([]),
+  /** model calls this deck may run side by side (set from the plan's line when the job is created) */
+  parallel: z.number().int().min(1).max(16).optional(),
 })
-type Checkpoint = { analysis?: PromptAnalysis; outline?: Outline; contents?: SlideContent[]; repaired?: boolean; designId?: string; report?: Record<string, unknown> }
+/** `slideIds`: the ids of the deck's slides, fixed when the deck is created so every write addresses the same slide. `marks`: milliseconds from job creation to each visible milestone (the numbers the speed targets are measured on). */
+type Checkpoint = { slideIds?: string[]; marks?: Record<string, number>; analysis?: PromptAnalysis; outline?: Outline; contents?: SlideContent[]; repaired?: boolean; designId?: string; report?: Record<string, unknown> }
 
 /** Moves the job to a stage, extends the lease, and aborts if the user cancelled in the meantime. */
 async function stage(jobId: string, status: JobStatus, progress: number) {
@@ -108,6 +114,14 @@ async function generate(jobId: string, hold: { pictures?: PictureSession }): Pro
   const ctx = { userId: job.userId, jobId }
   const opts = optionsSchema.parse(job.options)
   const cp: Checkpoint = { ...(job.checkpoint as Checkpoint) }
+  /** a NEW deck (or remix) already exists, created with the job, and is written into as the work goes; a rewrite replaces an existing deck's content in one step at the end */
+  const deckId = !opts.targetPresentationId ? job.presentationId : null
+  const slideIds = (cp.slideIds ??= [])
+  const assetBase = `${env.WEB_URL}/template-assets`
+  /** writes into the live deck; a cancelled job (or a deleted deck) stops the work */
+  const write = async (next: Presentation) => { try { await writeDeck(jobId, deckId!, job.userId, next) } catch (e) { throw e instanceof DeckWriteCancelled ? new JobCancelled() : e } }
+  const mark = (name: string) => { cp.marks ??= {}; cp.marks[name] ??= Date.now() - job.createdAt.getTime() }
+  mark('start') // how long the job waited for a worker
 
   // Remix: the user's own deck is the content (it arrives as a source); only its look is carried over, and the model is told to stay inside it
   let remixDoc: Presentation | undefined
@@ -134,6 +148,26 @@ async function generate(jobId: string, hold: { pictures?: PictureSession }): Pro
   const allowNumeric = hasNumbers(prompt, sources.map((s) => s.text))
   const tierRoute = opts.tier === 'starter' ? 'fast' : 'quality'
 
+  const designed: { p?: Promise<NonNullable<ReturnType<typeof designById>>> } = {}
+  /** the template and colours for this deck: one small model call for a NEW deck (remembered in the checkpoint so a retry never repeats it), the existing look for a rewrite or remix */
+  const settleDesign = async (analysis: PromptAnalysis) => {
+    const keepsLook = !!(existingDoc?.theme || remixDoc?.theme)
+    if (!opts.designId && !keepsLook && !cp.designId) {
+      cp.designId = (await chooseDesign({ analysis, prompt, premiumAllowed: opts.premiumTemplates, ctx })).id
+      await saveCheckpoint(jobId, cp)
+    }
+    let design = (opts.designId ? designById(opts.designId) : undefined) ?? (cp.designId ? designById(cp.designId) : undefined) ?? pickDesign(analysis.category, opts.premiumTemplates, prompt)
+    // Rewriting an existing deck keeps its look EXACTLY (theme: colours, fonts, style, motion — including any custom colours the user set)
+    if (existingDoc?.theme) design = { ...((existingDoc.theme.templateId ? designById(existingDoc.theme.templateId) : undefined) ?? design), theme: existingDoc.theme }
+    // a NEW deck takes its colours from the topic, dark by default; a rewrite keeps the existing deck's theme untouched (set above)
+    if (remixDoc?.theme) design = { ...((remixDoc.theme.templateId ? designById(remixDoc.theme.templateId) : undefined) ?? design), theme: remixDoc.theme } // a remix keeps the original's look exactly (colours, fonts, brand logo)
+    else if (!existingDoc?.theme) design = { ...design, theme: themeForAnalysis(design.theme, analysis, design.look) }
+    // a NEW deck can be built in the user's brand kit (its own colours, fonts and logo replace the topic palette); a rewrite keeps the deck's look
+    if (!existingDoc?.theme && !remixDoc?.theme && opts.brandKitId) { const kit = await getKit(job.userId, opts.brandKitId); if (kit) design = { ...design, theme: themeWithKit(design.theme, kit) } }
+    return design
+  }
+  const designOnce = (analysis: PromptAnalysis) => (designed.p ??= settleDesign(analysis))
+  const sourceRefs = remixDoc ? [] : opts.picturesOnly && existingDoc ? existingDoc.sources : sources.map((s) => ({ id: s.id, type: (SOURCE_TYPES as readonly string[]).includes(s.type) ? (s.type as (typeof SOURCE_TYPES)[number]) : 'text', title: s.title.slice(0, 300), ...(s.url ? { url: s.url } : {}) }))
   if (opts.picturesOnly && existingDoc) {
     // Keep every slide's words; only the pictures are re-chosen
     await stage(jobId, 'analyzing', 10)
@@ -146,21 +180,39 @@ async function generate(jobId: string, hold: { pictures?: PictureSession }): Pro
     await stage(jobId, 'analyzing', 5)
     if (!cp.analysis) {
       const chosen = deckLanguage(opts.language)
-      const found = opts.analysis ?? (await gateway.run({ route: 'fast', requestType: 'prompt_analysis', ...analyzePrompt(prompt, chosen), schema: promptAnalysisSchema, ctx }))
+      const found = opts.analysis ?? (await gateway.run({ priority: job.lane, route: 'fast', requestType: 'prompt_analysis', ...analyzePrompt(prompt, chosen), schema: promptAnalysisSchema, ctx }))
       cp.analysis = chosen ? { ...found, language: chosen.code } : found
       await saveCheckpoint(jobId, cp)
     }
     analysis = cp.analysis
     const slideCount = resolveSlideCount(analysis, opts.direction as Direction | undefined, opts.slideCount)
 
+    // The deck is already on screen. Its slide ids are fixed now, so every later write (placeholders, batches, the finished deck) addresses the same slides.
+    if (deckId) { while (slideIds.length < slideCount) slideIds.push(nanoid(12)); await saveCheckpoint(jobId, cp) }
+    let current: Presentation | null = job.shown ? presentationSchema.parse(job.shown) : null // the deck as generation last wrote it
+    const skeleton = (theme: Presentation['theme'], title: string, titles: string[]): Presentation => ({ schemaVersion: SCHEMA_VERSION, id: deckId!, title: title.slice(0, 200), aspectRatio: opts.aspectRatio, language: analysis.language, theme, sources: sourceRefs, slides: slideIds.slice(0, slideCount).map((id, i) => placeholderSlide(id, titles[i] ?? '', theme)) })
+    // As soon as the topic is understood the deck gets its template and colours: chosen while the outline is still being written (it does not wait for it)
+    const designing = deckId ? designOnce(analysis) : null
+    const skeletonDone = designing && cp.marks?.['skeleton'] === undefined
+      ? designing.then(async (d) => { current = skeleton(d.theme, analysis.topic, []); await write(current); mark('skeleton'); await saveCheckpoint(jobId, cp) })
+      : Promise.resolve()
+    skeletonDone.catch(() => {}) // awaited below; this only keeps a failure from being reported twice while the outline is running
+
     // 2 ─ outline
     await stage(jobId, 'outlining', 15)
     if (!cp.outline) {
-      const raw = await gateway.run({ route: tierRoute, model: opts.model, requestType: 'outline_generation', ...outlinePrompt({ analysis, direction: opts.direction, slideCount, allowNumericLayouts: allowNumeric, sources, userPrompt: prompt }), schema: outlineSchema, ctx })
+      const raw = await gateway.run({ priority: job.lane, route: tierRoute, model: opts.model, requestType: 'outline_generation', ...outlinePrompt({ analysis, direction: opts.direction, slideCount, allowNumericLayouts: allowNumeric, sources, userPrompt: prompt }), schema: outlineSchema, ctx })
       cp.outline = sanitizeOutline(raw, slideCount, allowNumeric)
       await saveCheckpoint(jobId, cp)
     }
     outline = cp.outline
+    if (deckId && designing) {
+      await skeletonDone
+      if (cp.marks?.['titles'] === undefined) {
+        current = skeleton((await designing).theme, outline.title, outline.slides.map((e) => e.title))
+        await write(current); mark('titles'); await saveCheckpoint(jobId, cp)
+      }
+    }
 
     // Pictures are looked up ALONGSIDE the writing, not after it. The outline already says what each picture should show, so the main stock search and the first
     // photo downloads start now; each slide's own lookup (with its vision check) starts the moment its text exists.
@@ -176,13 +228,23 @@ async function generate(jobId: string, hold: { pictures?: PictureSession }): Pro
     if (contents.length < outline.slides.length) {
       // Each batch prompt is built from the outline (never from another batch's text), so batches are independent and run side by side.
       const batches: { from: number; slides: typeof outline.slides }[] = []
-      for (let from = contents.length; from < outline.slides.length; from += BATCH) batches.push({ from, slides: outline.slides.slice(from, from + BATCH) })
+      for (let from = contents.length, size = from === 0 && deckId ? FIRST_BATCH : BATCH; from < outline.slides.length; from += size, size = BATCH) batches.push({ from, slides: outline.slides.slice(from, from + size) })
       const finished = new Map<number, SlideContent[]>()
       let nextBatch = 0
+      /** puts the slides from `from` on (as far as written) into the open deck: composed in the deck's design, pictures from the template library until the real ones arrive */
+      const showSlides = async (from: number) => {
+        if (!deckId || !current) return
+        const shownDesign = await designOnce(analysis)
+        const composed = composeDeck(contents, shownDesign, opts.aspectRatio, () => nanoid(10), assetBase, analysis.category).slice(from)
+        const fresh = new Map(composed.map((c, k) => [slideIds[from + k]!, stableElementIds({ locked: false, validation: { status: 'pending', issues: [] }, ...c, id: slideIds[from + k]! } as Slide)]))
+        current = { ...current, slides: current.slides.map((sl) => fresh.get(sl.id) ?? sl) }
+        await write(current)
+        mark('firstSlide')
+      }
       let saved: Promise<void> = Promise.resolve() // writes happen one at a time, in order, so an older snapshot can never land after a newer one
       await stage(jobId, 'generating', 30)
-      await runPool(batches, PARALLEL_CALLS, async (b) => {
-        const { slides } = await gateway.run({
+      await runPool(batches, opts.parallel ?? PARALLEL_CALLS, async (b) => {
+        const { slides } = await gateway.run({ priority: job.lane,
           route: tierRoute, model: opts.model, requestType: 'slide_content',
           ...slidesPrompt({ analysis, deckTitle: outline.title, outlineSlides: b.slides, startIndex: b.from, totalSlides: outline.slides.length, sources }),
           schema: z.object({ slides: z.array(slideContentSchema).length(b.slides.length) }), ctx,
@@ -195,7 +257,7 @@ async function generate(jobId: string, hold: { pictures?: PictureSession }): Pro
         while (finished.has(nextBatch)) { contents.push(...finished.get(nextBatch)!); nextBatch++ }
         startPictures(before) // these slides' pictures are looked up while the other batches, the critic and the repairs are still running
         cp.contents = contents
-        saved = saved.then(async () => { await saveCheckpoint(jobId, cp); await stage(jobId, 'generating', 30 + Math.round((contents.length / outline.slides.length) * 40)) })
+        saved = saved.then(async () => { await saveCheckpoint(jobId, cp); await stage(jobId, 'generating', 30 + Math.round((contents.length / outline.slides.length) * 40)); await showSlides(before) })
         await saved
       })
     }
@@ -207,10 +269,10 @@ async function generate(jobId: string, hold: { pictures?: PictureSession }): Pro
       const bySlide = new Map<number, string[]>()
       for (const t of todo) bySlide.set(t.slide, [...(bySlide.get(t.slide) ?? []), t.problem])
       // each rewrite is independent (one slide, its own problems), so they run side by side
-      await runPool([...bySlide], PARALLEL_CALLS, async ([n, problems]) => {
+      await runPool([...bySlide], opts.parallel ?? PARALLEL_CALLS, async ([n, problems]) => {
         const entry = outline.slides[n - 1]
         if (!entry) return
-        const { slides } = await gateway.run({
+        const { slides } = await gateway.run({ priority: job.lane,
           route: tierRoute, model: opts.model, requestType: 'slide_content',
           ...slidesPrompt({ analysis, deckTitle: outline.title, outlineSlides: [entry], startIndex: n - 1, totalSlides: outline.slides.length, sources, repair: problems.map((problem) => ({ slide: 1, problem })) }),
           schema: z.object({ slides: z.array(slideContentSchema).length(1) }), ctx,
@@ -224,7 +286,7 @@ async function generate(jobId: string, hold: { pictures?: PictureSession }): Pro
       // premium/frontier plans also get a second model reading the whole deck against the brief
       if (opts.tier !== 'starter') {
         try {
-          const critic = await gateway.run({ route: 'quality', model: opts.model, requestType: 'deck_critic', ...criticPrompt({ analysis, userPrompt: prompt, slides: contents.map((c) => textOf(c).join(' | ').slice(0, 600)) }), schema: z.object({ defects: z.array(z.object({ slide: z.number().int().min(1).max(60), issue: z.string().max(240) })).max(8).default([]) }), ctx })
+          const critic = await gateway.run({ priority: job.lane, route: 'quality', model: opts.model, requestType: 'deck_critic', ...criticPrompt({ analysis, userPrompt: prompt, slides: contents.map((c) => textOf(c).join(' | ').slice(0, 600)) }), schema: z.object({ defects: z.array(z.object({ slide: z.number().int().min(1).max(60), issue: z.string().max(240) })).max(8).default([]) }), ctx })
           todo = [...todo, ...critic.defects.filter((d) => d.slide <= contents.length).map((d) => ({ slide: d.slide, problem: d.issue }))]
         } catch { /* the critic is a bonus: never fail a deck because it was unavailable */ }
       }
@@ -255,24 +317,10 @@ async function generate(jobId: string, hold: { pictures?: PictureSession }): Pro
   // 5 ─ layout (deterministic) in the design, then validation (+ one condense-and-retry pass for overflow)
   // A NEW deck gets the template that fits ITS topic (one small model call over the category's shortlist, remembered in the checkpoint so a retry never repeats it);
   // a rewrite or remix keeps the existing deck's look and never asks.
-  const keepsLook = !!(existingDoc?.theme || remixDoc?.theme)
-  if (!opts.designId && !keepsLook && !cp.designId) {
-    cp.designId = (await chooseDesign({ analysis, prompt, premiumAllowed: opts.premiumTemplates, ctx })).id
-    await saveCheckpoint(jobId, cp)
-  }
-  let design = (opts.designId ? designById(opts.designId) : undefined) ?? (cp.designId ? designById(cp.designId) : undefined) ?? pickDesign(analysis.category, opts.premiumTemplates, prompt)
-  // Rewriting an existing deck keeps its look EXACTLY (theme: colours, fonts, style, motion — including any custom colours the user set)
-  if (existingDoc?.theme) design = { ...((existingDoc.theme.templateId ? designById(existingDoc.theme.templateId) : undefined) ?? design), theme: existingDoc.theme }
-  // a NEW deck takes its colours from the topic, dark by default; a rewrite keeps the existing deck's theme untouched (set above)
-  if (remixDoc?.theme) design = { ...((remixDoc.theme.templateId ? designById(remixDoc.theme.templateId) : undefined) ?? design), theme: remixDoc.theme } // a remix keeps the original's look exactly (colours, fonts, brand logo)
-  else if (!existingDoc?.theme) design = { ...design, theme: themeForAnalysis(design.theme, analysis, design.look) }
-  // a NEW deck can be built in the user's brand kit (its own colours, fonts and logo replace the topic palette); a rewrite keeps the deck's look
-  if (!existingDoc?.theme && !remixDoc?.theme && opts.brandKitId) { const kit = await getKit(job.userId, opts.brandKitId); if (kit) design = { ...design, theme: themeWithKit(design.theme, kit) } }
+  const design = await designOnce(analysis)
   const theme = design.theme
-  const assetBase = `${env.WEB_URL}/template-assets`
-  const sourceRefs = remixDoc ? [] : opts.picturesOnly && existingDoc ? existingDoc.sources : sources.map((s) => ({ id: s.id, type: (SOURCE_TYPES as readonly string[]).includes(s.type) ? (s.type as (typeof SOURCE_TYPES)[number]) : 'text', title: s.title.slice(0, 300), ...(s.url ? { url: s.url } : {}) }))
   const build = (cs: SlideContent[]): Presentation => {
-    const composed = composeDeck(cs, design, opts.aspectRatio, () => nanoid(10), assetBase, analysis.category, picks).map((c): Slide => ({ id: nanoid(12), locked: false, validation: { status: 'pending', issues: [] }, ...c }))
+    const composed = composeDeck(cs, design, opts.aspectRatio, () => nanoid(10), assetBase, analysis.category, picks).map((c, i): Slide => { const sl = { id: deckId ? slideIds[i]! : nanoid(12), locked: false, validation: { status: 'pending' as const, issues: [] }, ...c } as Slide; return deckId ? stableElementIds({ ...sl, id: slideIds[i]! }) : sl })
     // pictures-only: hand-edited slides are kept exactly as they were, in their original positions
     let slides = composed
     if (opts.picturesOnly && existingDoc) { let k = 0; slides = existingDoc.slides.map((sl) => (sl.content && !sl.manual ? composed[k++]! : sl)) }
@@ -287,7 +335,17 @@ async function generate(jobId: string, hold: { pictures?: PictureSession }): Pro
     ;({ doc, report } = applyValidation(build(fixed)))
   }
 
-  // 6 ─ persist (transaction; the locked job row makes this idempotent)
+  // 6a ─ a deck that is already open (every new deck and remix): the finished deck is written over the placeholders and drafts, keeping whatever the person changed meanwhile
+  if (deckId) {
+    doc = { ...doc, id: deckId }
+    await write(doc)
+    mark('done')
+    const done = await db.update(generationJob).set({ status: 'completed', progress: 100, updatedAt: new Date(), lockedUntil: null, checkpoint: { ...cp, report: { ...(cp.report as object), timing: cp.marks, completeness: report.completeness, errors: report.errors, warnings: report.warnings } } }).where(and(eq(generationJob.id, jobId), ne(generationJob.status, 'cancelled'))).returning({ id: generationJob.id })
+    if (done.length === 0) throw new JobCancelled()
+    return
+  }
+
+  // 6b ─ a rewrite replaces the existing deck's content in one step; a job queued before decks opened early still creates its deck here (transaction; the locked job row makes this idempotent)
   let published: { deck: string; rev: number } | null = null
   await db.transaction(async (tx) => {
     const [locked] = await tx.select().from(generationJob).where(eq(generationJob.id, jobId)).for('update')

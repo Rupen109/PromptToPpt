@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { and, desc, eq, gt, isNull, ne, sql } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
-import type { Currency, SubscriptionSummary } from '@prompttoppt/validation'
+import { PAID_PLAN_IDS, type Currency, type PaidPlanId, type SubscriptionSummary } from '@prompttoppt/validation'
 import { db } from '../db/index.ts'
 import { checkoutAttempt, payment, plan, planPrice, subscription, user, webhookEvent } from '../db/schema.ts'
 import { env } from '../env.ts'
@@ -14,7 +14,7 @@ import { SIM_KEY_ID, simulatorEnabled } from './simulator.ts'
 import { notesOf, razorpay, razorpayEnabled, razorpayTestMode, RazorpayApiError, verifyCheckoutSignature, verifyWebhookSignature, type RzpPayment, type RzpSubscription } from './razorpay.ts'
 
 type Interval = 'month' | 'year'
-type PaidPlan = 'pro' | 'gold'
+type PaidPlan = PaidPlanId
 
 /** Razorpay needs a finite cycle count; renewals stop after this (10 years monthly / 10 years yearly). */
 const TOTAL_COUNT: Record<Interval, number> = { month: 120, year: 10 }
@@ -33,9 +33,11 @@ export async function ensureProviderPlan(planId: string, currency: Currency, int
   const [row] = await db.select().from(planPrice).where(and(eq(planPrice.id, priceId(planId, currency, interval)), eq(planPrice.isActive, true)))
   const [p] = await db.select().from(plan).where(and(eq(plan.id, planId), eq(plan.isActive, true)))
   if (!row || !p || row.amountMinor <= 0) throw new BillingError('PAYMENT_INVALID', 'That plan is not available for purchase.', 400)
-  if (row.providerPriceId) return { providerPlanId: row.providerPriceId, amountMinor: row.amountMinor, planName: p.name }
+  // a provider plan is only reused for the amount it was created for: after a price edit it is stale and a new one is made (otherwise the person sees the new price and pays the old one)
+  const stale = !!row.providerPriceId && row.providerAmountMinor !== row.amountMinor
+  if (row.providerPriceId && !stale) return { providerPlanId: row.providerPriceId, amountMinor: row.amountMinor, planName: p.name }
   const created = await razorpay.createPlan({ period: PERIOD[interval], name: `${p.name} (${interval === 'month' ? 'monthly' : 'yearly'})`, amount: row.amountMinor, currency, notes: { planId, interval, currency } })
-  const [won] = await db.update(planPrice).set({ providerPriceId: created.id }).where(and(eq(planPrice.id, row.id), isNull(planPrice.providerPriceId))).returning({ id: planPrice.providerPriceId })
+  const [won] = await db.update(planPrice).set({ providerPriceId: created.id, providerAmountMinor: row.amountMinor }).where(and(eq(planPrice.id, row.id), stale ? eq(planPrice.providerPriceId, row.providerPriceId!) : isNull(planPrice.providerPriceId))).returning({ id: planPrice.providerPriceId })
   if (won) return { providerPlanId: created.id, amountMinor: row.amountMinor, planName: p.name }
   const [again] = await db.select().from(planPrice).where(eq(planPrice.id, row.id)) // lost a race: use the winner's plan
   return { providerPlanId: again!.providerPriceId!, amountMinor: row.amountMinor, planName: p.name }
@@ -110,7 +112,7 @@ export async function applySubscription(entity: RzpSubscription, opts: { paidCon
   const now = opts.now ?? new Date()
   const notes = notesOf(entity.notes)
   const { userId, planId, interval, currency } = notes
-  if (!userId || !planId || (interval !== 'month' && interval !== 'year') || (currency !== 'INR' && currency !== 'USD') || (planId !== 'pro' && planId !== 'gold')) return 'ignored'
+  if (!userId || !planId || (interval !== 'month' && interval !== 'year') || (currency !== 'INR' && currency !== 'USD') || !(PAID_PLAN_IDS as readonly string[]).includes(planId)) return 'ignored'
 
   const [owner] = await db.select({ id: user.id }).from(user).where(eq(user.id, userId))
   const [price] = await db.select().from(planPrice).where(eq(planPrice.id, priceId(planId, currency, interval)))

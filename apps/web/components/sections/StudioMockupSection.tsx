@@ -3,7 +3,7 @@
 import { LayoutGrid, BarChart3, Sparkles, Download, TrendingUp, Star, Type } from '@prompttoppt/ui/icons'
 import { useState } from 'react'
 import { Card } from '@/components/ui/Card'
-import { Badge, HARD, Section, SectionHeader } from './ui'
+import { HARD, Section, SectionHeader } from './ui'
 
 /** Studio theme presets: the mock slide recolours live, like the real editor's theme switch. */
 const MODES = {
@@ -35,7 +35,6 @@ export default function StudioMockupSection() {
     <Section id="studio" bg="bg-[#f3f4f9]">
       <SectionHeader
         size={48}
-        badge={<Badge bg="bg-white" dot="#ff5722">Uncompromised granular control</Badge>}
         title="AI Built It, You Perfect It."
         subtitle="Unlike static AI screenshot generators, SlidesDone gives you a rich in-browser presentation studio with full layer, chart, and theme authority."
       />
@@ -91,8 +90,8 @@ export default function StudioMockupSection() {
             <div className="w-full max-w-[836px] rounded-2xl border-2 p-4 md:p-[34px] transition-colors shadow-[0_1px_2px_rgba(0,0,0,0.05)]" style={{ background: m.canvas, borderColor: m.edge, color: m.text }}>
               <div className="flex flex-col md:flex-row md:justify-between gap-4">
                 <div className="md:max-w-[530px]">
-                  <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-0.5 font-heading font-extrabold text-xs uppercase text-white ${HARD.sm}`} style={{ background: dark ? '#ff5722' : '#ff5722' }}><TrendingUp aria-hidden size={12} />Section 03 • Cohort Retention</span>
-                  <h3 className="font-heading font-extrabold text-2xl md:text-3xl leading-9 mt-1">Accelerating Net Revenue Retention <span className="whitespace-nowrap">(142% NRR)</span></h3>
+                  <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-0.5 font-heading font-extrabold text-xs uppercase text-white ${HARD.sm}`} style={{ background: 'var(--color-accent)' }}><TrendingUp aria-hidden size={12} />Section 03 • Cohort Retention</span>
+                  <h3 className="font-heading font-extrabold text-2xl md:text-3xl leading-9 mt-1" style={{ color: m.text }}>Accelerating Net Revenue Retention <span className="whitespace-nowrap">(142% NRR)</span></h3>
                   <p className="text-sm leading-5 mt-2" style={{ color: m.muted }}>Growth fueled by automatic enterprise seat expansion and high-margin API consumption tiers</p>
                 </div>
                 <div className="rounded-xl border p-[13px] md:w-[202px] md:text-right self-start" style={{ background: m.kpi, borderColor: m.edge }}>
@@ -106,7 +105,11 @@ export default function StudioMockupSection() {
                   <div className="font-heading font-extrabold text-xs uppercase leading-4" style={{ color: m.muted }}>ARR bridge (quarterly)</div>
                   <div className="mt-3.5 h-24 flex items-end gap-2">
                     {[['Q1', 31, 0.2], ['Q2', 48, 0.4], ['Q3', 66, 0.7], ['Q4', 88, 1]].map(([q, h, a]) => (
-                      <div key={q as string} className="flex-1 rounded-t grid place-items-center font-sans font-bold text-[10px]" style={{ height: h as number, background: m.primary, opacity: 0.35 + (a as number) * 0.65, color: (a as number) >= 0.7 && !dark ? '#fff' : dark ? '#0f172a' : '#0f172a' }}>{q}</div>
+                      <div key={q as string} className="relative flex-1 grid place-items-center font-sans font-bold text-xs" style={{ height: h as number, color: mode === 'cobalt' && (a as number) >= 0.7 ? '#fff' : '#0f172a' }}>
+                        {/* the fade belongs to the bar, not to its label (a faded label cannot be read) */}
+                        <span aria-hidden className="absolute inset-0 rounded-t" style={{ background: m.primary, opacity: 0.35 + (a as number) * 0.65 }} />
+                        <span className="relative">{q}</span>
+                      </div>
                     ))}
                   </div>
                   <div className="mt-2 text-right font-sans font-bold text-[11px]" style={{ color: m.primary }}>+105% YoY Growth</div>

@@ -2,6 +2,7 @@ import { ArrowLeft } from '@prompttoppt/ui/icons'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { formatMoney, type BillingOverview } from '@prompttoppt/api-client'
+import { paidPlanIdSchema } from '@prompttoppt/validation'
 import { Sidebar } from '@/components/Sidebar'
 import { api } from '@/lib/api'
 import { checkoutErrorMessage, setSimulatorMode, subscribe, testModeHint } from '@/lib/checkout'
@@ -59,12 +60,12 @@ export function BillingPage() {
   // Deep link from the pricing page: open checkout once.
   const started = useRef(false)
   useEffect(() => {
-    const plan = params.get('plan')
+    const plan = paidPlanIdSchema.safeParse(params.get('plan'))
     const interval = params.get('interval')
-    if (started.current || (plan !== 'pro' && plan !== 'gold') || (interval !== 'month' && interval !== 'year')) return
+    if (started.current || !plan.success || (interval !== 'month' && interval !== 'year')) return
     started.current = true
     setParams({}, { replace: true })
-    void run(() => subscribe(plan, interval, (c) => setTestHint(c.testMode)), 'Payment successful — your plan is active.')
+    void run(() => subscribe(plan.data, interval, (c) => setTestHint(c.testMode)), 'Payment successful — your plan is active.')
   }, [params, setParams, run])
 
   const sub = data?.subscription
@@ -91,7 +92,7 @@ export function BillingPage() {
               ) : ent && <div className="text-sm text-slate-600 mt-1">Free plan · credits renew on {when(ent.credits.resetsAt)}</div>}
             </div>
             <div className="flex flex-col gap-2 items-end shrink-0">
-              {ent?.plan.id !== 'gold' && <button onClick={() => upgrade.show()} className="bg-primary text-white rounded-lg px-4 py-2 text-sm font-semibold">{sub ? 'Change plan' : 'Upgrade'}</button>}
+              {ent?.plan.id !== 'premium' && <button onClick={() => upgrade.show()} className="bg-primary text-white rounded-lg px-4 py-2 text-sm font-semibold">{sub ? 'Change plan' : 'Upgrade'}</button>}
               {sub && !sub.cancelAtPeriodEnd && (
                 <button
                   disabled={busy}

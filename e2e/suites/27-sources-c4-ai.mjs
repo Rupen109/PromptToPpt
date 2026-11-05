@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { API, EDITOR, WEB, expect, launch, suite, uniqueEmail } from '../lib.mjs'
+import { API, EDITOR, WEB, expect, launch, startBuild, suite, uniqueEmail } from '../lib.mjs'
 import { JSON_HEADERS, plan, tsx } from '../kits-lib.mjs'
 
 /**
@@ -40,8 +40,7 @@ export default async function () {
     await p.getByLabel('Presentation prompt').fill(prompt)
     const sent = []; p.on('request', (r) => { if (r.url().endsWith('/generation/jobs') && r.method() === 'POST') sent.push(JSON.parse(r.postData() ?? '{}')) })
     await p.getByRole('button', { name: 'Create Presentation' }).click(); await p.waitForURL(/\/create/)
-    const radios = p.getByRole('radiogroup', { name: 'AI model' }).getByRole('radio'); await radios.first().waitFor({ timeout: 90000 })
-    const names = await radios.allInnerTexts(); await radios.nth(Math.max(0, names.findIndex((n) => /3\.6 Flash/.test(n)))).click()
+    await startBuild(p)
     await p.waitForURL(/\/edit\//, { timeout: 300000 })
     return { id: new URL(p.url()).pathname.split('/').pop(), sent: sent.at(-1) }
   }

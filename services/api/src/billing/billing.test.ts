@@ -4,7 +4,7 @@ import { db } from '../db/index.ts'
 import { creditBalance, creditLedger, generationJob, presentation } from '../db/schema.ts'
 import { api, json, rid, setPlan, signUp } from '../test-utils.ts'
 import { refundCredits, reserveCredits } from './credits.ts'
-import { assertAiEdits, assertExport, assertModelTier, getEntitlements } from './entitlements.ts'
+import { assertAiEdits, assertExport, assertLivePreview, assertModelTier, getEntitlements } from './entitlements.ts'
 import { GateError } from './errors.ts'
 import { nanoid } from 'nanoid'
 
@@ -19,25 +19,30 @@ const gate = async (fn: () => unknown) => {
   return null
 }
 
-describe('plan catalogue (matches the product spec)', () => {
-  it('Starter / Pro / Gold have exactly the agreed features', async () => {
+describe('plan catalogue (matches the owner\'s spec, docs/PLANS_AND_FEATURES_V5.md)', () => {
+  it('Starter / Pro / Gold / Premium have exactly the agreed limits and features', async () => {
     const res = await json(await app_get('/plans'))
-    const [starter, pro, gold] = res.data.plans
-    expect(res.data.plans.map((p: any) => p.id)).toEqual(['starter', 'pro', 'gold'])
-    expect(starter).toMatchObject({ monthlyCredits: 100, maxSlides: 20, maxImagesPerPresentation: 3, maxImagesPerMonth: 6, features: { watermark: true, exportFormats: [], aiEdits: true, advancedEditor: false, advancedSharing: false, modelTiers: ['starter'] } })
-    expect(pro).toMatchObject({ monthlyCredits: 3000, maxPresentationsPerMonth: 50, maxImagesPerPresentation: 10, features: { watermark: false, aiEdits: true, advancedEditor: true, premiumTemplates: true, advancedSharing: true, exportFormats: ['pptx', 'pdf', 'png', 'jpg', 'html'], modelTiers: ['starter', 'premium'], support: 'whatsapp' } })
-    expect(gold).toMatchObject({ monthlyCredits: 10000, features: { modelTiers: ['starter', 'premium', 'frontier'], brandKit: true, knowledgeBase: true, speed: 'ultra' } })
+    const [starter, pro, gold, premium] = res.data.plans
+    expect(res.data.plans.map((p: any) => p.id)).toEqual(['starter', 'pro', 'gold', 'premium'])
+    // Starter: free, 5 decks of 10 slides, watermark, no export, no AI edits, no live preview (no present / share), no model choice
+    expect(starter).toMatchObject({ monthlyCredits: 100, maxSlides: 10, maxPresentationsPerMonth: 5, maxImagesPerPresentation: 0, maxImagesPerMonth: 0, features: { watermark: true, exportFormats: [], aiEdits: false, advancedEditor: true, advancedSharing: false, livePreview: false, modelChoice: false, modelTiers: ['starter'], fixedModels: ['gemini-3.6-flash', 'gemini-3.1-flash-lite'] } })
+    expect(pro).toMatchObject({ monthlyCredits: 900, maxSlides: 15, maxPresentationsPerMonth: 15, features: { watermark: false, aiEdits: true, advancedEditor: true, premiumTemplates: true, advancedSharing: true, livePreview: true, exportFormats: ['pdf', 'pptx', 'jpg'], modelChoice: false, modelTiers: ['starter'], fixedModels: ['gemini-3.6-flash', 'gemini-3.8-flash'], support: 'whatsapp' } })
+    expect(gold).toMatchObject({ monthlyCredits: 2000, maxSlides: 25, maxPresentationsPerMonth: 50, features: { exportFormats: ['pptx', 'pdf', 'png', 'jpg', 'html'], livePreview: true, modelChoice: false, modelTiers: ['starter'], brandKit: true, knowledgeBase: true, speed: 'ultra', fixedModels: ['gemini-3.6-flash', 'gemini-3.8-flash'] } })
+    expect(premium).toMatchObject({ monthlyCredits: 3700, maxSlides: 60, maxPresentationsPerMonth: 50, features: { exportFormats: ['pptx', 'pdf', 'png', 'jpg', 'html'], livePreview: true, modelChoice: true, modelTiers: ['starter', 'premium', 'frontier'], aiEdits: true } })
   })
 
   it('prices come from the DB and follow the server-detected country, not a client value', async () => {
     const usd = await json(await app_get('/plans'))
     expect(usd.data.currency).toBe('USD')
-    expect(usd.data.plans[1].prices).toEqual([{ interval: 'month', amountMinor: 1500, currency: 'USD' }, { interval: 'year', amountMinor: 14400, currency: 'USD' }]) // $15/mo or $144/yr
-    expect(usd.data.plans[2].prices).toEqual([{ interval: 'month', amountMinor: 3000, currency: 'USD' }, { interval: 'year', amountMinor: 28800, currency: 'USD' }])
+    // the US-dollar and the annual prices are provisional (not yet decided by the owner): $10 / $19 / $35 a month, annual = monthly × 12 × 0.80
+    expect(usd.data.plans[1].prices).toEqual([{ interval: 'month', amountMinor: 1000, currency: 'USD' }, { interval: 'year', amountMinor: 9600, currency: 'USD' }])
+    expect(usd.data.plans[2].prices).toEqual([{ interval: 'month', amountMinor: 1900, currency: 'USD' }, { interval: 'year', amountMinor: 18240, currency: 'USD' }])
+    expect(usd.data.plans[3].prices[0]).toEqual({ interval: 'month', amountMinor: 3500, currency: 'USD' })
     const inr = await json(await app_get('/plans', { 'x-debug-country': 'IN' }))
     expect(inr.data.currency).toBe('INR')
-    expect(inr.data.plans[1].prices).toEqual([{ interval: 'month', amountMinor: 49900, currency: 'INR' }, { interval: 'year', amountMinor: 479000, currency: 'INR' }]) // ₹499/mo
-    expect(inr.data.plans[2].prices[0]).toEqual({ interval: 'month', amountMinor: 120000, currency: 'INR' }) // ₹1,200/mo
+    expect(inr.data.plans[1].prices).toEqual([{ interval: 'month', amountMinor: 30000, currency: 'INR' }, { interval: 'year', amountMinor: 288000, currency: 'INR' }]) // ₹300/mo
+    expect(inr.data.plans[2].prices[0]).toEqual({ interval: 'month', amountMinor: 65000, currency: 'INR' }) // ₹650/mo
+    expect(inr.data.plans[3].prices[0]).toEqual({ interval: 'month', amountMinor: 120000, currency: 'INR' }) // ₹1,200/mo
     // a query-string "currency" is simply ignored
     const spoof = await json(await app_get('/plans?currency=INR'))
     expect(spoof.data.currency).toBe('USD')
@@ -56,13 +61,15 @@ describe('entitlements & gates', () => {
   })
 
   it('upgrading grants the new plan allowance and removes the watermark', async () => {
-    const u = await signUp('ent')
-    await getEntitlements(u.id)
-    await setPlan(u.id, 'pro')
-    const ent = await getEntitlements(u.id)
-    expect(ent.plan.id).toBe('pro')
-    expect(ent.credits.balance).toBe(3000)
-    expect(ent.features.watermark).toBe(false)
+    for (const [plan, credits] of [['pro', 900], ['gold', 2000], ['premium', 3700]] as const) {
+      const u = await signUp('ent')
+      await getEntitlements(u.id)
+      await setPlan(u.id, plan)
+      const ent = await getEntitlements(u.id)
+      expect(ent.plan.id).toBe(plan)
+      expect(ent.credits.balance).toBe(credits)
+      expect(ent.features.watermark).toBe(false)
+    }
   })
 
   it('an expired subscription falls back to Starter', async () => {
@@ -72,7 +79,7 @@ describe('entitlements & gates', () => {
     expect((await getEntitlements(u.id, future)).plan.id).toBe('starter')
   })
 
-  it('Starter cannot export — through the API; Pro passes the gate', async () => {
+  it('Starter cannot export — through the API; Pro passes the gate for its own formats only', async () => {
     const free = await signUp('gate')
     const res = await api(free.cookie, 'POST', '/exports', { presentationId: 'x', format: 'pptx' })
     expect(res.status).toBe(403)
@@ -83,50 +90,64 @@ describe('entitlements & gates', () => {
     // allowed → real behaviour: PPTX is built server-side, the other formats are authorised for in-browser rendering
     const created = await json(await api(pro.cookie, 'POST', '/presentations', { templateId: 'pitch-launchpad', title: 'Export test' }))
     const deckId = created.data.id as string
-    const html = await api(pro.cookie, 'POST', '/exports', { presentationId: deckId, format: 'html' })
-    expect(html.status).toBe(200)
-    expect((await json(html)).data).toMatchObject({ mode: 'client', format: 'html', title: 'Export test' })
+    const pdf = await api(pro.cookie, 'POST', '/exports', { presentationId: deckId, format: 'pdf' })
+    expect(pdf.status).toBe(200)
+    expect((await json(pdf)).data).toMatchObject({ mode: 'client', format: 'pdf', title: 'Export test' })
     const pptx = await api(pro.cookie, 'POST', '/exports', { presentationId: deckId, format: 'pptx' })
     expect(pptx.status).toBe(200)
     expect(pptx.headers.get('content-type')).toContain('presentationml.presentation')
     expect(pptx.headers.get('content-disposition')).toContain('Export-test.pptx')
     const bytes = new Uint8Array(await pptx.arrayBuffer())
     expect([bytes[0], bytes[1]]).toEqual([0x50, 0x4b]) // a zip (.pptx)
-    expect((await api(pro.cookie, 'POST', '/exports', { presentationId: 'does-not-exist', format: 'html' })).status).toBe(404)
+    // Pro has PDF, PPTX and JPEG; PNG and HTML are Gold and above
+    for (const format of ['png', 'html']) expect((await api(pro.cookie, 'POST', '/exports', { presentationId: deckId, format })).status, format).toBe(403)
+    expect((await api(pro.cookie, 'POST', '/exports', { presentationId: 'does-not-exist', format: 'pdf' })).status).toBe(404)
     expect((await api(free.cookie, 'POST', '/exports', { presentationId: deckId, format: 'pptx' })).status).toBe(403) // not theirs and not their plan
+    const gold = await signUp('gate'); await setPlan(gold.id, 'gold')
+    const own = await json(await api(gold.cookie, 'POST', '/presentations', { templateId: 'pitch-launchpad', title: 'Gold deck' }))
+    expect((await api(gold.cookie, 'POST', '/exports', { presentationId: own.data.id, format: 'html' })).status).toBe(200)
   })
 
-  it('model tier, AI edits and export formats are gated per plan', async () => {
-    const free = await signUp('gate'), pro = await signUp('gate'), gold = await signUp('gate')
-    await setPlan(pro.id, 'pro'); await setPlan(gold.id, 'gold')
-    const [f, p, g] = await Promise.all([free, pro, gold].map((u) => getEntitlements(u.id)))
-    expect((await gate(() => assertModelTier(f!, 'premium')))?.code).toBe('UPGRADE_REQUIRED')
-    expect(await gate(() => assertModelTier(p!, 'premium'))).toBeNull()
-    expect((await gate(() => assertModelTier(p!, 'frontier')))?.code).toBe('UPGRADE_REQUIRED')
-    expect(await gate(() => assertModelTier(g!, 'frontier'))).toBeNull()
-    expect(await gate(() => assertAiEdits(f!))).toBeNull() // Starter may use AI edits on its credits
+  it('model tier, AI edits, live preview and export formats are gated per plan', async () => {
+    const free = await signUp('gate'), pro = await signUp('gate'), gold = await signUp('gate'), premium = await signUp('gate')
+    await setPlan(pro.id, 'pro'); await setPlan(gold.id, 'gold'); await setPlan(premium.id, 'premium')
+    const [f, p, g, pr] = await Promise.all([free, pro, gold, premium].map((u) => getEntitlements(u.id)))
+    // Starter, Pro and Gold use their own Gemini models (starter credit class); only Premium reaches the premium and frontier classes
+    for (const e of [f!, p!, g!]) {
+      expect((await gate(() => assertModelTier(e, 'premium')))?.code).toBe('UPGRADE_REQUIRED')
+      expect((await gate(() => assertModelTier(e, 'frontier')))?.code).toBe('UPGRADE_REQUIRED')
+    }
+    expect(await gate(() => assertModelTier(pr!, 'premium'))).toBeNull()
+    expect(await gate(() => assertModelTier(pr!, 'frontier'))).toBeNull()
+    expect((await gate(() => assertAiEdits(f!)))?.code).toBe('UPGRADE_REQUIRED') // Starter has no AI edits
     expect(await gate(() => assertAiEdits(p!))).toBeNull()
-    expect((await gate(() => assertAiEdits({ ...f!, features: { ...f!.features, aiEdits: false } })))?.code).toBe('UPGRADE_REQUIRED') // the flag still works if the owner turns it off
+    expect((await gate(() => assertLivePreview(f!)))?.code).toBe('UPGRADE_REQUIRED') // Starter cannot present or share
+    for (const e of [p!, g!, pr!]) expect(await gate(() => assertLivePreview(e))).toBeNull()
+    expect((await gate(() => assertExport(p!, 'png')))?.code).toBe('UPGRADE_REQUIRED')
+    expect(await gate(() => assertExport(p!, 'jpg'))).toBeNull()
     expect(await gate(() => assertExport(g!, 'png'))).toBeNull()
+    expect(await gate(() => assertExport(pr!, 'html'))).toBeNull()
   })
 
-  it('Starter is capped at 20 slides; Pro can go higher', async () => {
-    const free = await signUp('cap')
+  it('slides per deck: Starter 10, Pro 15, Gold 25', async () => {
     const body = (n: number) => ({ prompt: 'A long deck about our product roadmap and strategy', slideCount: n, idempotencyKey: `k-${rid()}-${rid()}` })
-    const over = await api(free.cookie, 'POST', '/generation/jobs', body(21))
-    expect(over.status).toBe(403)
-    expect((await json(over)).error.code).toBe('UPGRADE_REQUIRED')
-    expect((await api(free.cookie, 'POST', '/generation/jobs', body(20))).status).toBe(201)
-    const pro = await signUp('cap'); await setPlan(pro.id, 'pro')
-    expect((await api(pro.cookie, 'POST', '/generation/jobs', body(30))).status).toBe(201)
+    for (const [plan, cap] of [['starter', 10], ['pro', 15], ['gold', 25]] as const) {
+      const u = await signUp('cap'); await setPlan(u.id, plan)
+      const over = await api(u.cookie, 'POST', '/generation/jobs', body(cap + 1))
+      expect(over.status, plan).toBe(403)
+      expect((await json(over)).error.code).toBe('UPGRADE_REQUIRED')
+      expect((await api(u.cookie, 'POST', '/generation/jobs', body(cap))).status, plan).toBe(201)
+    }
   })
 
-  it('Pro is capped at 50 presentations per month', async () => {
-    const u = await signUp('quota'); await setPlan(u.id, 'pro')
-    await db.insert(presentation).values(Array.from({ length: 50 }, () => ({ id: nanoid(), userId: u.id, title: 'x' })))
-    const res = await api(u.cookie, 'POST', '/generation/jobs', { prompt: 'One more deck than allowed', idempotencyKey: `k-${rid()}-${rid()}` })
-    expect(res.status).toBe(429)
-    expect((await json(res)).error.code).toBe('LIMIT_REACHED')
+  it('presentations per month: Starter 5, Pro 15, Gold 50', async () => {
+    for (const [plan, cap] of [['starter', 5], ['pro', 15], ['gold', 50]] as const) {
+      const u = await signUp('quota'); await setPlan(u.id, plan)
+      await db.insert(presentation).values(Array.from({ length: cap }, () => ({ id: nanoid(), userId: u.id, title: 'x' })))
+      const res = await api(u.cookie, 'POST', '/generation/jobs', { prompt: 'One more deck than allowed', slideCount: 5, idempotencyKey: `k-${rid()}-${rid()}` })
+      expect(res.status, plan).toBe(429)
+      expect((await json(res)).error.code).toBe('LIMIT_REACHED')
+    }
   })
 })
 
@@ -170,20 +191,21 @@ describe('credits', () => {
 
   it('jobs charge up front, refuse when short (402), and cancelling refunds', async () => {
     const u = await signUp('job')
-    const mk = (n: number) => api(u.cookie, 'POST', '/generation/jobs', { prompt: 'A 20 slide deck about onboarding customers', slideCount: n, idempotencyKey: `k-${rid()}-${rid()}` })
-    const a = await mk(20) // 20 slides × 2 credits (Starter) = 40
-    const b = await mk(20)
+    const mk = (n: number) => api(u.cookie, 'POST', '/generation/jobs', { prompt: 'A 10 slide deck about onboarding customers', slideCount: n, idempotencyKey: `k-${rid()}-${rid()}` })
+    const a = await mk(10) // 10 slides × 2 credits (the Gemini Flash credit class) = 20
+    const b = await mk(10)
     expect([a.status, b.status]).toEqual([201, 201])
-    expect(await balance(u.id)).toBe(20)
-    expect((await mk(20)).status).toBe(429) // at most two presentations in progress per account: the queue is shared
+    expect(await balance(u.id)).toBe(60)
+    expect((await mk(10)).status).toBe(429) // at most two presentations in progress per account: the queue is shared
     await db.update(generationJob).set({ status: 'completed' }).where(eq(generationJob.id, (await json(b)).data.id)) // b finishes: a slot frees up
-    const c = await mk(20)
+    await reserveCredits(u.id, 50, 'job', `drain-${u.id}`) // the person spent most of what was left
+    const c = await mk(10)
     expect(c.status).toBe(402)
-    expect((await json(c)).error).toMatchObject({ code: 'INSUFFICIENT_CREDITS', details: { needed: 40, balance: 20 } })
+    expect((await json(c)).error).toMatchObject({ code: 'INSUFFICIENT_CREDITS', details: { needed: 20, balance: 10 } })
 
     const jobId = (await json(a)).data.id
     expect((await api(u.cookie, 'POST', `/generation/jobs/${jobId}/cancel`)).status).toBe(200)
-    expect(await balance(u.id)).toBe(60) // refunded
+    expect(await balance(u.id)).toBe(30) // 10 left + the 20 of the cancelled deck refunded
     await db.update(generationJob).set({ status: 'cancelled' }).where(eq(generationJob.userId, u.id))
   })
 

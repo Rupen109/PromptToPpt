@@ -237,11 +237,70 @@ describe('the pipeline: slide management and looks, done by code', () => {
     expect(rm.compiled.edits[0]).toMatchObject({ slideId: 's7', content: { layout: 'title-body', title: 'Architect of Pokhran-II' } })
     expect(rm.slideOps.clearPictures).toEqual(['s7'])
   })
+  it('"undo that" after a MOVE or a DELETE works even when the model scopes it to "that slide" (the dead end seen in the 1,500-user test)', async () => {
+    for (const summary of ['Moved slide 3 to the end', 'Deleted slide 4']) {
+      const r = done((await run({ tasks: [{ family: 'undo', targets: [{ by: 'just_changed' }], values: { part: 'slide' } }] }, undefined, { recent: [{ theme: false, slideIds: ['s3'], summary: [summary] }] })).out)
+      expect(r.compiled.reverts, summary).toEqual([{ change: 0, part: 'all' }])
+      expect(r.notes, summary).toEqual([])
+    }
+  })
   it('undo with nothing to put back says so; with a recorded change it is a free revert', async () => {
     const none = done((await run({ tasks: [{ family: 'undo', targets: [], values: {} }] })).out)
     expect(none.notes[0]).toMatch(/no earlier change of mine/)
     const back = done((await run({ tasks: [{ family: 'undo', targets: [], values: {} }] }, undefined, { recent: [{ theme: true, slideIds: [], summary: ['New dark colour scheme'] }] })).out)
     expect(back.compiled.reverts).toEqual([{ change: 0, part: 'all' }])
     expect(back.units).toBe(0)
+  })
+})
+
+describe('writer answers are accepted slide by slide', () => {
+  const steps = (s: any) => ({ layout: Number(String(s.slideId).slice(1)) % 2 ? 'timeline' : 'process', title: s.content.title, steps: s.content.bullets.map((b: string) => ({ label: b.slice(0, 20), detail: b })) })
+  const broken = { layout: 'comparison', title: 'x', left: { heading: 'a', bullets: ['b'] } } // the "right" side is missing
+  const layoutTask: Partial<Intent> = { tasks: [{ family: 'layout', targets: [{ by: 'range', from: 7, to: 10 }], values: {} }] }
+
+  it('one invalid slide of four does not throw the others away: only that one is asked again, with the reason, and then all four are applied', async () => {
+    const seen: any[] = []
+    const { out, calls } = await run(layoutTask, (_c, input, problems) => {
+      seen.push(input)
+      return { slides: input.slides.map((s: any, i: number) => ({ slideId: s.slideId, content: !problems && s.slideId === 's9' ? broken : steps(s) })) }
+    })
+    expect(calls.write).toBe(2)
+    expect(seen[0].slides).toHaveLength(4)
+    expect(seen[1].slides.map((s: any) => s.slideId)).toEqual(['s9'])
+    expect(seen[1].problems[0]).toMatch(/^Slide 9 was rejected: right: /)
+    expect(done(out).compiled.edits.map((e) => e.slideId)).toEqual(['s7', 's8', 's9', 's10'])
+  })
+  it('a slide that stays invalid is named and left as it was; the other three are still applied (it used to fail the whole answer as "AI busy")', async () => {
+    const { out, calls } = await run(layoutTask, (_c, input) => ({ slides: input.slides.map((s: any) => ({ slideId: s.slideId, content: s.slideId === 's8' ? broken : steps(s) })) }))
+    const r = done(out)
+    expect(calls.write).toBe(2)
+    expect(r.compiled.edits.map((e) => e.slideId)).toEqual(['s7', 's9', 's10'])
+    expect(r.notes).toContain("Slide 8: I couldn't fit that into the slide, so I left it as it was.")
+  })
+  it('a slide that was not returned at all, or came back without its layout change, is asked for again like an invalid one', async () => {
+    const { out, calls } = await run(layoutTask, (_c, input, problems) => ({ slides: input.slides.filter((s: any) => problems || s.slideId !== 's10').map((s: any) => ({ slideId: s.slideId, content: !problems && s.slideId === 's7' ? s.content : steps(s) })) }))
+    expect(calls.write).toBe(2)
+    expect(done(out).compiled.edits).toHaveLength(4)
+  })
+  it('a text edit that changes the slide\'s layout is refused and asked again; the writer is told each slide\'s exact point limit', async () => {
+    const seen: any[] = []
+    const { out, calls } = await run({ tasks: [{ family: 'text', targets: [{ by: 'number', n: 2 }], values: { request: 'rewrite' } }] }, (_c, input, problems) => {
+      seen.push(input)
+      return { slides: input.slides.map((s: any) => ({ slideId: s.slideId, content: problems ? { ...s.content, title: 'New title' } : { layout: 'quote', quote: 'q' } })) }
+    })
+    expect(calls.write).toBe(2)
+    expect(seen[0].slides[0].limits).toEqual({ maxPointsPerList: 6 })
+    expect(seen[1].problems[0]).toMatch(/must keep the title-body layout \(you returned quote\)/)
+    expect(done(out).compiled.edits[0]!.content).toMatchObject({ layout: 'title-body', title: 'New title' })
+  })
+  it('new slides: the invalid ones are asked for again (only those), the valid ones are kept, and a shortfall is said plainly', async () => {
+    const asked: number[] = []
+    const good = (i: number) => ({ content: tb(`Slide ${i}`) })
+    const { out } = await run({ tasks: [{ family: 'add_slide', targets: [], values: { count: 3, where: 'end', about: 'more' } }] }, (_c, input) => { asked.push(input.count); return { slides: input.count === 3 ? [good(1), { content: broken }, good(3)] : [good(2)] } })
+    expect(asked).toEqual([3, 1])
+    expect(done(out).compiled.additions).toHaveLength(3)
+    const stuck = await run({ tasks: [{ family: 'add_slide', targets: [], values: { count: 2, where: 'end', about: 'more' } }] }, (_c, input) => ({ slides: input.count === 2 ? [good(1), { content: broken }] : [{ content: broken }] }))
+    expect(done(stuck.out).compiled.additions).toHaveLength(1)
+    expect(done(stuck.out).notes).toContain('I could only make 1 of the 2 slides you asked for.')
   })
 })

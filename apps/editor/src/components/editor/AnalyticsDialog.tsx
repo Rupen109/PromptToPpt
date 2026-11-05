@@ -55,14 +55,14 @@ function DailyChart({ daily }: { daily: ShareAnalyticsFull['daily'] }) {
   )
 }
 
-/** Owner only: how a shared deck is being viewed. Pro / Gold see everything; other plans see the total and an upgrade prompt. */
+/** Owner only: how a shared deck is being viewed. Paid plans see everything; other plans see the total and an upgrade prompt. */
 export function AnalyticsDialog({ deckId, onClose }: { deckId: string; onClose: () => void }) {
   const ref = useDialog<HTMLDivElement>(true, onClose)
   const { upgrade } = useEntitlements()
   const [days, setDays] = useState<7 | 30 | 90>(30)
   const [data, setData] = useState<ShareAnalytics | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const load = useCallback(() => { setError(null); api.getShareAnalytics(deckId, days).then(setData).catch((e) => setError(e instanceof ApiError ? e.message : 'Could not load the analytics. Please try again.')) }, [deckId, days])
+  const load = useCallback(() => { api.getShareAnalytics(deckId, days).then((d) => { setError(null); setData(d) }).catch((e) => setError(e instanceof ApiError ? e.message : 'Could not load the analytics. Please try again.')) }, [deckId, days])
   useEffect(() => { load() }, [load])
   async function clear() {
     if (!confirm('Delete all recorded views of this presentation? This cannot be undone.')) return
@@ -83,8 +83,8 @@ export function AnalyticsDialog({ deckId, onClose }: { deckId: string; onClose: 
         {data && !data.detail && (
           <div className="rounded-xl border border-border bg-slate-50 p-4 space-y-2" aria-label="Views summary">
             <div className="text-sm"><span className="font-heading font-bold text-3xl" data-kpi="Total views">{data.totalViews}</span> <span className="text-slate-700">{data.totalViews === 1 ? 'view' : 'views'} so far · last viewed {ago(data.lastViewedAt)}</span></div>
-            <p className="text-sm text-slate-700">See who is reading, how long each slide holds attention and where people stop with Pro or Gold.</p>
-            <button onClick={() => { onClose(); upgrade.show('Detailed link analytics are available on Pro and Gold.') }} className="px-4 py-2 rounded-lg bg-primary text-white text-sm font-semibold">See plans</button>
+            <p className="text-sm text-slate-700">See who is reading, how long each slide holds attention and where people stop with a paid plan.</p>
+            <button onClick={() => { onClose(); upgrade.show('Detailed link analytics are available on Pro, Gold and Premium.') }} className="px-4 py-2 rounded-lg bg-primary text-white text-sm font-semibold">See plans</button>
           </div>
         )}
 

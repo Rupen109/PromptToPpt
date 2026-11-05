@@ -1,8 +1,9 @@
 import { Sparkles, Zap, FileText, NotebookPen, Globe, Link2, ArrowDown } from '@prompttoppt/ui/icons'
 import type { ReactNode } from 'react'
 import type { LucideIcon } from '@prompttoppt/ui/icons'
+import { CardCarousel } from '@/components/ui/Carousel'
 import { Card, type CardTone } from '@/components/ui/Card'
-import { Badge, Section, SectionHeader, Tag, Tile } from './ui'
+import { Section, SectionHeader, Tile } from './ui'
 
 /** What you can feed it — every modality here is something the product really reads today. */
 const MODALITIES: { n: string; title: string; body: string; tone: CardTone; tile: 'yellow' | 'accent' | 'primary' | 'lime'; icon: LucideIcon; foot: [string, string, LucideIcon]; mock: ReactNode }[] = [
@@ -27,7 +28,7 @@ const MODALITIES: { n: string; title: string; body: string; tone: CardTone; tile
     mock: (
       <>
         <MockHead title="Document Reader" tag="84 Pgs Read" tagClass="bg-[#fee2e2] text-[#b91c1c]" titleClass="text-accent" />
-        <div className="mt-3 flex justify-between rounded bg-[#edf0f7] px-2 py-2 font-sans font-bold text-[11px] text-[#0f172a]"><span>Q3 Financial Model</span><span className="text-accent">24 Tables</span></div>
+        <div className="mt-3 flex justify-between rounded bg-[#edf0f7] px-2 py-2 font-sans font-bold text-[11px] text-[#0f172a]"><span>Q3 Financial Model</span><span className="text-[#b02f00]">24 Tables</span></div>
         <div className="mt-2 h-2 rounded-full bg-[#e2e8f0] overflow-hidden"><div className="h-full w-4/5 rounded-full bg-accent" /></div>
       </>
     ),
@@ -69,28 +70,26 @@ export function ModalitiesSection() {
     <Section id="modalities">
       <SectionHeader
         align="left" max="max-w-[644px]"
-        badge={<Badge>Multi-modal ingestion matrix</Badge>}
         title={<>Give It Anything. Get Boardroom<br className="hidden md:block" /> Slides.</>}
         subtitle="We don't limit you to typing prompts into a basic textbox. Drop in PDFs, PowerPoint decks, notes or live website links — the AI reads them and builds your deck."
-        aside={<p className="font-handwriting text-xl font-bold text-accent flex items-center gap-2 lg:pb-1"><ArrowDown aria-hidden size={18} className="animate-bounce motion-reduce:animate-none" />Supported file types &amp; live bridges</p>}
+        aside={<p className="font-handwriting text-xl font-bold text-accent flex items-center gap-2 xl:pb-1"><ArrowDown aria-hidden size={18} className="animate-bounce motion-reduce:animate-none" />Supported file types &amp; live bridges</p>}
       />
-      <div className="mt-16 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6 items-stretch">
+      {/* Narrow screens: a swipeable carousel. From xl: four columns whose five rows (icon, title, text, preview, footer) are shared by all cards (subgrid), so
+          every title, preview and footer lines up whatever the text length or language, with no fixed heights. */}
+      <CardCarousel from="xl" label="What SlidesDone can read" className="mt-6 xl:mt-16" gridClassName="xl:grid xl:grid-cols-4 xl:gap-x-6 xl:gap-y-0 xl:p-0">
         {MODALITIES.map((m, i) => (
-          <Card key={m.n} as="article" tone={m.tone} index={i} className="group/card p-6 flex flex-col h-full" wrapperClassName="h-full">
-            <div className="flex items-start justify-between">
-              <Tile tone={m.tile}><m.icon aria-hidden size={22} /></Tile>
-              <Tag>Modality {m.n}</Tag>
-            </div>
-            <h3 className="mt-5 font-heading font-extrabold text-xl leading-7 text-foreground xl:min-h-14">{m.title}</h3>
-            <p className="mt-3 text-sm leading-5 text-[#475569] xl:min-h-[7.5rem]">{m.body}</p>
-            <div className="mt-5 lg:flex-1 rounded-xl border-2 border-foreground bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] lg:min-h-[8.5rem]">{m.mock}</div>
+          <Card key={m.n} as="article" tone={m.tone} index={i} className="group/card p-6 flex flex-col h-full xl:grid xl:row-span-5 xl:grid-rows-subgrid" wrapperClassName="h-full xl:row-span-5 xl:grid xl:grid-rows-subgrid">
+            <div><Tile tone={m.tile}><m.icon aria-hidden size={22} /></Tile></div>
+            <h3 className="mt-5 font-heading font-extrabold text-xl leading-7 text-foreground">{m.title}</h3>
+            <p className="mt-3 flex-1 text-sm leading-5 text-[#475569]">{m.body}</p>
+            <div className="mt-5 min-h-[8.5rem] flex flex-col justify-center rounded-xl border-2 border-foreground bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.05)]">{m.mock}</div>
             <div className="mt-5 pt-4 border-t border-foreground flex items-center justify-between gap-3 font-heading font-extrabold text-xs leading-4">
               <span className="text-foreground">{m.foot[0]}</span>
-              <span className={m.tone === 'peach' ? 'text-accent' : 'text-primary'}><span className="inline-flex items-center gap-1">{m.foot[1]} {(() => { const F = m.foot[2]; return <F aria-hidden size={13} /> })()}</span></span>
+              <span className={m.tone === 'peach' ? 'text-[#b02f00]' : 'text-primary'}><span className="inline-flex items-center gap-1">{m.foot[1]} {(() => { const F = m.foot[2]; return <F aria-hidden size={13} /> })()}</span></span>
             </div>
           </Card>
         ))}
-      </div>
+      </CardCarousel>
     </Section>
   )
 }

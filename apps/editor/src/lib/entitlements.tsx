@@ -9,7 +9,7 @@ interface Ctx {
   upgrade: { open: boolean; reason: string | null; show: (reason?: string) => void; hide: () => void }
 }
 /** shown in the upgrade window when a Starter plan opens Present mode */
-export const PRESENT_LOCKED = 'Present mode is available on the Pro plan.'
+export const PRESENT_LOCKED = 'Present mode and share links are available on Pro, Gold and Premium.'
 
 const EntitlementsContext = createContext<Ctx | null>(null)
 

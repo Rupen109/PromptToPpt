@@ -140,12 +140,6 @@ export function HeroSection() {
       <div className="absolute rounded-full blur-[100px] -z-10 w-[300px] h-[300px] bg-[rgba(255,223,0,0.4)] -top-[50px] -left-[100px]"></div>
       <div className="absolute rounded-full blur-[100px] -z-10 w-[400px] h-[400px] bg-[rgba(255,87,34,0.3)] top-[100px] -right-[100px]"></div>
 
-      <div className="inline-flex flex-col sm:flex-row items-center justify-center gap-x-3 gap-y-0.5 bg-white border-2 border-foreground rounded-3xl sm:rounded-full py-2 px-4 sm:px-5 mb-6 sm:mb-8 max-w-full shadow-[3px_3px_0px_0px_var(--color-text-primary)]">
-        <span className="font-heading font-extrabold text-xs sm:text-sm text-foreground"><span className="text-highlight">O</span> THE AGENCY-GRADE PITCH DECK ENGINE</span>
-        <span aria-hidden className="hidden sm:inline text-foreground text-sm font-bold">•</span>
-        <span className="font-heading font-bold text-xs sm:text-sm text-slate-600">PDF · PPTX · TXT · Web links</span>
-      </div>
-      
       <h1 className="text-[1.9rem] min-[400px]:text-[2.15rem] sm:text-5xl lg:text-6xl leading-[1.18] sm:leading-tight mb-5 sm:mb-6 max-w-[900px] mx-auto font-heading font-extrabold text-balance">
         Turn Messy Documents into <br/>
         <span className="bg-secondary px-2 rounded-sm inline-block max-w-full shadow-solid border-2 border-foreground my-1">Boardroom-Ready</span><br/>
@@ -221,7 +215,7 @@ export function HeroSection() {
                   <Button size="sm" variant="white" onClick={() => { setLinkOpen((v) => !v); setTimeout(() => linkInput.current?.focus(), 0) }} disabled={room() <= 0}><Link2 aria-hidden size={14} />Add website link</Button>
                   <LanguageSelect variant="chip" />
                 </div>
-                <button type="button" onClick={generate} disabled={uploading || busy} aria-label="Generate Presentation" title={uploading ? 'Reading your files…' : 'Generate presentation'} className="sm:ml-auto grid h-12 w-12 shrink-0 place-items-center rounded-full border-2 border-foreground bg-primary text-white shadow-[3px_4px_0_0_#181b25] transition-[transform,box-shadow] hover:-translate-y-0.5 hover:shadow-[4px_6px_0_0_#181b25] hover:bg-primary-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 active:translate-y-0.5 disabled:opacity-60 disabled:pointer-events-none">
+                <button type="button" onClick={generate} disabled={uploading || busy} aria-label="Generate Presentation" title={uploading ? 'Reading your files…' : 'Generate presentation'} className="ml-auto grid h-12 w-12 shrink-0 place-items-center rounded-full border-2 border-foreground bg-primary text-white shadow-[3px_4px_0_0_#181b25] transition-[transform,box-shadow] hover:-translate-y-0.5 hover:shadow-[4px_6px_0_0_#181b25] hover:bg-primary-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 active:translate-y-0.5 disabled:opacity-60 disabled:pointer-events-none">
                   {busy || uploading ? <Loader2 aria-hidden size={20} className="animate-spin" /> : <Send aria-hidden size={20} className="-ml-0.5 mt-0.5" />}
                 </button>
               </div>

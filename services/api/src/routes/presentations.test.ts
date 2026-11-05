@@ -91,14 +91,36 @@ describe('save: optimistic concurrency + versions', () => {
   })
 })
 
+describe('GET /presentations/:id?since', () => {
+  it('sends the saved document untouched; "only if changed" answers a few bytes when nothing changed and the deck when it did', async () => {
+    const u = await signUp('since'); const { id, doc } = await makeDeck(u.id, 3)
+    const full = await json(await api(u.cookie, 'GET', `/presentations/${id}`))
+    expect(full.data).toMatchObject({ id, revision: 1, role: 'owner' })
+    expect(full.data.document.slides.map((s: { id: string }) => s.id)).toEqual(doc.slides.map((s) => s.id))
+    const same = await json(await api(u.cookie, 'GET', `/presentations/${id}?since=1`))
+    expect(same).toEqual({ success: true, data: { unchanged: true, revision: 1 } })
+    const older = await json(await api(u.cookie, 'GET', `/presentations/${id}?since=0`))
+    expect(older.data.document.slides).toHaveLength(3)
+    expect((await api(u.cookie, 'GET', `/presentations/${id}?since=abc`)).status).toBe(200) // nonsense is ignored: the deck comes back
+    const stranger = await signUp('since')
+    expect((await api(stranger.cookie, 'GET', `/presentations/${id}?since=1`)).status).toBe(404) // no information leaks through the cheap answer
+  })
+})
+
 describe('AI edit', () => {
   const body = (slideId: string, extra: object = {}) => ({ slideId, command: 'shorten', requestId: `r-${rid()}-${rid()}`, ...extra })
 
-  it('Starter can use AI edits on its credits (starter-tier model, 2 credits) — and is stopped, not charged, when out of credits', async () => {
+  it('Starter has no AI edits (server gate, nothing charged); the editor itself stays open', async () => {
     const u = await signUp('ai'); const { id, doc } = await makeDeck(u.id)
-    const r = await json(await api(u.cookie, 'POST', `/presentations/${id}/ai-edit`, body(doc.slides[1]!.id)))
-    expect(r.data.creditsCharged).toBe(2)
-    expect(await balance(u.id)).toBe(98)
+    const r = await api(u.cookie, 'POST', `/presentations/${id}/ai-edit`, body(doc.slides[1]!.id))
+    expect(r.status).toBe(403)
+    expect((await json(r)).error).toMatchObject({ code: 'UPGRADE_REQUIRED', details: { feature: 'aiEdits' } })
+    expect(await balance(u.id)).toBe(100)
+  })
+
+  it('Pro is stopped, not charged, when out of credits', async () => {
+    const u = await signUp('ai'); await setPlan(u.id, 'pro'); const { id, doc } = await makeDeck(u.id)
+    await api(u.cookie, 'GET', '/me/entitlements')
     await db.update(creditBalance).set({ balance: 1 }).where(eq(creditBalance.userId, u.id))
     const broke = await api(u.cookie, 'POST', `/presentations/${id}/ai-edit`, body(doc.slides[1]!.id))
     expect(broke.status).toBe(402)
@@ -106,14 +128,12 @@ describe('AI edit', () => {
     expect(await balance(u.id)).toBe(1)
   })
 
-  it('Starter cannot pick a premium model for an edit (server tier gate, no spend)', async () => {
-    const u = await signUp('ai'); const { id, doc } = await makeDeck(u.id)
+  it('only Premium picks the model: on Pro a requested premium model is ignored (the plan decides), no premium price is charged', async () => {
+    const u = await signUp('ai'); await setPlan(u.id, 'pro'); const { id, doc } = await makeDeck(u.id)
     const models = (await json(await api(u.cookie, 'GET', '/models'))).data.models
-    const premium = models.find((m: any) => m.tier === 'premium').id
-    const r = await api(u.cookie, 'POST', `/presentations/${id}/ai-edit`, body(doc.slides[1]!.id, { model: premium }))
-    expect(r.status).toBe(403)
-    expect((await json(r)).error.code).toBe('UPGRADE_REQUIRED')
-    expect(await balance(u.id)).toBe(100)
+    const premium = models.find((m: any) => m.tier === 'premium')?.id
+    const r = await json(await api(u.cookie, 'POST', `/presentations/${id}/ai-edit`, body(doc.slides[1]!.id, premium ? { model: premium } : {})))
+    expect(r.data.creditsCharged).toBe(2)
   })
 
   it('Pro: returns a validated same-layout patch, charges the tier price, and retries are charged once', async () => {
@@ -123,10 +143,10 @@ describe('AI edit', () => {
     const r = await json(await api(u.cookie, 'POST', `/presentations/${id}/ai-edit`, payload))
     expect(r.data.content.layout).toBe(slide.layoutId)
     expect(r.data.content.title).toContain('✎')
-    expect(r.data.creditsCharged).toBe(4)
-    expect(await balance(u.id)).toBe(3000 - 4)
+    expect(r.data.creditsCharged).toBe(2)
+    expect(await balance(u.id)).toBe(900 - 2)
     await api(u.cookie, 'POST', `/presentations/${id}/ai-edit`, payload) // same requestId (client retry)
-    expect(await balance(u.id)).toBe(3000 - 4)
+    expect(await balance(u.id)).toBe(900 - 2)
   })
 
   it('respects locked slides and unknown slides; a failing model refunds the charge', async () => {

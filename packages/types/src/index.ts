@@ -18,7 +18,7 @@ export interface User {
 
 // ---- Plans & Billing ----
 
-export type PlanSlug = 'free' | 'pro' | 'gold'
+export type PlanSlug = 'free' | 'pro' | 'gold' | 'premium'
 
 export interface Plan {
   id: string

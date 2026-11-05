@@ -1,7 +1,7 @@
 import { CalendarClock, Check, Coins, Layers, Sparkles, X } from '@prompttoppt/ui/icons'
 import { useEffect, useState } from 'react'
 import { planHighlights, priceFor, type BillingInterval, type PlansResponse } from '@prompttoppt/api-client'
-import type { PlanId } from '@prompttoppt/validation'
+import type { PaidPlanId, PlanId } from '@prompttoppt/validation'
 import { api } from '@/lib/api'
 import { checkoutErrorMessage, setSimulatorMode, subscribe, testModeHint } from '@/lib/checkout'
 import { useDialog } from '@/lib/useDialog'
@@ -32,7 +32,7 @@ export function UpgradeModal() {
   const choices = plans?.plans.filter((p) => p.id !== 'starter') ?? []
   const saving = choices[0] ? priceFor(choices[0], 'year')?.saving : null
 
-  async function pay(id: 'pro' | 'gold') {
+  async function pay(id: PaidPlanId) {
     setBusy(id)
     setError(null)
     try {
@@ -48,7 +48,7 @@ export function UpgradeModal() {
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 grid place-items-center p-4" onMouseDown={(e) => e.target === e.currentTarget && close()}>
-      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Upgrade your plan" className={`bg-white rounded-2xl w-full ${paid ? 'max-w-md p-0 overflow-hidden' : 'max-w-3xl p-6 overflow-y-auto'} shadow-xl max-h-[90vh] outline-none`}>
+      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Upgrade your plan" className={`bg-white rounded-2xl w-full ${paid ? 'max-w-md p-0 overflow-hidden' : 'max-w-5xl p-6 overflow-y-auto'} shadow-xl max-h-[90vh] outline-none`}>
         {!paid && (
           <div className="flex items-start justify-between mb-1">
             <h2 className="font-heading font-bold text-2xl">Upgrade to continue</h2>
@@ -87,17 +87,17 @@ export function UpgradeModal() {
                 ))}
               </div>
             </div>
-            <div className="grid sm:grid-cols-2 gap-4">
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {choices.map((p) => {
                 const price = priceFor(p, interval)
-                const h = planHighlights(p, p.id === 'gold' ? plans?.plans.find((x) => x.id === 'pro') : undefined)
+                const h = planHighlights(p, p.id === 'gold' ? plans?.plans.find((x) => x.id === 'pro') : p.id === 'premium' ? plans?.plans.find((x) => x.id === 'gold') : undefined)
                 const current = ent?.plan.id === p.id
                 return (
                   <div key={p.id} className="border border-border rounded-xl p-4 flex flex-col gap-2">
                     <div className="font-heading font-bold text-lg">{p.name}</div>
                     {price && <div><span className="text-3xl font-extrabold">{price.text}</span><span className="text-slate-500"> /mo</span><div className="text-xs text-slate-500">{price.billed}</div></div>}
                     <ul className="text-sm text-slate-700 space-y-1 my-2">{h.items.slice(0, 7).map((x) => <li key={x} className="flex items-start gap-1.5"><Check aria-hidden size={16} className="mt-0.5 shrink-0 text-primary" />{x}</li>)}</ul>
-                    <button onClick={() => void pay(p.id as 'pro' | 'gold')} disabled={busy !== null} className="text-center bg-primary text-white rounded-lg py-2 text-sm font-semibold disabled:opacity-50">
+                    <button onClick={() => void pay(p.id as PaidPlanId)} disabled={busy !== null} className="text-center bg-primary text-white rounded-lg py-2 text-sm font-semibold disabled:opacity-50">
                       {busy === p.id ? 'Opening secure checkout…' : current ? `Switch ${p.name} billing` : `Subscribe to ${p.name}`}
                     </button>
                   </div>

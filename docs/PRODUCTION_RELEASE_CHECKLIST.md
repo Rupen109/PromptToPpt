@@ -94,7 +94,8 @@ Review it before every release; add a date and initials when an item is ticked o
 ## 5. Infrastructure and deployment (`docs/DEPLOYMENT.md`)
 
 - ☐ Domains + TLS: `<domain>` (web), `app.<domain>` (editor), `api.<domain>` (API), asset host. SPA fallback (403/404 → `/index.html`) for the editor.
-- ☐ ECS Fargate services (web, API), RDS PostgreSQL (backups, Multi-AZ at launch), S3 + CloudFront for the editor.
+- ☐ Hosting per `docs/AWS_ARCHITECTURE.md` (proposal 2026-11-04, replaces the Fargate/RDS-at-launch plan): CloudFront in front of website, editor (S3) and API; one `t4g.small`; Postgres with point-in-time backups; RDS in Stage 2.
+- ☐ **AWS account on the Paid plan before launch.** The account is on the Free plan, which closes the account automatically on 2027-04-28 or when the credit runs out (remaining credit carries over on upgrade).
 - ☐ Environment matrix filled in (below). Build-time `NEXT_PUBLIC_*` / `VITE_*` set per environment (they are public).
 - ☐ CI green: migrate → typecheck → lint → test → build (`.github/workflows/ci.yml`).
 - ☐ Release order: build/push images → `vite build` → sync editor to S3 + invalidate → **run `pnpm db:migrate` as a one-off task before rolling the API** (migrations stay backward-compatible for one release) → roll API → roll web.

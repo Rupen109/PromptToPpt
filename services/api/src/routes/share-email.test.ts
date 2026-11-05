@@ -3,7 +3,7 @@ import { mailOutbox } from '../lib/mailer.ts'
 import { api, json, makeDeck, setPlan, signUp } from '../test-utils.ts'
 
 const mail = (cookie: string, id: string, body: object) => api(cookie, 'POST', `/presentations/${id}/share/email`, body)
-const setup = async (plan: 'starter' | 'pro' = 'starter') => {
+const setup = async (plan: 'starter' | 'pro' = 'pro') => {
   const u = await signUp('sm')
   if (plan !== 'starter') await setPlan(u.id, plan)
   const { id } = await makeDeck(u.id)

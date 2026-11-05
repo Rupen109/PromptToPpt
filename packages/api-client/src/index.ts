@@ -1,5 +1,5 @@
 import { createAuthClient } from 'better-auth/react'
-import type { Direction, Entitlements, ExportFormat, PlanId, PlanView, Presentation, PromptAnalysis, SlideContent, SubscriptionSummary, Theme } from '@prompttoppt/validation'
+import type { Direction, Entitlements, ExportFormat, PaidPlanId, PlanId, PlanView, Presentation, PromptAnalysis, SlideContent, SubscriptionSummary, Theme } from '@prompttoppt/validation'
 
 export interface ApiClientConfig {
   /** e.g. https://api.slidesdone.app */
@@ -64,9 +64,9 @@ export interface CreateJobInput {
   direction?: Direction
   slideCount?: number
   model?: string
-  /** build a new deck in this brand kit's colours, fonts and logo (Pro/Gold) */
+  /** build a new deck in this brand kit's colours, fonts and logo (paid plans) */
   brandKitId?: string
-  /** remix this deck of yours into a NEW deck with the same look (Pro/Gold); its text comes in as `sourceIds` from remixSource() */
+  /** remix this deck of yours into a NEW deck with the same look (paid plans); its text comes in as `sourceIds` from remixSource() */
   remixOf?: string
   sourceIds?: string[]
   /** language the person chose for the deck (code from DECK_LANGUAGES); omitted → detected from the request */
@@ -419,6 +419,8 @@ export function createApiClient({ apiUrl, sessionUser, onSessionChanged }: ApiCl
     analyze: (prompt: string, sourceIds: string[] = [], language?: string) =>
       request<AnalyzeResult>('/api/v1/generation/analyze', { method: 'POST', body: JSON.stringify({ prompt, sourceIds, ...(language ? { language } : {}) }) }),
     createJob: (input: CreateJobInput) => request<JobView>('/api/v1/generation/jobs', { method: 'POST', body: JSON.stringify(input) }),
+    /** How the writing of a deck is going while slides are still being written (null when no generation wrote it). */
+    deckBuild: (id: string) => request<{ jobId: string; status: JobView['status']; progress: number; error: string | null } | null>(`/api/v1/presentations/${encodeURIComponent(id)}/build`),
     getJob: (id: string) => request<JobView>(`/api/v1/generation/jobs/${encodeURIComponent(id)}`),
     cancelJob: (id: string) => request<JobView>(`/api/v1/generation/jobs/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),
     listPresentations: (projectId?: string) => request<PresentationSummary[]>(`/api/v1/presentations${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''}`),
@@ -434,7 +436,7 @@ export function createApiClient({ apiUrl, sessionUser, onSessionChanged }: ApiCl
     liveUrl: (id: string, clientId: string) => `${base}/api/v1/presentations/${encodeURIComponent(id)}/live?client=${encodeURIComponent(clientId)}`,
     sendPresence: (id: string, body: { clientId: string; slideId: string | null; selection: string[]; editing: string | null; cursor: { x: number; y: number } | null }) =>
       request<{ ok: true }>(`/api/v1/presentations/${encodeURIComponent(id)}/live/presence`, { method: 'POST', body: JSON.stringify(body), keepalive: true }),
-    /** View-only link (any plan) and collaborators (Pro / Gold). Owner-only. */
+    /** View-only link (plans with live preview) and collaborators (paid plans). Owner-only. */
     getShareAnalytics: (id: string, days: 7 | 30 | 90 = 30) => request<ShareAnalytics>(`/api/v1/presentations/${encodeURIComponent(id)}/analytics?days=${days}`),
     clearShareAnalytics: (id: string) => request<{ cleared: number }>(`/api/v1/presentations/${encodeURIComponent(id)}/analytics`, { method: 'DELETE' }),
     /** viewer page: a visit began (never throws into the page: callers swallow errors) */
@@ -448,7 +450,7 @@ export function createApiClient({ apiUrl, sessionUser, onSessionChanged }: ApiCl
     getShareLink: (id: string) => request<ShareLinkView>(`/api/v1/presentations/${encodeURIComponent(id)}/share`),
     createShareLink: (id: string, opts: { password?: string; expiresInDays?: ShareExpiry } = {}) => request<ShareLinkView>(`/api/v1/presentations/${encodeURIComponent(id)}/share`, { method: 'POST', body: JSON.stringify(opts) }),
     emailShareLink: (id: string, emails: string[], message?: string) => request<{ sent: number; failed: number }>(`/api/v1/presentations/${encodeURIComponent(id)}/share/email`, { method: 'POST', body: JSON.stringify({ emails, ...(message ? { message } : {}) }) }),
-    /** Pro / Gold: set or remove the password (`null` removes), set or clear the expiry (`null` clears). */
+    /** Paid plans: set or remove the password (`null` removes), set or clear the expiry (`null` clears). */
     updateShareLink: (id: string, body: { password?: string | null; expiresInDays?: ShareExpiry }) => request<ShareLinkView>(`/api/v1/presentations/${encodeURIComponent(id)}/share`, { method: 'PATCH', body: JSON.stringify(body) }),
     revokeShareLink: (id: string) => request<ShareLinkView>(`/api/v1/presentations/${encodeURIComponent(id)}/share`, { method: 'DELETE' }),
     listMembers: (id: string) => request<{ members: MemberView[]; limit: number }>(`/api/v1/presentations/${encodeURIComponent(id)}/members`),
@@ -462,6 +464,8 @@ export function createApiClient({ apiUrl, sessionUser, onSessionChanged }: ApiCl
     getPublicDeck: (token: string, access?: string) => request<PublicDeck>(`/api/v1/public/share/${encodeURIComponent(token)}`, access ? { headers: { 'X-Share-Access': access } } : {}),
     unlockPublicDeck: (token: string, password: string) => request<{ access: string | null }>(`/api/v1/public/share/${encodeURIComponent(token)}/unlock`, { method: 'POST', body: JSON.stringify({ password }) }),
     getPresentation: (id: string) => request<LoadedPresentation>(`/api/v1/presentations/${encodeURIComponent(id)}`),
+    /** the deck only if it is newer than `since` (a revision number); otherwise `{ unchanged: true }` without reading the document */
+    getPresentationIfChanged: (id: string, since: number) => request<LoadedPresentation | { unchanged: true; revision: number }>(`/api/v1/presentations/${encodeURIComponent(id)}?since=${since}`),
 
     comments: (id: string) => request<CommentsData>(`/api/v1/presentations/${encodeURIComponent(id)}/comments`),
     addComment: (id: string, body: { slideId: string; x?: number; y?: number; body: string }) => request<{ threadId: string; commentId: string }>(`/api/v1/presentations/${encodeURIComponent(id)}/comments`, { method: 'POST', body: JSON.stringify(body) }),
@@ -471,7 +475,7 @@ export function createApiClient({ apiUrl, sessionUser, onSessionChanged }: ApiCl
     deleteComment: (id: string, commentId: string) => request<{ deleted: boolean }>(`/api/v1/presentations/${encodeURIComponent(id)}/comments/items/${encodeURIComponent(commentId)}`, { method: 'DELETE' }),
     markCommentsSeen: (id: string) => request<{ seenAt: string }>(`/api/v1/presentations/${encodeURIComponent(id)}/comments/seen`, { method: 'POST', body: '{}' }),
     addTextSource: (text: string, title?: string) => request<SourceSummary>('/api/v1/sources/text', { method: 'POST', body: JSON.stringify({ text, ...(title ? { title } : {}) }) }),
-    /** Wikipedia (Pro/Gold, free) or live web search (Gold, costs credits): the facts come back as ready-made sources. */
+    /** Wikipedia (paid plans, free) or live web search (Gold and Premium, costs credits): the facts come back as ready-made sources. */
     research: (body: { query: string; mode: 'wikipedia' | 'web'; language?: string; requestId: string }) =>
       request<ResearchResult>('/api/v1/sources/research', { method: 'POST', body: JSON.stringify(body) }),
     /** Image to deck: a JPG / PNG / WebP is read by AI into a text source (4 credits; refunded if it fails). The picture itself is not stored. */
@@ -539,7 +543,7 @@ export function createApiClient({ apiUrl, sessionUser, onSessionChanged }: ApiCl
     },
     deleteSource: (id: string) => request<null>(`/api/v1/sources/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
-    models: (kind: 'text' | 'image' = 'text') => request<{ default: string | null; models: ModelOption[] }>(`/api/v1/models${kind === 'image' ? '?kind=image' : ''}`),
+    models: (kind: 'text' | 'image' = 'text') => request<{ default: string | null; /** true = this plan lets the person pick the model (Premium); otherwise the plan decides and no picker is shown */ choice: boolean; models: ModelOption[] }>(`/api/v1/models${kind === 'image' ? '?kind=image' : ''}`),
     /** Remaining AI-picture allowance for a deck / the month — show it BEFORE the user spends anything. */
     /** "Image URL": the server downloads the picture and keeps its own copy; returns the address of that copy. */
     importImage: (deckId: string, url: string) => request<{ assetId: string; url: string; mime: string; aspect: number }>(`/api/v1/presentations/${encodeURIComponent(deckId)}/images/import`, { method: 'POST', body: JSON.stringify({ url }) }),
@@ -569,7 +573,7 @@ export function createApiClient({ apiUrl, sessionUser, onSessionChanged }: ApiCl
     /** Pro+. Returns validated replacement content for ONE slide; apply it as a command. */
     aiEdit: (id: string, body: { slideId: string; command: AiEditCommand; argument?: string; model?: string; requestId: string }) =>
       request<AiEditResult>(`/api/v1/presentations/${encodeURIComponent(id)}/ai-edit`, { method: 'POST', body: JSON.stringify(body) }),
-    /** Pro/Gold. A question about the deck's own text: a short answer that points at slides. Read-only. */
+    /** Paid plans. A question about the deck's own text: a short answer that points at slides. Read-only. */
     askDeck: (id: string, body: { question: string; history?: { role: 'user' | 'ai'; text: string }[]; model?: string; requestId: string }) =>
       request<AskDeckAnswer>(`/api/v1/presentations/${encodeURIComponent(id)}/ask`, { method: 'POST', body: JSON.stringify(body) }),
     /** Chat-style assistant: free-form instruction → validated theme/animation/content changes to apply as ONE undoable step. */
@@ -595,13 +599,16 @@ export function createApiClient({ apiUrl, sessionUser, onSessionChanged }: ApiCl
         return body.data
       }
       if (!res.ok) throw new ApiError(res.status, 'HTTP_ERROR', res.statusText)
-      const filename = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') ?? '')?.[1] ?? `presentation.${format}`
+      // the real name (any language) is in filename*, RFC 6266; filename is only an ASCII fallback
+      const cd = res.headers.get('Content-Disposition') ?? ''
+      const encoded = /filename\*=UTF-8''([^;]+)/i.exec(cd)?.[1]
+      const filename = (encoded ? (() => { try { return decodeURIComponent(encoded) } catch { return null } })() : null) ?? /filename="([^"]+)"/.exec(cd)?.[1] ?? `presentation.${format}`
       return { mode: 'file', blob: await res.blob(), filename }
     },
     /** Browser-rendered exports report their outcome for the owner's Exports section (best effort). */
     reportExport: (eventId: string, body: { ok: boolean; durationMs?: number; bytes?: number; slideCount?: number; error?: string }) => request<{ updated: boolean }>(`/api/v1/exports/events/${encodeURIComponent(eventId)}`, { method: 'PATCH', body: JSON.stringify(body) }).catch(() => null),
     /** Server picks price + currency; the browser then opens Razorpay Checkout with the returned subscription. */
-    startCheckout: (planId: 'pro' | 'gold', interval: 'month' | 'year') => request<CheckoutSession>('/api/v1/billing/checkout', { method: 'POST', body: JSON.stringify({ planId, interval }) }),
+    startCheckout: (planId: PaidPlanId, interval: 'month' | 'year') => request<CheckoutSession>('/api/v1/billing/checkout', { method: 'POST', body: JSON.stringify({ planId, interval }) }),
     /** Send Razorpay's success payload; the server verifies the signature before activating the plan. */
     verifyPayment: (r: RazorpayResult) => request<Entitlements>('/api/v1/billing/verify', { method: 'POST', body: JSON.stringify(r) }),
     billing: () => request<BillingOverview>('/api/v1/billing/subscription'),
@@ -609,10 +616,10 @@ export function createApiClient({ apiUrl, sessionUser, onSessionChanged }: ApiCl
     simulatorPay: (subscriptionId: string, outcome: 'success' | 'failure') => request<SimulatorPayResult>('/api/v1/billing/simulator/pay', { method: 'POST', body: JSON.stringify({ subscriptionId, outcome }) }),
     simulatorRenew: () => request<Entitlements>('/api/v1/billing/simulator/renew', { method: 'POST', body: '{}' }),
     simulatorRefund: () => request<Entitlements>('/api/v1/billing/simulator/refund', { method: 'POST', body: '{}' }),
-    /** Reads a website's colours, fonts and logo (Pro and Gold). */
+    /** Reads a website's colours, fonts and logo (paid plans). */
     /** An exact copy of one of your decks, saved as a new deck. */
     duplicatePresentation: (id: string) => request<{ id: string; title: string }>(`/api/v1/presentations/${encodeURIComponent(id)}/duplicate`, { method: 'POST', body: '{}' }),
-    /** Step 1 of remix (Pro/Gold): your deck's text as a private source; then createJob({ remixOf, sourceIds: [sourceId], … }). */
+    /** Step 1 of remix (paid plans): your deck's text as a private source; then createJob({ remixOf, sourceIds: [sourceId], … }). */
     remixSource: (id: string) => request<{ sourceId: string; title: string; slideCount: number; aspectRatio: string; skipped: number }>(`/api/v1/presentations/${encodeURIComponent(id)}/remix-source`, { method: 'POST', body: '{}' }),
     /** Your brand kits and how many your plan allows (0 = not on your plan). */
     brandKits: () => request<{ kits: BrandKit[]; limit: number }>('/api/v1/brand/kits'),

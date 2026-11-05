@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import { API, EDITOR, expect, launch, suite } from '../lib.mjs'
+import { API, EDITOR, choicesReady, expect, launch, startBuild, suite } from '../lib.mjs'
 import { api, person, tsx } from '../kits-lib.mjs'
 
 /**
@@ -118,10 +118,10 @@ export default async function () {
       await A.p.screenshot({ path: join(RESULTS, '33-wikipedia-chips.png') })
       await A.p.getByLabel('Presentation prompt').fill('A 5 slide deck about the Chandrayaan-3 mission from the Wikipedia articles')
       await A.p.getByRole('button', { name: 'Create Presentation' }).click(); await A.p.waitForURL(/\/create/)
-      const radios = A.p.getByRole('radiogroup', { name: 'AI model' }).getByRole('radio'); await radios.first().waitFor({ timeout: 90000 })
+      await choicesReady(A.p)
       // a language the picker no longer lists is still supported by the server: hand it over the way the picker does (session storage), before the model is chosen
       if (!OFFERED.includes(code)) await A.p.evaluate((c) => sessionStorage.setItem('prompttoppt:pending-language', c), code)
-      const names = await radios.allInnerTexts(); await radios.nth(Math.max(0, names.findIndex((n) => /3\.6 Flash/.test(n)))).click()
+      await startBuild(A.p)
       await A.p.waitForURL(/\/edit\//, { timeout: 300000 })
       const id = new URL(A.p.url()).pathname.split('/').pop()
       const d = (await api.get(A, `/presentations/${id}`)).data.document
@@ -192,10 +192,10 @@ export default async function () {
       await A.p.getByLabel('Deck language').selectOption(OFFERED.includes(code) ? code : 'en')
       await A.p.getByLabel('Presentation prompt').fill(prompt)
       await A.p.getByRole('button', { name: 'Create Presentation' }).click(); await A.p.waitForURL(/\/create/)
-      const radios = A.p.getByRole('radiogroup', { name: 'AI model' }).getByRole('radio'); await radios.first().waitFor({ timeout: 90000 })
+      await choicesReady(A.p)
       // a language the picker no longer lists is still supported by the server: hand it over the way the picker does (session storage), before the model is chosen
       if (!OFFERED.includes(code)) await A.p.evaluate((c) => sessionStorage.setItem('prompttoppt:pending-language', c), code)
-      const names = await radios.allInnerTexts(); await radios.nth(Math.max(0, names.findIndex((x) => /3\.6 Flash/.test(x)))).click()
+      await startBuild(A.p)
       await A.p.waitForURL(/\/edit\//, { timeout: 300000 })
       const id = new URL(A.p.url()).pathname.split('/').pop()
       await A.p.locator('[data-testid="stage"]').waitFor({ timeout: 20000 })
@@ -244,10 +244,10 @@ export default async function () {
       await A.p.goto(EDITOR + '/', { waitUntil: 'load' })
       await A.p.getByLabel('Presentation prompt').fill('Una presentación de 4 diapositivas sobre la energía solar para estudiantes de secundaria')
       await A.p.getByRole('button', { name: 'Create Presentation' }).click(); await A.p.waitForURL(/\/create/)
-      const radios = A.p.getByRole('radiogroup', { name: 'AI model' }).getByRole('radio'); await radios.first().waitFor({ timeout: 90000 })
+      await choicesReady(A.p)
       // a language the picker no longer lists is still supported by the server: hand it over the way the picker does (session storage), before the model is chosen
       if (!OFFERED.includes(code)) await A.p.evaluate((c) => sessionStorage.setItem('prompttoppt:pending-language', c), code)
-      const names = await radios.allInnerTexts(); await radios.nth(Math.max(0, names.findIndex((x) => /3\.6 Flash/.test(x)))).click()
+      await startBuild(A.p)
       await A.p.waitForURL(/\/edit\//, { timeout: 300000 })
       const id = new URL(A.p.url()).pathname.split('/').pop()
       const doc = (await api.get(A, `/presentations/${id}`)).data.document

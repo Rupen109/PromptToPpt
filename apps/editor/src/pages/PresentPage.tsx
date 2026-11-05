@@ -18,7 +18,7 @@ export function PresentPage() {
   const [size, setSize] = useState({ w: window.innerWidth, h: window.innerHeight })
 
   // a Starter plan typing the address by hand lands back in the editor with the upgrade window
-  const locked = !!ent && ent.features.exportFormats.length === 0
+  const locked = !!ent && !ent.features.livePreview
   const bounced = useRef(false) // once: `upgrade` is a new object after every show(), so depending on it would loop
   useEffect(() => {
     if (!locked || bounced.current) return

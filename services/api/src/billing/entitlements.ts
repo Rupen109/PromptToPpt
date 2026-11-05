@@ -1,4 +1,4 @@
-import { and, eq, gte, notInArray, sql } from 'drizzle-orm'
+import { and, eq, gte, isNull, notInArray, sql } from 'drizzle-orm'
 import type { AccessTier, Entitlements, ExportFormat, PlanId } from '@prompttoppt/validation'
 import { db } from '../db/index.ts'
 import { generatedAsset, generationJob, plan, presentation, subscription } from '../db/schema.ts'
@@ -48,7 +48,7 @@ export async function getEntitlements(userId: string, now = new Date()): Promise
   const [{ n: inflight } = { n: 0 }] = await db
     .select({ n: sql<number>`count(*)::int` })
     .from(generationJob)
-    .where(and(eq(generationJob.userId, userId), notInArray(generationJob.status, ['completed', 'failed', 'cancelled']), gte(generationJob.createdAt, period.start)))
+    .where(and(eq(generationJob.userId, userId), notInArray(generationJob.status, ['completed', 'failed', 'cancelled']), isNull(generationJob.presentationId), sql`${generationJob.options}->>'targetPresentationId' is null`, gte(generationJob.createdAt, period.start)))
 
   const [{ n: images } = { n: 0 }] = await db
     .select({ n: sql<number>`count(*)::int` })
@@ -91,6 +91,11 @@ export function assertPresentationQuota(ent: Pick<Entitlements, 'limits' | 'usag
 
 export function assertAiEdits(ent: Pick<Entitlements, 'features' | 'plan'>) {
   if (!ent.features.aiEdits) throw new GateError('UPGRADE_REQUIRED', `AI edits are not included in the ${ent.plan.name} plan.`, 403, { feature: 'aiEdits' })
+}
+
+/** "Live preview": presenting full screen and share links. Starter can build and edit but not show or share a deck. */
+export function assertLivePreview(ent: Pick<Entitlements, 'features' | 'plan'>) {
+  if (!ent.features.livePreview) throw new GateError('UPGRADE_REQUIRED', `Presenting and sharing are not included in the ${ent.plan.name} plan.`, 403, { feature: 'livePreview' })
 }
 
 export function assertAskDeck(ent: Pick<Entitlements, 'features' | 'plan'>) {

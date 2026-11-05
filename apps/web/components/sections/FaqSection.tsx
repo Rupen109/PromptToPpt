@@ -5,7 +5,7 @@ import { Card } from '@/components/ui/Card'
 import { JsonLd } from '@/components/seo/JsonLd'
 import { GENERAL_FAQS } from '@/lib/faq'
 import { faqLd, type Faq } from '@/lib/seo'
-import { Badge, Section, SectionHeader } from './ui'
+import { Section, SectionHeader } from './ui'
 
 const Chevron = ({ open }: { open: boolean }) => (
   <svg width="14" height="9" viewBox="0 0 14 9" fill="none" aria-hidden className={`shrink-0 transition-transform duration-300 ${open ? 'rotate-180' : ''}`}><path d="M1 1.5 7 7.5 13 1.5" stroke="#181b25" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
@@ -18,7 +18,7 @@ export default function FaqSection({ faqs = GENERAL_FAQS, heading = 'h2' }: { fa
     <Section id="faq" bg="bg-[#f3f4f9]" className="!pb-0 !border-b-0">
       <div className="max-w-[816px] mx-auto">
         <JsonLd data={faqLd(faqs)} />
-        <SectionHeader as={heading} badge={<Badge bg="bg-white">Clear answers</Badge>} title="Frequently Asked Questions" />
+        <SectionHeader as={heading} title="Frequently Asked Questions" />
         <div className="mt-8 flex flex-col gap-4">
           {faqs.map((f, i) => (
             <Card key={f.q} tone="white" radius="2xl" shadow="sm" border index={i} wrapperClassName="h-auto">

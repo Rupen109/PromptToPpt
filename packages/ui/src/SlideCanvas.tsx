@@ -217,6 +217,19 @@ function Footer({ info, theme, slide, W, H, M }: { info: FooterInfo; theme: Them
   )
 }
 
+/** A slide generation has not written yet: its planned title and a soft moving shimmer (still when the person asks for reduced motion). */
+function WritingPlaceholder({ title, theme, W, H }: { title: string; theme: Theme; W: number; H: number }) {
+  return (
+    <div data-writing="true" role="status" aria-label={title ? `Writing: ${title}` : 'Writing this slide'} style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: H * 0.04, padding: W * 0.08, textAlign: 'center' }}>
+      <style>{`@keyframes pt-writing{0%{background-position:200% 0}100%{background-position:-200% 0}}@media (prefers-reduced-motion:reduce){[data-writing-bar]{animation:none!important}}`}</style>
+      {title && <div style={{ fontFamily: `'${theme.fonts.heading}', system-ui, sans-serif`, fontWeight: 700, fontSize: H * 0.07, lineHeight: 1.2, color: theme.colors.textPrimary, opacity: 0.85 }}>{title}</div>}
+      {[0.6, 0.45, 0.52].map((w, i) => (
+        <div key={i} data-writing-bar="" style={{ width: `${w * 100}%`, height: H * 0.035, borderRadius: H * 0.02, backgroundImage: `linear-gradient(90deg, ${theme.colors.textSecondary}22 25%, ${theme.colors.textSecondary}44 50%, ${theme.colors.textSecondary}22 75%)`, backgroundSize: '200% 100%', animation: 'pt-writing 1.6s linear infinite' }} />
+      ))}
+    </div>
+  )
+}
+
 export interface SlideCanvasProps extends ViewProps {
   slide: Slide
   theme: Theme
@@ -236,6 +249,7 @@ export function SlideCanvas({ slide, theme, aspect, width, watermark = false, fo
   return (
     <div style={{ width, height: H * scale, overflow: 'hidden', position: 'relative', isolation: 'isolate', background: backgroundCss(slide, theme), borderRadius: 4 }}>
       <div style={{ width: W, height: H, transform: `scale(${scale})`, transformOrigin: 'top left', position: 'absolute', left: 0, top: 0 }}>
+        {slide.writing && <WritingPlaceholder title={slide.writing.title} theme={theme} W={W} H={H} />}
         {slide.elements.map((el) => <ElementView key={el.id} el={el} theme={theme} slide={slide} play={play} />)}
         {footer && <Footer info={footer} theme={theme} slide={slide} W={W} H={H} M={M} />}
         {/* View-time overlay driven by the plan, NOT stored in the document: upgrading removes it everywhere instantly. */}

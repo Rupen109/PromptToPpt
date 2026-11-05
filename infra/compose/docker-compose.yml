@@ -41,6 +41,23 @@ services:
       postgres: { condition: service_healthy }
     mem_limit: 420m
 
+  # The deck-building worker as its own service (docker compose --profile worker up). The 1 GB test server runs the worker inside the API (RUN_WORKER=true);
+  # on a larger server set RUN_WORKER=false for `api` and start this: decks then never compete with page loads, and `docker compose up --scale worker=N` adds slots.
+  worker:
+    image: ${API_IMAGE}
+    profiles: ["worker"]
+    command: ["node", "dist/worker.js"]
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_OPTIONS: --max-old-space-size=700
+      WORKER_PORT: "4100"
+      WORKER_SLOTS: "24"
+      DB_POOL_MAX: "30"
+    depends_on:
+      postgres: { condition: service_healthy }
+    mem_limit: 900m
+
   web:
     image: ${WEB_IMAGE}
     restart: unless-stopped

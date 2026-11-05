@@ -4,6 +4,7 @@ import { Navigate, useNavigate } from 'react-router'
 import { ApiError, isGateError, type AnalyzeResult, type BrandKit, type JobStatus, type JobView, type ModelOption } from '@prompttoppt/api-client'
 import type { Direction } from '@prompttoppt/validation'
 import { BriefCard } from '@/components/BriefCard'
+import { BuildProgress } from '@/components/BuildProgress'
 import { ThinkingLoader } from '@/components/ThinkingLoader'
 import { ModelPicker } from '@/components/ModelPicker'
 import { api } from '@/lib/api'
@@ -38,19 +39,19 @@ function Card({ children }: { children: ReactNode }) {
  * Step 2: understanding card → choose the LENGTH (just selects it, nothing starts) → choose an AI MODEL, which starts the build.
  * The model chooser is highlighted once a length is chosen, and the length buttons are highlighted if a model is clicked first.
  */
-function PickLength({ result, direction, models, modelId, lengths, perSlide, onStart, brand }: { brand?: { kit: BrandKit; checked: boolean; onChange: (v: boolean) => void } | undefined; result: AnalyzeResult; direction?: Direction | undefined; models: ModelOption[]; modelId: string | null; lengths: readonly (readonly [string, number])[]; perSlide: number; onStart: (slides: number, model: string) => void }) {
+function PickLength({ result, direction, models, modelId, choice, lengths, onStart, brand }: { choice: boolean; brand?: { kit: BrandKit; checked: boolean; onChange: (v: boolean) => void } | undefined; result: AnalyzeResult; direction?: Direction | undefined; models: ModelOption[]; modelId: string | null; lengths: readonly (readonly [string, number])[]; onStart: (slides: number, model?: string) => void }) {
   const [chosen, setChosen] = useState<number | null>(lengths.length === 1 ? lengths[0]![1] : null)
   const [nudge, setNudge] = useState(false)
   const fixed = !!result.analysis.slideCount
   return (
     <>
-      <p className="mt-10 text-[17px]">{direction ? <>Great — <b>{direction.title}</b>. </> : null}{fixed ? 'Check what I understood, then pick an AI model to start.' : 'Check what I understood, choose the length, then pick an AI model to start.'}</p>
+      <p className="mt-10 text-[17px]">{direction ? <>Great — <b>{direction.title}</b>. </> : null}{choice ? (fixed ? 'Check what I understood, then pick an AI model to start.' : 'Check what I understood, choose the length, then pick an AI model to start.') : (fixed ? 'Check what I understood, then start.' : 'Check what I understood, then choose the length to start.')}</p>
       <div className="mt-4"><BriefCard analysis={result.analysis} /></div>
       <div role="radiogroup" aria-label="Presentation length" className={`mt-6 flex flex-wrap gap-3 rounded-2xl ${nudge && chosen === null ? 'ring-2 ring-primary p-2 -m-2 animate-pulse-soft' : ''}`}>
         {lengths.map(([label, n]) => (
-          <button key={label} role="radio" aria-checked={chosen === n} onClick={() => { setChosen(n); setNudge(false) }} className={`bg-white border rounded-xl px-5 py-3 text-left transition ${chosen === n ? 'border-primary ring-2 ring-primary/25' : 'border-border hover:border-slate-400'}`}>
+          <button key={label} role="radio" aria-checked={chosen === n} onClick={() => { setChosen(n); setNudge(false); if (!choice) onStart(n, modelId ?? undefined) /* the plan decides the model: choosing the length starts the build */ }} className={`bg-white border rounded-xl px-5 py-3 text-left transition ${chosen === n ? 'border-primary ring-2 ring-primary/25' : 'border-border hover:border-slate-400'}`}>
             <div className="font-semibold">{label}</div>
-            <div className="text-sm text-slate-500">{n} slides · ~{n * perSlide} credits</div>
+            <div className="text-sm text-slate-500">{n} slides</div>
           </button>
         ))}
       </div>
@@ -63,13 +64,12 @@ function PickLength({ result, direction, models, modelId, lengths, perSlide, onS
         </label>
       )}
       {nudge && chosen === null && <p role="alert" className="mt-2 text-sm text-primary font-medium">Pick a length first, then choose the AI model to start.</p>}
-      <ModelPicker
+      {choice ? <ModelPicker
         models={models} value={modelId}
         highlight={chosen !== null}
         hint={chosen !== null ? `${chosen} slides selected — click an AI model to start (the highlighted one is your default).` : undefined}
         onChange={(id) => { if (chosen === null) setNudge(true); else onStart(chosen, id) }}
-      />
-      <p className="mt-3 text-xs text-slate-500">You have {result.creditBalance.toLocaleString()} credits. Failed or cancelled generations are refunded.</p>
+      /> : fixed && <button onClick={() => onStart(lengths[0]![1], modelId ?? undefined)} className="mt-6 bg-primary text-white rounded-xl px-6 py-3 font-semibold">Start</button>}
     </>
   )
 }
@@ -79,14 +79,19 @@ export function CreatePage() {
   const { ent, upgrade, refresh } = useEntitlements()
   const [models, setModels] = useState<ModelOption[]>([])
   const [modelId, setModelId] = useState<string | null>(null)
+  const [choice, setChoice] = useState(false)
   const prompt = getPendingPrompt()
   const [phase, setPhase] = useState<Phase>(getPendingJob() ? { kind: 'generating', job: null } : { kind: 'analyzing' })
+  /** how many slides of the deck being built are written (reported by the progress list): the editor can be opened early once there is one */
+  const [written, setWritten] = useState(0)
+  const openDeck = useCallback((deckId: string) => { clearPending(); void refresh(); navigate(`/edit/${deckId}`, { replace: true }) }, [navigate, refresh])
   // (Re)load the model list whenever the plan changes, so an upgrade unlocks models immediately.
   useEffect(() => {
     let cancelled = false
     api.models().then((r) => {
       if (cancelled) return
       setModels(r.models)
+      setChoice(r.choice)
       setModelId((cur) => (cur && r.models.some((m) => m.id === cur && m.allowed) ? cur : r.default))
     }).catch(() => {})
     return () => {
@@ -95,7 +100,7 @@ export function CreatePage() {
   }, [ent?.plan.id])
   const started = useRef(false)
   const idemKey = useRef(crypto.randomUUID())
-  /** the user's default brand kit (Pro/Gold): offered as "build it in my brand", on unless they turn it off */
+  /** the user's default brand kit (paid plans): offered as "build it in my brand", on unless they turn it off */
   const [defaultKit, setDefaultKit] = useState<BrandKit | null>(null)
   const [useKit, setUseKit] = useState(true)
   useEffect(() => { api.brandKits().then((r) => setDefaultKit(r.kits.find((k) => k.isDefault) ?? null)).catch(() => {}) }, [])
@@ -124,6 +129,8 @@ export function CreatePage() {
       try {
         const job = await api.createJob({ prompt, analysis: result.analysis, slideCount, sourceIds: getPendingSources(), ...(getPendingLanguage() ? { language: getPendingLanguage()! } : {}), ...((modelOverride ?? modelId) ? { model: (modelOverride ?? modelId)! } : {}), ...(direction ? { direction } : {}), ...(defaultKit && useKit ? { brandKitId: defaultKit.id } : {}), idempotencyKey: idemKey.current })
         setPendingJob(job.id)
+        // a new deck exists from the first second, but the person watches the progress screen while it is written (its slides tick off in a list) and the editor
+        // opens by itself when the deck is complete, or earlier if they choose ("Open the editor now")
         setPhase({ kind: 'generating', job })
       } catch (e) {
         if (isGateError(e)) {
@@ -148,11 +155,11 @@ export function CreatePage() {
       try {
         const job = await api.getJob(jobId)
         if (stop) return
-        if (job.status === 'completed' && job.presentationId) {
-          clearPending()
-          void refresh() // credits changed
-          navigate(`/edit/${job.presentationId}`, { replace: true })
+        if (job.status === 'completed' && job.presentationId) { // the whole deck is written (also after a page refresh mid-generation): open it
+          openDeck(job.presentationId)
         } else if (job.status === 'failed' || job.status === 'cancelled') {
+          // slides written before a failure are kept: open them rather than losing the work. (A cancel, or a deck with nothing written, is gone: the person is told.)
+          if (job.status === 'failed' && job.presentationId && await api.getPresentation(job.presentationId).then(() => true, () => false)) { if (!stop) openDeck(job.presentationId); return }
           setPendingJob(null)
           idemKey.current = crypto.randomUUID()
           setPhase({ kind: 'error', message: job.error ?? 'Generation was cancelled.', retry: { type: 'home' } })
@@ -170,7 +177,7 @@ export function CreatePage() {
       stop = true
       clearInterval(t)
     }
-  }, [jobId, navigate, refresh])
+  }, [jobId, navigate, openDeck])
 
   if (!prompt && !getPendingJob()) return <Navigate to="/" replace />
 
@@ -217,9 +224,9 @@ export function CreatePage() {
             direction={phase.direction}
             models={models}
             modelId={modelId}
+            choice={choice}
             lengths={lengths(phase.result, phase.direction)}
-            perSlide={models.find((m) => m.id === modelId)?.creditsPerSlide ?? 0}
-            onStart={(n, model) => { setModelId(model); void start(phase.result, n, phase.direction, model) }}
+            onStart={(n, model) => { if (model) setModelId(model); void start(phase.result, n, phase.direction, model) }}
             brand={defaultKit ? { kit: defaultKit, checked: useKit, onChange: setUseKit } : undefined}
           />
         )}
@@ -250,6 +257,13 @@ export function CreatePage() {
                 )
               })}
             </ol>
+            {phase.job?.presentationId && <BuildProgress deckId={phase.job.presentationId} onCount={(w) => setWritten(w)} />}
+            {phase.job?.presentationId && written > 0 && (
+              <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
+                <p className="text-xs text-slate-500">The editor opens by itself when the deck is complete.</p>
+                <button onClick={() => openDeck(phase.job!.presentationId!)} className="bg-white border-2 border-slate-900 text-slate-900 rounded-lg px-4 py-2 text-sm font-semibold hover:bg-slate-50">Open the editor now</button>
+              </div>
+            )}
           </Card>
         )}
       </main>

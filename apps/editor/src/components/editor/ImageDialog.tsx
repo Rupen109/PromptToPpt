@@ -135,7 +135,7 @@ export function ImageDialog({ doc, slide, presentationId, request, onClose }: { 
                 {models.map((m) => (
                   <button key={m.id} role="radio" aria-checked={model === m.id} disabled={!m.allowed} onClick={() => setModel(m.id)} className={`text-left border rounded-xl px-3 py-2 ${model === m.id ? 'border-primary bg-primary/5' : 'border-border'} disabled:opacity-60`}>
                     <div className="flex justify-between text-sm"><span className="font-medium">{m.displayName}</span><span className="text-slate-500">{m.creditsPerImage} credits</span></div>
-                    <div className="text-xs text-slate-500">{m.allowed ? m.description : `${m.tier === 'frontier' ? 'Gold' : 'Pro'} plan required`}</div>
+                    <div className="text-xs text-slate-500">{m.allowed ? m.description : `${m.tier === 'frontier' ? 'Premium' : 'a paid'} plan required`}</div>
                   </button>
                 ))}
               </div>

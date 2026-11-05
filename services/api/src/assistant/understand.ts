@@ -66,8 +66,36 @@ export const VALUES = {
 /** models write `null` for an optional field they do not use: that means "absent" */
 const dropNulls = (v: unknown): unknown => (Array.isArray(v) ? v.map(dropNulls) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).filter(([, x]) => x !== null).map(([k, x]) => [k, dropNulls(x)])) : v)
 
+/**
+ * One task. Its values are checked against the family's own schema HERE, inside the answer's schema, so a bad value (an animation name outside
+ * the list, a colour that is not a hex) is rejected together with the exact reason and the gateway's repair pass asks the model again with that
+ * reason: it never reaches the capability as a silent "I didn't understand". The checked values (defaults filled in) replace the raw ones.
+ */
 export const taskSchema = z.object({ family: z.enum(FAMILIES), targets: z.array(refSchema).max(20).default([]), values: z.record(z.string(), z.unknown()).default({}) })
-export type Task = z.infer<typeof taskSchema>
+  .transform((t, ctx) => {
+    const checked = VALUES[t.family].safeParse(t.values)
+    if (!checked.success) {
+      for (const issue of checked.error.issues) ctx.addIssue({ code: 'custom', path: ['values', ...issue.path], message: `${t.family}: ${issue.message}` })
+      return z.NEVER
+    }
+    if (t.family === 'undo') return normaliseUndo(t, checked.data as z.infer<typeof VALUES.undo>)
+    return { ...t, values: checked.data as Record<string, unknown> }
+  })
+
+/** the references that name a slide on their own ("slide 3", "the pricing slide", "the last two"); "it", "that", "the one you just changed" do not */
+const NAMES_A_SLIDE = new Set<Ref['by']>(['number', 'range', 'title', 'layout', 'last', 'first'])
+
+/**
+ * "Undo that" is a history operation, not a guess about scope. Only a slide the person NAMES limits an undo to that slide, and only colours/design
+ * language limits it to the look; otherwise the whole of that change is put back, whatever scope the model wrote ("that slide" after a move or a delete used
+ * to dead-end with "I did not change that slide").
+ */
+function normaliseUndo(t: { family: Family; targets: Ref[]; values: Record<string, unknown> }, v: z.infer<typeof VALUES.undo>) {
+  const named = t.targets.filter((r) => NAMES_A_SLIDE.has(r.by))
+  const part = v.part === 'slide' && named.length === 0 ? 'all' : v.part
+  return { ...t, targets: part === 'slide' ? named : [], values: { ...v, part } as Record<string, unknown> }
+}
+export type Task = z.output<typeof taskSchema>
 
 export const intentSchema = z.preprocess(dropNulls, z.object({
   kind: z.enum(['edit', 'question', 'chat', 'off_topic']).default('edit'),
@@ -97,7 +125,7 @@ palette        the colours of the WHOLE deck, or its light/dark mode. values: {"
 template       restyle the WHOLE deck with another template or design. values: {"name":"<template name if they said one>","mood":"<the look they want, in words>"}
 fonts          the fonts of the whole deck. values: {"pair":"<key>"} with key one of: ${FONT_LIST}
 motion         animation of the whole deck. values: {"preset":"${MOTION_KEYS.join('"|"')}"}
-undo           put back something the assistant changed. values: {"change":<0 = its newest change in <focus>.recentChanges>,"part":"all"|"theme"|"slide"}
+undo           put back something the assistant changed. values: {"change":<0 = its newest change in <focus>.recentChanges>,"part":"all"|"theme"|"slide"}. "all" (the default) puts back the whole of that change: use it for "undo", "undo that", "I didn't like it", "go back". "theme" ONLY when the person speaks about the colours or design. "slide" ONLY when they name a slide (by number or title) with targets for it; "that"/"it" never means "slide".
 rewrite_deck   new content for the WHOLE deck from details the person gives about their topic. values: {"brief":"<every detail they gave, in full>"}
 enrich         add more detail to the slides FROM the attached document(s) (only when <focus>.hasSources is true)`
 

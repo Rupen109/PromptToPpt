@@ -8,7 +8,13 @@ const files = readdirSync(dir).filter((f) => f.endsWith('.mjs')).sort().filter((
 let failed = 0
 for (const f of files) {
   console.log(`\n▶ ${f}`)
-  failed += (await (await import(join(dir, f))).default()) ?? 0
+  try {
+    failed += (await (await import(join(dir, f))).default()) ?? 0
+  } catch (e) {
+    // a suite that crashes outside its checks is one failure, never the end of the run
+    console.log(`  ✗ ${f} crashed: ${String(e?.message ?? e).split('\n')[0]}`)
+    failed++
+  }
 }
 console.log(failed ? `\n✗ ${failed} check(s) failed` : '\n✓ all checks passed')
 process.exit(failed ? 1 : 0)

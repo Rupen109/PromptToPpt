@@ -1,4 +1,4 @@
-import { base64ToBytes, imageToBase64, ProviderError, type AIProvider, type ImageRequest, type ImageResponse, type TextRequest, type TextResponse } from './types'
+import { base64ToBytes, imageToBase64, ProviderError, retryAfterMs, type AIProvider, type ImageRequest, type ImageResponse, type TextRequest, type TextResponse } from './types'
 
 interface ORResponse {
   choices?: { message?: { content?: string | null; images?: { image_url?: { url?: string } }[]; annotations?: { type?: string; url_citation?: { url?: string; title?: string } }[] }; finish_reason?: string }[]
@@ -78,7 +78,7 @@ export class OpenRouterProvider implements AIProvider {
     if (!res.ok || body.error) {
       const status = res.status
       const retryable = status === 408 || status === 429 || status >= 500
-      throw new ProviderError(this.scrub(body.error?.message ?? res.statusText).slice(0, 300), String(body.error?.code ?? `http_${status}`), retryable, status)
+      throw new ProviderError(this.scrub(body.error?.message ?? res.statusText).slice(0, 300), String(body.error?.code ?? `http_${status}`), retryable, status, retryAfterMs(res))
     }
     const text = body.choices?.[0]?.message?.content ?? ''
     const u = body.usage ?? {}
@@ -127,7 +127,7 @@ export class OpenRouterProvider implements AIProvider {
     const body = (await res.json().catch(() => ({}))) as ORResponse
     if (!res.ok || body.error) {
       const status = res.status
-      throw new ProviderError(this.scrub(body.error?.message ?? res.statusText).slice(0, 300), String(body.error?.code ?? `http_${status}`), status === 408 || status === 429 || status >= 500, status)
+      throw new ProviderError(this.scrub(body.error?.message ?? res.statusText).slice(0, 300), String(body.error?.code ?? `http_${status}`), status === 408 || status === 429 || status >= 500, status, retryAfterMs(res))
     }
     const url = body.choices?.[0]?.message?.images?.[0]?.image_url?.url
     const m = url?.match(/^data:(image\/[a-z+.-]+);base64,(.+)$/s)

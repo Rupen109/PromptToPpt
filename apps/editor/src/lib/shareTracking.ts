@@ -9,7 +9,8 @@ import { TimeAccumulator } from './timeAccumulator'
  * the visitor id is a random string kept in this browser's local storage.
  */
 const TICK_MS = 500
-const FLUSH_MS = 10_000
+// a slide change and leaving the page report at once (beacon on hide), so the timer only bounds how much a crash can lose; every request also goes through the CDN
+const FLUSH_MS = 30_000
 const VID_KEY = 'prompttoppt:vid'
 let memoryVid: string | null = null
 
@@ -29,7 +30,8 @@ export function visitorId(): string {
 export function useShareTracking(token: string, ready: boolean, slideIds: string[], index: number, access: string | undefined) {
   const slide = slideIds[index]
   const live = useRef({ slide, access })
-  live.current = { slide, access }
+  // kept current after every render; declared before the effects that read it, so they always see the latest slide
+  useEffect(() => { live.current = { slide, access } })
   const flushRef = useRef<(final?: boolean) => void>(() => {})
 
   // a slide change is reported at once (and counts as "reached" even with 0 ms)
@@ -74,6 +76,5 @@ export function useShareTracking(token: string, ready: boolean, slideIds: string
       flushRef.current = () => {}
     }
     // slide ids are read through `live`, so a changing deck never restarts the visit
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, ready])
 }

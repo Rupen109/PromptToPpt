@@ -253,6 +253,48 @@
       "when": 1793600000000,
       "tag": "0035_support_tickets",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1793634150556,
+      "tag": "0036_sour_blue_blade",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1793691573076,
+      "tag": "0037_great_swordsman",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1793694620416,
+      "tag": "0038_progressive_deck",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1793696846267,
+      "tag": "0039_job_lanes",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1793704719570,
+      "tag": "0040_starter_fallback_model",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1793708242930,
+      "tag": "0041_disable_gemini_25_flash",
+      "breakpoints": true
     }
   ]
 }

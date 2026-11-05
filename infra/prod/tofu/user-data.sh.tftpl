@@ -1,0 +1,41 @@
+#!/bin/bash
+# Prepares the server once, at first boot: swap, Docker + Compose, the Postgres data disk at /data, and the folder for the app.
+# The app itself arrives with the first deploy (infra/prod/deploy.sh).
+set -euxo pipefail
+exec > >(tee /var/log/slidesdone-bootstrap.log) 2>&1
+
+if [ ! -f /swapfile ]; then
+  fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+  echo '/swapfile none swap sw 0 0' >> /etc/fstab
+  echo 'vm.swappiness=20' > /etc/sysctl.d/99-swap.conf && sysctl -p /etc/sysctl.d/99-swap.conf
+fi
+
+dnf install -y docker xfsprogs
+systemctl enable --now docker
+mkdir -p /usr/local/lib/docker/cli-plugins
+curl -fsSL "https://github.com/docker/compose/releases/download/v2.29.7/docker-compose-linux-aarch64" -o /usr/local/lib/docker/cli-plugins/docker-compose
+chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+
+# The data disk is attached after the server starts; on Nitro servers it appears as an NVMe device named after the volume id.
+DEV="/dev/disk/by-id/nvme-Amazon_Elastic_Block_Store_${replace(data_volume_id, "-", "")}"
+for _ in $(seq 1 60); do [ -e "$DEV" ] && break; sleep 5; done
+[ -e "$DEV" ] || { echo "data disk $DEV never appeared" >&2; exit 1; }
+blkid "$DEV" >/dev/null 2>&1 || mkfs.xfs -L slidesdone-data "$DEV" # format only a brand-new disk, never one that already holds data
+mkdir -p /data
+UUID="$(blkid -s UUID -o value "$DEV")"
+grep -q "$UUID" /etc/fstab || echo "UUID=$UUID /data xfs defaults,nofail 0 2" >> /etc/fstab
+mount -a
+mkdir -p /data/postgres
+
+mkdir -p /opt/slidesdone
+cat > /opt/slidesdone/config.env <<CFG
+ENVNAME=${env}
+AWS_REGION=${region}
+DOMAIN=${domain}
+APP_ENV=${app_env}
+ACME_EMAIL=${acme_email}
+HOSTED_ZONE_ID=${hosted_zone_id}
+ASSETS_BUCKET=${assets_bucket}
+BACKUPS_BUCKET=${backups_bucket}
+CFG
+echo bootstrap-done > /opt/slidesdone/.bootstrapped

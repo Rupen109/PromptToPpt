@@ -5,7 +5,7 @@ import { nanoid } from 'nanoid'
 import { z } from 'zod'
 import { presentationSchema, type Presentation } from '@prompttoppt/validation'
 import { GateError } from '../billing/errors.ts'
-import { getEntitlements, livePlanFor } from '../billing/entitlements.ts'
+import { assertLivePreview, getEntitlements, livePlanFor } from '../billing/entitlements.ts'
 import { COLLABORATOR_LIMITS } from '../collab/access.ts'
 import { kickUser } from '../live/bus.ts'
 import { db } from '../db/index.ts'
@@ -39,7 +39,7 @@ const liveLink = async (id: string) => (await db.select().from(shareLink).where(
 /** Password and expiry are Pro / Gold features (`advancedSharing`); a plain view-only link is on every plan. */
 async function assertAdvancedSharing(userId: string) {
   const ent = await getEntitlements(userId)
-  if (!ent.features.advancedSharing) throw new GateError('UPGRADE_REQUIRED', 'Password-protected and expiring links are available on Pro and Gold.', 403, { feature: 'advancedSharing' })
+  if (!ent.features.advancedSharing) throw new GateError('UPGRADE_REQUIRED', 'Password-protected and expiring links are available on Pro, Gold and Premium.', 403, { feature: 'advancedSharing' })
 }
 
 sharing.get('/:id/share', async (c) => {
@@ -59,6 +59,7 @@ sharing.post('/:id/share', rateLimit({ windowMs: 60_000, max: 20, key: byUser('s
   if (!parsed.success) return c.json({ success: false, error: { code: 'INVALID_REQUEST', message: 'Password must be 6–72 characters; expiry 1, 7, 30 or 90 days.' } }, 400)
   const live = await liveLink(id)
   if (live) return c.json({ success: true, data: linkView(live) })
+  assertLivePreview(await getEntitlements(userId)) // a plan without live preview cannot make a new link
   const opts = parsed.data ?? {}
   if (opts.password || opts.expiresInDays) await assertAdvancedSharing(userId)
   const [made] = await db.insert(shareLink).values({
@@ -100,6 +101,7 @@ sharing.post('/:id/share/email', rateLimit({ windowMs: 3600_000, max: 20, key: b
   const id = c.req.param('id')
   const deck = await ownDeck(id, userId)
   if (!deck) return notFound(c)
+  assertLivePreview(await getEntitlements(userId))
   const me = session.user as { name: string; email: string; emailVerified?: boolean }
   if (env.REQUIRE_EMAIL_VERIFICATION && me.emailVerified !== true) return c.json({ success: false, error: { code: 'EMAIL_NOT_VERIFIED', message: 'Confirm your own email address first, then you can email links.' } }, 403)
   const live = await liveLink(id)
@@ -149,7 +151,7 @@ sharing.post('/:id/members', rateLimit({ windowMs: 3600_000, max: 20, key: byUse
   const deck = await ownDeck(id, userId)
   if (!deck) return notFound(c)
   const ent = await getEntitlements(userId)
-  if (!ent.features.advancedSharing) throw new GateError('UPGRADE_REQUIRED', 'Inviting people to edit together is available on Pro and Gold.', 403, { feature: 'collaboration' })
+  if (!ent.features.advancedSharing) throw new GateError('UPGRADE_REQUIRED', 'Inviting people to edit together is available on Pro, Gold and Premium.', 403, { feature: 'collaboration' })
   const limit = COLLABORATOR_LIMITS[ent.plan.id] ?? 0
   const email = c.req.valid('json').email.trim()
   const canon = canonicalEmail(email)

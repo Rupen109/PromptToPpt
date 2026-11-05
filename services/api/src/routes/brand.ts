@@ -21,7 +21,7 @@ brand.use('*', requireAuth)
 brand.post('/extract', rateLimit({ windowMs: 3_600_000, max: 10, message: 'You have looked up a lot of websites in the last hour. Please wait a little while and try again.', key: (c) => `brand:${(c.get('session') as { user: { id: string } }).user.id}` }), zValidator('json', z.object({ url: z.string().trim().min(3).max(2000) })), async (c) => {
   const userId = c.get('session')!.user.id
   const ent = await getEntitlements(userId)
-  if (ent.plan.id === 'starter') throw new GateError('UPGRADE_REQUIRED', 'Matching your brand from a website is available on Pro and Gold.', 403, { feature: 'brand' })
+  if (ent.plan.id === 'starter') throw new GateError('UPGRADE_REQUIRED', 'Matching your brand from a website is available on Pro, Gold and Premium.', 403, { feature: 'brand' })
   const raw = c.req.valid('json').url
   const url = /^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`
   try {

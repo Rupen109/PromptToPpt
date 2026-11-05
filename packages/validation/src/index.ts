@@ -121,7 +121,7 @@ export type CreateShareLinkInput = z.infer<typeof createShareLinkSchema>
 // ---- Checkout ----
 
 export const checkoutSchema = z.object({
-  planSlug: z.enum(['pro', 'gold']),
+  planSlug: z.enum(['pro', 'gold', 'premium']),
   billingCycle: z.enum(['monthly', 'annual']),
   currency: z.enum(['INR', 'USD']),
 })
@@ -131,3 +131,4 @@ export * from './presentation'
 export * from './shapes'
 export * from './plans'
 export * from './languages'
+export * from './docdiff'

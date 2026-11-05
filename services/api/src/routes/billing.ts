@@ -4,7 +4,7 @@ import { zValidator } from '@hono/zod-validator'
 import { eq } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { z } from 'zod'
-import { planIdSchema, type Currency, type PlanView } from '@prompttoppt/validation'
+import { paidPlanIdSchema, planIdSchema, type Currency, type PlanView } from '@prompttoppt/validation'
 import { getEntitlements } from '../billing/entitlements.ts'
 import { razorpayEnabled, razorpayTestMode } from '../billing/razorpay.ts'
 import { simulatorEnabled } from '../billing/simulator.ts'
@@ -51,7 +51,7 @@ billing.get('/me/entitlements', requireAuth, async (c) => {
 // ─── payments (Razorpay) ────────────────────────────────────────────────────
 
 /** Starts a checkout. Plan price and currency are resolved server-side; the browser only names plan + interval. */
-billing.post('/billing/checkout', requireAuth, rateLimit({ windowMs: 60_000, max: 10, key: byUser('checkout') }), zValidator('json', z.object({ planId: z.enum(['pro', 'gold']), interval: z.enum(['month', 'year']) })), async (c) => {
+billing.post('/billing/checkout', requireAuth, rateLimit({ windowMs: 60_000, max: 10, key: byUser('checkout') }), zValidator('json', z.object({ planId: paidPlanIdSchema, interval: z.enum(['month', 'year']) })), async (c) => {
   const { user } = c.get('session')!
   const { planId, interval } = c.req.valid('json')
   const session = await startCheckout(user.id, planId, interval, detectCurrency(c.req.raw.headers).currency)

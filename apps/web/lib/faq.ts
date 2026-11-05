@@ -44,7 +44,7 @@ export const GENERAL_FAQS: readonly Faq[] = [
 export const PRICING_FAQS: readonly Faq[] = [
   {
     q: 'What does SlidesDone cost?',
-    a: 'SlidesDone has a free plan and paid Pro and Gold plans, billed monthly or yearly (yearly costs less per month). The current prices are shown on this page.',
+    a: 'SlidesDone has a free plan and paid Pro, Gold and Premium plans, billed monthly or yearly (yearly costs less per month). The current prices are shown on this page.',
   },
   {
     q: 'What are credits?',

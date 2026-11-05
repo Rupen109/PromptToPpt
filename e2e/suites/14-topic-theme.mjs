@@ -1,4 +1,4 @@
-import { EDITOR, expect, launch, suite } from '../lib.mjs'
+import { EDITOR, expect, launch, startBuild, suite } from '../lib.mjs'
 import { STATE } from './02-auth.mjs'
 
 export default async function () {
@@ -12,10 +12,7 @@ export default async function () {
   const make = async (prompt) => {
     await p.goto(EDITOR + '/', { waitUntil: 'networkidle' }); await p.getByLabel('Presentation prompt').fill(prompt)
     await p.getByRole('button', { name: 'Create Presentation' }).click(); await p.waitForURL(/\/create/)
-    const dir = p.getByRole('button', { name: /Let AI decide/ }); const len = p.getByRole('radio', { name: /slides · ~/ }).first()
-    await dir.or(len).first().waitFor({ timeout: 90000 }); if (await dir.count()) await dir.click()
-    await len.waitFor({ timeout: 30000 }); await len.click()
-    await p.getByRole('radiogroup', { name: 'AI model' }).getByRole('radio').first().click()
+    await startBuild(p)
     await p.waitForURL(/\/edit\//, { timeout: 240000 }); await settle(1500)
     const id = p.url().split('/edit/')[1]
     return { id, doc: await p.evaluate(async (id) => (await (await fetch(`http://localhost:4000/api/v1/presentations/${id}`, { credentials: 'include' })).json()).data.document, id) }

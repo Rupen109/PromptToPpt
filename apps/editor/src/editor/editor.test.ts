@@ -3,6 +3,7 @@ import { composeSlide, contrastRatio, getTheme, validateSlide } from '@prompttop
 import { presentationSchema, type Presentation, type SlideContent, type TextElement } from '@prompttoppt/validation'
 import { DESIGNS } from '@prompttoppt/theme'
 import * as C from './commands'
+import * as TC from './toolbar-commands'
 import { slidesInText } from '../components/editor/RemixDialog'
 import { useDoc } from './store'
 
@@ -212,6 +213,40 @@ describe('editing a bulleted text box keeps its bullets (and can add and remove 
   })
 })
 
+describe('history keeps every kind of change, so "undo that" can always put it back', () => {
+  const order = () => doc().slides.map((s) => s.id)
+  it('movedSlideIds names the slides that moved, not every slide that shifted', () => {
+    expect(C.movedSlideIds(['a', 'b', 'c', 'd'], ['a', 'c', 'd', 'b'])).toEqual(['b'])
+    expect(C.movedSlideIds(['a', 'b', 'c', 'd'], ['d', 'a', 'b', 'c'])).toEqual(['d'])
+    expect(C.movedSlideIds(['a', 'b', 'c'], ['a', 'b', 'c'])).toEqual([])
+    expect(C.movedSlideIds(['a', 'b', 'c'], ['a', 'c'])).toEqual([]) // a deleted slide is not a moved one
+  })
+  it('a move is recorded with the slides it moved, and undo puts the order back (the whole change, or just that slide)', () => {
+    const [a] = order()
+    const before = structuredClone(doc())
+    apply('AI assistant', (d) => C.applyAssist(d, { theme: null, edits: [], moves: [{ slideId: a!, afterSlideId: d.slides.at(-1)!.id }] }))
+    expect(order().at(-1)).toBe(a)
+    const undo = C.snapshotAssist(before, doc(), false, ['Moved slide 1 to the end'])
+    expect(undo.moved).toEqual([a])
+    expect(C.undoSlideIds(undo)).toContain(a) // the history entry sent to the server names the moved slide
+    apply('put back', (d) => C.revertAssist(d, undo, 'all'))
+    expect(order()).toEqual(before.slides.map((s) => s.id))
+    apply('again', (d) => C.applyAssist(d, { theme: null, edits: [], moves: [{ slideId: a!, afterSlideId: d.slides.at(-1)!.id }] }))
+    apply('put back one slide', (d) => C.revertAssist(d, undo, 'slide', a))
+    expect(order()).toEqual(before.slides.map((s) => s.id))
+  })
+  it('a deleted slide is recorded and comes back in its place, whether the whole change or just that slide is undone', () => {
+    const [, b] = order()
+    const before = structuredClone(doc())
+    apply('AI assistant', (d) => C.applyAssist(d, { theme: null, edits: [], removals: [b!] }))
+    const undo = C.snapshotAssist(before, doc(), false, ['Deleted slide 2'])
+    expect(C.undoSlideIds(undo)).toContain(b)
+    apply('put back', (d) => C.revertAssist(d, undo, 'slide', b))
+    expect(order()).toEqual(before.slides.map((s) => s.id))
+    expect(doc().slides[1]).toEqual(before.slides[1])
+  })
+})
+
 describe('assistant v2 changes: slide management in one undo step, and "undo that" puts it all back', () => {
   const ids = () => useDoc.getState().doc!.slides.map((s) => s.id)
   it('new slides carry the server\'s id and can go at the start; a later change in the same answer can target them', () => {
@@ -274,28 +309,90 @@ describe('assistant v2 changes: slide management in one undo step, and "undo tha
   })
 })
 
-describe('a slide the assistant adds or re-lays-out keeps the look of the deck', () => {
+describe("a slide's own look (background) is not hand-editing: it survives every time the slide is composed again", () => {
   const brown = '#7C2D12'
-  const paint = () => useDoc.getState().apply('paint', (d) => { for (const s of d.slides) C.setSlideBackground(d, s.id, brown) })
-  it('"add a thank you page": the new slide gets the background the other slides share', () => {
-    paint()
-    const n = useDoc.getState().doc!.slides.length
-    const content = { layout: 'thank-you', title: 'Thank you', subtitle: 'Questions?', speakerNotes: '', sources: [] } as never
-    useDoc.getState().apply('AI assistant', (d) => C.applyAssist(d, { theme: null, edits: [], additions: [{ afterSlideId: null, content }] }))
-    const after = useDoc.getState().doc!
-    expect(after.slides.length).toBe(n + 1)
-    expect(after.slides[n]!.background).toEqual({ type: 'color', value: brown })
-    useDoc.getState().undo(); useDoc.getState().undo()
+  const bodyIdx = () => doc().slides.findIndex((s) => s.layoutId === 'title-body')
+  const steps = { layout: 'process', title: 'How it works', steps: [{ label: 'One', detail: 'first' }, { label: 'Two', detail: 'second' }, { label: 'Three', detail: 'third' }], speakerNotes: '', sources: [] } as never
+  const reads = (i: number) => validateSlide(doc().slides[i]!, doc().theme).filter((x) => x.code === 'contrast')
+
+  it('setting a background marks the slide as having its own look, NOT as hand-edited (so its words and layout can still be changed)', () => {
+    const i = bodyIdx(); expect(i).toBeGreaterThanOrEqual(0)
+    apply('bg', (d) => C.setSlideBackground(d, d.slides[i]!.id, brown))
+    expect(doc().slides[i]).toMatchObject({ ownLook: true, background: { type: 'color', value: brown } })
+    expect(doc().slides[i]!.manual).toBeFalsy()
   })
-  it('re-laying out a slide keeps its own background colour', () => {
-    paint()
-    const base = useDoc.getState().doc!
-    const idx = base.slides.findIndex((s) => s.layoutId === 'title-body' && s.content && !s.manual)
-    if (idx < 0) { useDoc.getState().undo(); return }
-    const steps = { layout: 'process', title: 'How it works', steps: [{ label: 'One', detail: 'first' }, { label: 'Two', detail: 'second' }, { label: 'Three', detail: 'third' }], speakerNotes: '', sources: [] } as never
-    useDoc.getState().apply('AI assistant', (d) => C.applyAssist(d, { theme: null, edits: [{ slideId: base.slides[idx]!.id, content: steps }], additions: [] }))
-    expect(useDoc.getState().doc!.slides[idx]!.background).toEqual({ type: 'color', value: brown })
-    useDoc.getState().undo(); useDoc.getState().undo()
+  it('new words on that slide keep its background and its text stays readable', () => {
+    const i = bodyIdx()
+    apply('bg', (d) => C.setSlideBackground(d, d.slides[i]!.id, brown))
+    const content = { ...(doc().slides[i]!.content as object), title: 'A brand new title' } as never
+    apply('AI assistant', (d) => C.applyAssist(d, { theme: null, edits: [{ slideId: doc().slides[i]!.id, content }] }))
+    expect(doc().slides[i]).toMatchObject({ background: { type: 'color', value: brown }, ownLook: true })
+    expect((doc().slides[i]!.content as { title: string }).title).toBe('A brand new title')
+    expect(reads(i)).toEqual([])
+  })
+  it('another layout for that slide keeps its background (the assistant\'s restructure, and the Layouts panel)', () => {
+    const i = bodyIdx()
+    apply('bg', (d) => C.setSlideBackground(d, d.slides[i]!.id, brown))
+    apply('AI assistant', (d) => C.applyAssist(d, { theme: null, edits: [{ slideId: doc().slides[i]!.id, content: steps }] }))
+    expect(doc().slides[i]).toMatchObject({ layoutId: 'process', background: { type: 'color', value: brown } })
+    apply('panel', (d) => C.relayout(d, d.slides[i]!.id, 'timeline'))
+    expect(doc().slides[i]).toMatchObject({ layoutId: 'timeline', background: { type: 'color', value: brown } })
+    expect(reads(i)).toEqual([])
+  })
+  it('a new theme keeps a colour you chose, but a colour that was the deck\'s own follows the new palette', () => {
+    const i = bodyIdx(), j = i + 1
+    apply('bg', (d) => { C.setSlideBackground(d, d.slides[i]!.id, brown); C.setSlideBackground(d, d.slides[j]!.id, d.theme.colors.background) })
+    apply('theme', (d) => C.applyTheme(d, 'midnight'))
+    expect(doc().slides[i]!.background).toEqual({ type: 'color', value: brown })
+    expect(doc().slides[j]!.background).toEqual({ type: 'color', value: doc().theme.colors.background })
+    expect(doc().slides[i]!.manual).toBeFalsy()
+    expect(reads(i)).toEqual([])
+  })
+  it('a gradient and a picture behind the slide are kept the same way', () => {
+    const i = bodyIdx(), j = i + 1 // slide i: gradient, slide j: a picture behind a non-picture layout
+    apply('look', (d) => { C.setBackgroundGradient(d, d.slides[i]!.id, '#111111', '#334455'); C.setBackgroundPicture(d, d.slides[j]!.id, 'https://example.com/photo.jpg') })
+    const content = { ...(doc().slides[i]!.content as object), title: 'Changed' } as never
+    apply('AI assistant', (d) => C.applyAssist(d, { theme: null, edits: [{ slideId: doc().slides[i]!.id, content }] }))
+    apply('theme', (d) => C.applyTheme(d, 'midnight'))
+    expect(doc().slides[i]!.background).toMatchObject({ type: 'gradient', gradient: { from: '#111111', to: '#334455' } })
+    if (doc().slides[j]!.layoutId === 'process') expect(doc().slides[j]!.background).toEqual({ type: 'image', value: 'https://example.com/photo.jpg' })
+  })
+  it('a picture behind a text slide stays after new words and a new theme', () => {
+    const i = bodyIdx(); const url = 'https://example.com/photo.jpg'
+    apply('picture', (d) => C.setBackgroundPicture(d, d.slides[i]!.id, url))
+    const content = { ...(doc().slides[i]!.content as object), title: 'A new title' } as never
+    apply('AI assistant', (d) => C.applyAssist(d, { theme: null, edits: [{ slideId: doc().slides[i]!.id, content }] }))
+    apply('theme', (d) => C.applyTheme(d, 'midnight'))
+    expect(doc().slides[i]!.background).toEqual({ type: 'image', value: url })
+  })
+  it('taking the background away ("back to the deck\'s own") ends the slide\'s own look; moving an element is what makes a slide hand-edited', () => {
+    const i = bodyIdx()
+    apply('bg', (d) => C.setSlideBackground(d, d.slides[i]!.id, brown))
+    apply('reset', (d) => TC.removeBackground(d, d.slides[i]!.id))
+    expect(doc().slides[i]!.ownLook).toBeUndefined()
+    const el = doc().slides[i]!.elements.find((e) => e.type === 'text')!
+    apply('move', (d) => C.moveElements(d, d.slides[i]!.id, [el.id], 10, 10))
+    expect(doc().slides[i]!.manual).toBe(true)
+  })
+  it('"add a thank you page": the new slide gets the background the other slides share', () => {
+    apply('paint', (d) => { for (const s of d.slides) C.setSlideBackground(d, s.id, brown) })
+    const n = doc().slides.length
+    const content = { layout: 'thank-you', title: 'Thank you', subtitle: 'Questions?', speakerNotes: '', sources: [] } as never
+    apply('AI assistant', (d) => C.applyAssist(d, { theme: null, edits: [], additions: [{ afterSlideId: null, content }] }))
+    expect(doc().slides).toHaveLength(n + 1)
+    expect(doc().slides[n]).toMatchObject({ background: { type: 'color', value: brown }, ownLook: true })
+  })
+  it('"undo that" after a background change puts the slide back exactly: background, text colours, and "own look" off', () => {
+    const i = bodyIdx()
+    const before = structuredClone(doc())
+    apply('AI assistant', (d) => C.applyAssist(d, { theme: null, edits: [], backgrounds: [{ slideId: d.slides[i]!.id, color: brown }] }))
+    const after = doc()
+    const undo = C.snapshotAssist(before, after, false, ['Changed the background'], undefined, [after.slides[i]!.id])
+    expect(undo.backgrounds?.[before.slides[i]!.id]).toMatchObject({ ownLook: false })
+    apply('put back', (d) => C.revertAssist(d, undo, 'all'))
+    expect(doc().slides[i]!.background).toEqual(before.slides[i]!.background)
+    expect(doc().slides[i]!.ownLook).toBeUndefined()
+    expect(doc().slides[i]!.themeOverrides).toBeUndefined()
   })
 })
 
@@ -303,7 +400,7 @@ describe('the assistant can change a slide to another layout (restructure_slide)
   it('a content slide becomes a process slide, then goes back to its own layout and words', () => {
     const base = useDoc.getState().doc!
     const idx = base.slides.findIndex((s) => s.layoutId === 'title-body' && s.content && !s.manual)
-    if (idx < 0) return // the starter deck has no plain content slide
+    expect(idx, 'the starter deck has a plain content slide').toBeGreaterThanOrEqual(0)
     const slide = base.slides[idx]!
     const before = structuredClone(base)
     const steps = { layout: 'process', title: 'How it works', steps: [{ label: 'One', detail: 'first' }, { label: 'Two', detail: 'second' }, { label: 'Three', detail: 'third' }], speakerNotes: '', sources: [] } as never
@@ -320,8 +417,8 @@ describe('the assistant can change a slide to another layout (restructure_slide)
   })
   it('replaceContent still refuses a layout change unless the caller says the server checked it', () => {
     const base = useDoc.getState().doc!
-    const slide = base.slides.find((s) => s.layoutId === 'title-body' && s.content)
-    if (!slide) return
+    const slide = base.slides.find((s) => s.layoutId === 'title-body' && s.content)!
+    expect(slide).toBeTruthy()
     const other = { layout: 'quote', quote: 'q', speakerNotes: '', sources: [] } as never
     useDoc.getState().apply('x', (d) => C.replaceContent(d, slide.id, other))
     expect(useDoc.getState().doc!.slides.find((s) => s.id === slide.id)!.layoutId).toBe('title-body')

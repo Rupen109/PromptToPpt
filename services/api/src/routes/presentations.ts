@@ -31,9 +31,11 @@ import { saveSource } from '../sources/store.ts'
 import { enrichSlides, loadChunks } from '../ai/enrich.ts'
 import { byUser, rateLimit } from '../middleware/rate-limit.ts'
 import { requireAuth, type AppEnv } from '../middleware/session.ts'
-import { defaultModel } from './models.ts'
+import { chooseModel } from './models.ts'
 import { intentSchema } from '../assistant/understand.ts'
 import { runAssistant } from '../assistant/pipeline.ts'
+import { insertDeck } from '../decks/create.ts'
+import { safeJobError } from '../generation/view.ts'
 
 export const presentations = new Hono<AppEnv>()
 presentations.use('*', requireAuth)
@@ -43,27 +45,6 @@ const SNAPSHOT_EVERY_MS = 5 * 60_000
 const notFound = (c: any) => c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Presentation not found' } }, 404)
 const mine = (id: string, userId: string) => and(eq(presentation.id, id), eq(presentation.userId, userId), isNull(presentation.deletedAt))
 
-
-/**
- * Saves a new deck for a user with every create-time limit applied: serialised per user (parallel requests cannot overshoot the monthly
- * allowance), monthly presentations, and the cap on how many decks one account keeps. Used by "new from template" and "duplicate".
- */
-async function insertDeck(userId: string, ent: Awaited<ReturnType<typeof getEntitlements>>, d: { id: string; title: string; aspectRatio: string; doc: Presentation; projectId?: string | null | undefined }) {
-  const { id, title, aspectRatio, doc, projectId } = d
-  const input = { aspectRatio, projectId }
-  await db.transaction(async (tx) => {
-    // Serialise a user's creates: without the lock, ten parallel requests all pass the monthly-deck check and overshoot the plan limit.
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`pres:${userId}`}))`)
-    // recount INSIDE the lock using this transaction's connection (a nested pool checkout while holding the lock would deadlock under load)
-    const [{ n: made } = { n: 0 }] = await tx.select({ n: sql<number>`count(*)::int` }).from(presentation).where(and(eq(presentation.userId, userId), gte(presentation.createdAt, ent.period.start)))
-    const [{ n: running } = { n: 0 }] = await tx.select({ n: sql<number>`count(*)::int` }).from(generationJob).where(and(eq(generationJob.userId, userId), notInArray(generationJob.status, ['completed', 'failed', 'cancelled']), gte(generationJob.createdAt, ent.period.start)))
-    assertPresentationQuota({ limits: ent.limits, plan: ent.plan, usage: { presentationsThisPeriod: made + running, imagesThisPeriod: 0 } })
-    const [{ n: live } = { n: 0 }] = await tx.select({ n: sql<number>`count(*)::int` }).from(presentation).where(and(eq(presentation.userId, userId), isNull(presentation.deletedAt)))
-    if (live >= MAX_LIVE_PRESENTATIONS) throw new GateError('LIMIT_REACHED', `You can keep up to ${MAX_LIVE_PRESENTATIONS} presentations. Delete some to create more.`, 429, { feature: 'presentations', limit: MAX_LIVE_PRESENTATIONS })
-    await tx.insert(presentation).values({ id, userId, title, aspectRatio: input.aspectRatio, latestVersion: 1, revision: 1, ...(projectId ? { projectId } : {}) })
-    await tx.insert(presentationVersion).values({ id: nanoid(), presentationId: id, version: 1, document: doc, createdBy: 'generation' })
-  })
-}
 
 presentations.get('/', async (c) => {
   const projectId = c.req.query('projectId')
@@ -107,8 +88,8 @@ presentations.post('/', rateLimit({ windowMs: 60_000, max: 20, key: (c) => `crea
   const built = design ? templateSlides(design.id, input.aspectRatio, idGen, `${env.WEB_URL}/template-assets`)! : null
   const theme = built?.theme ?? getTheme('cobalt')
   const blankSlide = () => ({ layoutId: 'blank' as const, manual: true, background: { type: 'color' as const, value: theme.colors.background }, elements: [], speakerNotes: '', sources: [] })
-  const slides = input.blank ? [blankSlide()] : (built?.slides ?? [composeSlide({ layout: 'title', title: 'Untitled presentation', subtitle: 'Click to edit', speakerNotes: '', sources: [] }, theme, input.aspectRatio, idGen)])
-  if (slides.length > ent.limits.maxSlides) throw new GateError('UPGRADE_REQUIRED', `The ${ent.plan.name} plan allows up to ${ent.limits.maxSlides} slides per presentation.`, 403, { feature: 'slides', limit: ent.limits.maxSlides })
+  // a template's story is longer than a small plan allows (Starter: 10): the deck starts with as many of its slides as the plan holds instead of refusing the template
+  const slides = input.blank ? [blankSlide()] : (built?.slides.slice(0, ent.limits.maxSlides) ?? [composeSlide({ layout: 'title', title: 'Untitled presentation', subtitle: 'Click to edit', speakerNotes: '', sources: [] }, theme, input.aspectRatio, idGen)])
   const title = input.title ?? design?.name ?? 'Untitled presentation'
   const doc: Presentation = {
     schemaVersion: 1, id, title, aspectRatio: input.aspectRatio, language: 'en', theme, sources: [],
@@ -150,7 +131,7 @@ const REMIX_SOURCES_KEPT = 20
 presentations.post('/:id/remix-source', rateLimit({ windowMs: 60_000, max: 10, key: byUser('remix') }), async (c) => {
   const userId = c.get('session')!.user.id
   const ent = await getEntitlements(userId)
-  if (ent.plan.id === 'starter') throw new GateError('UPGRADE_REQUIRED', 'Remixing a presentation is available on Pro and Gold.', 403, { feature: 'remix' })
+  if (ent.plan.id === 'starter') throw new GateError('UPGRADE_REQUIRED', 'Remixing a presentation is available on Pro, Gold and Premium.', 403, { feature: 'remix' })
   const own = await ownLatest(c.req.param('id'), userId)
   if (own === 'missing') return notFound(c)
   if (own === 'unreadable') return c.json({ success: false, error: { code: 'UNREADABLE', message: 'This presentation could not be read. Open it and try again.' } }, 422)
@@ -179,8 +160,14 @@ presentations.get('/:id', async (c) => {
   if (!access) return notFound(c)
   const [p] = await db.select().from(presentation).where(mine(c.req.param('id'), access.ownerId))
   if (!p) return notFound(c)
-  const [v] = await db.select().from(presentationVersion).where(and(eq(presentationVersion.presentationId, p.id), eq(presentationVersion.version, p.latestVersion)))
-  return c.json({ success: true, data: { id: p.id, title: p.title, revision: p.revision, version: p.latestVersion, document: v!.document, role: access.role } })
+  // `?since=<revision>`: "give me the deck only if it changed". Open editors ask this while a deck is being written: nothing changed → a few bytes, no document read at all.
+  const since = Number(c.req.query('since'))
+  if (Number.isInteger(since) && since === p.revision) return c.json({ success: true, data: { unchanged: true, revision: p.revision } })
+  // The document goes out exactly as stored: reading it as text and placing it in the answer skips parsing a large JSON document only to write it out again (the hottest read in the product)
+  const res = await db.execute<{ doc: string }>(sql`select document::text as doc from presentation_version where presentation_id = ${p.id} and version = ${p.latestVersion}`)
+  const doc = res.rows[0]?.doc
+  if (!doc) return notFound(c)
+  return c.body(`{"success":true,"data":{"id":${JSON.stringify(p.id)},"title":${JSON.stringify(p.title)},"revision":${p.revision},"version":${p.latestVersion},"document":${doc},"role":${JSON.stringify(access.role)}}}`, 200, { 'Content-Type': 'application/json' })
 })
 
 /**
@@ -242,6 +229,14 @@ presentations.put(
     return result ? c.json({ success: true, data: result }) : notFound(c)
   },
 )
+
+/** How the writing of this deck is going (the editor follows it while slides are still being written); null when no job wrote it. */
+presentations.get('/:id/build', async (c) => {
+  const access = await resolveAccess(c.req.param('id'), c.get('session')!.user.id)
+  if (!access) return notFound(c)
+  const [job] = await db.select().from(generationJob).where(eq(generationJob.presentationId, c.req.param('id'))).orderBy(desc(generationJob.createdAt)).limit(1)
+  return c.json({ success: true, data: job ? { jobId: job.id, status: job.status, progress: job.progress, error: safeJobError(job.error) } : null })
+})
 
 presentations.get('/:id/versions', async (c) => {
   const access = await resolveAccess(c.req.param('id'), c.get('session')!.user.id)
@@ -321,7 +316,7 @@ presentations.post('/:id/ask', rateLimit({ windowMs: 60_000, max: 20, key: byUse
   const doc = v!.document as Presentation
 
   const { rows } = await catalog()
-  const picked = input.model ? rows.find((r) => r.id === input.model && r.kind === 'text') : defaultModel(ent, rows)
+  const picked = chooseModel(ent, rows, input.model)
   if (!picked) return c.json({ success: false, error: { code: 'INVALID_MODEL', message: 'That model is not available.' } }, 400)
   const tier = picked.accessTier as AccessTier
   assertModelTier(ent, tier)
@@ -371,7 +366,7 @@ presentations.post('/:id/ai-edit', rateLimit({ windowMs: 60_000, max: 20, key: b
   if (slide.locked) return c.json({ success: false, error: { code: 'SLIDE_LOCKED', message: 'This slide is locked. Unlock it to use AI edits.' } }, 409)
 
   const { rows } = await catalog()
-  const picked = input.model ? rows.find((r) => r.id === input.model && r.kind === 'text') : defaultModel(ent, rows)
+  const picked = chooseModel(ent, rows, input.model)
   if (!picked) return c.json({ success: false, error: { code: 'INVALID_MODEL', message: 'That model is not available.' } }, 400)
   const tier = picked.accessTier as AccessTier
   assertModelTier(ent, tier)
@@ -447,7 +442,7 @@ presentations.post('/:id/ai-assist', rateLimit({ windowMs: 60_000, max: 15, key:
   if (isSmallTalk(input.instruction)) return c.json({ success: true, data: { reply: CAPABILITIES_REPLY, theme: null, edits: [], additions: [], reverts: [], images: [], applied: [], notes: [], rewrite: null, creditsCharged: 0, model: input.model ?? '', sources: [] } })
 
   const { rows } = await catalog()
-  const picked = input.model ? rows.find((r) => r.id === input.model && r.kind === 'text') : defaultModel(ent, rows)
+  const picked = chooseModel(ent, rows, input.model)
   if (!picked) return c.json({ success: false, error: { code: 'INVALID_MODEL', message: 'That model is not available.' } }, 400)
   const tier = picked.accessTier as AccessTier
   assertModelTier(ent, tier)
@@ -527,7 +522,7 @@ async function assistV2(c: any, o: { id: string; userId: string; isOwner: boolea
   const { id, userId, isOwner, input, ent, doc } = o
   const empty = { theme: null, edits: [], additions: [], reverts: [], images: [], applied: [], notes: [], rewrite: null, creditsCharged: 0, sources: [] as unknown[] }
   const { rows } = await catalog()
-  const picked = input.model ? rows.find((r) => r.id === input.model && r.kind === 'text') : defaultModel(ent, rows)
+  const picked = chooseModel(ent, rows, input.model)
   if (!picked) return c.json({ success: false, error: { code: 'INVALID_MODEL', message: 'That model is not available.' } }, 400)
   const tier = picked.accessTier as AccessTier
   assertModelTier(ent, tier)
@@ -578,7 +573,11 @@ async function assistV2(c: any, o: { id: string; userId: string; isOwner: boolea
     await refundAll().catch(() => {})
     await refundCredits(userId, 'ai_assist', `${input.requestId}:enrich`).catch(() => {}) // a no-op unless the enrichment had already reserved its credits
     if (e instanceof BillingError || e instanceof GateError) throw e
-    if (e instanceof AIUnavailableError) return c.json({ success: false, error: { code: 'AI_UNAVAILABLE', message: 'The AI service is busy or unavailable. You were not charged — please try again.' } }, 503)
+    if (e instanceof AIUnavailableError) {
+      // the models answered but nothing fit our rules: say so (the provider was fine), and keep the reason in the log (usage events carry error_detail)
+      if (e.answersRejected) return c.json({ success: false, error: { code: 'AI_ANSWER_REJECTED', message: "I couldn't turn that into changes this time. Nothing was changed and you were not charged. Please try again, or say it a little differently." } }, 422)
+      return c.json({ success: false, error: { code: 'AI_UNAVAILABLE', message: 'The AI service is busy or unavailable. You were not charged — please try again.' } }, 503)
+    }
     console.error('[ai-assist v2]', e)
     return c.json({ success: false, error: { code: 'AI_EDIT_FAILED', message: 'The AI could not complete that. You were not charged.' } }, 502)
   }
@@ -650,7 +649,6 @@ function allowSnapshot(userId: string): boolean {
   if (snapshotHits.size > 5000) snapshotHits.clear()
   return true
 }
-const MAX_LIVE_PRESENTATIONS = 500
 
 presentations.get('/:id/chat', async (c) => {
   const userId = c.get('session')!.user.id // each person keeps their OWN assistant conversation, even on a shared deck

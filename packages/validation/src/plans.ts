@@ -33,12 +33,23 @@ export const planFeaturesSchema = z.object({
   askDeck: z.boolean().default(false),
   /** facts to build decks from: none, Wikipedia (free), or Wikipedia + live web search (costs credits) */
   webData: z.enum(['none', 'wikipedia', 'web']).default('none'),
+  /** present full screen and share links ("live preview"); off on Starter, which can build and edit but not show or share */
+  livePreview: z.boolean().default(true),
+  /** the person picks the AI model (Premium). Off = the plan uses its own models below and is never asked */
+  modelChoice: z.boolean().default(false),
+  /** the models this plan writes decks with, best first, as model names without the provider ("gemini-3.6-flash"); the first one the deployment serves is used */
+  fixedModels: z.array(z.string().max(80)).default([]),
 })
 export type PlanFeatures = z.infer<typeof planFeaturesSchema>
 
-export const PLAN_IDS = ['starter', 'pro', 'gold'] as const
+export const PLAN_IDS = ['starter', 'pro', 'gold', 'premium'] as const
 export const planIdSchema = z.enum(PLAN_IDS)
 export type PlanId = z.infer<typeof planIdSchema>
+
+/** The plans a person can pay for (Starter is the free plan every account starts on). */
+export const PAID_PLAN_IDS = ['pro', 'gold', 'premium'] as const
+export const paidPlanIdSchema = z.enum(PAID_PLAN_IDS)
+export type PaidPlanId = z.infer<typeof paidPlanIdSchema>
 
 export const CURRENCIES = ['INR', 'USD'] as const
 export const currencySchema = z.enum(CURRENCIES)
@@ -73,7 +84,7 @@ export type GateCode = (typeof GATE_CODES)[number]
 
 /** What the Billing page shows about the user's paid subscription (null = Starter). */
 export interface SubscriptionSummary {
-  planId: 'pro' | 'gold'
+  planId: PaidPlanId
   status: string
   interval: 'month' | 'year'
   currency: Currency

@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module'
 import { readFileSync } from 'node:fs'
-import { EDITOR, WEB, expect, launch, suite } from '../lib.mjs'
+import { EDITOR, WEB, expect, launch, startBuild, suite } from '../lib.mjs'
 import { STATE } from './02-auth.mjs'
 
 const axeSrc = readFileSync(createRequire(import.meta.url).resolve('axe-core/axe.min.js'), 'utf8')
@@ -62,7 +62,7 @@ export default async function () {
   await s.check('refresh mid-generation resumes (job id kept) instead of starting over', q, async () => {
     await q.goto(EDITOR + '/', { waitUntil: 'networkidle' }); await q.getByLabel('Presentation prompt').fill('Employee onboarding for a design agency, 5 slides, no statistics')
     await q.getByRole('button', { name: 'Create Presentation' }).click(); await q.waitForURL(/\/create/)
-    const len = q.getByRole('radio', { name: /slides · ~/ }).first(); await len.waitFor({ timeout: 90000 }); await len.click(); await q.getByRole('radiogroup', { name: 'AI model' }).getByRole('radio').first().click()
+    await startBuild(q)
     await q.getByText(/Waiting for a free slot|Understanding|Building the outline|Writing the slides|Designing layouts/).first().waitFor({ timeout: 30000 }) // the job exists server-side now
     await q.reload({ waitUntil: 'domcontentloaded' })
     await q.waitForURL(/\/edit\//, { timeout: 240000 })

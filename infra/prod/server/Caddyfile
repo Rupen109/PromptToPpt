@@ -1,0 +1,43 @@
+# The origin behind CloudFront (infra/prod/tofu/cdn.tf). The security group lets only CloudFront reach port 443, and every site below also refuses
+# any request that does not carry CloudFront's secret header, so the origin cannot be used directly even by someone who finds its address.
+#
+# CloudFront forwards the visitor's Host header (it is the only managed policy that also passes the visitor's IP and country), so the origin answers
+# for the public names. Certificates come from Let's Encrypt through the DNS challenge (Route 53), because no port is open to Let's Encrypt.
+{
+	email {$ACME_EMAIL}
+	acme_dns route53 {
+		hosted_zone_id {$HOSTED_ZONE_ID}
+	}
+}
+
+(from_edge_only) {
+	@not_edge not header X-Origin-Verify {$EDGE_SHARED_SECRET}
+	respond @not_edge 403
+}
+
+{$DOMAIN} {
+	import from_edge_only
+	encode zstd gzip
+	reverse_proxy web:3000
+}
+
+www.{$DOMAIN} {
+	# route keeps the written order (Caddy would otherwise run redir before respond)
+	route {
+		import from_edge_only
+		redir https://{$DOMAIN}{uri} permanent
+	}
+}
+
+api.{$DOMAIN} {
+	import from_edge_only
+	encode zstd gzip
+	reverse_proxy api:4000 {
+		header_up X-Forwarded-Proto https
+	}
+}
+
+# CloudFront's origin domain name. Not a site anyone uses: it only needs a valid certificate in case CloudFront presents this name instead of the Host.
+origin.{$DOMAIN} {
+	respond 403
+}

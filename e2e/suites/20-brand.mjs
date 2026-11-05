@@ -1,6 +1,6 @@
 import { execSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
-import { API, EDITOR, WEB, expect, launch, suite } from '../lib.mjs'
+import { API, EDITOR, WEB, expect, launch, startBuild, suite } from '../lib.mjs'
 import { ACCOUNT, STATE } from './02-auth.mjs'
 import { DECKS } from './03-create.mjs'
 
@@ -115,7 +115,7 @@ export default async function () {
         const box = p.getByLabel('Build it in my brand'); await box.waitFor({ timeout: 90000 })
         expect(await box.isChecked(), 'not on by default')
         if (!useKit) await box.uncheck()
-        await p.getByRole('radiogroup', { name: 'AI model' }).getByRole('radio').first().click()
+        await startBuild(p)
         await p.waitForTimeout(1500)
       }
       await run(true); await run(false)

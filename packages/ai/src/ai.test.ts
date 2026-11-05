@@ -47,6 +47,22 @@ describe('AIGateway', () => {
     expect(t.provider.calls[1]!.prompt).toContain('rejected')
   })
 
+  it('records WHY an attempt failed (the schema path and message), so a rejected answer can be explained later; a success has no detail', async () => {
+    const t = setup((_r, n) => (n === 1 ? '{"ok":"yes"}' : '{"ok":true}'))
+    await t.run()
+    expect(t.ledger[0]!.errorDetail).toMatch(/^model output failed validation: ok: /)
+    expect(t.ledger[0]!.errorDetail!.length).toBeLessThanOrEqual(300)
+    expect(t.ledger[1]!.errorDetail).toBeUndefined()
+    const bad = setup(() => 'not json at all')
+    await expect(bad.run()).rejects.toBeInstanceOf(AIUnavailableError)
+    expect(bad.ledger.every((l) => l.errorCode === 'invalid_json' && l.errorDetail === 'model returned invalid JSON')).toBe(true)
+    const err = (await bad.run().catch((e) => e)) as AIUnavailableError
+    expect(err).toBeInstanceOf(AIUnavailableError)
+    expect(err.answersRejected).toBe(true) // the models answered; the answers did not fit — not "busy"
+    expect(new AIUnavailableError('all models failed', ['gemini: Resource exhausted', 'gemini2: model output failed validation: x']).answersRejected).toBe(false)
+    expect(new AIUnavailableError('no models', []).answersRejected).toBe(false)
+  })
+
   it('retries retryable errors then succeeds', async () => {
     const t = setup((_r, n) => {
       if (n < 3) throw new ProviderError('busy', 'http_503', true, 503)
