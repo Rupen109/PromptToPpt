@@ -7,7 +7,7 @@ Owner spec (2026-11-05): PowerPoint-style animation. **Gold and Premium** get ob
 |---|---|---|
 | 1 | Data model, plan flag `animations`, migration 0042, server gate, editor commands + undo | done |
 | 2 | Timeline engine, player, 27 effects (entrance, emphasis, exit), Present mode integration | done, verified in Chromium (suite 58) |
-| 3 | Animation Pane (right drawer), Animations tab, start-mode and option controls | next |
+| 3 | Animation Pane (right drawer `components/editor/animation/`), ribbon Animations dropdown (basic transitions for all plans; Morph set / apply to all / remove, locked with upgrade prompt below Gold), `editor/transition-commands.ts` | done, verified in a real browser (Starter and Gold) |
 | M1 | Morph data (`slide.transition.type = 'morph'`, easing, direction, `own`), server gate, Duplicate Slide keeps element ids, Morph engine (`planMorph`, `carry`, `MorphLayer`), Present mode | done, verified in Chromium (suite 59) |
 | M2 | The Morph layout family: layout `morph` with 12 scenes drawn from one cast of elements with stable ids (`packages/theme/src/layout/morph.ts`), content shape `{layout:'morph', scene, title, kicker?, subtitle?, items[0-4], focus?, stat?, image?}` | done: 66 layout tests (every scene × theme × aspect ratio × style variant) and a real-browser run |
 | M3 | Generation: ONE planning call (concepts + ordered scenes), code enforces the story rules, the deck's one hero picture, `morph` job option with the Gold gate, the create-page option | done: unit + API tests, real-AI browser suite 60, real decks reviewed by eye |

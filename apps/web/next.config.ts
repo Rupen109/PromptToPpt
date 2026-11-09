@@ -22,8 +22,8 @@ const nextConfig: NextConfig = {
     })).map(([key, value]) => ({ key, value }))
     return [
       { source: '/:path*', headers: sec },
-      // the Morph templates' own pictures: drawn into exports by the editor on another origin, so they need CORS too
-      { source: '/morph-templates/:path*', headers: [{ key: 'Access-Control-Allow-Origin', value: '*' }, { key: 'Cache-Control', value: 'public, max-age=86400' }] },
+      // the Morph templates' own pictures: drawn into exports by the editor on another origin, so they need CORS too — the address always carries ?v=MORPH_ART_VERSION, so a year-long immutable cache is safe (a new picture bumps the version)
+      { source: '/morph-templates/:path*', headers: [{ key: 'Access-Control-Allow-Origin', value: '*' }, { key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }] },
       { source: '/ppt/:path*', headers: [{ key: 'Access-Control-Allow-Origin', value: '*' }, { key: 'Cache-Control', value: 'public, max-age=86400' }] }, // the old address, see rewrites
       { source: '/template-assets/:path*', headers: [{ key: 'Access-Control-Allow-Origin', value: '*' }, { key: 'Cache-Control', value: 'public, max-age=86400' }] },
     ]

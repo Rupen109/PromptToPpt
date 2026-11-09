@@ -30,7 +30,7 @@ export default function FaqSection({ faqs = GENERAL_FAQS, heading = 'h2' }: { fa
               </h3>
               {/* grid-rows trick: animates height to/from its natural size without measuring */}
               <div id={`faq-${i}`} role="region" aria-labelledby={`faq-q-${i}`} className={`grid transition-[grid-template-rows] duration-300 ease-out ${open === i ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
-                <div className="overflow-hidden"><p className="px-[22px] pb-[22px] -mt-2 text-base leading-6 text-[#475569]">{f.a}</p></div>
+                <div className="overflow-hidden"><p className="px-[22px] pb-[22px] text-base leading-6 text-[#475569]">{f.a}</p></div>
               </div>
             </Card>
           ))}
