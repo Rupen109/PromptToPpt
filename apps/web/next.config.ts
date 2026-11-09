@@ -11,6 +11,10 @@ const nextConfig: NextConfig = {
   transpilePackages: ['@prompttoppt/api-client', '@prompttoppt/ui', '@prompttoppt/validation', '@prompttoppt/theme', '@prompttoppt/types', '@prompttoppt/analytics'],
   poweredByHeader: false,
   // template pictures are drawn into exports (PDF/PNG/JPG/HTML) by the editor on another origin, which needs CORS
+  // decks saved before the pictures moved from /ppt to /morph-templates still point at the old address
+  async rewrites() {
+    return [{ source: '/ppt/:path*', destination: '/morph-templates/:path*' }]
+  },
   async headers() {
     const sec = (securityHeaders({
       app: 'web', dev: process.env.NODE_ENV !== 'production',
@@ -18,6 +22,9 @@ const nextConfig: NextConfig = {
     })).map(([key, value]) => ({ key, value }))
     return [
       { source: '/:path*', headers: sec },
+      // the Morph templates' own pictures: drawn into exports by the editor on another origin, so they need CORS too
+      { source: '/morph-templates/:path*', headers: [{ key: 'Access-Control-Allow-Origin', value: '*' }, { key: 'Cache-Control', value: 'public, max-age=86400' }] },
+      { source: '/ppt/:path*', headers: [{ key: 'Access-Control-Allow-Origin', value: '*' }, { key: 'Cache-Control', value: 'public, max-age=86400' }] }, // the old address, see rewrites
       { source: '/template-assets/:path*', headers: [{ key: 'Access-Control-Allow-Origin', value: '*' }, { key: 'Cache-Control', value: 'public, max-age=86400' }] },
     ]
   },

@@ -19,7 +19,7 @@ export const FAMILIES = [
 export type Family = (typeof FAMILIES)[number]
 
 const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/)
-const layoutId = z.enum(LAYOUT_IDS.filter((l) => l !== 'blank') as [string, ...string[]])
+const layoutId = z.enum(LAYOUT_IDS.filter((l) => l !== 'blank' && l !== 'morph' && l !== 'morph-template') as [string, ...string[]])
 export const MOTION_KEYS = ['none', ...Object.keys(MOTIONS)] as [string, ...string[]]
 export const FONT_KEYS = Object.keys(FONT_PAIRS) as [string, ...string[]]
 /** "playfair (Playfair Display + Lora)": the model needs the real families to pick "a serif font" */
@@ -149,7 +149,7 @@ ${FAMILY_GUIDE}
 REFERENCES (which slides a task is about; never slide ids):
 {"by":"number","n":3} {"by":"range","from":7,"to":10} {"by":"last","count":2} {"by":"first","count":1} {"by":"current"} {"by":"just_changed"} {"by":"all"} {"by":"title","text":"<words from a slide title, or what it is, e.g. thank you>"} {"by":"layout","layout":"comparison"} {"by":"added_by_task","task":<index of an earlier task in this answer>}
 
-LAYOUTS: ${LAYOUT_IDS.filter((l) => l !== 'blank').join(', ')}
+LAYOUTS: ${LAYOUT_IDS.filter((l) => l !== 'blank' && l !== 'morph' && l !== 'morph-template').join(', ')}
 
 HOW TO DECIDE
 1. Read the message together with <conversation> and <focus>. Words like "it", "this", "that", "them", "the new one" mean what the conversation and focus point at: the slide on screen (current) or what the assistant just changed (just_changed).

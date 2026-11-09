@@ -72,6 +72,19 @@ export function mockRespond(req: TextRequest): string {
       })),
     })
   }
+  if (task === 'morph_plan') {
+    const n: number = p['slideCount'] ?? 8
+    const mid = ['cards-row', 'spotlight', 'cards-column', 'timeline', 'compare', 'cards-grid']
+    return JSON.stringify({
+      title: String(p['topic'] ?? 'Deck').slice(0, 100),
+      concepts: ['Alpha', 'Beta', 'Gamma', 'Delta'].map((h) => ({ heading: `Idea ${h}`, text: `What ${h} means for the audience.` })),
+      scenes: Array.from({ length: n }, (_, i) => ({
+        scene: i === 0 ? 'cover' : i === n - 1 ? 'closing' : mid[(i - 1) % mid.length], title: i === 0 ? String(p['topic']).slice(0, 80) : `Point ${i} of the story`,
+        subtitle: `Slide ${i + 1} in a sentence.`, ...(i > 0 && i < n - 1 && mid[(i - 1) % mid.length] === 'spotlight' ? { focus: i % 4 } : {}), notes: `Say something specific about slide ${i + 1}.`,
+      })),
+      imageIntent: 'A team working together at a table', imageQuery: 'team working together',
+    })
+  }
   if (task === 'outline') {
     const n: number = p['slideCount'] ?? 8
     const mid = ['title-body', 'process', 'comparison', 'split-image-text', 'timeline', 'table']

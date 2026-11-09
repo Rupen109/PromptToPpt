@@ -142,14 +142,14 @@ describe('slide commands', () => {
     useDoc.getState().undo(); useDoc.getState().undo()
     expect(JSON.stringify(doc().slides[1]!.themeOverrides ?? null)).toBe(before)
   })
-  it('duplicate keeps content but creates NEW ids (slide and every element)', () => {
+  it('duplicate keeps content, gives the slide a NEW id, and keeps the element ids (the same element on both slides, which is what a Morph matches); ids stay unique within each slide', () => {
     let newSlide = ''
     apply('dup', (d) => { newSlide = C.duplicateSlide(d, 's1', gen)! })
     expect(doc().slides.map((s) => s.id)).toEqual(['s0', 's1', newSlide, 's2'])
     const a = doc().slides[1]!, b = doc().slides[2]!
     expect(b.elements.map((e) => e.type)).toEqual(a.elements.map((e) => e.type))
-    const ids = doc().slides.flatMap((s) => s.elements.map((e) => e.id))
-    expect(new Set(ids).size).toBe(ids.length)
+    expect(b.elements.map((e) => e.id)).toEqual(a.elements.map((e) => e.id))
+    for (const s of doc().slides) expect(new Set(s.elements.map((e) => e.id)).size).toBe(s.elements.length)
   })
 
   it('add below / add from layout / delete (never the last slide) / move', () => {

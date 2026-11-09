@@ -99,6 +99,34 @@ Exactly ${i.slideCount} slides. Return JSON: {"title": string, "slides": [{"titl
   ].join('\n'),
 })
 
+export interface MorphPlanInput {
+  analysis: PromptAnalysis
+  slideCount: number
+  /** the user supplied figures: a "big-stat" scene may show one */
+  figuresAllowed: boolean
+  /** the user supplied a real quotation: a "quote" scene may use it */
+  quotesAllowed: boolean
+  sources: { id: string; title: string; text: string }[]
+  userPrompt: string
+}
+
+/** The one call that plans a Morph deck: its concepts (the cards that stay on every slide) and its scenes in order. The code checks the order afterwards (generation/morph-plan.ts). */
+export const morphPlanPrompt = (i: MorphPlanInput) => ({
+  system: `[task:morph_plan]
+You are a presentation strategist designing a MORPHING deck: every slide is built from the same few elements, which move, grow and regroup from one slide to the next, so the deck looks at ONE small set of ideas from different angles. ${DATA_RULES}
+1. Name the concepts the whole deck is about: usually 4 (3 if the topic has only three; 2 only if it truly has two). Each has a short heading (at most 3 words, a noun phrase) and ONE plain sentence of at most 20 words. They appear as cards on every slide, so each must stay true wherever it appears and none may overlap another.
+2. Write exactly ${i.slideCount} scenes, in order. A scene is one of: cover (the opening), hero-left (concepts beside the picture), cards-row (concepts side by side), cards-column (concepts as rows), cards-grid (concepts in a grid), spotlight (ONE concept takes the stage, the others wait), timeline (the concepts in order, one building on the previous), big-stat (one figure takes the stage), compare (the concepts split into two groups facing each other), focus-hero (one statement over the picture), quote (a real quotation), closing (the ending).
+Rules: the first scene is "cover" and the last is "closing". Show the concepts side by side (cards-row, hero-left, cards-column or cards-grid) before you spotlight any one. Every "spotlight" scene is about ONE concept: set "focus" to its index (0 for the first concept, 1 for the second…) and give each spotlight a different concept, in turn. Use "timeline" when one concept leads to the next, "compare" for a contrast, "focus-hero" for the single sentence you most want remembered. ${i.figuresAllowed ? 'Use "big-stat" only for a figure that appears in params or a source (put it in "stat").' : 'No figures were supplied: do NOT use "big-stat" and write no numbers.'} ${i.quotesAllowed ? 'Use "quote" only for a quotation that appears in the user request or a source.' : 'No quotation was supplied: do NOT use "quote".'} Never use the same scene more than twice in a row, and vary the scenes: prefer to change the arrangement from one slide to the next.
+3. For every scene write: "title" — what THIS slide says, as a point in a sentence of at most 12 words (never just the topic, never repeated); "kicker" (optional, a 1-3 word label); "subtitle" (optional, ONE sentence of at most 25 words that expands the title); "notes" — what the presenter says aloud, 2-4 specific sentences. A spotlight's title, subtitle and notes are about its focused concept. Cover and closing: the deck's promise and its call to action.
+Every item in params.mustCover must appear in a scene or in a concept. Add "imageIntent" (at most 15 words: what the deck's ONE picture should SHOW — a concrete subject and setting, no text or logos) and "imageQuery" (2 to 4 plain, common words a photographer would tag it with). Do not specify colours, fonts or layout details.
+Return JSON: {"title": string, "concepts": [{"heading": string, "text": string}], "scenes": [{"scene": one of the scenes, "title": string, "kicker"?: string, "subtitle"?: string, "focus"?: int, "stat"?: {"value": string, "label": string}, "notes": string}], "imageIntent": string, "imageQuery": string}.`,
+  prompt: [
+    `<params>${JSON.stringify({ slideCount: i.slideCount, language: i.analysis.language, audience: i.analysis.audience, tone: i.analysis.tone, topic: i.analysis.topic, objective: i.analysis.objective, requiredSections: i.analysis.requiredSections, mustCover: [...i.analysis.requiredSections, ...(i.analysis.facts ?? [])] })}</params>`,
+    `<user_request>\n${neutralise(i.userPrompt)}\n</user_request>`,
+    sourceBlock(i.sources),
+  ].join('\n'),
+})
+
 export interface SlidesInput {
   analysis: PromptAnalysis
   deckTitle: string

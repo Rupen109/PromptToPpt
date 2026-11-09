@@ -29,6 +29,6 @@ export const getTheme = (id: string): Theme => THEMES.find((t) => t.id === id) ?
 /** Fonts the editor/present mode load and PPTX export can map; anything else triggers a font_fallback warning. */
 export const SUPPORTED_FONTS = [
   'Plus Jakarta Sans', 'Inter', 'Space Grotesk', 'Sora', 'Poppins', 'Montserrat', 'Lato', 'Outfit', 'DM Sans', 'Manrope', 'Playfair Display', 'Lora', 'DM Serif Display',
-  'Fraunces', 'Work Sans', 'Raleway', 'Nunito Sans', 'IBM Plex Sans', 'Merriweather', 'Source Serif 4', 'Bebas Neue', 'Oswald', 'Space Mono',
+  'Fraunces', 'Work Sans', 'Raleway', 'Nunito Sans', 'IBM Plex Sans', 'Merriweather', 'Source Serif 4', 'Bebas Neue', 'Oswald', 'Space Mono', 'Anton', 'Josefin Sans',
   'Arial', 'Calibri', 'Georgia', 'Helvetica', 'Times New Roman', 'Verdana',
 ]

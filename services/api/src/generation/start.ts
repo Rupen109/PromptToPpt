@@ -8,7 +8,7 @@ import { chooseModel } from '../routes/models.ts'
 import { getKit, MAX_KITS } from '../brand/kits.ts'
 import { GateError } from '../billing/errors.ts'
 import { estimateGeneration, refundCredits, reserveCredits } from '../billing/credits.ts'
-import { assertModelTier, assertPresentationQuota, assertSlideLimit, getEntitlements } from '../billing/entitlements.ts'
+import { assertModelTier, morphDecksUsed, assertMorph, assertMorphQuota, assertPresentationQuota, assertSlideLimit, getEntitlements } from '../billing/entitlements.ts'
 import { insertDeck } from '../decks/create.ts'
 import { db } from '../db/index.ts'
 import { generationJob, presentation, presentationVersion, sourceDocument } from '../db/schema.ts'
@@ -48,6 +48,8 @@ export const createJob = z.object({
   /** build a new deck in this brand kit (Pro/Gold); ignored when rewriting an existing deck */
   brandKitId: z.string().max(32).optional(),
   sourceIds,
+  /** build a Morph deck: slides made from the same elements, which move and regroup from slide to slide (Gold/Premium; a new presentation only) */
+  morph: z.boolean().optional(),
   /** the language the person chose for the deck (any of the 100+ in the picker); omitted → detected from the request */
   language: languageField,
   /** generated once per user action in the client; retries of the same action reuse it */
@@ -90,6 +92,11 @@ export async function startDeckJob(userId: string, body: CreateJobInput): Promis
     const [orig] = await db.select({ aspectRatio: presentation.aspectRatio }).from(presentation).where(and(eq(presentation.id, body.remixOf), eq(presentation.userId, userId), isNull(presentation.deletedAt)))
     if (!orig) return reply(err('NOT_FOUND', 'Presentation not found'), 404)
     remixAspect = orig.aspectRatio
+  }
+  if (body.morph) {
+    if (body.targetPresentationId || body.remixOf || body.picturesOnly) return reply(err('INVALID_REQUEST', 'A Morph presentation is made as a new presentation.'), 400)
+    assertMorph(ent) // Gold and Premium: checked here from the plan, never from what the browser says
+    assertMorphQuota(ent) // this month's allowance (re-checked under a lock below, so parallel starts cannot pass together)
   }
   if (body.brandKitId) {
     if ((MAX_KITS[ent.plan.id] ?? 0) === 0) throw new GateError('UPGRADE_REQUIRED', 'Brand kits are available on Pro, Gold and Premium.', 403, { feature: 'brand' })
@@ -143,6 +150,16 @@ export async function startDeckJob(userId: string, body: CreateJobInput): Promis
     if (deckId) await db.delete(presentation).where(eq(presentation.id, deckId))
     const [again] = await db.select().from(generationJob).where(and(eq(generationJob.userId, userId), eq(generationJob.idempotencyKey, idempotencyKey)))
     return reply({ success: true, data: view(again!) }, 200)
+  }
+  if (body.morph) {
+    // Parallel starts can all read "9 of 10 used" and all pass the check above. Counting AFTER the insert, in a fixed order (time, then id), lets exactly the first ones in stay.
+    const rank = await morphDecksUsed(userId, ent.period.start, { createdAt: created.createdAt, id: created.id })
+    if (rank > ent.features.morphDecksPerMonth) {
+      await refundCredits(userId, 'job', id)
+      await db.delete(generationJob).where(eq(generationJob.id, id))
+      if (deckId) await db.delete(presentation).where(eq(presentation.id, deckId))
+      assertMorphQuota({ ...ent, usage: { ...ent.usage, morphDecksThisPeriod: rank } })
+    }
   }
   await notifyJob() // an idle worker starts it now
   return reply({ success: true, data: view(created) }, 201)

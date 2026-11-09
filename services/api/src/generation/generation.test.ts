@@ -195,3 +195,82 @@ describe('deck language (100+ languages)', () => {
     expect(deck.data.document.language).toBe('ar')
   })
 })
+
+describe('a Morph deck (Gold and Premium)', () => {
+  const morphReq = (extra: object = {}) => ({ prompt: 'Create an 8 slide overview of our onboarding process for new customers', slideCount: 8, morph: true, idempotencyKey: `key-${rid()}-${rid()}`, ...extra })
+
+  it('Starter and Pro are refused with the upgrade prompt, and nothing is charged or created', async () => {
+    for (const plan of ['starter', 'pro'] as const) {
+      const u = await signUp()
+      if (plan !== 'starter') await setPlan(u.id, plan)
+      const r = await post('/jobs', u.cookie, morphReq())
+      expect(r.status).toBe(403)
+      expect((await j(r)).error).toMatchObject({ code: 'UPGRADE_REQUIRED', details: { feature: 'morph' } })
+      expect(await db.select().from(generationJob).where(eq(generationJob.userId, u.id))).toHaveLength(0)
+    }
+  })
+
+  it('the monthly allowance: Gold gets 10 AI-built Morph decks; the 11th is refused (a failed one does not count) and nothing is charged or created', async () => {
+    const u = await signUp(); await setPlan(u.id, 'gold')
+    const mk = (status: string) => ({ id: `mq-${rid()}-${rid()}`, userId: u.id, prompt: 'seed', options: { morph: true }, idempotencyKey: `mq-${rid()}-${rid()}`, lane: 1, status }) as any
+    await db.insert(generationJob).values([...Array.from({ length: 10 }, () => mk('completed')), mk('failed')])
+    const before = (await db.select().from(generationJob).where(eq(generationJob.userId, u.id))).length
+    const r = await post('/jobs', u.cookie, morphReq())
+    expect(r.status).toBe(429)
+    expect((await j(r)).error).toMatchObject({ code: 'LIMIT_REACHED', details: { feature: 'morph', limit: 10 } })
+    expect(await db.select().from(generationJob).where(eq(generationJob.userId, u.id))).toHaveLength(before)
+    const plain = await post('/jobs', u.cookie, { ...morphReq(), morph: undefined }) // a normal deck is not limited by the Morph allowance
+    expect(plain.status).toBe(201)
+  })
+
+  it('a Morph deck is for a new presentation: remix, rewrite and pictures-only are refused', async () => {
+    const u = await signUp(); await setPlan(u.id, 'gold')
+    for (const extra of [{ targetPresentationId: 'x' }, { remixOf: 'x' }, { picturesOnly: true }]) expect((await post('/jobs', u.cookie, morphReq(extra))).status).toBe(400)
+  })
+
+  it('Gold: one planning call (no outline, no slide batches), twelve-scene rules applied, the same cards on every slide, stable ids, a Morph on every slide', async () => {
+    const u = await signUp(); await setPlan(u.id, 'gold')
+    const created = await post('/jobs', u.cookie, morphReq())
+    expect(created.status).toBe(201)
+    const jobId = (await j(created)).data.id
+    const done = await drain(jobId)
+    expect(done.status).toBe('completed')
+
+    const view = await j(await app.request(`/api/v1/generation/jobs/${jobId}`, { headers: { Cookie: u.cookie } }))
+    const deck = await j(await app.request(`/api/v1/presentations/${view.data.presentationId}`, { headers: { Cookie: u.cookie } }))
+    const doc = deck.data.document
+    const parsed = presentationSchema.safeParse(doc)
+    expect(parsed.success, JSON.stringify(parsed.error?.issues.slice(0, 3))).toBe(true)
+    expect(doc.slides).toHaveLength(8)
+    expect(doc.slides.every((s: any) => s.layoutId === 'morph' && s.transition?.type === 'morph' && s.transition.own === true)).toBe(true)
+    expect(doc.slides[0].content.scene).toBe('cover'); expect(doc.slides[7].content.scene).toBe('closing')
+    // the cards are the same cards on every slide
+    const heads = (s: any) => JSON.stringify(s.content.items.map((i: any) => i.heading))
+    expect(new Set(doc.slides.map(heads)).size).toBe(1)
+    // the same part has the same id wherever it appears, and ids are unique within a slide
+    const kinds = new Map<string, string>()
+    for (const s of doc.slides) {
+      expect(new Set(s.elements.map((e: any) => e.id)).size).toBe(s.elements.length)
+      for (const e of s.elements) { expect(e.id.startsWith('m-'), e.id).toBe(true); expect(kinds.get(e.id) ?? e.type).toBe(e.type); kinds.set(e.id, e.type) }
+    }
+    // never the same scene three times running; no spotlight before an overview
+    const scenes = doc.slides.map((s: any) => s.content.scene)
+    for (let i = 2; i < scenes.length; i++) expect(scenes[i] === scenes[i - 1] && scenes[i] === scenes[i - 2]).toBe(false)
+    expect(doc.slides.every((s: any) => s.validation.status !== 'failed')).toBe(true)
+
+    // the ledger: ONE planning call, no per-slide calls
+    const events = (await ledgerFor(u.id)).filter((e) => e.jobId === jobId).map((e) => e.requestType)
+    expect(events.filter((t) => t === 'outline_generation')).toHaveLength(1)
+    expect(events).not.toContain('slide_content')
+  })
+
+  it('the transition is not replaced when the deck is saved again, and the deck is saved clean by the real save route', async () => {
+    const u = await signUp(); await setPlan(u.id, 'gold')
+    const jobId = (await j(await post('/jobs', u.cookie, morphReq({ slideCount: 6 })))).data.id
+    await drain(jobId)
+    const view = await j(await app.request(`/api/v1/generation/jobs/${jobId}`, { headers: { Cookie: u.cookie } }))
+    const got = await j(await app.request(`/api/v1/presentations/${view.data.presentationId}`, { headers: { Cookie: u.cookie } }))
+    const put = await app.request(`/api/v1/presentations/${view.data.presentationId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', Cookie: u.cookie, Origin: origin }, body: JSON.stringify({ baseRevision: got.data.revision, document: got.data.document }) })
+    expect(put.status).toBe(200)
+  })
+})

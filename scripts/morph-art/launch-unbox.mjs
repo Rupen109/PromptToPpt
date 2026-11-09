@@ -1,0 +1,17 @@
+// Unboxing: one fictional pair of over-ear wireless headphones (matte graphite, a lime accent ring, no logo) in one consistent keynote look,
+// two box contents, and a soft violet-blue glow field. Cool key light with a lime rim light on every cut-out.
+export default ({ MAGENTA, BLACK }) => {
+  const LOOK = 'Premium consumer-electronics keynote product photography: a cool blue-white soft key light from the upper left, a thin electric-lime rim light along the edges, deep controlled shadows, razor-sharp focus, tasteful retouching, matte near-black graphite materials.'
+  const NO = 'The product is completely plain: no text, no letters, no logo, no brand marks, no cables, no wires, no hands, no reflections of a floor, no shadow on the ground.'
+  const HP = 'a pair of premium over-ear wireless headphones: a slim brushed-aluminium graphite headband with a soft black leather underside, large rounded-oval matte graphite ear cups with soft black memory-foam ear cushions, and a fine glowing electric-lime ring light line around the outer rim of each ear cup'
+  const cut = (name, ratio, size, what, extra = {}) => ({ name: `unbox-${name}`, key: 'magenta', ratio, size, mode: 'trim', fill: 0.94, check: true, p: `${LOOK} ${what} The whole subject is inside the frame with a clear margin on every side, nothing cropped. ${NO} On ${MAGENTA}.`, ...extra })
+  return [
+    cut('hero', '1:1', [1400, 1400], `One single ${HP}, seen in a front three-quarter view, standing upright on its own as if floating, the headband arching over the top, the left ear cup facing the camera at an angle.`),
+    cut('side', '1:1', [1400, 1400], `One single ${HP}, seen in a pure side profile (one ear cup facing us, the headband arching over the top and curving down behind it), floating upright.`),
+    cut('detail', '1:1', [1400, 1400], `A close-up, perfectly front-on view of ONE single ear cup of ${HP}: a large rounded-oval matte graphite disc with the thin glowing lime ring light line around its rim, a small brushed-metal slider arm joining the top and bottom, filling the frame with a clear margin around it.`, { fill: 0.92 }),
+    cut('case', '4:3', [1200, 900], 'One single slim rounded-rectangle hard travel case for headphones, matte graphite fabric shell with a fine lime-green zip pull, closed, seen from the front at a slight three-quarter angle, floating.'),
+    cut('puck', '1:1', [900, 900], 'One single small round wireless charging puck: a thick matte graphite disc with a thin glowing lime ring light line around the top edge and a flat polished dark top face, seen from a three-quarter angle slightly above, floating, with no cable.'),
+    { name: 'unbox-glow', key: 'black', ratio: '16:9', size: [1920, 1080], mode: 'frame', p: `A soft, perfectly round, out-of-focus pool of deep violet-blue light (#3A3FFF) centred in the frame, brightest at its centre and fading smoothly and evenly in every direction to pure black well before it reaches any edge of the frame (a large empty black margin of at least 20% on every side), a perfectly smooth radial falloff with no hard edge, no haze, no stars, no objects, on ${BLACK}. No text.` },
+    { name: 'unbox-beam', key: 'black', ratio: '16:9', size: [1920, 1080], mode: 'frame', p: `A single soft vertical shaft of cool white-lime light descending from the top centre of the frame like a spotlight cone widening toward the bottom, with soft edges and a gentle haze, dim, fading to pure black at the left and right edges, on ${BLACK}. No text, no objects.` },
+  ]
+}

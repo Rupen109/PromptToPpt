@@ -1,6 +1,7 @@
 import { current, isDraft, type Draft } from 'immer'
 import { IMAGE_BG_LAYOUTS, PHOTO_LAYOUTS, applyBrandToTheme, brandLogoElements, commonSlideBackground, composeSlide, contrastRatio, effectiveBackground, isDark, mix, readableOn, resolveColor, designById, getTheme, makeColors, recolor } from '@prompttoppt/theme'
 import { CANVAS, elementSchema, type AspectRatio, type LayoutId, type Presentation, type Slide, type SlideContent, type SlideElement, type TextElement, type Theme } from '@prompttoppt/validation'
+import { copyEffects, pruneEffects } from './effect-commands'
 
 /**
  * Document commands: small PURE mutators over an immer draft. The store turns each call into patches + inverse patches,
@@ -171,6 +172,7 @@ export function deleteElements(d: D, slideId: string, ids: string[]) {
   const keep = s.elements.filter((e) => !(ids.includes(e.id) && !e.locked))
   if (keep.length === s.elements.length) return // nothing deletable → record nothing
   s.elements = keep
+  pruneEffects(s)
   touch(s)
 }
 
@@ -270,7 +272,9 @@ export function duplicateSlide(d: D, slideId: string, gen: IdGen = newId): strin
   const copy = plain(d.slides[i]!) as Slide
   copy.id = gen()
   copy.locked = false
-  copy.elements = copy.elements.map((e) => ({ ...e, id: gen() }))
+  // The copy keeps its elements' ids: an element is the same element on both slides, which is what lets a Morph move it from one slide to the other (an id only has to be unique within its slide).
+  const fx = copyEffects(copy.effects, new Map(copy.elements.map((e) => [e.id, e.id])), gen)
+  if (fx) copy.effects = fx; else delete copy.effects
   d.slides.splice(i + 1, 0, copy as Draft<Slide>)
   return copy.id
 }
@@ -402,8 +406,9 @@ export function applyThemeObject(d: D, incoming: Theme, opts: { keepBrand?: bool
       const look = ownLookOf(s)
       const fresh = composeSlide(s.content as SlideContent, next, aspect, undefined, { backgroundImage: photoOf(s), photo: slidePhoto(s) })
       s.elements = fresh.elements as Draft<Slide>['elements']
+      pruneEffects(s)
       s.background = fresh.background
-      s.transition = fresh.transition as Draft<Slide>['transition']
+      if (!s.transition?.own) s.transition = fresh.transition as Draft<Slide>['transition'] // a transition a person chose stays
       // a colour chosen from the old palette (the deck's own background, its primary…) follows the new palette; any other colour stays
       reapplyOwnLook(d, s, look, (value) => { const k = colorKey(old, value); return k ? next.colors[k] : value })
     } else {
@@ -418,6 +423,7 @@ export function applyThemeObject(d: D, incoming: Theme, opts: { keepBrand?: bool
         const dark = s.background?.type === 'image' || isDark((s.background?.value as string | undefined) ?? next.colors.background)
         brandLogoElements(next, aspect, dark, newId).forEach((e, i) => s.elements.push({ ...e, zIndex: top + 1 + i } as Draft<Slide>['elements'][number]))
       }
+      pruneEffects(s)
     }
   }
 }
@@ -677,6 +683,7 @@ export function relayout(d: D, slideId: string, to: LayoutId) {
   s.layoutId = fresh.layoutId
   s.content = fresh.content
   s.elements = fresh.elements as Draft<Slide>['elements']
+  pruneEffects(s) // the new layout has new elements: effects on the old ones go with them
   s.background = fresh.background
   s.manual = false
   reapplyOwnLook(d, s, look)
@@ -691,8 +698,9 @@ export function replaceContent(d: D, slideId: string, content: SlideContent, all
   s.layoutId = fresh.layoutId
   s.content = fresh.content
   s.elements = fresh.elements as Draft<Slide>['elements']
+  pruneEffects(s)
   s.background = fresh.background
-  s.transition = fresh.transition as Draft<Slide>['transition']
+  if (!s.transition?.own) s.transition = fresh.transition as Draft<Slide>['transition']
   if (content.speakerNotes) s.speakerNotes = content.speakerNotes
   s.manual = false
   reapplyOwnLook(d, s, look)
@@ -718,6 +726,7 @@ export function setImageBackground(d: D, slideId: string, url: string) {
   if (!s || s.locked || s.manual || !s.content || !(IMAGE_BG_LAYOUTS as readonly string[]).includes(s.layoutId)) return
   const fresh = composeSlide(s.content as SlideContent, d.theme as Theme, d.aspectRatio, undefined, { backgroundImage: url })
   s.elements = fresh.elements as Draft<Slide>['elements']
+  pruneEffects(s)
   s.background = fresh.background
 }
 
@@ -745,6 +754,7 @@ export function clearImageBackground(d: D, slideId: string) {
   if (!s || s.background?.type !== 'image' || !s.content) return
   const fresh = composeSlide(s.content as SlideContent, d.theme as Theme, d.aspectRatio)
   s.elements = fresh.elements as Draft<Slide>['elements']
+  pruneEffects(s)
   s.background = fresh.background
   delete s.ownLook // the person took the picture away: the layout's own background is back
 }
@@ -761,6 +771,7 @@ export function placeImageBeside(d: D, slideId: string, img: PlacedImage) {
   s.layoutId = fresh.layoutId
   s.content = fresh.content
   s.elements = fresh.elements as Draft<Slide>['elements']
+  pruneEffects(s)
   s.background = fresh.background
   s.manual = false
   reapplyOwnLook(d, s, look)

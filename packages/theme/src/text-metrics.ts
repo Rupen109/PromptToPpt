@@ -8,6 +8,7 @@ export const FONT_WIDTH: Record<string, number> = {
   Inter: 0.54, 'Plus Jakarta Sans': 0.56, 'DM Sans': 0.55, Manrope: 0.56, Outfit: 0.54, 'Space Grotesk': 0.56, Sora: 0.58, Poppins: 0.6, Montserrat: 0.62,
   Raleway: 0.57, 'Work Sans': 0.56, 'IBM Plex Sans': 0.55, 'Nunito Sans': 0.54, Lato: 0.52, 'Playfair Display': 0.56, 'DM Serif Display': 0.52, Lora: 0.54,
   Merriweather: 0.6, Fraunces: 0.57, 'Source Serif 4': 0.52, 'Bebas Neue': 0.42, 'Archivo Narrow': 0.45, Oswald: 0.46, 'Space Mono': 0.62, 'JetBrains Mono': 0.6,
+  'Josefin Sans': 0.5, Anton: 0.46,
   Georgia: 0.56, Arial: 0.54, Helvetica: 0.54, Calibri: 0.5, Verdana: 0.62, 'Times New Roman': 0.5,
 }
 const DEFAULT_WIDTH = 0.58

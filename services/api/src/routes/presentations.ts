@@ -17,7 +17,8 @@ import { resolveAccess } from '../collab/access.ts'
 import { publishRevision } from '../live/bus.ts'
 import { isPremiumTheme, lookOf } from '../billing/premium-look.ts'
 import { creditPrice, refundCredits, reserveCredits } from '../billing/credits.ts'
-import { assertAiEdits, assertAskDeck, assertModelTier, assertPresentationQuota, getEntitlements } from '../billing/entitlements.ts'
+import { morphAdded } from '../billing/animation-gate.ts'
+import { assertAiEdits, assertMorph, assertAskDeck, assertModelTier, assertPresentationQuota, getEntitlements } from '../billing/entitlements.ts'
 import { BillingError, ConflictError, GateError } from '../billing/errors.ts'
 import { db } from '../db/index.ts'
 import { env } from '../env.ts'
@@ -206,6 +207,9 @@ presentations.put(
       if (latest && lookOf(latest.document.theme) !== lookOf(doc.theme) && isPremiumTheme(doc.theme) && !ent.features.premiumTemplates) {
         throw new GateError('UPGRADE_REQUIRED', `The "${doc.theme.name}" theme is available on the Pro plan.`, 403, { feature: 'premiumTemplates' })
       }
+
+      // Morph needs the plan feature — checked when a Morph transition is ADDED or CHANGED (so a later downgrade keeps old decks playing, and lets the person remove it). Object effects are open to every plan.
+      if (!ent.features.morph && morphAdded(latest?.document, doc)) assertMorph(ent)
 
       // Only the user's own recent autosave snapshot is mutable. Generation / restore / AI-edit snapshots are history and
       // are never overwritten — otherwise the first autosave would destroy "the deck as generated".

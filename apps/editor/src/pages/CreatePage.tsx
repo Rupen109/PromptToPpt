@@ -1,4 +1,4 @@
-import { ArrowLeft, Check } from '@prompttoppt/ui/icons'
+import { ArrowLeft, Check, Lock, Sparkles } from '@prompttoppt/ui/icons'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Navigate, useNavigate } from 'react-router'
 import { ApiError, isGateError, type AnalyzeResult, type BrandKit, type JobStatus, type JobView, type ModelOption } from '@prompttoppt/api-client'
@@ -39,7 +39,7 @@ function Card({ children }: { children: ReactNode }) {
  * Step 2: understanding card → choose the LENGTH (just selects it, nothing starts) → choose an AI MODEL, which starts the build.
  * The model chooser is highlighted once a length is chosen, and the length buttons are highlighted if a model is clicked first.
  */
-function PickLength({ result, direction, models, modelId, choice, lengths, onStart, brand }: { choice: boolean; brand?: { kit: BrandKit; checked: boolean; onChange: (v: boolean) => void } | undefined; result: AnalyzeResult; direction?: Direction | undefined; models: ModelOption[]; modelId: string | null; lengths: readonly (readonly [string, number])[]; onStart: (slides: number, model?: string) => void }) {
+function PickLength({ result, direction, models, modelId, choice, lengths, onStart, brand, morph }: { choice: boolean; morph?: MorphOption | undefined; brand?: { kit: BrandKit; checked: boolean; onChange: (v: boolean) => void } | undefined; result: AnalyzeResult; direction?: Direction | undefined; models: ModelOption[]; modelId: string | null; lengths: readonly (readonly [string, number])[]; onStart: (slides: number, model?: string) => void }) {
   const [chosen, setChosen] = useState<number | null>(lengths.length === 1 ? lengths[0]![1] : null)
   const [nudge, setNudge] = useState(false)
   const fixed = !!result.analysis.slideCount
@@ -47,6 +47,17 @@ function PickLength({ result, direction, models, modelId, choice, lengths, onSta
     <>
       <p className="mt-10 text-[17px]">{direction ? <>Great — <b>{direction.title}</b>. </> : null}{choice ? (fixed ? 'Check what I understood, then pick an AI model to start.' : 'Check what I understood, choose the length, then pick an AI model to start.') : (fixed ? 'Check what I understood, then start.' : 'Check what I understood, then choose the length to start.')}</p>
       <div className="mt-4"><BriefCard analysis={result.analysis} /></div>
+      {morph && (morph.allowed ? (
+        <label className={`mt-6 flex items-start gap-3 bg-white border rounded-xl px-4 py-3 w-fit max-w-full cursor-pointer ${morph.checked ? 'border-primary ring-2 ring-primary/20' : 'border-border'}`}>
+          <input type="checkbox" className="mt-1" checked={morph.checked} onChange={(e) => morph.onChange(e.target.checked)} aria-label="Morph animation" />
+          <span className="text-sm"><span className="flex items-center gap-1.5 font-semibold"><Sparkles aria-hidden size={15} /> Morph animation</span><span className="block text-slate-600">Slides built from the same pieces, which move and morph into each other when you present.</span></span>
+        </label>
+      ) : (
+        <button type="button" onClick={morph.onLocked} className="mt-6 flex items-start gap-3 bg-white border border-border rounded-xl px-4 py-3 w-fit max-w-full text-left" aria-label="Morph animation (Gold plan)">
+          <Lock aria-hidden size={16} className="mt-0.5 shrink-0 text-slate-500" />
+          <span className="text-sm"><span className="flex items-center gap-2 font-semibold">Morph animation <span className="text-xs rounded-full bg-slate-100 border border-border px-2 py-0.5 font-medium text-slate-700">Gold</span></span><span className="block text-slate-600">Slides built from the same pieces, which move and morph into each other when you present.</span></span>
+        </button>
+      ))}
       <div role="radiogroup" aria-label="Presentation length" className={`mt-6 flex flex-wrap gap-3 rounded-2xl ${nudge && chosen === null ? 'ring-2 ring-primary p-2 -m-2 animate-pulse-soft' : ''}`}>
         {lengths.map(([label, n]) => (
           <button key={label} role="radio" aria-checked={chosen === n} onClick={() => { setChosen(n); setNudge(false); if (!choice) onStart(n, modelId ?? undefined) /* the plan decides the model: choosing the length starts the build */ }} className={`bg-white border rounded-xl px-5 py-3 text-left transition ${chosen === n ? 'border-primary ring-2 ring-primary/25' : 'border-border hover:border-slate-400'}`}>
@@ -73,6 +84,9 @@ function PickLength({ result, direction, models, modelId, choice, lengths, onSta
     </>
   )
 }
+
+/** The Morph choice on the length step: shown to every plan, switchable on Gold and Premium, an upgrade prompt on the others. */
+interface MorphOption { allowed: boolean; checked: boolean; onChange: (v: boolean) => void; onLocked: () => void }
 
 export function CreatePage() {
   const navigate = useNavigate()
@@ -103,6 +117,7 @@ export function CreatePage() {
   /** the user's default brand kit (paid plans): offered as "build it in my brand", on unless they turn it off */
   const [defaultKit, setDefaultKit] = useState<BrandKit | null>(null)
   const [useKit, setUseKit] = useState(true)
+  const [morph, setMorph] = useState(false)
   useEffect(() => { api.brandKits().then((r) => setDefaultKit(r.kits.find((k) => k.isDefault) ?? null)).catch(() => {}) }, [])
 
   const analyze = useCallback(async () => {
@@ -127,7 +142,7 @@ export function CreatePage() {
       if (!prompt) return
       setPhase({ kind: 'generating', job: null })
       try {
-        const job = await api.createJob({ prompt, analysis: result.analysis, slideCount, sourceIds: getPendingSources(), ...(getPendingLanguage() ? { language: getPendingLanguage()! } : {}), ...((modelOverride ?? modelId) ? { model: (modelOverride ?? modelId)! } : {}), ...(direction ? { direction } : {}), ...(defaultKit && useKit ? { brandKitId: defaultKit.id } : {}), idempotencyKey: idemKey.current })
+        const job = await api.createJob({ prompt, analysis: result.analysis, slideCount, sourceIds: getPendingSources(), ...(getPendingLanguage() ? { language: getPendingLanguage()! } : {}), ...((modelOverride ?? modelId) ? { model: (modelOverride ?? modelId)! } : {}), ...(direction ? { direction } : {}), ...(defaultKit && useKit ? { brandKitId: defaultKit.id } : {}), ...(morph && ent?.features.morph ? { morph: true } : {}), idempotencyKey: idemKey.current })
         setPendingJob(job.id)
         // a new deck exists from the first second, but the person watches the progress screen while it is written (its slides tick off in a list) and the editor
         // opens by itself when the deck is complete, or earlier if they choose ("Open the editor now")
@@ -141,7 +156,7 @@ export function CreatePage() {
         setPhase({ kind: 'error', message: errMessage(e), retry: { type: 'start', result, slideCount, direction } })
       }
     },
-    [prompt, upgrade, modelId, defaultKit, useKit],
+    [prompt, upgrade, modelId, defaultKit, useKit, morph, ent],
   )
 
   const onRetry = (r: Retry) => (r.type === 'analyze' ? void analyze() : r.type === 'start' ? void start(r.result, r.slideCount, r.direction) : navigate('/', { replace: true }))
@@ -228,6 +243,7 @@ export function CreatePage() {
             lengths={lengths(phase.result, phase.direction)}
             onStart={(n, model) => { if (model) setModelId(model); void start(phase.result, n, phase.direction, model) }}
             brand={defaultKit ? { kit: defaultKit, checked: useKit, onChange: setUseKit } : undefined}
+            morph={{ allowed: !!ent?.features.morph && (ent.usage.morphDecksThisPeriod < ent.features.morphDecksPerMonth), checked: morph, onChange: setMorph, onLocked: () => upgrade.show(ent?.features.morph ? `You've used your ${ent.features.morphDecksPerMonth} Morph decks for this month.` : 'Morph animation is available on the Gold plan.') }}
           />
         )}
 

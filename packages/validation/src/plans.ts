@@ -39,6 +39,10 @@ export const planFeaturesSchema = z.object({
   modelChoice: z.boolean().default(false),
   /** the models this plan writes decks with, best first, as model names without the provider ("gemini-3.6-flash"); the first one the deployment serves is used */
   fixedModels: z.array(z.string().max(80)).default([]),
+  /** Morph animation (Gold and Premium): Morph slide transitions, Morph templates and the editor's Morph tools. Normal animation (object effects, the basic slide transitions) is on every plan and is not a feature flag. */
+  morph: z.boolean().default(false),
+  /** how many Morph decks the AI may build for the person in a billing period (0 = none). Counted from the jobs on the server, never from what the browser says. */
+  morphDecksPerMonth: z.number().int().min(0).default(0),
 })
 export type PlanFeatures = z.infer<typeof planFeaturesSchema>
 
@@ -75,7 +79,7 @@ export interface Entitlements {
   features: PlanFeatures
   limits: { maxSlides: number; maxPresentationsPerMonth: number | null; maxImagesPerPresentation: number; maxImagesPerMonth: number }
   credits: { balance: number; monthlyAllowance: number; resetsAt: string }
-  usage: { presentationsThisPeriod: number; imagesThisPeriod: number }
+  usage: { presentationsThisPeriod: number; imagesThisPeriod: number; morphDecksThisPeriod: number }
 }
 
 /** Stable machine-readable reasons for 402/403 so the UI can show the right upgrade prompt. */

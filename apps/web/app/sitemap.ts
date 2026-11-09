@@ -1,3 +1,4 @@
+import { MORPH_CATEGORIES } from '@/lib/morph-categories'
 import type { MetadataRoute } from 'next'
 
 import { DESIGNS } from '@prompttoppt/theme'
@@ -15,6 +16,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: BASE_URL, priority: 1.0, changeFrequency: 'daily' as const },
     { url: `${BASE_URL}/ai-ppt-maker`, priority: 0.9, changeFrequency: 'weekly' as const },
     { url: `${BASE_URL}/templates`, priority: 0.8, changeFrequency: 'daily' as const },
+    { url: `${BASE_URL}/morph-animation-templates`, priority: 0.9, changeFrequency: 'weekly' as const },
+    ...MORPH_CATEGORIES.map((c) => ({ url: `${BASE_URL}/morph-animation-templates/${c.slug}`, priority: 0.8, changeFrequency: 'weekly' as const })),
     { url: `${BASE_URL}/free-tools`, priority: 0.8, changeFrequency: 'weekly' as const },
     { url: `${BASE_URL}/free-tools/presentation-outline-generator`, priority: 0.8, changeFrequency: 'monthly' as const },
     { url: `${BASE_URL}/free-tools/pdf-to-presentation`, priority: 0.8, changeFrequency: 'monthly' as const },

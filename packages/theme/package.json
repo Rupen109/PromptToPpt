@@ -5,6 +5,7 @@
   "description": "Design tokens (CSS), built-in themes, deterministic slide layout engine and validators",
   "exports": {
     ".": "./src/index.ts",
+    "./morph-templates": "./src/morph-templates/index.ts",
     "./tokens.css": "./src/tokens.css"
   },
   "scripts": {

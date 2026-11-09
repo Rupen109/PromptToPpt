@@ -1,9 +1,10 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { CANVAS, shapeDef, type Animation, type AspectRatio, type Slide, type SlideElement, type TextElement, type Theme } from '@prompttoppt/validation'
 import { resolveColor } from '@prompttoppt/theme'
 import { MOTION_CSS } from './animations.css'
 import { Chart } from './charts'
 import { ensureFonts } from './fonts'
+import { hiddenAtStart } from './motion'
 
 /**
  * Draw the "Photo by … on Unsplash" label on slide pictures. OFF by owner decision (2026-10-09): the credit data is still saved on every
@@ -27,6 +28,8 @@ function useMotionCss() {
 
 /** Ambient motion that keeps playing while the slide is on screen (slow photo zoom, floating shapes). */
 const LOOPS = new Set(['kenburns', 'float', 'drift'])
+const AMBIENT = LOOPS
+const withoutAnimation = (el: SlideElement): SlideElement => { const { animation: _gone, ...rest } = el; return rest as SlideElement }
 const anim = (a: Animation | undefined, play: boolean, extraDelay = 0): CSSProperties => {
   if (!a || !play) return {}
   if (LOOPS.has(a.type)) return { animation: `pt-${a.type} ${a.duration}ms ease-in-out ${a.delay + extraDelay}ms infinite ${a.type === 'kenburns' ? 'alternate' : 'normal'} both` }
@@ -79,17 +82,20 @@ export interface ViewProps {
   play?: boolean
 }
 
+/** How an element is drawn when its slide's object effects are played by a SlidePlayer (motion/player.ts): inside a marked wrapper, hidden from the start when its first effect is an entrance. */
+export interface EffectView { hidden: boolean }
+
 /** CSS logical alignment: identical to left/right for left-to-right text, mirrored for right-to-left paragraphs. */
 const ALIGN_LOGICAL = { left: 'start', center: 'center', right: 'end' } as const
 
-export function ElementView({ el, theme, slide, play = false }: { el: SlideElement; theme: Theme; slide: Slide } & ViewProps) {
+export function ElementView({ el, theme, slide, play = false, fx }: { el: SlideElement; theme: Theme; slide: Slide; fx?: EffectView | undefined } & ViewProps) {
   const colors = { ...theme.colors, ...slide.themeOverrides } as Record<string, string>
   // Animations use `transform`, which would clobber a rotation — so an animated, rotated element gets a positioned wrapper that
   // plays the animation, and the element itself sits at 0,0 inside it carrying the rotation.
-  const rotAnim = !!(el.animation && play && el.rotation)
+  const rotAnim = !!(el.animation && play && el.rotation) || !!fx // an element with object effects always sits in the wrapper, which the player animates
   const base: CSSProperties = { position: 'absolute', left: rotAnim ? 0 : el.x, top: rotAnim ? 0 : el.y, width: el.width, height: el.height, ...(rotAnim ? {} : { zIndex: el.zIndex }), transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined, opacity: el.opacity, ['--pt-op' as string]: el.opacity, ...(el.decorative ? { pointerEvents: 'none' } : {}) }
   const a = (extra = 0) => (rotAnim ? {} : anim(el.animation, play, extra)) // the wrapper plays it instead
-  const wrap = (node: ReactNode) => (rotAnim ? <div data-pt-anim style={{ position: 'absolute', left: el.x, top: el.y, width: el.width, height: el.height, zIndex: el.zIndex, ['--pt-op' as string]: el.opacity, ...(el.decorative ? { pointerEvents: 'none' as const } : {}), ...anim(el.animation, play) }}>{node}</div> : node)
+  const wrap = (node: ReactNode) => (rotAnim ? <div {...(el.animation && play ? { 'data-pt-anim': '' } : {})} {...(fx ? { 'data-pt-el': el.id } : {})} style={{ position: 'absolute', left: el.x, top: el.y, width: el.width, height: el.height, zIndex: el.zIndex, ['--pt-op' as string]: el.opacity, ...(el.decorative ? { pointerEvents: 'none' as const } : {}), ...(fx?.hidden ? { visibility: 'hidden' as const } : {}), ...anim(el.animation, play) }}>{node}</div> : node)
 
   switch (el.type) {
     case 'text': {
@@ -129,10 +135,10 @@ export function ElementView({ el, theme, slide, play = false }: { el: SlideEleme
       const fill = el.fill === 'none' ? 'transparent' : resolve(el.fill)
       const bg = el.gradient ? `linear-gradient(${el.gradient.angle}deg, ${el.gradient.from}, ${el.gradient.to})` : fill
       const stroke = el.stroke ? `${el.strokeWidth ?? 3}px solid ${resolve(el.stroke)}` : undefined
-      const clip = el.shape === 'triangle' ? 'polygon(50% 0, 100% 100%, 0 100%)' : el.shape === 'chevron' ? 'polygon(0 0, calc(100% - 26px) 0, 100% 50%, calc(100% - 26px) 100%, 0 100%, 26px 50%)' : undefined
+      const clip = el.shape === 'triangle' ? 'polygon(50% 0, 100% 100%, 0 100%)' : el.shape === 'chevron' ? 'polygon(0 0, calc(100% - 26px) 0, 100% 50%, calc(100% - 26px) 100%, 0 100%, 26px 50%)' : el.shape === 'polygon' && el.points ? `polygon(${el.points.map(([x, y]) => `${x * 100}% ${y * 100}%`).join(', ')})` : undefined
       const def = shapeDef(el.shape)
       if (def) {
-        const gid = `g-${el.id}`
+        const gid = `g-${slide.id}-${el.id}` // per slide: two slides can be on screen together (a Morph, the slide rail) and may reuse an element id
         const sw = el.stroke ? (el.strokeWidth ?? 3) : 0
         return wrap(
           <svg {...(el.animation && play ? { 'data-pt-anim': '' } : {})} viewBox="0 0 100 100" preserveAspectRatio="none" style={{ ...base, overflow: 'visible', ...a() }}>
@@ -161,7 +167,7 @@ export function ElementView({ el, theme, slide, play = false }: { el: SlideEleme
       const wrapAnim = ambient || (clipPath && el.animation?.type === 'wipe') ? {} : a() // a clip-path wipe would erase the crop shape
       return wrap(
         <div {...(el.animation && play ? { 'data-pt-anim': '' } : {})} style={{ ...base, overflow: 'hidden', borderRadius: el.clip === 'circle' ? '50%' : (el.radius ?? theme.radius), clipPath, ...wrapAnim }}>
-          <img src={el.src} alt={el.alt} referrerPolicy="no-referrer" loading="lazy" {...(ambient && play ? { 'data-pt-anim': '' } : {})} style={{ width: '100%', height: '100%', display: 'block', objectFit: el.fit, ...(ambient ? a() : {}) }} />
+          <img src={el.src} alt={el.alt} referrerPolicy="no-referrer" loading={fx ? 'eager' : 'lazy'} {...(ambient && play ? { 'data-pt-anim': '' } : {})} style={{ width: '100%', height: '100%', display: 'block', objectFit: el.fit, ...(ambient ? a() : {}) }} />
           {el.overlay && <div aria-hidden style={{ position: 'absolute', inset: 0, background: `linear-gradient(${el.overlay.angle}deg, ${el.overlay.from}, ${el.overlay.to})`, opacity: el.overlay.opacity }} />}
           {/* the photographer credit (Unsplash / Pexels) is stored with the picture; whether it is drawn on the slide is SHOW_PHOTO_CREDIT */}
           {SHOW_PHOTO_CREDIT && el.attribution && el.clip !== 'circle' && <div style={{ position: 'absolute', right: 10, bottom: 8, maxWidth: '90%', padding: '3px 9px', borderRadius: 6, background: 'rgba(0,0,0,0.5)', color: 'rgba(255,255,255,0.92)', fontFamily: theme.fonts.body, fontSize: 15, lineHeight: 1.25, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', pointerEvents: 'none' }}>{el.attribution.source}</div>}
@@ -230,7 +236,18 @@ function WritingPlaceholder({ title, theme, W, H }: { title: string; theme: Them
   )
 }
 
+/** The "Made with SlidesDone" pill: drawn at view time from the plan (never part of the document), so a Morph overlay shows it too. */
+export function Watermark() {
+  return (
+    <div aria-hidden style={{ position: 'absolute', right: 32, bottom: 24, zIndex: 9999, padding: '10px 20px', borderRadius: 999, background: 'rgba(15,23,42,0.78)', color: '#fff', fontFamily: 'Inter, system-ui, sans-serif', fontSize: 26, fontWeight: 600, letterSpacing: 0.3 }}>
+      Made with SlidesDone
+    </div>
+  )
+}
+
 export interface SlideCanvasProps extends ViewProps {
+  /** the slide's object effects are played by a SlidePlayer: its elements with effects are drawn ready for it, and the theme's automatic entrance steps aside (ambient loops such as Ken Burns keep running) */
+  effects?: boolean
   slide: Slide
   theme: Theme
   aspect: AspectRatio
@@ -240,8 +257,11 @@ export interface SlideCanvasProps extends ViewProps {
 }
 
 /** Renders a slide at its native canvas size, scaled to `width`. A pure view of the JSON document. */
-export function SlideCanvas({ slide, theme, aspect, width, watermark = false, footer, play = false }: SlideCanvasProps) {
+export function SlideCanvas({ slide, theme, aspect, width, watermark = false, footer, play = false, effects = false }: SlideCanvasProps) {
   useMotionCss()
+  const scripted = effects && !!slide.effects?.length
+  const fxIds = useMemo(() => (scripted ? new Set(slide.effects!.map((e) => e.elementId)) : null), [scripted, slide.effects])
+  const hidden = useMemo(() => (scripted ? hiddenAtStart(slide) : null), [scripted, slide])
   useEffect(() => ensureFonts([theme.fonts.heading, theme.fonts.body]), [theme.fonts.heading, theme.fonts.body])
   const { width: W, height: H } = CANVAS[aspect]
   const scale = width / W
@@ -250,14 +270,14 @@ export function SlideCanvas({ slide, theme, aspect, width, watermark = false, fo
     <div style={{ width, height: H * scale, overflow: 'hidden', position: 'relative', isolation: 'isolate', background: backgroundCss(slide, theme), borderRadius: 4 }}>
       <div style={{ width: W, height: H, transform: `scale(${scale})`, transformOrigin: 'top left', position: 'absolute', left: 0, top: 0 }}>
         {slide.writing && <WritingPlaceholder title={slide.writing.title} theme={theme} W={W} H={H} />}
-        {slide.elements.map((el) => <ElementView key={el.id} el={el} theme={theme} slide={slide} play={play} />)}
+        {slide.elements.map((el) => {
+          // in a slide played by effects, the theme's entrance would fight the effects: only the ambient loops stay
+          const own = scripted && el.animation && !AMBIENT.has(el.animation.type) ? withoutAnimation(el) : el
+          return <ElementView key={el.id} el={own} theme={theme} slide={slide} play={play} fx={fxIds?.has(el.id) ? { hidden: !!hidden?.has(el.id) } : undefined} />
+        })}
         {footer && <Footer info={footer} theme={theme} slide={slide} W={W} H={H} M={M} />}
         {/* View-time overlay driven by the plan, NOT stored in the document: upgrading removes it everywhere instantly. */}
-        {watermark && (
-          <div aria-hidden style={{ position: 'absolute', right: 32, bottom: 24, zIndex: 9999, padding: '10px 20px', borderRadius: 999, background: 'rgba(15,23,42,0.78)', color: '#fff', fontFamily: 'Inter, system-ui, sans-serif', fontSize: 26, fontWeight: 600, letterSpacing: 0.3 }}>
-            Made with SlidesDone
-          </div>
-        )}
+        {watermark && <Watermark />}
       </div>
     </div>
   )
@@ -281,7 +301,8 @@ export function FitSlide(props: Omit<SlideCanvasProps, 'width'>) {
 
 /** CSS animation props for the slide TRANSITION wrapper (present mode / share viewer). */
 export function transitionStyle(slide: Slide, fallback: string | undefined): CSSProperties {
-  const t = slide.transition?.type ?? fallback ?? 'none'
+  const chosen = slide.transition?.type ?? fallback ?? 'none'
+  const t = chosen === 'morph' ? 'fade' : chosen // a page that cannot play a Morph (it has no outgoing slide to match) fades instead
   if (t === 'none') return {}
   return { animation: `pt-t-${t} ${slide.transition?.duration ?? 500}ms cubic-bezier(.2,.7,.2,1) both` }
 }

@@ -25,6 +25,7 @@ export async function GET() {
 - [AI PPT maker](${SITE_URL}/ai-ppt-maker): how to make a PowerPoint presentation with AI
 - [Pricing](${SITE_URL}/pricing): the free plan and the paid plans, with current prices
 - [Templates](${SITE_URL}/templates): ${DESIGNS.length} designer-made presentation templates
+- [Morph animation templates](${SITE_URL}/morph-animation-templates): presentation templates where every slide change is one smooth movement, in six families (business and strategy, pitch and investor, marketing and campaigns, product launch, technology, education), each with live previews and answers to common questions
 - [Free tools](${SITE_URL}/free-tools): outline generator, PDF to presentation, PDF to PPT, PDF to JPG, YouTube transcript to slides, video to slides, script to slides, sitemap generator
 - [Support](${SITE_URL}/support): contact us, ${SUPPORT_MAIL}
 

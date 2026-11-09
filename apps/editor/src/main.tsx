@@ -1,3 +1,5 @@
+// the Morph templates register themselves with the layout engine when imported (editing a Morph slide re-composes it from its template)
+import '@prompttoppt/theme/morph-templates'
 import { StrictMode, Suspense, lazy } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router'

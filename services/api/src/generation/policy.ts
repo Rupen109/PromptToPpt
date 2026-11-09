@@ -110,6 +110,8 @@ export function condense(c: SlideContent): SlideContent {
     case 'architecture': return { ...c, layers: c.layers.map((l) => ({ name: cut(l.name, 28), items: l.items.slice(0, 4).map((i) => cut(i, 26)) })) }
     case 'case-study': return { ...c, challenge: cut(c.challenge, 150), approach: c.approach.slice(0, 3).map((b) => cut(b, 80)), results: c.results.slice(0, 3).map((b) => cut(b, 80)) }
     case 'big-number': return { ...c, context: c.context.slice(0, 2).map((b) => cut(b, 90)) }
+    // a Morph slide that still does not fit: a shorter title and no subtitle or kicker. The cards are never touched: they are the same cards on every slide, and a card cut short on one slide would no longer be the same card.
+    case 'morph': { const { subtitle: _s, kicker: _k, ...rest } = c; return { ...rest, title: cut(c.title, c.scene === 'quote' ? 140 : 70) } }
     default: return c
   }
 }

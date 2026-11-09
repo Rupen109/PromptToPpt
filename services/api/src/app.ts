@@ -1,3 +1,5 @@
+// the Morph templates register themselves with the layout engine when imported (the API re-composes Morph slides from their template)
+import '@prompttoppt/theme/morph-templates'
 import { Hono, type MiddlewareHandler } from 'hono'
 import { cors } from 'hono/cors'
 import { HTTPException } from 'hono/http-exception'

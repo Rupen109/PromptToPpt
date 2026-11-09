@@ -6,8 +6,14 @@ import { seedCatalog } from '../ai/catalog-seed.ts'
 const base: PlanFeatures = {
   watermark: true, exportFormats: [], aiEdits: false, advancedEditor: true, premiumTemplates: false, advancedSharing: false,
   modelTiers: ['starter'], brandKit: false, knowledgeBase: false, support: 'community', speed: 'standard', projects: false, askDeck: false, webData: 'none',
-  livePreview: false, modelChoice: false, fixedModels: [],
+  livePreview: false, modelChoice: false, fixedModels: [], morph: false, morphDecksPerMonth: 0,
 }
+/**
+ * AI-built Morph decks a month. Measured on 11 real Morph jobs: one planning call (about 1,000 tokens in, 1,300 out) plus a tiny design pick = $0.0058 a deck on the default Gemini model
+ * ($0.0077 at worst), less than half of a normal deck; $0.037 on Opus 4.8 (Premium's dearest model); both double from 2027-01-01. The limit is a product limit, not a cost limit: at 10
+ * (Gold) and 30 (Premium) the worst case is under 4 % and about 10 % of net revenue. Details and the table: docs/PLANS_AND_FEATURES_V5.md section 11.
+ */
+const MORPH_DECKS = { gold: 10, premium: 30 } as const
 const ALL_EXPORTS = ['pptx', 'pdf', 'png', 'jpg', 'html'] as const
 /** the Gemini models the plans write decks with, as names without the provider (the first one the deployment serves is used) */
 const STARTER_MODELS = ['gemini-3.6-flash', 'gemini-3.1-flash-lite'] // 2.5 Flash is closed to new Google accounts
@@ -30,11 +36,11 @@ export const PLAN_SEED = [
   },
   {
     id: 'gold', name: 'Gold', sortOrder: 2, monthlyCredits: 2000, maxSlides: 25, maxPresentationsPerMonth: 50, maxImagesPerPresentation: 20, maxImagesPerMonth: 100,
-    features: { ...base, watermark: false, exportFormats: [...ALL_EXPORTS], aiEdits: true, premiumTemplates: true, advancedSharing: true, brandKit: true, knowledgeBase: true, support: 'whatsapp', speed: 'ultra', projects: true, askDeck: true, webData: 'web', livePreview: true, fixedModels: PAID_MODELS },
+    features: { ...base, watermark: false, exportFormats: [...ALL_EXPORTS], aiEdits: true, premiumTemplates: true, advancedSharing: true, brandKit: true, knowledgeBase: true, support: 'whatsapp', speed: 'ultra', projects: true, askDeck: true, webData: 'web', livePreview: true, fixedModels: PAID_MODELS, morph: true, morphDecksPerMonth: MORPH_DECKS.gold },
   },
   {
     id: 'premium', name: 'Premium', sortOrder: 3, monthlyCredits: 3700, maxSlides: 60, maxPresentationsPerMonth: 50, maxImagesPerPresentation: 20, maxImagesPerMonth: 100,
-    features: { ...base, watermark: false, exportFormats: [...ALL_EXPORTS], aiEdits: true, premiumTemplates: true, advancedSharing: true, modelTiers: ['starter', 'premium', 'frontier'], brandKit: true, knowledgeBase: true, support: 'whatsapp', speed: 'ultra', projects: true, askDeck: true, webData: 'web', livePreview: true, modelChoice: true },
+    features: { ...base, watermark: false, exportFormats: [...ALL_EXPORTS], aiEdits: true, premiumTemplates: true, advancedSharing: true, modelTiers: ['starter', 'premium', 'frontier'], brandKit: true, knowledgeBase: true, support: 'whatsapp', speed: 'ultra', projects: true, askDeck: true, webData: 'web', livePreview: true, modelChoice: true, morph: true, morphDecksPerMonth: MORPH_DECKS.premium },
   },
 ] as const
 

@@ -42,6 +42,8 @@ const isContent = (e: SlideElement) => !e.decorative
 /** Structural + visual validation (spec §7 "Validation"). Pure: same input → same issues. */
 export function validateSlide(slide: Slide, theme: Theme): ValidationIssue[] {
   const issues: ValidationIssue[] = []
+  // a Morph template's scene is exactly what its source deck drew (objects parked off the slide, giant headlines cropped by the edges, wide tickers): its geometry is the authority
+  if (slide.layoutId === 'morph-template') return issues
   const texts = slide.elements.filter((e): e is TextElement => e.type === 'text')
 
   const hasContent = slide.elements.some((e) => isContent(e) && (e.type === 'text' || e.type === 'chart' || e.type === 'table' || e.type === 'diagram' || e.type === 'image'))
@@ -81,9 +83,11 @@ export function validateDeck(doc: Presentation): DeckReport {
   }
   const slides = doc.slides.map((s, i) => {
     const issues = validateSlide(s, doc.theme)
-    const a = doc.slides[i - 1]?.layoutId
-    const b = doc.slides[i - 2]?.layoutId
-    if (a && b && a === s.layoutId && b === s.layoutId && s.layoutId !== 'blank') issues.push({ code: 'duplicate_layout', severity: 'warning', message: `Layout "${s.layoutId}" used 3 times in a row` })
+    // a Morph deck is all one layout; what varies is its scene, so that is what counts as "the same layout"
+    const kind = (x: Slide | undefined) => (x?.layoutId === 'morph' ? `morph:${(x.content as { scene?: string } | undefined)?.scene ?? ''}` : x?.layoutId)
+    const a = kind(doc.slides[i - 1])
+    const b = kind(doc.slides[i - 2])
+    if (a && b && a === kind(s) && b === kind(s) && s.layoutId !== 'blank') issues.push({ code: 'duplicate_layout', severity: 'warning', message: `Layout "${kind(s)}" used 3 times in a row` })
     return { slideId: s.id, issues: i === 0 ? [...deckIssues, ...issues] : issues }
   })
   const all = slides.flatMap((s) => s.issues)

@@ -6,7 +6,7 @@
 const SYSTEM = new Set(['Arial', 'Helvetica', 'Georgia', 'Times New Roman', 'Verdana', 'Calibri'])
 /** Weights each family actually ships. Google Fonts rejects the WHOLE request if one family is asked for a weight it lacks. */
 const FAMILY_WEIGHTS: Record<string, number[]> = {
-  Inter: [400, 500, 600, 700, 800, 900], 'Plus Jakarta Sans': [400, 500, 600, 700, 800], 'Space Grotesk': [400, 500, 600, 700], Sora: [400, 500, 600, 700, 800],
+  Inter: [300, 400, 500, 600, 700, 800, 900], Anton: [400], 'Josefin Sans': [300, 400, 500, 600, 700], 'Plus Jakarta Sans': [400, 500, 600, 700, 800], 'Space Grotesk': [400, 500, 600, 700], Sora: [300, 400, 500, 600, 700, 800],
   Poppins: [400, 500, 600, 700, 800, 900], Montserrat: [400, 500, 600, 700, 800, 900], Lato: [400, 700, 900], Outfit: [400, 500, 600, 700, 800, 900],
   'DM Sans': [400, 500, 600, 700, 800, 900], Manrope: [400, 500, 600, 700, 800], 'Playfair Display': [400, 500, 600, 700, 800, 900], Lora: [400, 500, 600, 700],
   'DM Serif Display': [400], Fraunces: [400, 500, 600, 700, 800, 900], 'Work Sans': [400, 500, 600, 700, 800, 900], Raleway: [400, 500, 600, 700, 800, 900],

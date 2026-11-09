@@ -47,6 +47,8 @@ export const LAYOUT_IDS = [
   'team',
   'matrix',
   'big-number',
+  'morph',
+  'morph-template',
   'blank',
 ] as const
 export const layoutIdSchema = z.enum(LAYOUT_IDS)
@@ -71,8 +73,6 @@ export const animationSchema = z.object({
 })
 export type Animation = z.infer<typeof animationSchema>
 
-export const transitionSchema = z.object({ type: z.enum(TRANSITION_TYPES), duration: z.number().min(100).max(2000).default(500) })
-export type Transition = z.infer<typeof transitionSchema>
 
 export const motionSchema = z.object({
   transition: z.enum(TRANSITION_TYPES).default('fade'),
@@ -82,6 +82,73 @@ export const motionSchema = z.object({
   duration: z.number().min(100).max(2000).default(600),
 })
 export type Motion = z.infer<typeof motionSchema>
+
+// ─── Object effects (a slide's own animation timeline; Gold and Premium) ─────
+// One list per slide, in play order. An element can have any number of effects, each with its own id; deleting an element removes its effects (see commands).
+// The theme's automatic entrance (`element.animation`) stays as it is: an element that has effects of its own is played by them instead.
+
+/** The effects, by category. Every name listed here is played by the engine (packages/ui/src/motion): nothing is added to this list before it works. */
+export const EFFECTS = {
+  entrance: ['appear', 'fade-in', 'fly-in', 'zoom-in', 'float-in', 'wipe-in', 'split-in', 'rise-up', 'bounce-in', 'pop-in', 'spin-in'],
+  emphasis: ['pulse', 'grow-shrink', 'spin', 'shake', 'bounce', 'color-change', 'transparency', 'teeter'],
+  exit: ['disappear', 'fade-out', 'fly-out', 'zoom-out', 'float-out', 'wipe-out', 'shrink', 'spin-out'],
+} as const
+export const EFFECT_CATEGORIES = ['entrance', 'emphasis', 'exit'] as const
+export type EffectCategory = (typeof EFFECT_CATEGORIES)[number]
+export const EFFECT_TYPES = [...EFFECTS.entrance, ...EFFECTS.emphasis, ...EFFECTS.exit] as const
+export const EFFECT_START = ['click', 'with', 'after'] as const // On Click, With Previous, After Previous
+export const EFFECT_EASINGS = ['linear', 'ease', 'ease-in', 'ease-out', 'ease-in-out', 'power2-out', 'power2-in-out', 'back-out'] as const
+export const EFFECT_DIRECTIONS = ['left', 'right', 'up', 'down'] as const
+
+export const effectSchema = z.object({
+  id: idSchema,
+  /** the element it plays on; an effect whose element is gone is ignored (and removed by the next edit) */
+  elementId: idSchema,
+  category: z.enum(EFFECT_CATEGORIES),
+  type: z.enum(EFFECT_TYPES),
+  start: z.enum(EFFECT_START).default('click'),
+  /** ms */
+  duration: z.number().min(50).max(20000).default(600),
+  /** ms after its start moment */
+  delay: z.number().min(0).max(20000).default(0),
+  easing: z.enum(EFFECT_EASINGS).default('ease-out'),
+  direction: z.enum(EFFECT_DIRECTIONS).optional(),
+  /** canvas units a fly / float / rise travels */
+  distance: z.number().min(0).max(2000).optional(),
+  /** end size for zoom / grow / shrink (1 = same size) */
+  scale: z.number().min(0).max(5).optional(),
+  /** degrees for spin / teeter */
+  rotation: z.number().min(-1080).max(1080).optional(),
+  /** 0-1: the level a transparency effect fades to */
+  opacity: z.number().min(0).max(1).optional(),
+  /** the colour a colour-change effect goes to */
+  color: hex.optional(),
+  repeat: z.number().int().min(1).max(20).default(1),
+  /** play back to the start once finished */
+  reverse: z.boolean().default(false),
+}).refine((e) => (EFFECTS[e.category] as readonly string[]).includes(e.type), { message: 'this effect does not belong to that category', path: ['type'] })
+export type Effect = z.infer<typeof effectSchema>
+
+// ─── Slide transition (how the slide arrives) ────────────────────────────────
+
+/** The basic transitions are on every plan; `morph` (matching elements move and change from the previous slide to this one) is Gold and Premium. */
+export const SLIDE_TRANSITION_TYPES = [...TRANSITION_TYPES, 'morph'] as const
+export const MORPH_DEFAULTS = { duration: 900, easing: 'power2-in-out' } as const
+export const transitionSchema = z.object({
+  type: z.enum(SLIDE_TRANSITION_TYPES),
+  duration: z.number().min(100).max(4000).default(500),
+  easing: z.enum(EFFECT_EASINGS).optional(),
+  /** where a push / wipe comes from */
+  direction: z.enum(EFFECT_DIRECTIONS).optional(),
+  /**
+   * How two objects that are the same object but not the same picture or words give way to each other. `through` (the default): the old one fades out, then the new one fades in.
+   * `cross`: PowerPoint's Morph: both are visible at once, one fading out as the other fades in, while they travel; an object on one slide only fades in or out in place.
+   */
+  blend: z.enum(['through', 'cross']).optional(),
+  /** chosen by a person (or by generation for Morph): re-laying out the slide, a theme swap or an AI rewrite keep it, where a transition taken from the theme is replaced */
+  own: z.boolean().optional(),
+})
+export type Transition = z.infer<typeof transitionSchema>
 
 // ─── Style kit (what makes one template look different from another beyond its colours) ───
 
@@ -191,16 +258,16 @@ export const textElementSchema = z.object({
   ...box,
   role: z.enum(TEXT_ROLES),
   paragraphs: z.array(paragraphSchema).min(1),
-  fontSize: z.number().min(10).max(300),
+  fontSize: z.number().min(4).max(600), // a Morph template's giant headline can be up to 600 px
   align: z.enum(['left', 'center', 'right']).default('left'),
   /** theme token name or explicit hex; resolved at render/export time */
   color: z.union([z.enum(['textPrimary', 'textSecondary', 'primary', 'secondary', 'accent', 'onPrimary']), hex]).default('textPrimary'),
   valign: z.enum(['top', 'middle', 'bottom']).default('top'),
   bullet: z.enum(BULLET_GLYPHS).default('•'),
   weight: z.number().int().min(300).max(900).optional(),
-  letterSpacing: z.number().min(-4).max(30).optional(),
+  letterSpacing: z.number().min(-12).max(30).optional(),
   uppercase: z.boolean().optional(),
-  lineHeight: z.number().min(0.9).max(2.2).optional(),
+  lineHeight: z.number().min(0.7).max(2.2).optional(),
   /** space between paragraphs, in multiples of the font size (default 0.5) */
   paraGap: z.number().min(0).max(2).optional(),
 })
@@ -229,7 +296,9 @@ export const imageElementSchema = z.object({
 export const shapeElementSchema = z.object({
   type: z.literal('shape'),
   ...box,
-  shape: z.enum(['rect', 'ellipse', 'line', 'ring', 'triangle', 'chevron', ...SHAPE_PATH_IDS]),
+  shape: z.enum(['rect', 'ellipse', 'line', 'ring', 'triangle', 'chevron', 'polygon', ...SHAPE_PATH_IDS]),
+  /** the outline of a `polygon`: corners as fractions of the shape's box (0-1; a little outside is allowed), clockwise */
+  points: z.array(z.tuple([z.number().min(-1).max(2), z.number().min(-1).max(2)])).min(3).max(64).optional(),
   fill: z.union([z.enum(['surface', 'primary', 'secondary', 'accent', 'background', 'text', 'onPrimary', 'none']), hex]).default('surface'),
   radius: z.number().min(0).default(0),
   gradient: z.object({ from: hex, to: hex, angle: z.number().min(0).max(360).default(135) }).optional(),
@@ -318,6 +387,8 @@ export const slideSchema = z.object({
   writing: z.object({ title: z.string().max(200) }).optional(),
   background: z.object({ type: z.enum(['color', 'gradient', 'image']), value: z.string().max(2048), gradient: z.object({ from: hex, to: hex, angle: z.number().min(0).max(360).default(135) }).optional() }).refine((b) => b.type !== 'image' || /^https?:\/\//i.test(b.value), { message: 'an image background must be an http(s) URL' }).optional(),
   transition: transitionSchema.optional(),
+  /** this slide's object effects, in play order (Gold and Premium; absent on most slides) */
+  effects: z.array(effectSchema).max(200).optional(),
   themeOverrides: themeSchema.shape.colors.partial().optional(),
   elements: z.array(elementSchema).max(400),
   /** stored separately from visible content (spec §9) */
@@ -364,7 +435,43 @@ const bullets = (max: number) => z.array(short(180)).min(1).max(max)
 const refs = z.array(sourceRefSchema).max(4).default([])
 const common = { speakerNotes: z.string().max(1500).default(''), sources: refs }
 
+/**
+ * The scenes of a Morph deck. Every scene draws the same cast of elements (title, kicker, subtitle, hero picture, up to four cards, a stat, accents) with the same element ids, in a different
+ * arrangement, so a Morph between two scenes moves the same things. See packages/theme/src/layout/morph.ts and docs/OBJECT_ANIMATIONS.md.
+ */
+export const MORPH_SCENES = ['cover', 'hero-left', 'cards-row', 'cards-column', 'cards-grid', 'spotlight', 'timeline', 'big-stat', 'compare', 'focus-hero', 'quote', 'closing'] as const
+export type MorphScene = (typeof MORPH_SCENES)[number]
+
 export const slideContentSchema = z.discriminatedUnion('layout', [
+  z.object({
+    layout: z.literal('morph-template'),
+    /** which Morph template (packages/theme/src/morph-templates) and which of its scenes this slide is */
+    template: short(40),
+    scene: short(40),
+    /** the words of the scene, by the id of the text object they replace (a scene's own placeholder words are used for any that are missing) */
+    fields: z.record(short(80), z.string().max(900)).default({}),
+    /** pictures chosen for the scene, by the id of the picture object they replace (a template's own pictures are used for any that are missing) */
+    images: z.record(short(80), z.object({ url: httpUrl, alt: z.string().max(200).default(''), attribution: z.object({ source: z.string().max(200), license: z.string().max(80), url: httpUrl.optional() }).optional() })).default({}),
+    ...common,
+  }),
+  z.object({
+    layout: z.literal('morph'),
+    scene: z.enum(MORPH_SCENES),
+    /** in the quote scene this is the quote itself */
+    title: short(220),
+    kicker: short(40).optional(),
+    subtitle: short(200).optional(),
+    /** the concepts of the deck (cards), in the SAME order on every slide of the deck so a card is the same card from slide to slide */
+    items: z.array(z.object({ heading: short(40), text: short(160) })).max(4).default([]),
+    /** spotlight: which item is enlarged (0-3) */
+    focus: z.number().int().min(0).max(3).optional(),
+    stat: z.object({ value: short(16), label: short(80) }).optional(),
+    imagePrompt: short(300).optional(),
+    imageAlt: short(200).optional(),
+    imageUrl: httpUrl.optional(),
+    imageAttribution: z.object({ source: z.string().max(200), license: z.string().max(80), url: httpUrl.optional() }).optional(),
+    ...common,
+  }),
   z.object({ layout: z.literal('title'), title: short(90), subtitle: short(160).optional(), ...common }),
   z.object({ layout: z.literal('section-divider'), title: short(80), subtitle: short(140).optional(), ...common }),
   z.object({ layout: z.literal('title-body'), title: short(90), bullets: bullets(6), ...common }),
@@ -467,8 +574,35 @@ export const slideContentSchema = z.discriminatedUnion('layout', [
   }),
 ])
 export type SlideContent = z.infer<typeof slideContentSchema>
+
+/**
+ * What the model writes for a Morph deck (one call): the few concepts the whole deck is about, then the scenes in order with what each one says. The concepts are the cards: the same
+ * words on every slide, so a card is the same card from slide to slide. The CODE chooses coordinates, ids and transitions, and checks the order of the scenes (generation/morph-plan.ts).
+ */
+export const morphPlanSchema = z.object({
+  title: short(120),
+  concepts: z.array(z.object({ heading: short(40), text: short(160) })).min(2).max(4),
+  scenes: z.array(z.object({
+    scene: z.enum(MORPH_SCENES),
+    /** what this slide says, as a point (in the quote scene: the quote itself) */
+    title: short(220),
+    kicker: short(40).optional(),
+    subtitle: short(200).optional(),
+    /** spotlight: which concept (0-3) takes the stage */
+    focus: z.number().int().min(0).max(3).optional(),
+    /** big-stat: the figure and what it measures (only when the user supplied one) */
+    stat: z.object({ value: short(16), label: short(80) }).optional(),
+    /** what to say aloud */
+    notes: z.string().max(1200).default(''),
+  })).min(1).max(60),
+  /** what the deck's one picture should show, in plain words, and what to type into a stock-photo search box */
+  imageIntent: short(160).optional(),
+  imageQuery: short(60).optional(),
+})
+export type MorphPlan = z.infer<typeof morphPlanSchema>
 /** Layouts the generator + layout engine implement today; others fall back to title-body until Phase 3. */
-export const GENERATABLE_LAYOUTS = slideContentSchema.options.map((o) => o.shape.layout.value)
+/** The layouts the model chooses from for an ordinary deck. `morph` is left out: Morph decks plan their scenes separately (services/api generation). */
+export const GENERATABLE_LAYOUTS = slideContentSchema.options.map((o) => o.shape.layout.value).filter((l) => l !== 'morph' && l !== 'morph-template')
 
 // ─── Prompt analysis / outline ───────────────────────────────────────────────
 

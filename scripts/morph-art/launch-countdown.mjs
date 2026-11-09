@@ -1,0 +1,16 @@
+// Countdown: one fictional line of colourful chunky sneakers (no logos) in festival-bright light, plus two light fields on black.
+// Hero and its colourways are cut out on flat key colours (a key absent from each shoe); every cut-out has coloured rim lights.
+export default ({ GREEN, MAGENTA, BLACK }) => {
+  const LOOK = 'Energetic launch-event product photography: hard bright key light from the upper left, vivid coloured rim lights (hot magenta on one edge, electric cyan on the other), glossy highlights, razor-sharp focus, rich saturated colour, tasteful retouching.'
+  const NO = 'The shoes are completely plain: no text, no letters, no numbers, no logos, no brand marks, no swoosh or stripes of any known brand, no shoe box, no laces trailing out of frame, no floor, no shadow on the ground.'
+  const SH = 'a pair of chunky modern fashion sneakers (a left and a right shoe, together), with a thick sculpted layered midsole, a breathable mesh and smooth synthetic upper with panels, and flat round laces'
+  const cut = (name, ratio, size, key, what, extra = {}) => ({ name: `count-${name}`, key, ratio, size, mode: 'trim', fill: 0.94, check: true, p: `${LOOK} ${what} The whole subject is inside the frame with a clear margin on every side, nothing cropped. ${NO} On ${key === 'green' ? GREEN : MAGENTA}.`, ...extra })
+  return [
+    cut('hero', '1:1', [1500, 1500], 'green', `${SH}: bold electric-orange and sunshine-yellow uppers with white panels and violet midsole accents, seen from a dynamic three-quarter front view, one shoe slightly in front of the other, both floating and tilted as if mid-jump.`),
+    cut('blue', '1:1', [1300, 1300], 'magenta', `One single chunky modern fashion sneaker in deep electric-blue and cyan with white panels and an aqua translucent midsole, seen in a pure side profile, toe pointing right, floating and slightly tilted upward. ${SH.split(',')[1]}.`),
+    cut('violet', '1:1', [1300, 1300], 'green', `One single chunky modern fashion sneaker in violet and hot-pink with white panels and a lilac midsole, seen from a three-quarter front view from slightly above, toe pointing left, floating.`),
+    { name: 'count-burst', key: 'black', ratio: '16:9', size: [1920, 1080], mode: 'frame', p: `A radial burst of golden-white light rays fanning out from the exact centre of the frame like a stage spotlight starburst, a bright warm gold core at the centre with long thin soft rays reaching toward the edges and fading to pure black before the frame edges, a few tiny gold sparkles, on ${BLACK}. No text, no objects.` },
+    { name: 'count-glow', key: 'black', ratio: '16:9', size: [1920, 1080], mode: 'frame', p: `A soft, perfectly round, out-of-focus pool of hot magenta-and-violet light centred in the frame, brightest at the centre and fading smoothly and evenly in every direction to pure black well before it reaches any edge (a large empty black margin of at least 20% on every side), no haze, no stars, no objects, on ${BLACK}. No text.` },
+    { name: 'count-foil', key: null, ratio: '16:9', size: [1920, 1080], mode: 'cover', p: `A macro photograph of crumpled gold foil filling the whole frame edge to edge: bright polished gold with soft glints of warm orange and pink reflections, rich crinkles, shallow depth of field. No text, no objects.` },
+  ]
+}

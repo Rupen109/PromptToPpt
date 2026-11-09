@@ -66,6 +66,8 @@ export interface CreateJobInput {
   model?: string
   /** build a new deck in this brand kit's colours, fonts and logo (paid plans) */
   brandKitId?: string
+  /** build a Morph deck: slides made from the same elements, which move and morph into each other (Gold and Premium; a new presentation only) */
+  morph?: boolean
   /** remix this deck of yours into a NEW deck with the same look (paid plans); its text comes in as `sourceIds` from remixSource() */
   remixOf?: string
   sourceIds?: string[]

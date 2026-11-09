@@ -19,7 +19,7 @@ interface UiState {
   activeSlideId: string | null
   selection: string[]
   editingId: string | null
-  drawer: 'style' | 'ai' | 'comments' | null
+  drawer: 'style' | 'ai' | 'comments' | 'animations' | null
   notesOpen: boolean
   clipboard: SlideElement[]
   setActiveSlide: (id: string | null) => void

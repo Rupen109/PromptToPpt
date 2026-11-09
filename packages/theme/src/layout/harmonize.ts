@@ -10,14 +10,16 @@ const COVER_KINDS = new Set(['title', 'section-divider', 'thank-you'])
 const SKIP = new Set<TextElement['role']>(['metric', 'quote'])
 
 export function harmonizeType<T extends { layoutId: string; elements: SlideElement[] }>(slides: T[]): T[] {
+  // Morph scenes keep their own scale (a cover title is bigger than a card heading on purpose, and the scenes share element ids): they take no part in the medians and are never resized
+  const harmonised = (s: T) => s.layoutId !== 'morph'
   const key = (layoutId: string, e: TextElement) => (e.role === 'title' && !COVER_KINDS.has(layoutId) ? 'title|content' : `${e.role}|${layoutId}`)
   const groups = new Map<string, number[]>()
-  for (const s of slides) for (const e of s.elements) if (e.type === 'text' && !SKIP.has(e.role) && !e.rotation) {
+  for (const s of slides.filter(harmonised)) for (const e of s.elements) if (e.type === 'text' && !SKIP.has(e.role) && !e.rotation) {
     const k = key(s.layoutId, e); const a = groups.get(k) ?? []; a.push(e.fontSize); groups.set(k, a)
   }
   const target = new Map<string, number>()
   for (const [k, sizes] of groups) { const sorted = [...sizes].sort((a, b) => a - b); target.set(k, sorted[Math.floor((sorted.length - 1) / 2)]!) }
-  return slides.map((s) => ({
+  return slides.map((s) => !harmonised(s) ? s : ({
     ...s,
     elements: s.elements.map((e) => {
       if (e.type !== 'text' || SKIP.has(e.role) || e.rotation) return e

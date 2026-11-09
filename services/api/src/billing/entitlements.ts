@@ -50,6 +50,7 @@ export async function getEntitlements(userId: string, now = new Date()): Promise
     .from(generationJob)
     .where(and(eq(generationJob.userId, userId), notInArray(generationJob.status, ['completed', 'failed', 'cancelled']), isNull(generationJob.presentationId), sql`${generationJob.options}->>'targetPresentationId' is null`, gte(generationJob.createdAt, period.start)))
 
+  const morphDecks = await morphDecksUsed(userId, period.start)
   const [{ n: images } = { n: 0 }] = await db
     .select({ n: sql<number>`count(*)::int` })
     .from(generatedAsset)
@@ -60,7 +61,7 @@ export async function getEntitlements(userId: string, now = new Date()): Promise
     features: p.features,
     limits: { maxSlides: p.maxSlides, maxPresentationsPerMonth: p.maxPresentationsPerMonth, maxImagesPerPresentation: p.maxImagesPerPresentation, maxImagesPerMonth: p.maxImagesPerMonth },
     credits: { balance, monthlyAllowance: p.monthlyCredits, resetsAt: period.end.toISOString() },
-    usage: { presentationsThisPeriod: created + inflight, imagesThisPeriod: images },
+    usage: { presentationsThisPeriod: created + inflight, imagesThisPeriod: images, morphDecksThisPeriod: morphDecks },
     period,
   }
 }
@@ -100,6 +101,26 @@ export function assertLivePreview(ent: Pick<Entitlements, 'features' | 'plan'>) 
 
 export function assertAskDeck(ent: Pick<Entitlements, 'features' | 'plan'>) {
   if (!ent.features.askDeck) throw new GateError('UPGRADE_REQUIRED', `Chat with your presentation is not included in the ${ent.plan.name} plan.`, 403, { feature: 'askDeck' })
+}
+
+/** Morph animation (Gold and Premium): Morph transitions, Morph templates, AI-built Morph decks. Checked when a deck's Morph content is ADDED or CHANGED, so a later downgrade keeps old decks playing but locks editing them. */
+export function assertMorph(ent: Pick<Entitlements, 'features' | 'plan'>) {
+  if (!ent.features.morph) throw new GateError('UPGRADE_REQUIRED', 'Morph animation is available on the Gold plan.', 403, { feature: 'morph' })
+}
+
+/** The month's allowance of AI-built Morph decks (counted from the jobs; a failed or cancelled one does not count). */
+export function assertMorphQuota(ent: Pick<Entitlements, 'features' | 'usage' | 'plan'>) {
+  const cap = ent.features.morphDecksPerMonth
+  if (ent.usage.morphDecksThisPeriod >= cap) throw new GateError('LIMIT_REACHED', `You've used your ${cap} Morph decks for this month on the ${ent.plan.name} plan.`, 429, { feature: 'morph', limit: cap })
+}
+
+/** Morph decks the AI has built (or is building) for a person since `since`: the jobs that were not refused, failed or cancelled. */
+export async function morphDecksUsed(userId: string, since: Date, atOrBefore?: { createdAt: Date; id: string }): Promise<number> {
+  const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(generationJob).where(and(
+    eq(generationJob.userId, userId), gte(generationJob.createdAt, since), sql`${generationJob.options}->>'morph' = 'true'`, notInArray(generationJob.status, ['failed', 'cancelled']),
+    ...(atOrBefore ? [sql`(${generationJob.createdAt}, ${generationJob.id}) <= (${atOrBefore.createdAt}, ${atOrBefore.id})`] : []),
+  ))
+  return row?.n ?? 0
 }
 
 /** 'wikipedia' needs Pro or Gold; 'web' (live web search, costs credits) needs Gold. */

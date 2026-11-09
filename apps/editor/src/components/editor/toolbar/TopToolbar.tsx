@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { BarChart3, ChevronDown, Droplet, Eraser, History, ImagePlus, Images, LineChart, PaintBucket, PieChart, Pencil, Redo2, Shapes, Sparkles, Table2, Type, Undo2, Upload } from '@prompttoppt/ui/icons'
+import { BarChart3, ChevronDown, Droplet, Eraser, History, Wand2, ImagePlus, Images, LineChart, PaintBucket, PieChart, Pencil, Redo2, Shapes, Sparkles, Table2, Type, Undo2, Upload } from '@prompttoppt/ui/icons'
 import { ApiError, isGateError } from '@prompttoppt/api-client'
 import { SHAPE_GROUP_LABEL, SHAPE_LIBRARY, type Presentation, type ShapeGroup, type Slide } from '@prompttoppt/validation'
 import * as C from '@/editor/commands'
@@ -8,6 +8,7 @@ import { useDoc } from '@/editor/store'
 import { useUi } from '@/editor/ui'
 import { api } from '@/lib/api'
 import { useEntitlements } from '@/lib/entitlements'
+import { AnimationsMenu } from '../animation/AnimationsMenu'
 import { ColorPanel } from './ColorPanel'
 import { GRADIENTS, cssGradient } from './data'
 import { MediaLibraryDialog, type PickedGradient, type PickedMedia } from './MediaLibraryDialog'
@@ -43,7 +44,7 @@ const MenuRow = ({ icon, children, onClick, testId }: { icon: ReactNode; childre
   <button type="button" role="menuitem" data-testid={testId} onClick={onClick} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left hover:bg-slate-100 rounded-lg">{icon}{children}</button>
 )
 
-type Which = null | 'shapes' | 'table' | 'media' | 'chart' | 'background'
+type Which = null | 'shapes' | 'table' | 'media' | 'chart' | 'background' | 'animations'
 
 /**
  * The ribbon above the slide (for every deck, AI-made or built from scratch): Text, Shapes, Table, Media, Chart, Background, then Undo, Redo and History.
@@ -176,6 +177,10 @@ export function TopToolbar({ doc, slide, presentationId, requireAdvanced, onHist
               <MenuRow testId="bg-remove" icon={<Eraser aria-hidden size={16} />} onClick={() => { apply('Remove background', (d) => T.removeBackground(d, sid)); close() }}>Remove background</MenuRow>
             </div>
           )}
+        </Dropdown>
+
+        <Dropdown label="Animations" icon={<Wand2 aria-hidden size={16} />} testId="tb-animations" width={300} open={open === 'animations'} onOpen={() => setOpen('animations')} onClose={close}>
+          <AnimationsMenu doc={doc} slide={slide} onDone={close} />
         </Dropdown>
 
         <span className="w-px h-6 bg-border mx-1.5 shrink-0" />

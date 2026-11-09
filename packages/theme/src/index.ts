@@ -9,3 +9,5 @@ export * from './templates/index'
 export * from './palettes'
 export * from './brand'
 export * from './deck'
+
+// the Morph templates are a separate entry point, '@prompttoppt/theme/morph-templates': their data is large and most pages never need it

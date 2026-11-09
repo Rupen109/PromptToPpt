@@ -2,13 +2,13 @@ import { and, eq, ne, sql } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { applyValidation, composeDeck, designById, pickDesign, type Photo } from '@prompttoppt/theme'
 import {
-  SCHEMA_VERSION, SOURCE_TYPES, accessTierSchema, deckLanguage, directionSchema, outlineSchema, promptAnalysisSchema, slideContentSchema,
-  presentationSchema, type Direction, type Outline, type Presentation, type PromptAnalysis, type Slide, type SlideContent,
+  SCHEMA_VERSION, SOURCE_TYPES, accessTierSchema, deckLanguage, directionSchema, morphPlanSchema, outlineSchema, promptAnalysisSchema, slideContentSchema,
+  presentationSchema, type Direction, type MorphPlan, type Outline, type Presentation, type PromptAnalysis, type Slide, type SlideContent,
 } from '@prompttoppt/validation'
 import { z } from 'zod'
 import { runPool } from './pool.ts'
 import { gateway } from '../ai/gateway.ts'
-import { analyzePrompt, criticPrompt, outlinePrompt, slidesPrompt } from '../ai/prompts.ts'
+import { analyzePrompt, criticPrompt, morphPlanPrompt, outlinePrompt, slidesPrompt } from '../ai/prompts.ts'
 import { INSTRUCTIONS_VERSION } from '../ai/instructions/index.ts'
 import { openPictureSession, type PictureRequest, type PictureSession } from '../pictures/pick.ts'
 import { themeForAnalysis } from './theming.ts'
@@ -24,6 +24,7 @@ import { condense, hasNumbers, resolveSlideCount, sanitizeContent, sanitizeOutli
 import { loadSources } from './sources.ts'
 import { chooseDesign } from './design-pick.ts'
 import { DeckWriteCancelled, placeholderSlide, stableElementIds, writeDeck } from './progress.ts'
+import { morphContents, sanitizeMorphPlan } from './morph-plan.ts'
 
 const BATCH = 4
 /** the first batch is small so real text lands within seconds; the rest run in bigger batches side by side */
@@ -60,9 +61,11 @@ const optionsSchema = z.object({
   sourceIds: z.array(z.string()).max(10).default([]),
   /** model calls this deck may run side by side (set from the plan's line when the job is created) */
   parallel: z.number().int().min(1).max(16).optional(),
+  /** build a Morph deck (Gold/Premium, checked when the job was created): the slides share their elements, which move and regroup from slide to slide */
+  morph: z.boolean().default(false),
 })
 /** `slideIds`: the ids of the deck's slides, fixed when the deck is created so every write addresses the same slide. `marks`: milliseconds from job creation to each visible milestone (the numbers the speed targets are measured on). */
-type Checkpoint = { slideIds?: string[]; marks?: Record<string, number>; analysis?: PromptAnalysis; outline?: Outline; contents?: SlideContent[]; repaired?: boolean; designId?: string; report?: Record<string, unknown> }
+type Checkpoint = { slideIds?: string[]; marks?: Record<string, number>; analysis?: PromptAnalysis; outline?: Outline; morph?: MorphPlan; contents?: SlideContent[]; repaired?: boolean; designId?: string; report?: Record<string, unknown> }
 
 /** Moves the job to a stage, extends the lease, and aborts if the user cancelled in the meantime. */
 async function stage(jobId: string, status: JobStatus, progress: number) {
@@ -92,6 +95,15 @@ function pictureRequests(contents: SlideContent[], outline: Outline, analysis: P
   })
   return wanted
 }
+
+/** A real quotation in what the user supplied (a quote scene is never invented). */
+const hasQuotation = (texts: string[]) => /["“][^"”\n]{12,}["”]/.test(texts.join('\n'))
+
+/** The one picture of a Morph deck: what it should show comes from the plan. */
+const heroRequest = (plan: MorphPlan, analysis: PromptAnalysis): PictureRequest => ({
+  slideIndex: 0, layout: 'title', title: plan.title, text: plan.concepts.map((c) => `${c.heading}: ${c.text}`).join(' ').slice(0, 600),
+  intent: (plan.imageIntent ?? analysis.topic).slice(0, 200), topic: analysis.topic, category: analysis.category ?? 'strategy', aspect: 'wide', ...(plan.imageQuery ? { query: plan.imageQuery } : {}),
+})
 
 /**
  * prompt → analysis → outline → slide content → layout → validation → persist.
@@ -198,121 +210,157 @@ async function generate(jobId: string, hold: { pictures?: PictureSession }): Pro
       : Promise.resolve()
     skeletonDone.catch(() => {}) // awaited below; this only keeps a failure from being reported twice while the outline is running
 
-    // 2 ─ outline
-    await stage(jobId, 'outlining', 15)
-    if (!cp.outline) {
-      const raw = await gateway.run({ priority: job.lane, route: tierRoute, model: opts.model, requestType: 'outline_generation', ...outlinePrompt({ analysis, direction: opts.direction, slideCount, allowNumericLayouts: allowNumeric, sources, userPrompt: prompt }), schema: outlineSchema, ctx })
-      cp.outline = sanitizeOutline(raw, slideCount, allowNumeric)
-      await saveCheckpoint(jobId, cp)
-    }
-    outline = cp.outline
-    if (deckId && designing) {
+    const morphDeck = opts.morph && !!deckId
+    if (morphDeck) {
+      // 2 ─ a Morph deck: ONE call plans the concepts (the cards that stay on every slide) and the scenes; the code then fixes the order (cover first, closing last, spotlights after the overview, no scene three times running, no figure or quote the user did not give)
+      await stage(jobId, 'outlining', 15)
+      const quotes = hasQuotation(userTexts)
+      if (!cp.morph) {
+        const raw = await gateway.run({ priority: job.lane, route: tierRoute, model: opts.model, requestType: 'outline_generation', ...morphPlanPrompt({ analysis, slideCount, figuresAllowed: allowNumeric, quotesAllowed: quotes, sources, userPrompt: prompt }), schema: morphPlanSchema, ctx })
+        cp.morph = sanitizeMorphPlan(raw, slideCount, { allowNumeric, allowQuote: quotes, allowedNumbers: allowedNumbers([...userTexts, ...(analysis.facts ?? [])]) })
+        await saveCheckpoint(jobId, cp)
+      }
+      const plan = cp.morph
+      outline = { title: plan.title, slides: plan.scenes.map((sc) => ({ title: sc.title, purpose: '', layout: 'title-body', keyPoints: [], needsVisual: false })) } as Outline
       await skeletonDone
-      if (cp.marks?.['titles'] === undefined) {
-        current = skeleton((await designing).theme, outline.title, outline.slides.map((e) => e.title))
-        await write(current); mark('titles'); await saveCheckpoint(jobId, cp)
+      const theme0 = (await designing!).theme
+      if (cp.marks?.['titles'] === undefined) { current = skeleton(theme0, plan.title, plan.scenes.map((sc) => sc.title)); await write(current); mark('titles'); await saveCheckpoint(jobId, cp) }
+      // the deck's one picture is looked up while the slides are laid out; until it arrives a colour block stands in for it
+      hold.pictures = await openPictureSession({ userId: job.userId, jobId })
+      hold.pictures.warm(heroRequest(plan, analysis))
+      contents = morphContents(plan, null)
+      await stage(jobId, 'generating', 50)
+      const shown = composeDeck(contents, await designOnce(analysis), opts.aspectRatio, () => nanoid(10), assetBase, analysis.category)
+      current = { ...(current ?? skeleton(theme0, plan.title, [])), slides: shown.map((c, k) => ({ locked: false, validation: { status: 'pending' as const, issues: [] }, ...c, id: slideIds[k]! }) as Slide) }
+      await write(current)
+      mark('firstSlide')
+    } else {
+      // 2 ─ outline
+      await stage(jobId, 'outlining', 15)
+      if (!cp.outline) {
+        const raw = await gateway.run({ priority: job.lane, route: tierRoute, model: opts.model, requestType: 'outline_generation', ...outlinePrompt({ analysis, direction: opts.direction, slideCount, allowNumericLayouts: allowNumeric, sources, userPrompt: prompt }), schema: outlineSchema, ctx })
+        cp.outline = sanitizeOutline(raw, slideCount, allowNumeric)
+        await saveCheckpoint(jobId, cp)
       }
-    }
-
-    // Pictures are looked up ALONGSIDE the writing, not after it. The outline already says what each picture should show, so the main stock search and the first
-    // photo downloads start now; each slide's own lookup (with its vision check) starts the moment its text exists.
-    hold.pictures = await openPictureSession({ userId: job.userId, jobId })
-    const early = outline.slides.map((e) => ({ layout: e.layout, title: e.title }) as unknown as SlideContent)
-    for (const w of pictureRequests(early, outline, analysis)) if (outline.slides[w.index]?.imageIntent || outline.slides[w.index]?.imageQuery) hold.pictures.warm(w.req)
-
-    // 3 ─ slide content, in batches (a failed batch retries alone; finished batches are checkpointed)
-    contents = cp.contents ?? []
-    /** start the picture lookup of every slide from `from` on, using the slides written so far */
-    const startPictures = (from: number) => { for (const w of pictureRequests(contents, outline, analysis)) if (w.index >= from) hold.pictures?.add(w.req) }
-    startPictures(0) // slides an earlier attempt of this job already wrote
-    if (contents.length < outline.slides.length) {
-      // Each batch prompt is built from the outline (never from another batch's text), so batches are independent and run side by side.
-      const batches: { from: number; slides: typeof outline.slides }[] = []
-      for (let from = contents.length, size = from === 0 && deckId ? FIRST_BATCH : BATCH; from < outline.slides.length; from += size, size = BATCH) batches.push({ from, slides: outline.slides.slice(from, from + size) })
-      const finished = new Map<number, SlideContent[]>()
-      let nextBatch = 0
-      /** puts the slides from `from` on (as far as written) into the open deck: composed in the deck's design, pictures from the template library until the real ones arrive */
-      const showSlides = async (from: number) => {
-        if (!deckId || !current) return
-        const shownDesign = await designOnce(analysis)
-        const composed = composeDeck(contents, shownDesign, opts.aspectRatio, () => nanoid(10), assetBase, analysis.category).slice(from)
-        const fresh = new Map(composed.map((c, k) => [slideIds[from + k]!, stableElementIds({ locked: false, validation: { status: 'pending', issues: [] }, ...c, id: slideIds[from + k]! } as Slide)]))
-        current = { ...current, slides: current.slides.map((sl) => fresh.get(sl.id) ?? sl) }
-        await write(current)
-        mark('firstSlide')
+      outline = cp.outline
+      if (deckId && designing) {
+        await skeletonDone
+        if (cp.marks?.['titles'] === undefined) {
+          current = skeleton((await designing).theme, outline.title, outline.slides.map((e) => e.title))
+          await write(current); mark('titles'); await saveCheckpoint(jobId, cp)
+        }
       }
-      let saved: Promise<void> = Promise.resolve() // writes happen one at a time, in order, so an older snapshot can never land after a newer one
-      await stage(jobId, 'generating', 30)
-      await runPool(batches, opts.parallel ?? PARALLEL_CALLS, async (b) => {
-        const { slides } = await gateway.run({ priority: job.lane,
-          route: tierRoute, model: opts.model, requestType: 'slide_content',
-          ...slidesPrompt({ analysis, deckTitle: outline.title, outlineSlides: b.slides, startIndex: b.from, totalSlides: outline.slides.length, sources }),
-          schema: z.object({ slides: z.array(slideContentSchema).length(b.slides.length) }), ctx,
+
+      // Pictures are looked up ALONGSIDE the writing, not after it. The outline already says what each picture should show, so the main stock search and the first
+      // photo downloads start now; each slide's own lookup (with its vision check) starts the moment its text exists.
+      hold.pictures = await openPictureSession({ userId: job.userId, jobId })
+      const early = outline.slides.map((e) => ({ layout: e.layout, title: e.title }) as unknown as SlideContent)
+      for (const w of pictureRequests(early, outline, analysis)) if (outline.slides[w.index]?.imageIntent || outline.slides[w.index]?.imageQuery) hold.pictures.warm(w.req)
+
+      // 3 ─ slide content, in batches (a failed batch retries alone; finished batches are checkpointed)
+      contents = cp.contents ?? []
+      /** start the picture lookup of every slide from `from` on, using the slides written so far */
+      const startPictures = (from: number) => { for (const w of pictureRequests(contents, outline, analysis)) if (w.index >= from) hold.pictures?.add(w.req) }
+      startPictures(0) // slides an earlier attempt of this job already wrote
+      if (contents.length < outline.slides.length) {
+        // Each batch prompt is built from the outline (never from another batch's text), so batches are independent and run side by side.
+        const batches: { from: number; slides: typeof outline.slides }[] = []
+        for (let from = contents.length, size = from === 0 && deckId ? FIRST_BATCH : BATCH; from < outline.slides.length; from += size, size = BATCH) batches.push({ from, slides: outline.slides.slice(from, from + size) })
+        const finished = new Map<number, SlideContent[]>()
+        let nextBatch = 0
+        /** puts the slides from `from` on (as far as written) into the open deck: composed in the deck's design, pictures from the template library until the real ones arrive */
+        const showSlides = async (from: number) => {
+          if (!deckId || !current) return
+          const shownDesign = await designOnce(analysis)
+          const composed = composeDeck(contents, shownDesign, opts.aspectRatio, () => nanoid(10), assetBase, analysis.category).slice(from)
+          const fresh = new Map(composed.map((c, k) => [slideIds[from + k]!, stableElementIds({ locked: false, validation: { status: 'pending', issues: [] }, ...c, id: slideIds[from + k]! } as Slide)]))
+          current = { ...current, slides: current.slides.map((sl) => fresh.get(sl.id) ?? sl) }
+          await write(current)
+          mark('firstSlide')
+        }
+        let saved: Promise<void> = Promise.resolve() // writes happen one at a time, in order, so an older snapshot can never land after a newer one
+        await stage(jobId, 'generating', 30)
+        await runPool(batches, opts.parallel ?? PARALLEL_CALLS, async (b) => {
+          const { slides } = await gateway.run({ priority: job.lane,
+            route: tierRoute, model: opts.model, requestType: 'slide_content',
+            ...slidesPrompt({ analysis, deckTitle: outline.title, outlineSlides: b.slides, startIndex: b.from, totalSlides: outline.slides.length, sources }),
+            schema: z.object({ slides: z.array(slideContentSchema).length(b.slides.length) }), ctx,
+          })
+          return slides.map((s) => sanitizeContent(s, knownIds, allowNumeric))
+        }, async (result, i) => {
+          finished.set(i, result)
+          // keep only the unbroken run of finished batches: a retry resumes right after it and never repeats paid work
+          const before = contents.length
+          while (finished.has(nextBatch)) { contents.push(...finished.get(nextBatch)!); nextBatch++ }
+          startPictures(before) // these slides' pictures are looked up while the other batches, the critic and the repairs are still running
+          cp.contents = contents
+          saved = saved.then(async () => { await saveCheckpoint(jobId, cp); await stage(jobId, 'generating', 30 + Math.round((contents.length / outline.slides.length) * 40)); await showSlides(before) })
+          await saved
         })
-        return slides.map((s) => sanitizeContent(s, knownIds, allowNumeric))
-      }, async (result, i) => {
-        finished.set(i, result)
-        // keep only the unbroken run of finished batches: a retry resumes right after it and never repeats paid work
-        const before = contents.length
-        while (finished.has(nextBatch)) { contents.push(...finished.get(nextBatch)!); nextBatch++ }
-        startPictures(before) // these slides' pictures are looked up while the other batches, the critic and the repairs are still running
-        cp.contents = contents
-        saved = saved.then(async () => { await saveCheckpoint(jobId, cp); await stage(jobId, 'generating', 30 + Math.round((contents.length / outline.slides.length) * 40)); await showSlides(before) })
-        await saved
-      })
-    }
-
-    // 3b ─ quality gate (code, not prompt): invented numbers, sample leakage, empty/duplicate slides, uncovered topics.
-    // One repair pass rewrites the offending slides with the exact problem; what still fails is fixed deterministically or reported.
-    await stage(jobId, 'validating', 74)
-    const rewriteSlides = async (todo: { slide: number; problem: string }[]) => {
-      const bySlide = new Map<number, string[]>()
-      for (const t of todo) bySlide.set(t.slide, [...(bySlide.get(t.slide) ?? []), t.problem])
-      // each rewrite is independent (one slide, its own problems), so they run side by side
-      await runPool([...bySlide], opts.parallel ?? PARALLEL_CALLS, async ([n, problems]) => {
-        const entry = outline.slides[n - 1]
-        if (!entry) return
-        const { slides } = await gateway.run({ priority: job.lane,
-          route: tierRoute, model: opts.model, requestType: 'slide_content',
-          ...slidesPrompt({ analysis, deckTitle: outline.title, outlineSlides: [entry], startIndex: n - 1, totalSlides: outline.slides.length, sources, repair: problems.map((problem) => ({ slide: 1, problem })) }),
-          schema: z.object({ slides: z.array(slideContentSchema).length(1) }), ctx,
-        })
-        contents[n - 1] = sanitizeContent(slides[0]!, knownIds, allowNumeric)
-      })
-    }
-    let issues: QualityIssue[] = checkContents(contents, { userTexts, analysis })
-    if (!cp.repaired) {
-      let todo = repairRequests(issues)
-      // premium/frontier plans also get a second model reading the whole deck against the brief
-      if (opts.tier !== 'starter') {
-        try {
-          const critic = await gateway.run({ priority: job.lane, route: 'quality', model: opts.model, requestType: 'deck_critic', ...criticPrompt({ analysis, userPrompt: prompt, slides: contents.map((c) => textOf(c).join(' | ').slice(0, 600)) }), schema: z.object({ defects: z.array(z.object({ slide: z.number().int().min(1).max(60), issue: z.string().max(240) })).max(8).default([]) }), ctx })
-          todo = [...todo, ...critic.defects.filter((d) => d.slide <= contents.length).map((d) => ({ slide: d.slide, problem: d.issue }))]
-        } catch { /* the critic is a bonus: never fail a deck because it was unavailable */ }
       }
-      if (todo.length) { await rewriteSlides(todo.slice(0, 8)); cp.contents = contents }
-      cp.repaired = true
-      await saveCheckpoint(jobId, cp)
-      issues = checkContents(contents, { userTexts, analysis })
+
+      // 3b ─ quality gate (code, not prompt): invented numbers, sample leakage, empty/duplicate slides, uncovered topics.
+      // One repair pass rewrites the offending slides with the exact problem; what still fails is fixed deterministically or reported.
+      await stage(jobId, 'validating', 74)
+      const rewriteSlides = async (todo: { slide: number; problem: string }[]) => {
+        const bySlide = new Map<number, string[]>()
+        for (const t of todo) bySlide.set(t.slide, [...(bySlide.get(t.slide) ?? []), t.problem])
+        // each rewrite is independent (one slide, its own problems), so they run side by side
+        await runPool([...bySlide], opts.parallel ?? PARALLEL_CALLS, async ([n, problems]) => {
+          const entry = outline.slides[n - 1]
+          if (!entry) return
+          const { slides } = await gateway.run({ priority: job.lane,
+            route: tierRoute, model: opts.model, requestType: 'slide_content',
+            ...slidesPrompt({ analysis, deckTitle: outline.title, outlineSlides: [entry], startIndex: n - 1, totalSlides: outline.slides.length, sources, repair: problems.map((problem) => ({ slide: 1, problem })) }),
+            schema: z.object({ slides: z.array(slideContentSchema).length(1) }), ctx,
+          })
+          contents[n - 1] = sanitizeContent(slides[0]!, knownIds, allowNumeric)
+        })
+      }
+      let issues: QualityIssue[] = checkContents(contents, { userTexts, analysis })
+      if (!cp.repaired) {
+        let todo = repairRequests(issues)
+        // premium/frontier plans also get a second model reading the whole deck against the brief
+        if (opts.tier !== 'starter') {
+          try {
+            const critic = await gateway.run({ priority: job.lane, route: 'quality', model: opts.model, requestType: 'deck_critic', ...criticPrompt({ analysis, userPrompt: prompt, slides: contents.map((c) => textOf(c).join(' | ').slice(0, 600)) }), schema: z.object({ defects: z.array(z.object({ slide: z.number().int().min(1).max(60), issue: z.string().max(240) })).max(8).default([]) }), ctx })
+            todo = [...todo, ...critic.defects.filter((d) => d.slide <= contents.length).map((d) => ({ slide: d.slide, problem: d.issue }))]
+          } catch { /* the critic is a bonus: never fail a deck because it was unavailable */ }
+        }
+        if (todo.length) { await rewriteSlides(todo.slice(0, 8)); cp.contents = contents }
+        cp.repaired = true
+        await saveCheckpoint(jobId, cp)
+        issues = checkContents(contents, { userTexts, analysis })
+      }
+      const allowed = allowedNumbers([...userTexts, ...analysis.facts])
+      for (const i of issues) if (i.kind === 'invented_number' && i.slide > 0) contents[i.slide - 1] = stripInventedNumbers(contents[i.slide - 1]!, allowed)
+      cp.report = { instructions: INSTRUCTIONS_VERSION, remaining: checkContents(contents, { userTexts, analysis }).map((i) => ({ slide: i.slide, kind: i.kind })) }
     }
-    const allowed = allowedNumbers([...userTexts, ...analysis.facts])
-    for (const i of issues) if (i.kind === 'invented_number' && i.slide > 0) contents[i.slide - 1] = stripInventedNumbers(contents[i.slide - 1]!, allowed)
-    cp.report = { instructions: INSTRUCTIONS_VERSION, remaining: checkContents(contents, { userTexts, analysis }).map((i) => ({ slide: i.slide, kind: i.kind })) }
   }
 
   // 4 ─ pictures that MATCH each slide (stock search / tagged library, verified by a vision check). A missing picture beats a wrong one.
   await stage(jobId, 'rendering', 82)
-  const wanted = pictureRequests(contents, outline, analysis)
-  // pictures-only jobs have no writing phase, so their session opens here; for new decks it has been running since the outline
-  hold.pictures ??= await openPictureSession({ userId: job.userId, jobId })
-  // A slide whose text did not change since its lookup started keeps that lookup (nothing is repeated); one the repair pass rewrote is looked up again against its new text.
-  for (const w of wanted) hold.pictures.add(w.req)
-  const picked = await Promise.all(wanted.map((w) => hold.pictures!.result(w.index)))
-  const picks: (Photo | null | undefined)[] = contents.map(() => undefined)
-  wanted.forEach((w, k) => { const p = picked[k]; picks[w.index] = p ? { src: p.src, alt: p.alt, ...(p.attribution ? { attribution: p.attribution } : {}) } : null })
-  // a picture+text slide with no picture becomes a plain text slide (never an empty frame)
-  contents = contents.map((c, i) => (c.layout === 'split-image-text' && picks[i] === null ? ({ layout: 'title-body', title: c.title, bullets: c.bullets, speakerNotes: c.speakerNotes, sources: c.sources } as SlideContent) : c))
-  cp.report = { ...(cp.report as object), pictures: { slots: wanted.length, placed: picks.filter(Boolean).length, missing: wanted.filter((w) => !picks[w.index]).map((w) => w.index), stockBlocked: hold.pictures.blocked(), unsplashRequests: hold.pictures.stats() } }
+  let picks: (Photo | null | undefined)[] = contents.map(() => undefined)
+  if (opts.morph && deckId && cp.morph) {
+    // a Morph deck has ONE picture (its hero, on every slide that has one); a missing picture leaves the colour block
+    hold.pictures ??= await openPictureSession({ userId: job.userId, jobId })
+    hold.pictures.add(heroRequest(cp.morph, analysis))
+    const hero = await hold.pictures.result(0)
+    contents = morphContents(cp.morph, hero ? { url: hero.src, alt: hero.alt, ...(hero.attribution ? { attribution: hero.attribution } : {}) } : null)
+    cp.report = { ...(cp.report as object), pictures: { slots: 1, placed: hero ? 1 : 0, stockBlocked: hold.pictures.blocked() } }
+  } else {
+    const wanted = pictureRequests(contents, outline, analysis)
+    // pictures-only jobs have no writing phase, so their session opens here; for new decks it has been running since the outline
+    hold.pictures ??= await openPictureSession({ userId: job.userId, jobId })
+    // A slide whose text did not change since its lookup started keeps that lookup (nothing is repeated); one the repair pass rewrote is looked up again against its new text.
+    for (const w of wanted) hold.pictures.add(w.req)
+    const picked = await Promise.all(wanted.map((w) => hold.pictures!.result(w.index)))
+    picks = contents.map(() => undefined)
+    wanted.forEach((w, k) => { const p = picked[k]; picks[w.index] = p ? { src: p.src, alt: p.alt, ...(p.attribution ? { attribution: p.attribution } : {}) } : null })
+    // a picture+text slide with no picture becomes a plain text slide (never an empty frame)
+    contents = contents.map((c, i) => (c.layout === 'split-image-text' && picks[i] === null ? ({ layout: 'title-body', title: c.title, bullets: c.bullets, speakerNotes: c.speakerNotes, sources: c.sources } as SlideContent) : c))
+    cp.report = { ...(cp.report as object), pictures: { slots: wanted.length, placed: picks.filter(Boolean).length, missing: wanted.filter((w) => !picks[w.index]).map((w) => w.index), stockBlocked: hold.pictures.blocked(), unsplashRequests: hold.pictures.stats() } }
+  }
 
   // 5 ─ layout (deterministic) in the design, then validation (+ one condense-and-retry pass for overflow)
   // A NEW deck gets the template that fits ITS topic (one small model call over the category's shortlist, remembered in the checkpoint so a retry never repeats it);
@@ -320,7 +368,7 @@ async function generate(jobId: string, hold: { pictures?: PictureSession }): Pro
   const design = await designOnce(analysis)
   const theme = design.theme
   const build = (cs: SlideContent[]): Presentation => {
-    const composed = composeDeck(cs, design, opts.aspectRatio, () => nanoid(10), assetBase, analysis.category, picks).map((c, i): Slide => { const sl = { id: deckId ? slideIds[i]! : nanoid(12), locked: false, validation: { status: 'pending' as const, issues: [] }, ...c } as Slide; return deckId ? stableElementIds({ ...sl, id: slideIds[i]! }) : sl })
+    const composed = composeDeck(cs, design, opts.aspectRatio, () => nanoid(10), assetBase, analysis.category, picks).map((c, i): Slide => { const sl = { id: deckId ? slideIds[i]! : nanoid(12), locked: false, validation: { status: 'pending' as const, issues: [] }, ...c } as Slide; return deckId ? (sl.layoutId === 'morph' ? { ...sl, id: slideIds[i]! } : stableElementIds({ ...sl, id: slideIds[i]! })) : sl }) // a Morph slide's elements already have their stable names (m-title, m-c0…)
     // pictures-only: hand-edited slides are kept exactly as they were, in their original positions
     let slides = composed
     if (opts.picturesOnly && existingDoc) { let k = 0; slides = existingDoc.slides.map((sl) => (sl.content && !sl.manual ? composed[k++]! : sl)) }
@@ -329,8 +377,10 @@ async function generate(jobId: string, hold: { pictures?: PictureSession }): Pro
   await stage(jobId, 'validating', 92)
   let { doc, report } = applyValidation(build(contents))
   // a slide whose text overflowed, or could only be fitted in type smaller than 11 pt, gets its words shortened (one pass) instead of shipping tiny type
-  if (report.errors > 0 || report.slides.some((s) => s.issues.some((i) => i.code === 'small_text'))) {
-    const bad = new Set(report.slides.filter((s) => s.issues.some((i) => i.severity === 'error' || i.code === 'small_text')).map((s) => s.slideId))
+  // (a Morph deck's cards are small on some scenes by design and must stay identical on every slide, so only a real overflow shortens a Morph slide's words)
+  const tooSmall = (i: { code: string }) => i.code === 'small_text' && !opts.morph
+  if (report.errors > 0 || report.slides.some((s) => s.issues.some(tooSmall))) {
+    const bad = new Set(report.slides.filter((s) => s.issues.some((i) => i.severity === 'error' || tooSmall(i))).map((s) => s.slideId))
     const fixed = contents.map((c, i) => (bad.has(doc.slides[i]!.id) ? condense(c) : c))
     ;({ doc, report } = applyValidation(build(fixed)))
   }

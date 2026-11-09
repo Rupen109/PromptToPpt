@@ -4,12 +4,14 @@ import { DesktopAuth } from './AuthActions'
 import { LanguageSelect } from './LanguageSelect'
 import { MobileNav } from './MobileNav'
 import { ResourcesMenu, TemplatesMenu } from './NavMenus'
+import { CATEGORIES, DESIGNS } from '@prompttoppt/theme'
 import { LANDINGS } from '@/lib/template-landing'
 
 /** The phone menu lists everything flat (a menu inside a menu is hard to use on a phone). */
 const MOBILE_ITEMS = [
   { label: 'Interactive Studio', href: '/#studio' },
   { label: 'Templates', href: '/templates' },
+  { label: 'Morph animation templates', href: '/morph-animation-templates' },
   { label: 'Pricing', href: '/pricing' },
   { label: 'Blog', href: '/blog' },
   { label: 'Tech news', href: '/news' },
@@ -21,10 +23,14 @@ const MOBILE_ITEMS = [
 const LINK = 'relative inline-flex items-center rounded-lg px-3 py-2 font-heading font-bold text-sm text-[#475569] whitespace-nowrap transition-colors hover:bg-[#f1f5f9] hover:text-primary'
 
 export function Header() {
-  const collections = LANDINGS.map((l) => ({ href: `/free-templates/${l.slug}`, label: `${l.noun} templates` }))
+  // plain data only: the header is on every page, so the menu must not import the template designs itself
+  const collections = LANDINGS.map((l) => ({
+    href: `/free-templates/${l.slug}`, label: `${l.noun} templates`, blurb: CATEGORIES.find((c) => c.id === l.category)?.blurb ?? '',
+    designs: DESIGNS.filter((d) => d.category === l.category).slice(0, 6).map((d) => ({ id: d.id, name: d.name, tagline: d.tagline })),
+  }))
   return (
     <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b-2 border-foreground">
-      <div className="max-w-[1280px] mx-auto h-20 px-5 md:px-10 flex items-center justify-between gap-6">
+      <div className="relative max-w-[1280px] mx-auto h-20 px-5 md:px-10 flex items-center justify-between gap-6">
         <Link href="/" aria-label="SlidesDone home" translate="no" className="shrink-0"><Logo size={38} /></Link>
 
         <nav className="hidden xl:flex items-center gap-1" aria-label="Main">

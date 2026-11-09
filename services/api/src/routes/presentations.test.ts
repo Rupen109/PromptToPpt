@@ -83,6 +83,32 @@ describe('save: optimistic concurrency + versions', () => {
     expect((await save(pro.cookie, p.id, 1, { ...(await get(pro.cookie, p.id)).document, theme: getTheme('midnight') })).status).toBe(200)
   })
 
+  it('object animations are on every plan; a Morph transition is Gold: Starter and Pro cannot add it, Gold can, and after a downgrade the deck keeps playing and Morph can be removed but not changed', async () => {
+    const effect = (id: string, elementId: string) => ({ id, elementId, category: 'entrance', type: 'fade-in', start: 'click', duration: 600, delay: 0, easing: 'ease-out', repeat: 1, reverse: false })
+    const withFx = (doc: any, ...effects: object[]) => ({ ...doc, slides: doc.slides.map((s: any, i: number) => (i === 0 ? { ...s, effects } : s)) })
+    const withMorph = (doc: any, extra: object = {}) => ({ ...doc, slides: doc.slides.map((s: any, i: number) => (i === 0 ? { ...s, transition: { type: 'morph', duration: 1200, ...extra } } : s)) })
+    for (const plan of ['starter', 'pro'] as const) {
+      const u = await signUp('fx'); if (plan !== 'starter') await setPlan(u.id, plan)
+      const { id } = await makeDeck(u.id, 2); const doc = (await get(u.cookie, id)).document
+      const fx = await save(u.cookie, id, 1, withFx(doc, effect('a', doc.slides[0].elements[0].id)))
+      expect(fx.status).toBe(200) // object effects are open to every plan
+      const r = await save(u.cookie, id, 2, withMorph(doc))
+      expect(r.status).toBe(403)
+      expect((await json(r)).error).toMatchObject({ code: 'UPGRADE_REQUIRED', details: { feature: 'morph' } })
+    }
+    const gold = await signUp('fx'); await setPlan(gold.id, 'gold')
+    const { id } = await makeDeck(gold.id, 2); let { document: doc, revision } = await get(gold.cookie, id)
+    const saved = withMorph(doc)
+    const ok = await save(gold.cookie, id, revision, saved)
+    expect(ok.status).toBe(200)
+    revision = (await json(ok)).data.revision
+    await setPlan(gold.id, 'pro') // downgrade
+    expect((await save(gold.cookie, id, revision, { ...saved, title: 'still fine' })).status).toBe(200) // saving the deck as it is
+    revision += 1
+    expect((await save(gold.cookie, id, revision, withMorph(doc, { duration: 2000 }))).status).toBe(403) // changing it
+    expect((await save(gold.cookie, id, revision, doc)).status).toBe(200) // removing it
+  })
+
   it('deleted decks disappear from the list and from reads', async () => {
     const u = await signUp('sv'); const { id } = await makeDeck(u.id)
     expect((await api(u.cookie, 'DELETE', `/presentations/${id}`)).status).toBe(200)

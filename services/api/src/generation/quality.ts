@@ -13,7 +13,7 @@ export interface QualityIssue { slide: number; kind: IssueKind; problem: string 
 export function textOf(c: SlideContent): string[] {
   const out: string[] = []
   const walk = (v: unknown, key = '') => {
-    if (typeof v === 'string') { if (!['layout', 'chartType', 'imageUrl', 'sourceId', 'locator'].includes(key) && key !== 'imagePrompt') out.push(v) }
+    if (typeof v === 'string') { if (!['layout', 'scene', 'chartType', 'imageUrl', 'sourceId', 'locator'].includes(key) && key !== 'imagePrompt') out.push(v) }
     else if (Array.isArray(v)) v.forEach((x) => walk(x, key))
     else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) walk(x, k)
   }

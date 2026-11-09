@@ -135,6 +135,7 @@ export function BillingPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Limit label="Decks this month" used={ent.usage.presentationsThisPeriod} max={ent.limits.maxPresentationsPerMonth} />
               <Limit label="Slides per deck" max={ent.limits.maxSlides} />
+              {ent.features.morph && <Limit label="Morph decks this month" used={ent.usage.morphDecksThisPeriod} max={ent.features.morphDecksPerMonth} />}
             </div>
           </section>
         )}

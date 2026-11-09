@@ -5,6 +5,9 @@ import * as L from './content'
 import { COVER_ONLY_DECOR, decor } from './decor'
 import { header } from './header'
 import { defaultId, isDark, makeCtx, pal, para, rect, text, type IdGen } from './primitives'
+import { lookupMorphTemplate } from '../morph-templates/lookup'
+import { composeTemplateScene } from '../morph-templates/compose'
+import { MORPH_TRANSITION, morphSlide, named } from './morph'
 import { IMAGE_BG_LAYOUTS, photoSlide } from './photo'
 import { PHOTO_LAYOUTS, groundOf, photoNumber, photoQuote, photoTitle, type Photo } from './photoKit'
 import { titleSlide } from './title'
@@ -24,12 +27,27 @@ export interface ComposeOptions {
   photo?: Photo | undefined
   /** rotating index so consecutive plain slides take different looks */
   variant?: number | undefined
+  /** where a Morph template's own pictures are served from (the web app's address) */
+  assetBase?: string | undefined
 }
 
 export function composeSlide(content: SlideContent, theme: Theme, aspect: AspectRatio, idGen: IdGen = defaultId, opts: ComposeOptions = {}): Composed {
   const c = makeCtx(theme, aspect, idGen)
   if (opts.variant !== undefined) c.variant = opts.variant
   const k = pal(c)
+  if (content.layout === 'morph-template') {
+    // a scene of a Morph template: its geometry, words and pictures come from the template (morph-templates), not from the design
+    return composeTemplateScene(lookupMorphTemplate(content.template), content, opts.assetBase ? { assetBase: opts.assetBase } : {})
+  }
+  if (content.layout === 'morph') {
+    // a Morph scene: its own backgrounds, ids and transition (see morph.ts)
+    const bg = morphSlide(c, content)
+    named(c, 'm-logo', () => brandLogo(c, isDark(bg.value)))
+    return {
+      layoutId: 'morph', background: bg.gradient ? { type: 'gradient', value: bg.value, gradient: bg.gradient } : { type: 'color', value: bg.value },
+      elements: c.els, speakerNotes: content.speakerNotes, sources: content.sources, content, transition: MORPH_TRANSITION,
+    }
+  }
   if (opts.backgroundImage && (IMAGE_BG_LAYOUTS as readonly string[]).includes(content.layout)) {
     photoSlide(c, content)
     brandLogo(c, true)
@@ -97,6 +115,7 @@ export function composeSlide(content: SlideContent, theme: Theme, aspect: Aspect
   }
 }
 
+export { MORPH_TRANSITION } from './morph'
 export { PHOTO_LAYOUTS, type Photo } from './photoKit'
 export { brandLogoElements } from './brand'
 export { CANVAS, header, rect, text, para, IMAGE_BG_LAYOUTS }

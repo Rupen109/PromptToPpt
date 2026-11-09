@@ -1,0 +1,13 @@
+// Science Lab: clean 3D-render lab glassware as cut-outs, a bubble field on black and a soft pale-blue gradient.
+export default ({ GREEN, MAGENTA, BLACK }) => [
+  { name: 'lab-flasks', key: 'magenta', ratio: '5:4', size: [1200, 1000], mode: 'trim', fill: 0.92, anchor: 'bottom', check: true, ground: true,
+    p: `Three clean laboratory glassware pieces standing together on a flat surface, seen straight on from the front: a conical Erlenmeyer flask filled with bright blue liquid in the middle, a round-bottom flask with fresh green liquid on the left, a tall graduated beaker with golden-yellow liquid on the right, small bubbles in the liquids, glossy transparent glass with soft highlights, premium photoreal 3D render, bright even studio light, the whole group inside the frame with a clear margin, nothing cropped, on ${MAGENTA}. No text, no labels, no logo, no watermark.` },
+  { name: 'lab-microscope', key: 'green', ratio: '4:5', size: [900, 1000], mode: 'trim', fill: 0.92, anchor: 'bottom', check: true, ground: true,
+    p: `A single modern school laboratory microscope, three-quarter view, white and brushed-silver body with navy-blue knobs and a dark eyepiece, glossy clean photoreal 3D render, soft bright studio light, the whole microscope inside the frame with a clear margin, nothing cropped, on ${GREEN}. No text, no labels, no logo, no watermark.` },
+  { name: 'lab-rack', key: 'magenta', ratio: '16:9', size: [1080, 660], mode: 'trim', fill: 0.92, anchor: 'bottom', check: true, ground: true,
+    p: `A white plastic test-tube rack holding five glass test tubes filled to different levels with bright blue, green, orange, yellow and clear liquids, front view, glossy glass with soft highlights, clean photoreal 3D render, bright even studio light, the whole rack inside the frame with a clear margin, nothing cropped, on ${MAGENTA}. No text, no labels, no logo, no watermark.` },
+  { name: 'lab-bubbles', key: 'black', ratio: '16:9', size: [1920, 1080], mode: 'frame',
+    p: `A field of glossy transparent bubbles of many sizes with bright rim light and a few tiny glowing particles, white, cyan and soft blue, scattered across the whole frame with plenty of empty dark space between them, photoreal macro render, on ${BLACK}. No text, no logo.` },
+  { name: 'lab-field', key: null, ratio: '16:9', size: [1920, 1080], mode: 'cover',
+    p: `An extremely soft, clean, bright background: a smooth gradient from white at the top left to very pale sky blue at the bottom right, with a few faint, soft, out-of-focus circles of slightly deeper pale blue, ultra low contrast, calm and airy, no objects, no text, no logo.` },
+]

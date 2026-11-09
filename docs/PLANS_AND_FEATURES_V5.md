@@ -120,3 +120,19 @@ Image models (Nano Banana Pro $0.134 a picture, Nano Banana 2 $0.067, GPT Image 
 3. **Premium design systems / templates** as an extra set: does not exist yet (Premium has all templates).
 4. Opus 4.8 Fast and Ideogram v3 (not on OpenRouter); GPT Image 2 mapping to confirm.
 5. Remaining UI/e2e: e2e suites that mention old prices or plans (07, 48 and others) need updating; the browser AI suites wait for the Google key.
+
+
+## Morph animation plan split and monthly limit (2026-11-09)
+Replaces the single `animations` flag (migration 0043).
+
+| | Starter | Pro | Gold | Premium |
+|---|---|---|---|---|
+| object animations (entrance, emphasis, exit), animation pane | yes | yes | yes | yes |
+| basic slide transitions | yes | yes | yes | yes |
+| Morph transitions, Morph templates, Morph editor tools (`features.morph`) | no | no | yes | yes |
+| AI-built Morph decks a month (`features.morphDecksPerMonth`) | 0 | 0 | 10 | 30 |
+
+Enforcement (server): adding or changing a Morph transition on save needs `morph` (`morphAdded`, so a later downgrade keeps old decks playing and lets Morph be removed); starting a Morph job needs `morph` and a free allowance (`assertMorph`, `assertMorphQuota`). The allowance is counted from `generation_job` rows (`options.morph`, failed and cancelled jobs do not count), and re-counted after the insert in a fixed order so parallel starts cannot overshoot.
+
+**Why 10 and 30 (measured, not guessed).** A Morph deck is one planning call plus a tiny design pick: measured average $0.0058 on 11 real jobs on Gemini 3.6 Flash ($0.0077 at worst), less than half of a normal deck ($0.0127). On the dearest model a plan allows (Opus 4.8, Premium) about $0.037. Net revenue a month: Gold $6.11, Premium $11.28. At the limit: Gold 10 x $0.0058 = $0.058 (about 1% of net; 4% if every deck used the dearest Gold model), Premium 30 x $0.037 = $1.11 (about 10%, with every deck on Opus). Gemini Flash prices double on 2027-01-01: the same decks cost about twice that, still under 2% (Gold) on the default model. The limit is therefore a product limit, not a cost limit; change the two numbers in `seed.ts` (+ an UPDATE migration) to move them.
+

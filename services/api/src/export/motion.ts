@@ -26,7 +26,7 @@ const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, M
 export function transitionXml(t: Transition | null): string {
   if (!t || t.type === 'none') return ''
   const spd = t.duration <= 700 ? 'fast' : t.duration <= 1200 ? 'med' : 'slow'
-  const body = { fade: '<p:fade/>', slide: '<p:cover dir="l"/>', push: '<p:push dir="l"/>', zoom: '<p:zoom dir="in"/>', wipe: '<p:wipe dir="r"/>' }[t.type]
+  const body = { fade: '<p:fade/>', slide: '<p:cover dir="l"/>', push: '<p:push dir="l"/>', zoom: '<p:zoom dir="in"/>', wipe: '<p:wipe dir="r"/>' }[t.type === 'morph' ? 'fade' : t.type] // Morph is exported as Fade until the PowerPoint Morph transition is written (docs/OBJECT_ANIMATIONS.md)
   return body ? `<p:transition spd="${spd}">${body}</p:transition>` : ''
 }
 

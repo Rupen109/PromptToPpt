@@ -14,6 +14,7 @@ import { RemixDialog } from '@/components/editor/RemixDialog'
 import { ShareDialog } from '@/components/editor/ShareDialog'
 import { SlideRail } from '@/components/editor/SlideRail'
 import { StyleDrawer } from '@/components/editor/StyleDrawer'
+import { AnimationPane } from '@/components/editor/animation/AnimationPane'
 import { VersionsDialog } from '@/components/editor/VersionsDialog'
 import { TopToolbar } from '@/components/editor/toolbar/TopToolbar'
 import { TableDialog } from '@/components/editor/toolbar/TableDialog'
@@ -306,6 +307,7 @@ export function EditorPage() {
           </div>
         </main>
         {drawer === 'comments' && <CommentsPanel doc={doc} slideId={slide.id} deckId={id} role={role} onClose={() => setDrawer('comments')} />}
+        {drawer === 'animations' && <AnimationPane doc={doc} slide={slide} onClose={() => setDrawer('animations')} />}
         {drawer === 'style' && <StyleDrawer doc={doc} slide={slide} onClose={() => setDrawer('style')} />}
         {drawer === 'ai' && !aiAvailable && (
           <aside aria-label="AI assistant" className="w-[360px] max-lg:fixed max-lg:z-40 max-lg:right-0 max-lg:top-14 max-lg:bottom-0 max-lg:shadow-2xl max-md:left-0 max-md:top-auto max-md:h-[60vh] max-md:rounded-t-2xl max-md:border-t max-lg:max-w-full shrink-0 bg-white border-l border-border p-5 text-sm">

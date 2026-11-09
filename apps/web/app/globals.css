@@ -134,3 +134,6 @@ input, textarea, select { font-family: inherit; font-size: inherit; }
 body { top: 0 !important; }
 .goog-te-spinner-pos, .VIpgJd-ZVi9od-aZ2wEe-wOHMyf, .VIpgJd-ZVi9od-aZ2wEe-OiiCO, [class^="VIpgJd-ZVi9od"] { display: none !important; }
 .goog-text-highlight { background: none !important; box-shadow: none !important; }
+
+/* the dim behind an open header menu fades in */
+@keyframes menu-dim { from { opacity: 0 } to { opacity: 1 } }
