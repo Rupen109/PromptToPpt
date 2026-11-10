@@ -41,8 +41,9 @@ else
 fi
 docker image prune -f >/dev/null
 
-# timers, installed once: a daily base backup (the WAL in between is shipped continuously by Postgres itself)
-if [ ! -f /etc/systemd/system/slidesdone-basebackup.timer ]; then
+# timers, written on every deploy (so a changed time reaches a running server): a base backup twice a day, at 02:30 and 13:00 India time (21:00 and 07:30 UTC).
+# The WAL in between is shipped continuously by Postgres itself.
+{
   cat > /etc/systemd/system/slidesdone-basebackup.service <<UNIT
 [Unit]
 Description=SlidesDone database base backup (WAL-G)
@@ -52,13 +53,34 @@ ExecStart=/opt/slidesdone/backup-base.sh
 UNIT
   cat > /etc/systemd/system/slidesdone-basebackup.timer <<UNIT
 [Unit]
-Description=Daily SlidesDone database base backup
+Description=Twice-daily SlidesDone database base backup
 [Timer]
-OnCalendar=*-*-* 21:30:00
+OnCalendar=*-*-* 21:00:00 UTC
+OnCalendar=*-*-* 07:30:00 UTC
 Persistent=true
 [Install]
 WantedBy=timers.target
 UNIT
-  systemctl daemon-reload && systemctl enable --now slidesdone-basebackup.timer
-fi
+  systemctl daemon-reload && systemctl enable --now slidesdone-basebackup.timer && systemctl restart slidesdone-basebackup.timer
+}
+# an encrypted export of the whole database for the owner to pull (export-db.sh): the timer fires every night, the script itself only exports when the last one is 47 hours old
+{
+  cat > /etc/systemd/system/slidesdone-export.service <<UNIT
+[Unit]
+Description=SlidesDone encrypted database export
+[Service]
+Type=oneshot
+ExecStart=/opt/slidesdone/export-db.sh
+UNIT
+  cat > /etc/systemd/system/slidesdone-export.timer <<UNIT
+[Unit]
+Description=SlidesDone database export (about every 2 days)
+[Timer]
+OnCalendar=*-*-* 22:00:00 UTC
+Persistent=true
+[Install]
+WantedBy=timers.target
+UNIT
+  systemctl daemon-reload && systemctl enable --now slidesdone-export.timer && systemctl restart slidesdone-export.timer
+}
 $COMPOSE ps

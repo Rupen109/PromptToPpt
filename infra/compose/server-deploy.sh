@@ -21,8 +21,8 @@ $COMPOSE up -d postgres
 $COMPOSE run --rm api node dist/migrate.js
 $COMPOSE up -d --remove-orphans
 docker image prune -f >/dev/null
-# nightly backup timer (installed once)
-if [ ! -f /etc/systemd/system/slidesdone-backup.timer ]; then
+# backup timer, written on every deploy: twice a day, 02:30 and 13:00 India time (21:00 and 07:30 UTC)
+{
   cat > /etc/systemd/system/slidesdone-backup.service <<UNIT
 [Unit]
 Description=SlidesDone database backup
@@ -32,13 +32,14 @@ ExecStart=/opt/slidesdone/backup.sh
 UNIT
   cat > /etc/systemd/system/slidesdone-backup.timer <<UNIT
 [Unit]
-Description=Nightly SlidesDone database backup
+Description=Twice-daily SlidesDone database backup
 [Timer]
-OnCalendar=*-*-* 21:30:00
+OnCalendar=*-*-* 21:00:00 UTC
+OnCalendar=*-*-* 07:30:00 UTC
 Persistent=true
 [Install]
 WantedBy=timers.target
 UNIT
-  systemctl daemon-reload && systemctl enable --now slidesdone-backup.timer
-fi
+  systemctl daemon-reload && systemctl enable --now slidesdone-backup.timer && systemctl restart slidesdone-backup.timer
+}
 $COMPOSE ps

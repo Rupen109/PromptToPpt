@@ -39,10 +39,10 @@ One `t4g.micro` (1 GB) in Sydney runs Caddy, the website, the API with the deck 
      EC2 t4g.small (Sydney), our own VPC, public subnet, no NAT, no SSH (Session Manager)
        Caddy ─ origin HTTPS; refuses any request without X-Origin-Verify
        web (Next.js)  ·  api  ·  worker  ·  Postgres 16
-       disk 1: root 20 GB (throw-away)   disk 2: data 20 GB (Postgres only, daily snapshots)
+       disk 1: root 20 GB (throw-away)   disk 2: data 20 GB (Postgres only, snapshots twice a day)
 
  S3 (Sydney): editor files · assets (pictures, private) · backups (own bucket; server can write, not delete)
- Backups: Postgres WAL archived continuously + daily base backup → point-in-time restore
+ Backups: Postgres WAL archived continuously + base backup twice a day (02:30 and 13:00 India time) → point-in-time restore
  ECR: api and web images tagged by git SHA (immutable) · Parameter Store: secrets
  CloudWatch: status-check alarm with auto-recover, CPU / memory / disk alarms · AWS Budgets e-mails
  GitHub Actions: build ARM images → ECR → deploy over Session Manager → health check → roll back
@@ -55,7 +55,7 @@ How the parts work together:
 - **Client IP.** Caddy drops a forwarded `X-Forwarded-For` from untrusted senders (Caddy docs). The API reads `CloudFront-Viewer-Address` when `X-Origin-Verify` is valid, so rate limits stay per person (built, tested).
 - **Origin certificates.** AWS's only managed policy that passes the visitor's IP and country (`AllViewerAndCloudFrontHeaders-2022-06`) also forwards the Host header, and the origin certificate must then match that name (CloudFront docs). So Caddy answers for the public names with Let's Encrypt certificates obtained through the **DNS challenge** in Route 53 (Caddy built with `caddy-dns/route53`; the server may write only `_acme-challenge` TXT records). No port 80 is open.
 - **Deck worker** runs as its own container (`RUN_WORKER=false` for `api`). That keeps deck building away from page requests and lets it move to its own server with one setting.
-- **Data safety.** Losing the server loses at most minutes of data: the data disk survives, snapshots run daily, and WAL in S3 allows a point-in-time restore. A restore is tested once before launch.
+- **Data safety.** Losing the server loses at most minutes of data: the data disk survives, snapshots run twice a day (02:00 and 12:30 India time), and WAL in S3 allows a point-in-time restore. A restore is tested once before launch.
 - **Search engines.** `robots.txt` and `sitemap.xml` are live already. The editor has `noindex, nofollow`. `origin.` answers nothing without the secret.
 
 ## 4. Scale triggers (from our own metrics, never from guesses)

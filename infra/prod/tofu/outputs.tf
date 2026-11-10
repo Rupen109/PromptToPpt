@@ -18,3 +18,4 @@ output "github_deploy_secret_access_key" {
   value     = aws_iam_access_key.github_deploy.secret
   sensitive = true
 }
+output "backup_reader_user" { value = aws_iam_user.backup_reader.name }

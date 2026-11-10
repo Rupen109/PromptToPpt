@@ -61,6 +61,13 @@ resource "aws_s3_bucket_lifecycle_configuration" "backups" {
     filter { prefix = "wal-g/" }
     expiration { days = var.backup_retention_days }
   }
+  # encrypted exports for the owner (export-db.sh): the last 30 days stay, the owner's computer keeps its own copies
+  rule {
+    id     = "owner-exports"
+    status = "Enabled"
+    filter { prefix = "exports/" }
+    expiration { days = 30 }
+  }
   rule {
     id     = "migration-dumps"
     status = "Enabled"

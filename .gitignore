@@ -35,3 +35,6 @@ infra/prod/tofu/.terraform/
 infra/prod/tofu/*.tfstate
 infra/prod/tofu/*.tfstate.*
 infra/prod/tofu/*.tfplan
+
+# owner-only documents (kept on the owner's computer, never pushed)
+/owner-docs/

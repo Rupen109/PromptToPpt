@@ -1,5 +1,5 @@
 #!/bin/bash
-# Daily base backup with WAL-G (started by the slidesdone-basebackup timer, or by hand). Together with the WAL that Postgres ships every minute,
+# Base backup with WAL-G, twice a day (started by the slidesdone-basebackup timer, or by hand). Together with the WAL that Postgres ships every minute,
 # it allows a restore to any point of the retention window. Old backups are removed by the bucket's own expiry rule (the server may not delete).
 set -euo pipefail
 cd /opt/slidesdone

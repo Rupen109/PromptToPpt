@@ -29,7 +29,6 @@ export function Footer() {
           <div>
             <h5 className="font-heading font-extrabold text-xs uppercase tracking-[0.6px] text-foreground mb-3">Trust & Privacy</h5>
             <p className="text-xs leading-4 text-[#475569] max-w-[270px]">Your decks and sources are private to your account, and never go into analytics tools.</p>
-            <p className="mt-3 flex items-center gap-1.5 font-heading font-extrabold text-xs text-foreground"><Lock aria-hidden size={14} className="text-[#059669]" />Private by default</p>
           </div>
         </div>
         <div className="py-8 flex flex-col sm:flex-row items-center justify-between gap-3 font-heading font-bold text-xs text-[#475569]">

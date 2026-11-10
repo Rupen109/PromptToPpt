@@ -99,7 +99,7 @@ resource "aws_eip_association" "server" {
   allocation_id = aws_eip.server.id
 }
 
-# ── daily snapshots of the data disk, 7 kept (a second safety net next to the WAL backups)
+# ── snapshots of the data disk twice a day (02:00 and 12:30 India time), 7 of each kept (a second safety net next to the WAL backups)
 resource "aws_iam_role" "dlm" {
   name_prefix = "${local.prefix}-dlm-"
   assume_role_policy = jsonencode({
@@ -118,15 +118,19 @@ resource "aws_dlm_lifecycle_policy" "data" {
   policy_details {
     resource_types = ["VOLUME"]
     target_tags    = { Snapshot = "daily" }
-    schedule {
-      name = "daily"
-      create_rule {
-        interval      = 24
-        interval_unit = "HOURS"
-        times         = ["20:30"] # UTC = 02:00 in India, quiet hours
+    # UTC times; India is UTC+5:30: 20:30 UTC = 02:00, 07:00 UTC = 12:30
+    dynamic "schedule" {
+      for_each = { night = "20:30", noon = "07:00" }
+      content {
+        name = schedule.key
+        create_rule {
+          interval      = 24
+          interval_unit = "HOURS"
+          times         = [schedule.value]
+        }
+        retain_rule { count = 7 }
+        copy_tags = true
       }
-      retain_rule { count = 7 }
-      copy_tags = true
     }
   }
 }

@@ -37,5 +37,5 @@ Built 2026-10-31. Domain `slidesdone.app` (bought at Hostinger, 1 year, renews 2
 ## Known limits
 - 1 GB is tight for API, website and Postgres together. Watch `free -m` and the budget mails; step up to `t4g.small` (2 GB) by changing `instance_type`.
 - There is no CloudFront in front of the API or website yet, so no country header: prices use the default currency until an edge is added (`EDGE_SHARED_SECRET` is set but unused). Add it before real launch (see PRODUCTION_RELEASE_CHECKLIST).
-- A single server means no failover; backups are nightly dumps only.
+- A single server means no failover; backups are database dumps only, twice a day (02:30 and 13:00 India time).
 - OpenTofu state is a local file (`infra/tofu/terraform.tfstate`, git-ignored): back it up.

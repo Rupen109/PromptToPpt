@@ -1,5 +1,5 @@
 #!/bin/bash
-# Nightly: dump the database, compress, copy to the assets bucket (kept 30 days by the bucket's own rule).
+# Twice a day: dump the database, compress, copy to the assets bucket (kept 30 days by the bucket's own rule).
 set -euo pipefail
 cd /opt/slidesdone
 source ./config.env
