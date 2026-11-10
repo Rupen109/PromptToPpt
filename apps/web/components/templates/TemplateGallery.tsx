@@ -21,7 +21,7 @@ export function TemplateGallery({ initialCategory = 'all' }: { initialCategory?:
         ))}
       </div>
       <div className="flex items-center justify-between gap-4 flex-wrap mb-8">
-        <p className="text-slate-600 text-sm">{current ? current.blurb : 'Pick a category, or search by name or mood.'} <span className="text-slate-600">· {shown.length} templates</span></p>
+        <p className="text-slate-600 text-sm">{current ? current.blurb : 'Pick a category, or search by name or mood.'}{(cat !== 'all' || q.trim()) && <span className="text-slate-600"> · {shown.length} {shown.length === 1 ? 'template' : 'templates'}</span>}</p>
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search templates…" aria-label="Search templates" className="border-2 border-foreground rounded-xl px-4 py-2 text-sm w-64 bg-white focus:outline-none focus:border-primary" />
       </div>
       {shown.length === 0 ? <p className="py-16 text-center text-slate-500">No templates match “{q}”.</p> : (

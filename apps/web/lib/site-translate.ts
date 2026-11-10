@@ -1,9 +1,9 @@
-import { deckLanguage } from '@prompttoppt/validation'
+import { deckLanguage } from '@prompttoppt/validation/languages' // the language list alone: the package root also holds every Zod schema (about 100 KB) that no page of the website needs
 
 /**
  * Translating the website itself uses Google's free page-translate widget (the visible text of the page is sent to Google to be translated; nothing else).
- * The language the visitor picks in the header (the 13 in SITE_LANGUAGES) is both the language of their decks and the language of this site.
- * English leaves the site as written. The script itself is fetched quietly the first time the language button is visible (the widget only starts translating once a language is chosen), so a choice applies quickly.
+ * The language the visitor picks in the header (those in SITE_LANGUAGES) is both the language of their decks and the language of this site.
+ * English leaves the site as written. The script is fetched only when the visitor shows interest (focus or press on the language button) or already chose a language: a plain visit loads nothing from Google (no third-party script, no Google cookies), which keeps the page fast.
  */
 const COOKIE = 'googtrans'
 
@@ -54,7 +54,7 @@ export function loadWidget(): Promise<void> {
   return loading
 }
 
-/** start loading Google's widget ahead of any choice (called once the language button is first on screen, and again when the list is opened), so picking a language does not wait for the download */
+/** start loading Google's widget when the visitor reaches for the language button (focus or press), so picking a language does not wait for the whole download */
 export function preloadWidget(): void {
   void loadWidget().catch(() => undefined)
 }

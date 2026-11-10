@@ -1,7 +1,6 @@
 import { ArrowRight, Check } from '@prompttoppt/ui/icons'
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { DESIGNS } from '@prompttoppt/theme'
 import { Footer } from '@/components/layout/Footer'
 import { Header } from '@/components/layout/Header'
 import { Card, type CardTone } from '@/components/ui/Card'
@@ -16,7 +15,7 @@ interface Tool { href: string; badge: string; name: string; text: string; points
 
 /** Templates always come first. Three cards fill the first row; the fourth sits centred under them. Same card design for all four. */
 const CARDS: Tool[] = [
-  { href: '/templates', badge: 'Templates', name: 'Free Presentation Templates', text: `${DESIGNS.length}+ designed templates. Edit online, let AI fill them in.`, points: ['Pitch, sales, marketing, strategy…', 'Edit and present from your browser', 'First 3 designs per collection free'], tone: 'mist' },
+  { href: '/templates', badge: 'Templates', name: 'Free Presentation Templates', text: 'Designed templates. Edit online, let AI fill them in.', points: ['Pitch, sales, marketing, strategy…', 'Edit and present from your browser', 'First 3 designs per collection free'], tone: 'mist' },
   { href: '/free-tools/presentation-outline-generator', badge: 'AI · Free', name: 'AI Presentation Outline Generator', text: 'Your topic in, a clear slide-by-slide outline out.', points: ['Pick the type, audience and length', 'A story that flows from open to close', 'One click turns it into a full deck'], tone: 'cream' },
   { href: '/free-tools/pdf-to-presentation', badge: 'AI · Free', name: 'PDF to Presentation', text: 'Turn a report or paper into a summary and slides.', points: ['Summary, key points and slide outline', 'Executive, academic, business and more', 'Continue as an editable designed deck'], tone: 'lavender' },
   { href: '/free-tools/pdf-to-ppt', badge: 'In your browser', name: 'PDF to PPT Converter', text: 'Convert a PDF to a PowerPoint file. Nothing is uploaded.', points: ['Exact look, or editable text boxes', 'Up to 60 pages, no sign-up', 'Download the .pptx instantly'], tone: 'peach' },

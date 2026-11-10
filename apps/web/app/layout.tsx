@@ -31,6 +31,7 @@ const caveat = localFont({
   src: './fonts/Caveat-latin.woff2',
   variable: '--font-caveat',
   display: 'swap',
+  preload: false, // a handwriting accent used in a few places: not worth competing with the fonts of the first screen
   weight: '400 700',
 })
 

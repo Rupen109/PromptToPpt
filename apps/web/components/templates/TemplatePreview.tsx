@@ -6,7 +6,7 @@ import { designById } from '@prompttoppt/theme'
 import { FitSlide } from '@prompttoppt/ui'
 import { Button } from '@/components/ui/Button'
 import { EDITOR_URL } from '@/lib/env'
-import { slidesFor } from './TemplateThumb'
+import { slidesFor } from './slides-for'
 
 /** Big interactive preview: every slide of the starter deck in this design, with animations you can replay. */
 export function TemplatePreview({ designId }: { designId: string }) {

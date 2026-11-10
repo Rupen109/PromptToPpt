@@ -160,7 +160,7 @@ export function TemplatesPage() {
       <Sidebar />
       <main className="flex-1 min-w-0 px-4 sm:px-6 lg:px-10 py-6 lg:py-10 max-w-[1300px]">
         <h1 className="font-heading font-bold text-2xl sm:text-3xl">Templates</h1>
-        <p className="text-slate-600 mt-1 mb-6">{DESIGNS.length} professionally designed, animated templates. {premiumOk ? 'Your plan includes all of them.' : 'Starter includes 3 per category; Pro unlocks them all.'}</p>
+        <p className="text-slate-600 mt-1 mb-6">Professionally designed, animated templates. {premiumOk ? 'Your plan includes all of them.' : 'Starter includes 3 per category; Pro unlocks them all.'}</p>
         <div className="flex gap-2 mb-4 -mx-4 px-4 sm:mx-0 sm:px-0 overflow-x-auto sm:overflow-visible sm:flex-wrap pb-1 sm:pb-0 [scrollbar-width:none]" role="tablist" aria-label="Template categories">
           {[{ id: 'all', name: 'All' }, ...CATEGORIES].map((c) => (
             <button key={c.id} role="tab" aria-selected={cat === c.id} onClick={() => setParams(c.id === 'all' ? {} : { category: c.id })} className={`text-sm rounded-full px-4 py-2 sm:py-1.5 border whitespace-nowrap shrink-0 ${cat === c.id ? 'bg-foreground text-white border-foreground' : 'bg-white border-border hover:border-slate-400'}`}>{c.name}</button>

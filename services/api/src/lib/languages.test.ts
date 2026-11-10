@@ -4,7 +4,7 @@ import { DECK_LANGUAGES, deckLanguage, isRtlLanguage } from '@prompttoppt/valida
 describe('offered languages', () => {
   it('are the 13 of the website picker, all known, English first', async () => {
     const { OFFERED_DECK_LANGUAGES, DECK_LANGUAGES } = await import('@prompttoppt/validation')
-    expect(OFFERED_DECK_LANGUAGES.map((l) => l.code)).toEqual(['en', 'de', 'es', 'fr', 'hi', 'id', 'it', 'zh', 'pl', 'pt', 'vi', 'hu', 'sv'])
+    expect(OFFERED_DECK_LANGUAGES.map((l) => l.code)).toEqual(['en', 'ar', 'de', 'es', 'fr', 'hi', 'id', 'it', 'zh', 'pl', 'pt', 'vi', 'hu', 'sv'])
     expect(OFFERED_DECK_LANGUAGES.every((l) => DECK_LANGUAGES.includes(l))).toBe(true)
   })
 })

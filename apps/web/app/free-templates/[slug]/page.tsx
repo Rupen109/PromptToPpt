@@ -50,7 +50,7 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
             <h1 className="font-heading font-extrabold text-4xl md:text-5xl leading-[1.05] text-foreground max-w-[860px]">Free {l.noun} Presentation Templates</h1>
             <div className="mt-5 max-w-[760px] flex flex-col gap-3 text-lg leading-7 font-medium text-[#475569]">{l.intro.map((p) => <p key={p}>{p}</p>)}</div>
             <div className="mt-7 flex flex-wrap items-center gap-4">
-              <Button href="#templates" variant="accent" size="lg" arrow>Browse {designs.length} templates</Button>
+              <Button href="#templates" variant="accent" size="lg" arrow>Browse templates</Button>
               <p className="text-sm font-medium text-[#475569]">{slides} slides each · edit free in your browser · {free} designs free, {designs.length - free} with Pro</p>
             </div>
           </div>

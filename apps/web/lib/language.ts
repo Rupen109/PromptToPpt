@@ -1,4 +1,4 @@
-import { deckLanguage } from '@prompttoppt/validation'
+import { deckLanguage } from '@prompttoppt/validation/languages' // the language list alone: the package root also holds every Zod schema (about 100 KB) that no page of the website needs
 import { EDITOR_URL } from './env'
 
 /** The language the visitor picked in the site header. It is the language of the decks they create. English until they choose otherwise; 'auto' = detect it from what they type. */
@@ -10,6 +10,7 @@ export const DEFAULT_LANGUAGE = 'en'
 /** The languages the website offers (its own text is translated into them, and decks are written in them). English first. `label` is how the language names itself. */
 export const SITE_LANGUAGES = [
   { code: 'en', name: 'English', label: 'English' },
+  { code: 'ar', name: 'Arabic', label: 'العربية' },
   { code: 'de', name: 'German', label: 'Deutsch' },
   { code: 'es', name: 'Spanish', label: 'Español' },
   { code: 'fr', name: 'French', label: 'Français' },

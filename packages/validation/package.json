@@ -16,5 +16,10 @@
   "devDependencies": {
     "typescript": "^5.5.0"
   },
-  "type": "module"
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./languages": "./src/languages.ts"
+  },
+  "sideEffects": false
 }

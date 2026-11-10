@@ -66,6 +66,12 @@ export interface TemplateCollection { href: string; label: string; blurb: string
  */
 export function TemplatesMenu({ items }: { items: TemplateCollection[] }) {
   const [active, setActive] = useState<string>(MORPH_HREF)
+  // the six stills are small (about 35 KB each) but only needed once the menu opens: fetch them in the browser's idle time after the page is ready, so the first hover already finds them in the cache
+  useEffect(() => {
+    const load = () => MORPH_SHOWCASE.forEach((t) => { const img = new Image(); img.decoding = 'async'; img.src = `/morph-posters/${t.id}.webp` })
+    if ('requestIdleCallback' in window) { const h = window.requestIdleCallback(load, { timeout: 1500 }); return () => window.cancelIdleCallback(h) }
+    const h = setTimeout(load, 1000); return () => clearTimeout(h)
+  }, [])
   const row = (key: string) => ({ onMouseEnter: () => setActive(key), onFocus: () => setActive(key) })
   const on = (key: string) => (active === key ? 'bg-[#f1f5f9] text-primary' : 'text-foreground')
   const item = items.find((i) => i.href === active)
@@ -96,7 +102,7 @@ export function TemplatesMenu({ items }: { items: TemplateCollection[] }) {
                     <li key={t.id} className="list-none">
                       <Link href={MORPH_HREF} onClick={close} className="block overflow-hidden rounded-lg border-2 border-foreground bg-white" aria-label={`${t.name} Morph template`}>
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={`/morph-posters/${t.id}.webp`} alt={`${t.name} Morph template`} width={480} height={270} loading="lazy" className="aspect-video w-full object-cover" />
+                        <img src={`/morph-posters/${t.id}.webp`} alt={`${t.name} Morph template`} width={480} height={270} decoding="async" className="aspect-video w-full object-cover" />
                       </Link>
                       <span className="mt-1 block text-center text-xs font-semibold text-[#475569]">{t.name}</span>
                     </li>

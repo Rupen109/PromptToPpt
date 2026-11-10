@@ -1,4 +1,3 @@
-import { DESIGNS } from '@prompttoppt/theme'
 import type { Faq } from './seo'
 
 /**
@@ -32,7 +31,7 @@ export const GENERAL_FAQS: readonly Faq[] = [
   },
   {
     q: 'How many templates are there?',
-    a: `${DESIGNS.length} designer-made templates for pitch decks, sales, marketing, strategy, education, reports and more, in light and dark. A selection is free and the rest are on paid plans. The AI picks a template that fits your topic, and you can change its colours and fonts in the editor.`,
+    a: `Designer-made templates for pitch decks, sales, marketing, strategy, education, reports and more, in light and dark. A selection is free and the rest are on paid plans. The AI picks a template that fits your topic, and you can change its colours and fonts in the editor.`,
   },
   {
     q: 'Is my sensitive financial model or confidential pitch IP safe?',

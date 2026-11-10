@@ -1,7 +1,6 @@
 import { ArrowRight, FileText, LayoutTemplate, MessageSquare, PencilRuler, Presentation, Sparkles } from '@prompttoppt/ui/icons'
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { DESIGNS } from '@prompttoppt/theme'
 import { Footer } from '@/components/layout/Footer'
 import { Header } from '@/components/layout/Header'
 import { JsonLd } from '@/components/seo/JsonLd'
@@ -24,7 +23,7 @@ const STEPS = [
 
 const FEATURES = [
   { icon: FileText, title: 'Start from your own material', text: 'Turn a report, spreadsheet, email thread or video into slides. The AI uses your facts and numbers, so the deck says what your source says.' },
-  { icon: LayoutTemplate, title: `${DESIGNS.length} designer templates`, text: 'Light and dark looks for pitch decks, sales, marketing, strategy, education and reports. Pick one yourself or let the AI choose.' },
+  { icon: LayoutTemplate, title: 'Designer templates', text: 'Light and dark looks for pitch decks, sales, marketing, strategy, education and reports. Pick one yourself or let the AI choose.' },
   { icon: MessageSquare, title: 'Edit by chatting', text: 'Ask for a shorter slide, a different tone or a new background. The AI changes the slide and you can undo it.' },
   { icon: PencilRuler, title: 'Or build it yourself', text: 'Create from scratch with text, shapes, tables, charts, pictures and backgrounds. No AI credits are used.' },
 ] as const
