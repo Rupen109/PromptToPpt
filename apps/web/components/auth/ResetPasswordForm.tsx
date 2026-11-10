@@ -17,7 +17,7 @@ export function ResetPasswordForm({ token, invalid }: { token?: string | undefin
     return (
       <div className={card} role="alert">
         <h1 className="font-heading font-extrabold text-3xl mb-2">This link no longer works</h1>
-        <p className="text-slate-600">Password links work for 1 hour and only once. Ask for a new one and we will email it right away.</p>
+        <p className="text-slate-600">Password links work for 30 minutes and only once. Ask for a new one and we will email it right away.</p>
         <Link href="/forgot-password" className="inline-block mt-6 bg-primary text-white px-5 py-3 rounded-md font-bold shadow-solid">Get a new link</Link>
       </div>
     )

@@ -15,7 +15,7 @@ const Chevron = ({ open }: { open: boolean }) => (
 export default function FaqSection({ faqs = GENERAL_FAQS, heading = 'h2' }: { faqs?: readonly Faq[]; heading?: 'h1' | 'h2' } = {}) {
   const [open, setOpen] = useState<number | null>(null)
   return (
-    <Section id="faq" bg="bg-[#f3f4f9]" className="!pb-0 !border-b-0">
+    <Section id="faq" bg="bg-[#f3f4f9]" className="!border-b-0">
       <div className="max-w-[816px] mx-auto">
         <JsonLd data={faqLd(faqs)} />
         <SectionHeader as={heading} title="Frequently Asked Questions" />

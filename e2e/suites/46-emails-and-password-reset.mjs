@@ -46,13 +46,13 @@ export default async function () {
   })
 
   let resetMail
-  await s.check('a real account: the page says "check your email" and a branded reset email arrives with a one-hour link', p, async () => {
+  await s.check('a real account: the page says "check your email" and a branded reset email arrives with a 30-minute link', p, async () => {
     await p.goto(WEB + '/forgot-password', { waitUntil: 'networkidle' })
     await p.locator('input[name=email]').fill(email); await p.getByRole('button', { name: 'Send me the link' }).click()
     await p.getByRole('heading', { name: 'Check your email' }).waitFor({ timeout: 10000 })
     resetMail = await wait(() => mails(email).find((m) => /Reset your SlidesDone password/.test(m.subject)), 12000, 'the reset email')
     expect(/Hi Priya,/.test(resetMail.text), 'greeting missing')
-    expect(/works for 1 hour/.test(resetMail.text), 'no expiry given')
+    expect(/works for 30 minutes/.test(resetMail.text), 'no expiry given')
     expect(!!linkIn(resetMail, /http\S+\/api\/auth\/reset-password\/\S+/), `no reset link: ${resetMail.text.slice(0, 200)}`)
   })
 
@@ -110,10 +110,28 @@ export default async function () {
     const sent = await p.evaluate(async ({ email }) => (await fetch('http://localhost:4000/api/auth/send-verification-email', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, callbackURL: 'http://localhost:3001/' }) })).status, { email: mine })
     expect(sent === 200, `send-verification-email answered ${sent}`)
     const m = await wait(() => mails(mine).find((x) => /Confirm your email/.test(x.subject)), 12000, 'the confirmation email')
-    expect(/Hi Mei,/.test(m.text) && /works for 1 hour/.test(m.text), 'greeting / expiry missing')
-    await p.goto(linkIn(m, /http\S+\/api\/auth\/verify-email\?\S+/), { waitUntil: 'networkidle' })
+    expect(/Hi Mei,/.test(m.text) && /works for 30 minutes/.test(m.text), 'greeting / expiry missing')
+    await p.goto(linkIn(m, /http\S+\/api\/auth\/verify-email\?\S+/), { waitUntil: 'domcontentloaded' }) // lands in the editor, which never goes idle
     const welcome = await wait(() => mails(mine).find((x) => /Welcome to SlidesDone/.test(x.subject)), 12000, 'the welcome email')
     expect(/1\. Describe your topic/.test(welcome.text), 'the welcome email has no steps')
+  })
+
+  await s.check('an expired or damaged confirmation link lands on a page that says so and sends a new one from there; the new link confirms the account and shows "Email confirmed"', p, async () => {
+    const mine = uniqueEmail('exp')
+    await p.goto(WEB + '/login', { waitUntil: 'networkidle' })
+    await p.evaluate(async ({ email, password }) => fetch('http://localhost:4000/api/auth/sign-up/email', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ email, password, name: 'Exp Test' }) }), { email: mine, password: PASSWORD })
+    await ctx.clearCookies()
+    await p.goto(WEB + '/verify-email?error=TOKEN_EXPIRED', { waitUntil: 'networkidle' })
+    expect(await p.getByRole('heading', { name: 'This link has expired' }).isVisible(), 'no expired heading')
+    await p.getByLabel('Email').fill(mine)
+    await p.getByRole('button', { name: 'Send a new link' }).click()
+    await p.getByRole('heading', { name: 'Check your email' }).waitFor()
+    const m = await wait(() => mails(mine).find((x) => /Confirm your email/.test(x.subject)), 12000, 'the new confirmation email')
+    expect(/verify-email/.test(decodeURIComponent(linkIn(m, /http\S+\/api\/auth\/verify-email\?\S+/))), 'the link does not come back to the website page')
+    await p.goto(linkIn(m, /http\S+\/api\/auth\/verify-email\?\S+/), { waitUntil: 'domcontentloaded' })
+    await p.getByRole('heading', { name: 'Email confirmed' }).waitFor()
+    await p.goto(WEB + '/verify-email?error=INVALID_TOKEN', { waitUntil: 'networkidle' })
+    expect(await p.getByRole('heading', { name: 'This link no longer works' }).isVisible(), 'no damaged-link heading')
   })
 
   await s.check('no email text carries a raw tag, an emoji, or an address that is not ours', p, async () => {

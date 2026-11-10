@@ -16,6 +16,9 @@ import { canonicalEmail } from './security/email.ts'
  * Session cookie is httpOnly; in production it is scoped to COOKIE_DOMAIN
  * (e.g. .slidesdone.app) so www/app/api subdomains share one login.
  */
+/** How long the confirmation and password-reset links in our e-mails work (the e-mails say "30 minutes": change both together). */
+export const LINK_VALID_SECONDS = 30 * 60
+
 export const auth = betterAuth({
   baseURL: env.API_URL,
   secret: env.AUTH_SECRET,
@@ -28,6 +31,7 @@ export const auth = betterAuth({
     // Unverified addresses cannot sign in, so they cannot spend anything: this is what stops free-credit farming with made-up mailboxes.
     requireEmailVerification: env.REQUIRE_EMAIL_VERIFICATION,
     autoSignIn: !env.REQUIRE_EMAIL_VERIFICATION,
+    resetPasswordTokenExpiresIn: LINK_VALID_SECONDS, // the reset e-mail says "30 minutes"
     revokeSessionsOnPasswordReset: true, // a reset signs the attacker out too
     sendResetPassword: async ({ user, url }) => {
       await sendMail({ to: user.email, ...mail.resetPassword({ name: user.name, url }) })
@@ -38,11 +42,16 @@ export const auth = betterAuth({
     },
   },
   emailVerification: {
+    expiresIn: LINK_VALID_SECONDS, // the confirmation e-mail says "30 minutes"
     sendOnSignUp: env.REQUIRE_EMAIL_VERIFICATION,
     sendOnSignIn: env.REQUIRE_EMAIL_VERIFICATION,
     autoSignInAfterVerification: true,
     sendVerificationEmail: async ({ user, url }) => {
-      await sendMail({ to: user.email, ...mail.verifyEmail({ name: user.name, url }) })
+      // Whatever asked for this mail (sign-up, a log-in attempt, "send a new link"), the link always comes back to our page: success signs the person in and moves on,
+      // an old or damaged link shows a plain message with a way to get a new one. Without a callback the API would answer with raw JSON.
+      const link = new URL(url)
+      if (!/^https?:\/\//.test(link.searchParams.get('callbackURL') ?? '')) link.searchParams.set('callbackURL', `${env.WEB_URL}/verify-email`)
+      await sendMail({ to: user.email, ...mail.verifyEmail({ name: user.name, url: link.toString() }) })
     },
     // the account is real now: say hello (best effort, never blocks the sign-in)
     afterEmailVerification: async (user) => {

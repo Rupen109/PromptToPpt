@@ -106,10 +106,10 @@ export function verifyEmail(o: { name: string; url: string }): Rendered {
   const hi = first(o.name)
   return {
     subject: 'Confirm your email for SlidesDone',
-    text: `Hi ${hi},\n\nWelcome to SlidesDone. Confirm your email address to start creating presentations:\n${o.url}\n\nThis link works for 1 hour. If you did not sign up, you can ignore this email.${sign}`,
+    text: `Hi ${hi},\n\nWelcome to SlidesDone. Confirm your email address to start creating presentations:\n${o.url}\n\nThis link works for 30 minutes. If you did not sign up, you can ignore this email.${sign}`,
     html: shell({
       preheader: 'One click and you can start building presentations.',
-      body: h1(`Welcome, ${hi}`) + p('Thanks for signing up. Confirm your email address to start creating presentations.') + button('Confirm my email', o.url) + linkFallback(o.url) + note('This link works for 1 hour. If you did not sign up for SlidesDone, you can safely ignore this email.'),
+      body: h1(`Welcome, ${hi}`) + p('Thanks for signing up. Confirm your email address to start creating presentations.') + button('Confirm my email', o.url) + linkFallback(o.url) + note('This link works for 30 minutes. If you did not sign up for SlidesDone, you can safely ignore this email.'),
     }),
   }
 }
@@ -118,10 +118,10 @@ export function resetPassword(o: { name: string; url: string }): Rendered {
   const hi = first(o.name)
   return {
     subject: 'Reset your SlidesDone password',
-    text: `Hi ${hi},\n\nSomeone asked to reset the password for your SlidesDone account. Choose a new one here:\n${o.url}\n\nThis link works for 1 hour and can be used once. If you did not ask for this, ignore this email: your password stays the same.${sign}`,
+    text: `Hi ${hi},\n\nSomeone asked to reset the password for your SlidesDone account. Choose a new one here:\n${o.url}\n\nThis link works for 30 minutes and can be used once. If you did not ask for this, ignore this email: your password stays the same.${sign}`,
     html: shell({
-      preheader: 'Choose a new password. The link works for 1 hour.',
-      body: h1('Reset your password') + p(`Hi ${esc(hi)}, someone asked to reset the password for your SlidesDone account. If that was you, choose a new one below.`) + button('Choose a new password', o.url) + linkFallback(o.url) + note('This link works for 1 hour and can be used once. If you did not ask for this, ignore this email: your password stays the same and nobody can use this link without access to your inbox.'),
+      preheader: 'Choose a new password. The link works for 30 minutes.',
+      body: h1('Reset your password') + p(`Hi ${esc(hi)}, someone asked to reset the password for your SlidesDone account. If that was you, choose a new one below.`) + button('Choose a new password', o.url) + linkFallback(o.url) + note('This link works for 30 minutes and can be used once. If you did not ask for this, ignore this email: your password stays the same and nobody can use this link without access to your inbox.'),
     }),
   }
 }

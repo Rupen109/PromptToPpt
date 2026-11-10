@@ -17,7 +17,6 @@ export function Footer() {
           <div className="flex flex-col gap-4 items-start col-span-2 lg:col-span-1">
             <Link href="/" aria-label="SlidesDone home"><Logo size={32} /></Link>
             <p className="text-xs leading-5 text-[#475569] max-w-[270px]">Vibrant AI presentation maker for venture decks, executive board reviews and fast product storytelling.</p>
-            <span className="inline-flex items-center gap-2 bg-highlight border border-foreground rounded-full px-3 py-[3px] font-heading font-bold text-[11px] leading-4 text-foreground"><i className="w-2 h-2 rounded-full bg-foreground" />Early access</span>
           </div>
           {COLS.map((c) => (
             <nav key={c.title} aria-label={c.title}>

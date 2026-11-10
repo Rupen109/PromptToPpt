@@ -34,7 +34,7 @@ export function ForgotPasswordForm({ defaultEmail }: { defaultEmail?: string }) 
     return (
       <div className={card} role="status">
         <h1 className="font-heading font-extrabold text-3xl mb-2">Check your email</h1>
-        <p className="text-slate-600">If there is an account for <strong>{sentTo}</strong>, we have sent a link to choose a new password. It works for 1 hour.</p>
+        <p className="text-slate-600">If there is an account for <strong>{sentTo}</strong>, we have sent a link to choose a new password. It works for 30 minutes.</p>
         <p className="text-slate-600 mt-3 text-sm">Nothing yet? Look in your spam folder, or <button type="button" onClick={() => setSentTo(null)} className="font-bold text-primary hover:underline">try again</button>.</p>
         <Link href="/login" className="inline-block mt-6 font-bold text-primary hover:underline">Back to log in</Link>
       </div>
