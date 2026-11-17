@@ -1,14 +1,16 @@
 import { ArrowLeft, ArrowRight, Lock, Maximize } from '@prompttoppt/ui/icons'
-import { useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { CANVAS } from '@prompttoppt/validation'
 import { ApiError, type PublicDeck } from '@prompttoppt/api-client'
-import { SlideCanvas, transitionStyle } from '@prompttoppt/ui'
+import { SlideCanvas, transitionStyle, useSlidePlayer } from '@prompttoppt/ui'
 import { useParams } from 'react-router'
 import { api } from '@/lib/api'
 import { WEB_URL } from '@/lib/env'
 import { useShareTracking } from '@/lib/shareTracking'
 
 /** Public, view-only deck (a share link). No login, no editing, no speaker notes. Keyboard, swipe-free big buttons, responsive. */
+const NO_SLIDE = { elements: [] } // a stable value while the deck is loading (a new one every render would restart the player)
+
 export function SharedViewPage() {
   const { token = '' } = useParams()
   const [deck, setDeck] = useState<PublicDeck | null>(null)
@@ -17,6 +19,7 @@ export function SharedViewPage() {
   const [pwError, setPwError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [i, setI] = useState(0)
+  const [arrival, setArrival] = useState<'forward' | 'back'>('forward')
   const [size, setSize] = useState({ w: window.innerWidth, h: window.innerHeight })
 
   // the proof that the password was entered lives only for this browser tab
@@ -46,17 +49,32 @@ export function SharedViewPage() {
     return () => window.removeEventListener('resize', on)
   }, [])
   const n = deck?.document.slides.length ?? 0
+  const current = deck?.document.slides[i]
+  const { rootRef, playerRef } = useSlidePlayer(current ?? NO_SLIDE, arrival)
+  // the slide's own effects go first (like Present mode); only when it has nothing more does the slide change
+  const go = useCallback((dir: 1 | -1, skipEffects = false) => {
+    const p = playerRef.current
+    if (!skipEffects && (dir === 1 ? p && p.advance() !== 'none' : p?.back())) return
+    setArrival(dir === 1 ? 'forward' : 'back')
+    setI((x) => Math.max(0, Math.min(n - 1, x + dir)))
+  }, [n, playerRef])
+  const after = current?.transition?.advanceAfter
+  useEffect(() => {
+    if (after === undefined || i >= n - 1) return
+    const t = setTimeout(() => go(1, true), after)
+    return () => clearTimeout(t)
+  }, [after, i, n, go])
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
-      if (['ArrowRight', 'ArrowDown', 'PageDown', ' ', 'Enter'].includes(e.key)) { e.preventDefault(); setI((x) => Math.min(n - 1, x + 1)) }
-      else if (['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace'].includes(e.key)) { e.preventDefault(); setI((x) => Math.max(0, x - 1)) }
-      else if (e.key === 'Home') setI(0)
-      else if (e.key === 'End') setI(n - 1)
+      if (['ArrowRight', 'ArrowDown', 'PageDown', ' ', 'Enter'].includes(e.key)) { e.preventDefault(); go(1) }
+      else if (['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace'].includes(e.key)) { e.preventDefault(); go(-1) }
+      else if (e.key === 'Home') { setArrival('forward'); setI(0) }
+      else if (e.key === 'End') { setArrival('back'); setI(n - 1) }
       else if (e.key.toLowerCase() === 'f') void (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.())
     }
     window.addEventListener('keydown', key)
     return () => window.removeEventListener('keydown', key)
-  }, [n])
+  }, [n, go])
   useEffect(() => { if (deck) document.title = `${deck.title} — SlidesDone` }, [deck])
   // analytics for the owner (see lib/shareTracking.ts): nothing personal, off with Do Not Track, never visible and never in the way
   const access = (() => { try { return sessionStorage.getItem(proofKey) ?? undefined } catch { return undefined } })()
@@ -98,14 +116,14 @@ export function SharedViewPage() {
         <a href={WEB_URL} className="text-xs text-white/70 hover:text-white whitespace-nowrap">Made with SlidesDone</a>
       </header>
       <main className="flex-1 min-h-0 grid place-items-center p-2" aria-label="Slide">
-        <div key={slide.id} style={Object.keys(transitionStyle(slide, doc.theme.motion?.transition)).length ? transitionStyle(slide, doc.theme.motion?.transition) : { animation: 'deckFade 300ms ease' }}>
-          <SlideCanvas slide={slide} theme={doc.theme} aspect={doc.aspectRatio} width={width} play watermark={deck.watermark} />
+        <div key={slide.id} ref={rootRef} onClick={(e) => { const trig = (e.target as HTMLElement).closest?.('[data-pt-el]')?.getAttribute('data-pt-el'); if (trig) playerRef.current?.trigger(trig) }} style={Object.keys(transitionStyle(slide, doc.theme.motion?.transition)).length ? transitionStyle(slide, doc.theme.motion?.transition) : { animation: 'deckFade 300ms ease' }}>
+          <SlideCanvas slide={slide} theme={doc.theme} aspect={doc.aspectRatio} width={width} play effects watermark={deck.watermark} />
         </div>
       </main>
       <footer className="h-[84px] shrink-0 flex items-center justify-center gap-4">
-        <button type="button" className={btn} aria-label="Previous slide" disabled={i === 0} onClick={() => setI((x) => Math.max(0, x - 1))}><ArrowLeft aria-hidden size={18} /></button>
+        <button type="button" className={btn} aria-label="Previous slide" disabled={i === 0} onClick={() => go(-1)}><ArrowLeft aria-hidden size={18} /></button>
         <span className="text-sm tabular-nums text-white/70 min-w-16 text-center" aria-live="polite">{i + 1} / {n}</span>
-        <button type="button" className={btn} aria-label="Next slide" disabled={i === n - 1} onClick={() => setI((x) => Math.min(n - 1, x + 1))}><ArrowRight aria-hidden size={18} /></button>
+        <button type="button" className={btn} aria-label="Next slide" disabled={i === n - 1 && !current?.effects?.length} onClick={() => go(1)}><ArrowRight aria-hidden size={18} /></button>
         <details className="absolute right-3 bottom-2 text-[11px] text-white/60 max-w-[60vw] max-sm:max-w-[80vw]">
           <summary className="cursor-pointer hover:text-white/90 list-none text-right">Privacy</summary>
           <p className="mt-1 rounded-lg bg-black/80 border border-white/10 p-2.5 text-white/80 leading-snug" data-testid="view-notice">The owner of this link can see that it was opened, how long each slide was on screen and roughly where from (device type, website, country). No name, e-mail address, IP address or cookie is recorded. Browsers with “Do Not Track” turned on are not measured.</p>

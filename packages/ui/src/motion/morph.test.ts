@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { SlideElement } from '@prompttoppt/validation'
-import { carry, planMorph } from './morph'
+import { MAX_LETTER_PIECES, MAX_WORD_PIECES, carry, matchPieces, piecesOf, planMorph } from './morph'
 
 const box = { x: 100, y: 100, width: 400, height: 200, rotation: 0, locked: false, zIndex: 1, opacity: 1 }
 const shape = (id: string, extra: object = {}) => ({ ...box, id, type: 'shape', shape: 'rect', fill: 'primary', radius: 0, ...extra }) as unknown as SlideElement
@@ -64,5 +64,48 @@ describe('carry: where an element drawn at one place is carried to the other', (
   })
   it('nothing divides by zero for an empty box', () => {
     expect(carry(shape('a', { width: 0 }), shape('a', { width: 100 })).transform).toContain('scale(1, 1)')
+  })
+})
+
+describe('Morph by word and by character', () => {
+  it('the pieces of a text are its words, or the letters of its words (spaces never count), across runs and paragraphs', () => {
+    const t = { ...text('a', 'Hello big'), paragraphs: [{ runs: [{ text: 'Hello big' }, { text: ' world' }] }, { runs: [{ text: 'Go' }] }] } as unknown as SlideElement
+    expect(piecesOf(t, 'word')).toEqual(['Hello', 'big', 'world', 'Go'])
+    expect(piecesOf(t, 'letter').join('')).toBe('HellobigworldGo')
+    expect(piecesOf(shape('s'), 'word')).toEqual([])
+  })
+  it('matches equal pieces in reading order (case-insensitive); the rest are left over', () => {
+    expect(matchPieces(['The', 'big', 'dog', 'ran'], ['A', 'dog', 'ran', 'far'])).toEqual([[2, 1], [3, 2]])
+    expect(matchPieces(['a', 'b', 'c'], ['C', 'B', 'A']).length).toBe(1) // order is kept: only one of them can match
+    expect(matchPieces([], ['x'])).toEqual([])
+  })
+  it('by word: the pairs carry the matches; by object (and the default) they do not', () => {
+    const a = text('t', 'Our big plan works'), b = text('t', 'Big plan for you', { x: 900 })
+    const word = planMorph(slide(a), slide(b), new Set(), 'word')
+    expect(word.pairs[0]!.pieces).toMatchObject({ level: 'word', from: 4, to: 4, matches: [[1, 0], [2, 1]] })
+    expect(word.pairs[0]!.crossfade).toBe(false)
+    expect(planMorph(slide(a), slide(b)).pairs[0]!.pieces).toBeUndefined()
+    expect(planMorph(slide(a), slide(b), new Set(), 'object').pairs[0]!.pieces).toBeUndefined()
+  })
+  it('by character: letters match in order', () => {
+    const plan = planMorph(slide(text('t', 'cat')), slide(text('t', 'act')), new Set(), 'character')
+    expect(plan.pairs[0]!.pieces).toMatchObject({ level: 'letter', from: 3, to: 3 })
+    expect(plan.pairs[0]!.pieces!.matches.length).toBeGreaterThanOrEqual(2)
+  })
+  it('falls back to one object when the texts share too little, are too long, are not both text, or turn at different angles', () => {
+    expect(planMorph(slide(text('t', 'alpha beta')), slide(text('t', 'gamma delta')), new Set(), 'word').pairs[0]!.pieces).toBeUndefined()
+    expect(planMorph(slide(text('t', 'alpha beta')), slide(text('t', 'gamma delta')), new Set(), 'word').pairs[0]!.crossfade).toBe(true)
+    const long = Array.from({ length: MAX_WORD_PIECES + 1 }, (_, i) => `w${i}`).join(' ')
+    expect(planMorph(slide(text('t', long)), slide(text('t', long, { x: 800 })), new Set(), 'word').pairs[0]!.pieces).toBeUndefined()
+    const letters = 'x'.repeat(MAX_LETTER_PIECES + 1)
+    expect(planMorph(slide(text('t', letters)), slide(text('t', letters)), new Set(), 'character').pairs[0]!.pieces).toBeUndefined()
+    expect(planMorph(slide(text('t', 'same words')), slide(text('t', 'same words', { rotation: 10 })), new Set(), 'word').pairs[0]!.pieces).toBeUndefined()
+    expect(planMorph(slide(shape('s')), slide(shape('s', { x: 5 })), new Set(), 'word').pairs[0]!.pieces).toBeUndefined()
+  })
+  it('an object switched off (hidden) is on neither slide for Morph', () => {
+    const plan = planMorph(slide(shape('a', { hidden: true }), shape('b')), slide(shape('a'), shape('b', { hidden: true })))
+    expect(plan.pairs).toHaveLength(0)
+    expect(plan.entering.map((e) => e.id)).toEqual(['a'])
+    expect(plan.exiting.map((e) => e.id)).toEqual(['b'])
   })
 })

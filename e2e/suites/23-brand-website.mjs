@@ -30,15 +30,15 @@ export default async function () {
   const open = async (A) => {
     await A.p.goto(`${EDITOR}/edit/${A.id}`, { waitUntil: 'networkidle' })
     await A.p.locator('[data-testid="stage"]').waitFor({ timeout: 15000 })
-    await A.p.getByRole('toolbar').getByRole('button').nth(1).click()
+    await A.p.getByRole('toolbar').getByRole('button', { name: /Style/ }).click()
     await A.p.getByRole('tab', { name: 'Brand' }).click()
   }
-  const section = (p) => p.locator('details[aria-label="Get brand from a website"]')
+  const section = (p) => p.locator('details[aria-label="Get brand from a source"]')
   const input = (p) => p.getByLabel('Your company website')
   const findBtn = (p) => p.getByRole('button', { name: /^(Find brand|Looking…)$/ })
   /** type an address, press the button, wait for either a result or a message */
   async function lookup(p, text, { enter = false } = {}) {
-    if (!(await section(p).getAttribute('open').then((v) => v !== null))) await p.getByText('Get brand from a website').click()
+    if (!(await section(p).getAttribute('open').then((v) => v !== null))) await p.getByText('Get brand from a website, PowerPoint or PDF').click()
     await input(p).fill(text)
     const t0 = Date.now()
     if (enter) await input(p).press('Enter'); else await findBtn(p).click()
@@ -72,7 +72,7 @@ export default async function () {
     // ───────── A3 + A6 (no server call) ─────────
     await s.check('A3 empty / spaces / not an address: the button is off or a clear message shows, and nothing is sent to the server', A.p, async () => {
       await open(A)
-      await A.p.getByText('Get brand from a website').click()
+      await A.p.getByText('Get brand from a website, PowerPoint or PDF').click()
       expect(await findBtn(A.p).isDisabled(), 'the button is enabled for an empty field')
       await input(A.p).fill('    '); expect(await findBtn(A.p).isDisabled(), 'the button is enabled for spaces')
       for (const bad of ['hello world', 'localhost', 'just-a-word', '127.0.0.1', 'a.b']) {
@@ -88,8 +88,8 @@ export default async function () {
     // ───────── B1/B2/B3/B4/B8/B9 + A5 on dropbox ─────────
     let logo1 = ''
     await s.check('A5 + B1 double click on Find brand sends ONE lookup; a real site (dropbox.com) shows name, colours, fonts and a logo stored on our side', A.p, async () => {
-      await A.p.reload({ waitUntil: 'networkidle' }); await A.p.getByRole('toolbar').getByRole('button').nth(1).click(); await A.p.getByRole('tab', { name: 'Brand' }).click()
-      await A.p.getByText('Get brand from a website').click(); await input(A.p).fill('dropbox.com')
+      await A.p.reload({ waitUntil: 'networkidle' }); await A.p.getByRole('toolbar').getByRole('button', { name: /Style/ }).click(); await A.p.getByRole('tab', { name: 'Brand' }).click()
+      await A.p.getByText('Get brand from a website, PowerPoint or PDF').click(); await input(A.p).fill('dropbox.com')
       const t0 = Date.now(); await findBtn(A.p).dblclick()
       await found(A.p).waitFor({ timeout: 40000 })
       expect(A.posts.length === 1, `double click sent ${A.posts.length} lookups`)
@@ -213,7 +213,7 @@ export default async function () {
       await A.p.goto(`${EDITOR}/edit/${A.id}`, { waitUntil: 'networkidle' })
       await A.p.getByRole('button', { name: /Style/ }).click().catch(() => A.p.getByRole('toolbar').getByRole('button').nth(1).click())
       await A.p.getByRole('tab', { name: 'Brand' }).click()
-      await A.p.getByText('Get brand from a website').click()
+      await A.p.getByText('Get brand from a website, PowerPoint or PDF').click()
       expect(await A.p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'the page scrolls sideways')
       // layout only (the 10-per-hour quota of this account is used up): a typical result, mocked
       const profile = { sourceUrl: 'https://acme.example/', name: 'A very long company name that must wrap instead of pushing the page sideways', colors: { primary: '#E4572E', accent: '#17BEBB', accentDerived: true, palette: ['#E4572E'] }, fonts: { heading: { family: 'Playfair Display', original: 'Some Very Long Commercial Font Name Pro', exact: false }, body: { family: 'Inter', original: 'Inter', exact: true }, detected: [] }, logo: null, confidence: 'low' }

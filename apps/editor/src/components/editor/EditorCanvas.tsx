@@ -10,6 +10,8 @@ import { FormatBar } from './FormatBar'
 import { useComments } from '@/editor/comments'
 import { CommentPins } from './CommentPins'
 import { PeerLayer } from './PeerLayer'
+import { CanvasAnimationOverlay, PathBar } from './animation/CanvasAnimationOverlay'
+import { StageOverlays } from './animation/StageOverlays'
 import { applyListShortcut, backspaceAtListStart, normalizeRoot, pastePlain, readParagraphs, splitParagraph, toggleList, type EditedParagraph } from '@/editor/inline-lists'
 
 const HANDLES: C.Handle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']
@@ -143,7 +145,7 @@ export function EditorCanvas({ slide, theme, aspect, watermark, requireAdvanced 
 
   const locked = slide.locked || !!slide.writing // a slide still being written cannot be edited until its text lands
   const shown = useMemo<SlideElement[]>(
-    () => slide.elements.map((e) => (drag?.ids.includes(e.id) ? { ...e, x: e.x + drag.dx, y: e.y + drag.dy } : resize?.id === e.id ? { ...e, ...resize.box } : e)),
+    () => slide.elements.filter((e) => !e.hidden).map((e) => (drag?.ids.includes(e.id) ? { ...e, x: e.x + drag.dx, y: e.y + drag.dy } : resize?.id === e.id ? { ...e, ...resize.box } : e)),
     [slide.elements, drag, resize],
   )
   const bg = backgroundCss(slide, theme)
@@ -240,12 +242,20 @@ export function EditorCanvas({ slide, theme, aspect, watermark, requireAdvanced 
                     onPointerDown={(e) => begin(e, el, 'move')}
                     onPointerMove={move}
                     onPointerUp={end}
-                    onDoubleClick={(e) => { e.stopPropagation(); if (el.type === 'text' && !el.locked && !locked) edit(el.id); else if (el.type === 'table' && !el.locked && !locked) useUi.getState().editTable(el.id) }}
+                    onDoubleClick={(e) => { e.stopPropagation(); if (el.type === 'text' && !el.locked && !locked) edit(el.id); else if (el.type === 'table' && !el.locked && !locked) useUi.getState().editTable(el.id); else if (el.type === 'chart' && !el.locked && !locked) useUi.getState().editChart(el.id) }}
                     style={{ position: 'absolute', left: el.x, top: el.y, width: el.width, height: el.height, zIndex: 5000 + el.zIndex, ...(clip ? { clipPath: clip } : {}), cursor: el.locked || locked ? 'default' : 'move', touchAction: 'none', pointerEvents: 'auto', outline: isSel ? `${Math.max(2, 2 / scale)}px solid #2563eb` : undefined }}
                     className={isSel ? '' : 'hover:outline hover:outline-2 hover:outline-blue-300/70'}
                   />
                 )
               })}
+              {/* a chart that still holds sample data says so, here only: this layer is not part of the slide, so thumbnails, Present, shared view and every export draw a plain chart */}
+              {shown.map((el) => (el.type === 'chart' && el.placeholder ? (
+                <button key={`sample-${el.id}`} type="button" data-testid="chart-sample-cue" aria-label="Sample data: edit this chart" onPointerDown={(e) => e.stopPropagation()} onClick={() => { if (!el.locked && !locked) useUi.getState().editChart(el.id) }}
+                  style={{ position: 'absolute', left: el.x + 12, top: el.y + 12, zIndex: 5001 + el.zIndex, pointerEvents: 'auto', cursor: 'pointer', padding: '8px 18px', borderRadius: 999, background: '#fef3c7', color: '#92400e', border: '2px solid #f59e0b', font: '600 26px/1.2 system-ui, sans-serif', whiteSpace: 'nowrap' }}>
+                  Sample data — edit this chart
+                </button>
+              ) : null))}
+              <CanvasAnimationOverlay slide={slide} scale={scale} W={W} H={H} />
               <PeerLayer slideId={slide.id} elements={slide.elements} scale={scale} />
               <CommentPins slideId={slide.id} W={W} H={H} scale={scale} />
               {drag?.guides.map((g) => (
@@ -266,6 +276,8 @@ export function EditorCanvas({ slide, theme, aspect, watermark, requireAdvanced 
                 ))}
             </div>
           </div>
+          <StageOverlays slide={slide} width={width} />
+          <PathBar slide={slide} />
           {placing && (
             <div data-testid="pin-overlay" aria-label="Click to place the comment" role="button" tabIndex={0}
               style={{ position: 'absolute', left: 0, top: 0, width, height: H * scale, zIndex: 50, cursor: 'crosshair', outline: '3px dashed #2563eb', outlineOffset: -3, background: 'rgba(37,99,235,.06)' }}

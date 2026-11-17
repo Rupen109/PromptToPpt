@@ -107,12 +107,18 @@ export async function updateKit(userId: string, id: string, patch: KitInput & { 
   if (patch.extra !== undefined) set.extraColors = patch.extra.map(hex).filter((x): x is string => !!x).slice(0, 8)
   if (patch.headingFont !== undefined) set.headingFont = font(patch.headingFont)
   if (patch.bodyFont !== undefined) set.bodyFont = font(patch.bodyFont)
+  if (patch.sourceUrl !== undefined) set.sourceUrl = patch.sourceUrl?.slice(0, 2000) || null
+  // a logo that a lookup stored for this person (a website, a PowerPoint or a PDF): it replaces the kit's logo (the old file goes unless a deck still shows it)
+  const newLogo = patch.logoUrl && !patch.removeLogo ? await logoFromUrl(userId, patch.logoUrl) : null
+  const oldLogoId = kit.logo ? assetIdFromUrl(kit.logo.url) : null
+  if (newLogo) { set.logoAssetId = newLogo.assetId; set.logoAspect = String(newLogo.aspect) }
   if (patch.removeLogo) { if (kit.logo) await deleteAsset(userId, assetIdFromUrl(kit.logo.url)!, id); set.logoAssetId = null; set.logoAspect = null }
   await db.transaction(async (tx) => {
     if (patch.isDefault === true) await tx.update(brandKit).set({ isDefault: false }).where(and(eq(brandKit.userId, userId), ne(brandKit.id, id)))
     if (patch.isDefault !== undefined && !(patch.isDefault === false && kit.isDefault)) set.isDefault = patch.isDefault // the default kit cannot simply be un-defaulted: make another one the default instead
     await tx.update(brandKit).set(set).where(and(eq(brandKit.id, id), eq(brandKit.userId, userId)))
   })
+  if (newLogo && oldLogoId && oldLogoId !== newLogo.assetId) await deleteAsset(userId, oldLogoId, id)
   return (await getKit(userId, id))!
 }
 

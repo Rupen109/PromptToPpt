@@ -168,6 +168,7 @@ export function composeTemplateScene(tpl: MorphTemplate, content: Content, opts:
     if (o.kind === 'image') { const el = imageElement(tpl, o, z, base, content.images[o.id]); if (el) elements.push(el) }
     else if (o.kind === 'text') {
       if (!(o.paras ?? []).some(Boolean)) return
+      if (content.fields[o.id] === '') return // a detail the deck has no words for (an address, a handle): the object is left out rather than showing a placeholder
       const own = replaced[norm(objectText(o))]
       elements.push(textElement(tpl, o, tpl.textOnTop ? z + 1000 : z, content.fields[o.id] ?? own))
     } else if (o.fill || o.gradient || o.stroke) {
@@ -187,7 +188,7 @@ export function composeTemplateScene(tpl: MorphTemplate, content: Content, opts:
 }
 
 /** The text objects of a scene whose words are the deck's (not the navigation and branding that every scene repeats), top to bottom. */
-export function textSlots(tpl: MorphTemplate, sceneId: string): { id: string; text: string; fontSize: number; maxChars: number }[] {
+export function textSlots(tpl: MorphTemplate, sceneId: string): { id: string; text: string; fontSize: number; maxChars: number; /** the letters that really fit (heavy and capital type is wider): what a deck written by the AI is held to */ room: number; ticker: boolean }[] {
   const n = Number(sceneId.replace(/^s/, ''))
   const slide = tpl.data.slides.find((s) => s.n === n)
   if (!slide) return []
@@ -202,6 +203,34 @@ export function textSlots(tpl: MorphTemplate, sceneId: string): { id: string; te
     .sort((a, b) => a.y - b.y || a.x - b.x)
     .map((o) => {
       const px = ((o.paras ?? []).find(Boolean)?.runs[0]?.sz ?? 18) * PT
-      return { id: o.id, text: objectText(o), fontSize: px, maxChars: Math.max(12, Math.round((o.w / (px * 0.52)) * Math.max(1, Math.floor(o.h / (px * 1.2))))) }
+      const text = objectText(o)
+      // a ticker is ONE short phrase the template repeats: it has room for about as many letters as the phrase it was drawn with
+      const ticker = repeats(text) > 1
+      // how wide a letter is in this box: heavy and capital letters are wider than the 0.52 em of ordinary text, and a box drawn for one big word has room for only about that many letters
+      const r0 = (o.paras ?? []).find(Boolean)?.runs.find((r) => r.t.trim()) ?? null
+      const heavy = !!r0 && (!!r0.b || (r0.w ?? 0) >= 700), caps = !!r0?.cap
+      const glyph = caps ? (heavy ? 0.72 : 0.64) : heavy ? 0.62 : 0.52
+      const ceil = /\s/.test(text.trim()) ? 12 : 4
+      const phrase = ticker ? text.trim().split(/\s{2,}|\s*[-–—•|]\s*/)[0]!.length : 0
+      return { id: o.id, text, fontSize: px, ticker, maxChars: ticker ? Math.max(6, phrase + 2) : Math.max(12, Math.round((o.w / (px * 0.52)) * Math.max(1, Math.floor(o.h / (px * 1.2))))), room: ticker ? Math.max(6, phrase + 2) : Math.max(ceil, Math.round((o.w / (px * glyph)) * Math.max(1, Math.floor(o.h / (px * 1.2))))) }
     })
+}
+
+/**
+ * The branding and navigation text that every scene repeats (a wordmark, a date line, a section label): the template's own words in its own style, which a deck of someone else's must
+ * replace once for the whole deck. One entry per object id, with the room it has.
+ */
+export function chromeSlots(tpl: MorphTemplate): { id: string; text: string; maxChars: number }[] {
+  const count = new Map<string, number>()
+  const key = (o: TemplateObject) => `${o.id}|${norm(objectText(o))}`
+  for (const s of tpl.data.slides) for (const o of s.objects) if (o.kind === 'text') count.set(key(o), (count.get(key(o)) ?? 0) + 1)
+  const out = new Map<string, { id: string; text: string; maxChars: number }>()
+  for (const s of tpl.data.slides) for (const o of s.objects) {
+    if (o.kind !== 'text' || !(o.paras ?? []).some(Boolean) || out.has(o.id)) continue
+    if ((count.get(key(o)) ?? 0) < Math.max(3, tpl.data.slides.length * 0.35)) continue
+    const px = ((o.paras ?? []).find(Boolean)?.runs[0]?.sz ?? 18) * PT
+    if (px >= 24 || !/[\p{L}\p{N}]/u.test(objectText(o))) continue // a big one is already a text box of the scene (textSlots)
+    out.set(o.id, { id: o.id, text: objectText(o), maxChars: Math.max(8, Math.round(o.w / (px * 0.52))) })
+  }
+  return [...out.values()]
 }

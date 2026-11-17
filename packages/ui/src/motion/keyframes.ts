@@ -1,5 +1,6 @@
 import type { Effect, SlideElement } from '@prompttoppt/validation'
 import { EFFECT_INFO } from './catalog'
+import { pathOf } from './paths'
 
 /**
  * Each effect as Web Animations keyframes, with a start state and an end state that are the same every time it plays. Only `transform`, `opacity`, `clip-path`
@@ -24,9 +25,11 @@ export const easingCss = (e: Effect['easing']) => EASE[e]
 
 const FROM: Record<NonNullable<Effect['direction']>, (d: number) => string> = {
   left: (d) => `translate(${-d}px, 0)`, right: (d) => `translate(${d}px, 0)`, up: (d) => `translate(0, ${-d}px)`, down: (d) => `translate(0, ${d}px)`,
+  'up-left': (d) => `translate(${-d}px, ${-d}px)`, 'up-right': (d) => `translate(${d}px, ${-d}px)`, 'down-left': (d) => `translate(${-d}px, ${d}px)`, 'down-right': (d) => `translate(${d}px, ${d}px)`,
 }
 /** a clip that has collapsed to the edge the direction names (left: to the left edge) */
-const COLLAPSED: Record<NonNullable<Effect['direction']>, string> = { left: 'inset(0 100% 0 0)', right: 'inset(0 0 0 100%)', up: 'inset(0 0 100% 0)', down: 'inset(100% 0 0 0)' }
+const COLLAPSED: Record<NonNullable<Effect['direction']>, string> = { left: 'inset(0 100% 0 0)', right: 'inset(0 0 0 100%)', up: 'inset(0 0 100% 0)', down: 'inset(100% 0 0 0)',
+  'up-left': 'inset(0 100% 100% 0)', 'up-right': 'inset(0 0 100% 100%)', 'down-left': 'inset(100% 100% 0 0)', 'down-right': 'inset(100% 0 0 100%)' }
 const OPEN = 'inset(0 0 0 0)'
 const HIDDEN: Keyframe = { visibility: 'hidden' }
 const SHOWN: Keyframe = { visibility: 'visible' }
@@ -67,6 +70,7 @@ export function buildKeyframes(e: Effect, element: Pick<SlideElement, 'type'> = 
     }
     case 'bounce-in': return done(sample(24, (t) => ({ transform: `translate(0, ${-dist * (1 - bounceOut(t))}px)`, opacity: Math.min(1, t * 8), visibility: 'visible' })), true)
     case 'pop-in': return done([{ transform: 'scale(0)', opacity: 0, visibility: 'visible', offset: 0 }, { transform: `scale(${scale})`, opacity: 1, visibility: 'visible', offset: 0.6 }, { transform: 'scale(1)', opacity: 1, visibility: 'visible', offset: 1 }])
+    case 'grow-turn': return done([{ transform: `rotate(${-rot}deg) scale(${scale})`, opacity: 0, visibility: 'visible' }, { transform: 'rotate(0deg) scale(1)', opacity: 1, visibility: 'visible' }])
     case 'spin-in': return done([{ transform: `rotate(${-rot}deg) scale(0)`, opacity: 0, visibility: 'visible' }, { transform: 'rotate(0deg) scale(1)', opacity: 1, visibility: 'visible' }])
 
     // ─ exit: visible → hidden (the last frame is hidden, so the element is gone for good)
@@ -86,7 +90,13 @@ export function buildKeyframes(e: Effect, element: Pick<SlideElement, 'type'> = 
     case 'shake': return done(sample(12, (t) => ({ transform: `translate(${Math.sin(t * Math.PI * 6) * dist * (t === 1 ? 0 : 1)}px, 0)` })), true)
     case 'bounce': return done(sample(24, (t) => ({ transform: `translate(0, ${-Math.abs(Math.sin(t * Math.PI * 3)) * dist * (1 - t)}px)` })), true)
     case 'teeter': return done([{ transform: 'rotate(0deg)' }, { transform: `rotate(${-rot}deg)`, offset: 0.2 }, { transform: `rotate(${rot}deg)`, offset: 0.4 }, { transform: `rotate(${-rot * 0.6}deg)`, offset: 0.6 }, { transform: `rotate(${rot * 0.6}deg)`, offset: 0.8 }, { transform: 'rotate(0deg)' }])
+    case 'blink': return done([{ opacity: 1 }, { opacity: 0, offset: 0.25 }, { opacity: 1, offset: 0.5 }, { opacity: 0, offset: 0.75 }, { opacity: 1 }])
     case 'transparency': return done([{ opacity: 1 }, { opacity }])
+    // motion paths: the element travels along the points (evenly spaced in time; the effect's easing shapes the whole run) and stays at the end
+    case 'path-line': case 'path-arc': case 'path-turn': case 'path-circle': case 'path-custom': {
+      const pts = pathOf(e)
+      return done(pts.map((p, i) => ({ offset: i / (pts.length - 1), transform: `translate(${p[0]}px, ${p[1]}px)` })))
+    }
     // one frame: the animation starts from the element's own colour (text and icons change their colour, a shape its fill)
     case 'color-change': return { keyframes: [element.type === 'shape' ? { backgroundColor: color } : { color }], fill, inner: true }
   }

@@ -31,8 +31,8 @@ export function assetIdFromUrl(url: string): string | null {
   try { const u = new URL(url); return u.origin === new URL(env.API_URL).origin ? (ASSET_URL.exec(u.pathname)?.[1] ?? null) : null } catch { return null }
 }
 
-/** Saves picture bytes as one of the user's assets. kind: 'logo' (a company logo) or 'brand' (an extra brand picture); neither counts as an AI picture. */
-export async function storeAsset(userId: string, kind: 'logo' | 'brand', bytes: Buffer, mime: 'image/png' | 'image/jpeg', label: string): Promise<string> {
+/** Saves picture bytes as one of the user's assets. kind: 'logo' (a company logo), 'brand' (an extra brand picture) or 'template' (a picture kept from an uploaded file's design: not shown in the Media library); none counts as an AI picture. */
+export async function storeAsset(userId: string, kind: 'logo' | 'brand' | 'template', bytes: Buffer, mime: 'image/png' | 'image/jpeg', label: string): Promise<string> {
   const id = nanoid(32)
   const key = `${nanoid(32)}.${mime === 'image/jpeg' ? 'jpg' : 'png'}`
   await (await getStorage()).put(key, new Uint8Array(bytes), mime)

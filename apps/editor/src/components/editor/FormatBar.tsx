@@ -112,6 +112,12 @@ export function FormatBar({ el, slideId, scale, stageWidth, theme, requireAdvanc
           <span className="w-px h-5 bg-border mx-1" />
         </>
       )}
+      {el.type === 'chart' && (
+        <>
+          <button className={btn} data-testid="chart-edit" onClick={() => useUi.getState().editChart(el.id)}>Edit data</button>
+          <span className="w-px h-5 bg-border mx-1" />
+        </>
+      )}
       {el.type === 'image' && (
         <>
           <button className={`${btn} inline-flex items-center gap-1.5`} onClick={adv(() => openImageDialog({ elementId: el.id }))}><Sparkles aria-hidden size={14} />AI image</button>

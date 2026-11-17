@@ -31,6 +31,7 @@ import { generation } from './routes/generation.ts'
 import { presentations } from './routes/presentations.ts'
 import { projects } from './routes/projects.ts'
 import { sources } from './routes/sources.ts'
+import { fileTemplates } from './routes/file-templates.ts'
 import { invites, publicShare, shared, sharing } from './routes/sharing.ts'
 import { live } from './live/routes.ts'
 import { loadSession, requireAuth, type AppEnv } from './middleware/session.ts'
@@ -159,6 +160,7 @@ app.route('/api/v1/public', publicShare)
 app.route('/api/v1/public', publicAnalytics)
 app.route('/api/v1/projects', projects)
 app.route('/api/v1/sources', sources)
+app.route('/api/v1/file-templates', fileTemplates)
 app.route('/api/v1/brand', brand)
 app.route('/api/v1', billing)
 app.route('/api/v1', images)

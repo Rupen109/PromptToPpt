@@ -6,7 +6,7 @@ import { seedCatalog } from '../ai/catalog-seed.ts'
 const base: PlanFeatures = {
   watermark: true, exportFormats: [], aiEdits: false, advancedEditor: true, premiumTemplates: false, advancedSharing: false,
   modelTiers: ['starter'], brandKit: false, knowledgeBase: false, support: 'community', speed: 'standard', projects: false, askDeck: false, webData: 'none',
-  livePreview: false, modelChoice: false, fixedModels: [], morph: false, morphDecksPerMonth: 0,
+  livePreview: false, modelChoice: false, fixedModels: [], morph: false, morphDecksPerMonth: 0, templateFromFile: false,
 }
 /**
  * AI-built Morph decks a month. Measured on 11 real Morph jobs: one planning call (about 1,000 tokens in, 1,300 out) plus a tiny design pick = $0.0058 a deck on the default Gemini model
@@ -32,15 +32,15 @@ export const PLAN_SEED = [
   { id: 'starter', name: 'Starter', sortOrder: 0, monthlyCredits: 100, maxSlides: 10, maxPresentationsPerMonth: 5, maxImagesPerPresentation: 0, maxImagesPerMonth: 0, features: { ...base, fixedModels: STARTER_MODELS } },
   {
     id: 'pro', name: 'Pro', sortOrder: 1, monthlyCredits: 900, maxSlides: 15, maxPresentationsPerMonth: 15, maxImagesPerPresentation: 10, maxImagesPerMonth: 60,
-    features: { ...base, watermark: false, exportFormats: ['pdf', 'pptx', 'jpg'], aiEdits: true, premiumTemplates: true, advancedSharing: true, support: 'whatsapp', speed: 'fast', projects: true, askDeck: true, webData: 'wikipedia', livePreview: true, fixedModels: PAID_MODELS },
+    features: { ...base, watermark: false, exportFormats: ['pdf', 'pptx', 'jpg'], aiEdits: true, premiumTemplates: true, advancedSharing: true, support: 'whatsapp', speed: 'fast', projects: true, askDeck: true, webData: 'wikipedia', livePreview: true, fixedModels: PAID_MODELS, templateFromFile: true },
   },
   {
     id: 'gold', name: 'Gold', sortOrder: 2, monthlyCredits: 2000, maxSlides: 25, maxPresentationsPerMonth: 50, maxImagesPerPresentation: 20, maxImagesPerMonth: 100,
-    features: { ...base, watermark: false, exportFormats: [...ALL_EXPORTS], aiEdits: true, premiumTemplates: true, advancedSharing: true, brandKit: true, knowledgeBase: true, support: 'whatsapp', speed: 'ultra', projects: true, askDeck: true, webData: 'web', livePreview: true, fixedModels: PAID_MODELS, morph: true, morphDecksPerMonth: MORPH_DECKS.gold },
+    features: { ...base, watermark: false, exportFormats: [...ALL_EXPORTS], aiEdits: true, premiumTemplates: true, advancedSharing: true, brandKit: true, knowledgeBase: true, support: 'whatsapp', speed: 'ultra', projects: true, askDeck: true, webData: 'web', livePreview: true, fixedModels: PAID_MODELS, morph: true, morphDecksPerMonth: MORPH_DECKS.gold, templateFromFile: true },
   },
   {
     id: 'premium', name: 'Premium', sortOrder: 3, monthlyCredits: 3700, maxSlides: 60, maxPresentationsPerMonth: 50, maxImagesPerPresentation: 20, maxImagesPerMonth: 100,
-    features: { ...base, watermark: false, exportFormats: [...ALL_EXPORTS], aiEdits: true, premiumTemplates: true, advancedSharing: true, modelTiers: ['starter', 'premium', 'frontier'], brandKit: true, knowledgeBase: true, support: 'whatsapp', speed: 'ultra', projects: true, askDeck: true, webData: 'web', livePreview: true, modelChoice: true, morph: true, morphDecksPerMonth: MORPH_DECKS.premium },
+    features: { ...base, watermark: false, exportFormats: [...ALL_EXPORTS], aiEdits: true, premiumTemplates: true, advancedSharing: true, modelTiers: ['starter', 'premium', 'frontier'], brandKit: true, knowledgeBase: true, support: 'whatsapp', speed: 'ultra', projects: true, askDeck: true, webData: 'web', livePreview: true, modelChoice: true, morph: true, morphDecksPerMonth: MORPH_DECKS.premium, templateFromFile: true },
   },
 ] as const
 

@@ -82,6 +82,9 @@ function varWeight(name: string): number {
   return 0.5
 }
 
+/** msapplication-TileColor values that favicon generators pre-fill (RealFaviconGenerator's orange, blue, teal and purple): sites keep them without choosing them. */
+const FAVICON_GENERATOR_TILES = new Set(['#DA532C', '#2B5797', '#00ABA9', '#603CBA', '#9F00A7', '#2D89EF', '#FFC40D', '#EE1111'])
+
 export function scoreColors(css: string, html: string): { hex: string; score: number }[] {
   const score = new Map<string, number>()
   const add = (hex: string | null, w: number) => { if (hex && isBrandable(hex)) score.set(hex, (score.get(hex) ?? 0) + w) }
@@ -89,7 +92,10 @@ export function scoreColors(css: string, html: string): { hex: string; score: nu
   // meta tags
   for (const m of html.matchAll(/<meta[^>]+name=["'](theme-color|msapplication-TileColor)["'][^>]*>/gi)) {
     const c = /content=["']([^"']+)["']/i.exec(m[0])?.[1]
-    add(c ? parseColor(c) : null, m[1]!.toLowerCase() === 'theme-color' ? 10 : 6)
+    const parsed = c ? parseColor(c) : null
+    const isTile = m[1]!.toLowerCase() !== 'theme-color'
+    if (isTile && parsed && FAVICON_GENERATOR_TILES.has(parsed)) continue // the colour every favicon generator pre-fills (BBC and thousands of sites never changed it): not a brand choice
+    add(parsed, isTile ? 6 : 10)
   }
   // style blocks inside the HTML count like linked CSS
   const allCss = css + '\n' + [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)].map((m) => m[1]).join('\n')

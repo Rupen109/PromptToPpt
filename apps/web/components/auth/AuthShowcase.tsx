@@ -4,7 +4,7 @@ const FEATURES: [LucideIcon, string, string][] = [
   [Sparkles, 'Prompt to deck', 'Describe it. AI writes, designs and lays out every slide.'],
   [LayoutTemplate, '100+ templates', 'Designer-made looks, light and dark, for every kind of talk.'],
   [FileUp, 'Start from your files', 'Turn a PDF, Word, Excel file or web link into slides.'],
-  [Palette, 'Your brand, instantly', 'Paste your website: colours, fonts and logo are applied.'],
+  [Palette, 'Your brand, instantly', 'Paste your website, or upload a PowerPoint or PDF: colours, fonts and logo are applied.'],
   [Languages, '100+ languages', 'Write and present in your own language.'],
   [Download, 'Export anywhere', 'Download PowerPoint or PDF, or share a live link.'],
 ]

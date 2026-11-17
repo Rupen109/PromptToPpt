@@ -1,21 +1,19 @@
-import { execSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
 import { API, EDITOR, WEB, expect, launch, startBuild, suite } from '../lib.mjs'
-import { ACCOUNT, STATE } from './02-auth.mjs'
-import { DECKS } from './03-create.mjs'
+import { api, openBrand as openBrandIn, person, plan as planFor } from '../kits-lib.mjs'
 
 /** Brand kits in the Style panel: Pro/Gold only, one saved set of logo + colours + fonts + pictures, applied to a deck in one undoable step, offered when creating a new deck. */
 export default async function () {
   const s = suite('20-brand')
-  const root = new URL('../..', import.meta.url).pathname
-  const email = JSON.parse(readFileSync(ACCOUNT, 'utf8')).email
-  const plan = (p) => execSync(`pnpm --filter @prompttoppt/api exec tsx --env-file-if-exists=.env scripts/qa-grant-plan.ts ${email} ${p}`, { cwd: root, stdio: 'pipe' })
-  let id = (((d) => d.ai ?? d.template)(JSON.parse(readFileSync(DECKS, 'utf8')))).split('?')[0] // the AI-made deck when suite 03 got one, else its template deck
-  const PNG = new URL('../../apps/web/public/apple-touch-icon.png', import.meta.url).pathname // a real 180×180 PNG
+  // self-contained: its own new account and deck (it used to read the account and decks of suites 02/03 and crashed when run alone)
   const b = await launch()
-  const ctx = await b.newContext({ viewport: { width: 1500, height: 950 }, storageState: STATE })
-  const p = await ctx.newPage()
-  const openBrand = async () => { await p.goto(`${EDITOR}/edit/${id}`, { waitUntil: 'networkidle' }); await p.getByRole('toolbar').getByRole('button').nth(1).click(); await p.getByRole('tab', { name: 'Brand' }).click() }
+  const A = await person(b, 'b20')
+  const email = A.email
+  const plan = (pl) => planFor(email, pl)
+  let id = (await api.post(A, '/presentations', { title: 'Brand kit deck', templateId: 'pitch-seed-round' })).data.id // a template deck: several slides, as the logo-on-every-slide checks need
+  const PNG = new URL('../../apps/web/public/apple-touch-icon.png', import.meta.url).pathname // a real 180×180 PNG
+  const ctx = A.ctx
+  const p = A.p
+  const openBrand = () => openBrandIn(p, id)
   const logos = () => p.locator('[data-testid="stage"] img[alt$="logo"]').count()
   const details = () => p.getByLabel('Brand kit details')
   const profile = { sourceUrl: 'https://acme.example/', name: 'Acme Roasters', colors: { primary: '#E4572E', accent: '#17BEBB', accentDerived: false, palette: ['#E4572E', '#17BEBB'] }, fonts: { heading: { family: 'Playfair Display', original: 'Playfair Display', exact: true }, body: { family: 'Inter', original: 'Proxima Nova', exact: false }, detected: [] }, logo: null, confidence: 'high' }
@@ -91,7 +89,7 @@ export default async function () {
       await p.getByText('Get brand from a website').click()
       await p.getByLabel('Your company website').fill('acme.example'); await p.getByRole('button', { name: 'Find brand' }).click()
       const found = p.getByLabel('What we found'); await found.waitFor({ timeout: 8000 })
-      expect(/closest to Proxima Nova/.test(await found.innerText()), 'font mapping not shown')
+      expect(/closest to Proxima Nova/i.test(await found.innerText()), 'font mapping not shown')
       await found.getByRole('button', { name: 'Update my kit' }).click()
       await p.getByText(/Saved to your brand kit "Acme Roasters"/).waitFor({ timeout: 8000 })
       expect(await details().getByLabel('Kit name').inputValue() === 'Acme Roasters', 'the kit was not updated')

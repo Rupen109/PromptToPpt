@@ -863,3 +863,22 @@ export const supportTicket = pgTable(
   },
   (t) => [index('support_ticket_status_idx').on(t.status, t.createdAt), check('support_ticket_status_ok', sql`${t.status} IN ('new','resolved')`)],
 )
+
+/**
+ * A design the person uploaded as a file ("same format, different data", docs/TEMPLATE_FROM_FILE.md). `data` is the importer's whole `UploadedTemplate` (theme, slides, slots, chrome, fonts, warnings);
+ * its pictures are the person's own `generated_asset` rows of kind `template`. Newest first, capped per person (MAX_USER_TEMPLATES in template-import/user-templates.ts).
+ */
+export const userTemplate = pgTable(
+  'user_template',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    sourceFilename: text('source_filename').notNull(),
+    aspect: text('aspect').notNull(),
+    slideCount: integer('slide_count').notNull(),
+    data: jsonb('data').$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [index('user_template_user_idx').on(t.userId, t.createdAt)],
+)

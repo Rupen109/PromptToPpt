@@ -22,6 +22,10 @@ export const GENERAL_FAQS: readonly Faq[] = [
     a: 'PDF (up to 10 MB and 100 pages), Word, Excel and CSV (up to 15 MB each), PowerPoint (up to 15 MB), emails (up to 10 MB), text and Markdown (up to 1 MB), pictures (up to 8 MB), website links, Google Docs, Sheets and Slides links, YouTube links, and audio or video. You can attach several sources to one deck. Scanned, image-only PDFs are not supported yet.',
   },
   {
+    q: 'Can I make a new presentation in the same design as my own PowerPoint?',
+    a: 'Yes, on the Pro, Gold and Premium plans. On the home page choose Use a file\'s design, then upload a PowerPoint (.pptx) or a PDF (up to 15 MB). The new presentation keeps the file\'s colours, fonts, backgrounds and slide layouts. Then either the AI writes the words for your topic, or you get the slides with empty "Add your title" boxes and type the content yourself. The words and photos of the original file are never copied. A PDF works when it has real text (made in PowerPoint, Google Slides, Canva or Keynote): each page is rebuilt from what it draws, so boxes and spacing are close to the original but not exact, and PDFs that are only pictures of pages, or portrait documents, are refused with the reason. A font the editor does not have is replaced by the nearest one it has (the app tells you which), so lines can wrap a little differently. Charts from a PowerPoint file stay in place and style but never keep the original\'s numbers: they carry figures you gave in your request, or clearly marked sample data to edit. Tables keep their shape with empty cells.',
+  },
+  {
     q: 'Are the exported presentations really 100% editable in PowerPoint?',
     a: 'Yes. Every slide is built from real text boxes, shapes, charts and tables, not flattened pictures, which is what makes a PowerPoint export editable. Export to PPTX, PDF and images is part of the Pro and Gold plans; check the pricing section for exactly what each plan includes.',
   },

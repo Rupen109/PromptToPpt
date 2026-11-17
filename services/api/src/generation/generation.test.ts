@@ -274,3 +274,73 @@ describe('a Morph deck (Gold and Premium)', () => {
     expect(put.status).toBe(200)
   })
 })
+
+describe('a deck built from a Morph template (Gold and Premium)', () => {
+  const tplReq = (extra: object = {}) => ({ prompt: 'Create a pitch for our new neighbourhood bakery delivery service', morphTemplate: 'pitch-orbit', idempotencyKey: `key-${rid()}-${rid()}`, ...extra })
+  const open = async (cookie: string, jobId: string) => {
+    const view = await j(await app.request(`/api/v1/generation/jobs/${jobId}`, { headers: { Cookie: cookie } }))
+    return (await j(await app.request(`/api/v1/presentations/${view.data.presentationId}`, { headers: { Cookie: cookie } }))).data
+  }
+
+  it('Starter and Pro are refused with the upgrade prompt; an unknown template is refused; nothing is created', async () => {
+    for (const plan of ['starter', 'pro'] as const) {
+      const u = await signUp(); if (plan !== 'starter') await setPlan(u.id, plan)
+      const r = await post('/jobs', u.cookie, tplReq())
+      expect(r.status).toBe(403)
+      expect((await j(r)).error).toMatchObject({ code: 'UPGRADE_REQUIRED', details: { feature: 'morph' } })
+      expect(await db.select().from(generationJob).where(eq(generationJob.userId, u.id))).toHaveLength(0)
+    }
+    const g = await signUp(); await setPlan(g.id, 'gold')
+    const bad = await post('/jobs', g.cookie, tplReq({ morphTemplate: 'no-such-template' }))
+    expect(bad.status).toBe(400); expect((await j(bad)).error.code).toBe('INVALID_MORPH_TEMPLATE')
+    for (const extra of [{ targetPresentationId: 'x' }, { remixOf: 'x' }, { picturesOnly: true }]) expect((await post('/jobs', g.cookie, tplReq(extra))).status).toBe(400)
+  })
+
+  it('counts against the monthly Morph allowance (Gold 10): the 11th is refused', async () => {
+    const u = await signUp(); await setPlan(u.id, 'gold')
+    const mk = () => ({ id: `mt-${rid()}-${rid()}`, userId: u.id, prompt: 'seed', options: { morph: true }, idempotencyKey: `mt-${rid()}-${rid()}`, lane: 1, status: 'completed' }) as any
+    await db.insert(generationJob).values(Array.from({ length: 10 }, mk))
+    const r = await post('/jobs', u.cookie, tplReq())
+    expect(r.status).toBe(429); expect((await j(r)).error).toMatchObject({ code: 'LIMIT_REACHED', details: { feature: 'morph' } })
+  })
+
+  it('Gold: one writing call, the template\'s own scenes, ids, pictures and Morph; words fit their boxes; no placeholder detail ships; the deck saves clean', async () => {
+    const { getMorphTemplate } = await import('@prompttoppt/theme/morph-templates')
+    const tpl = getMorphTemplate('pitch-orbit')!
+    const u = await signUp(); await setPlan(u.id, 'gold')
+    const created = await post('/jobs', u.cookie, tplReq())
+    expect(created.status).toBe(201)
+    const jobId = (await j(created)).data.id
+    expect((await drain(jobId)).status).toBe('completed')
+    const deck = await open(u.cookie, jobId)
+    const doc = deck.document
+    const parsed = presentationSchema.safeParse(doc)
+    expect(parsed.success, JSON.stringify(parsed.error?.issues.slice(0, 3))).toBe(true)
+    // the template's scenes, in order, each a Morph from the one before
+    expect(doc.slides).toHaveLength(tpl.scenes.length)
+    expect(doc.slides.map((s: any) => s.content.scene)).toEqual(tpl.scenes.map((s) => s.id))
+    expect(doc.slides.every((s: any) => s.layoutId === 'morph-template' && s.content.template === 'pitch-orbit' && s.transition?.type === 'morph')).toBe(true)
+    expect(doc.theme.colors?.background ?? doc.theme.background).toBeTruthy()
+    // the same object keeps its id from scene to scene (that is what a Morph moves), ids are unique within a slide, pictures are the template's own cached files
+    const kinds = new Map<string, string>()
+    for (const s of doc.slides) {
+      expect(new Set(s.elements.map((e: any) => e.id)).size).toBe(s.elements.length)
+      for (const e of s.elements) { expect(kinds.get(e.id) ?? e.type).toBe(e.type); kinds.set(e.id, e.type); if (e.type === 'image') expect(e.src).toContain('/morph-templates/') }
+    }
+    // not one word of the template's sample sentences about another subject, and no placeholder detail
+    const text = doc.slides.flatMap((s: any) => s.elements.filter((e: any) => e.type === 'text').map((e: any) => e.paragraphs.map((p: any) => p.runs.map((r: any) => r.text).join('')).join('\n'))).join('\n')
+    expect(text).not.toMatch(/your address|you@example|yoursite|add a credit/i)
+    expect(text).toContain('bakery')
+    // the template's own wordmark and date line ("Seed deck") are not the user's: they are replaced, or left out
+    const { chromeSlots } = await import('@prompttoppt/theme/morph-templates')
+    for (const c of chromeSlots(tpl)) expect(text.includes(c.text.trim()) && c.text.trim().length > 3, `the template's own "${c.text}" shipped`).toBe(false)
+    // the ledger: ONE writing call (the mock never writes a box too long, so no repair), no outline, no slide batches, no design call, no picture search
+    const events = (await ledgerFor(u.id)).filter((e) => e.jobId === jobId).map((e) => e.requestType)
+    expect(events.filter((t) => t === 'outline_generation')).toHaveLength(1)
+    expect(events).not.toContain('slide_content')
+    expect(events).not.toContain('design_pick')
+    // saved again by the real save route: accepted
+    const put = await app.request(`/api/v1/presentations/${deck.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', Cookie: u.cookie, Origin: origin }, body: JSON.stringify({ baseRevision: deck.revision, document: doc }) })
+    expect(put.status).toBe(200)
+  })
+})

@@ -14,10 +14,16 @@ import { RemixDialog } from '@/components/editor/RemixDialog'
 import { ShareDialog } from '@/components/editor/ShareDialog'
 import { SlideRail } from '@/components/editor/SlideRail'
 import { StyleDrawer } from '@/components/editor/StyleDrawer'
+import { lostEffects } from '@/editor/effect-commands'
 import { AnimationPane } from '@/components/editor/animation/AnimationPane'
+import { AnimationsRibbon } from '@/components/editor/animation/AnimationsRibbon'
+import { MorphPanel } from '@/components/editor/animation/MorphPanel'
+import { SelectionPane } from '@/components/editor/animation/SelectionPane'
+import { TransitionsRibbon } from '@/components/editor/animation/TransitionsRibbon'
 import { VersionsDialog } from '@/components/editor/VersionsDialog'
 import { TopToolbar } from '@/components/editor/toolbar/TopToolbar'
 import { TableDialog } from '@/components/editor/toolbar/TableDialog'
+import { ChartDialog } from '@/components/editor/toolbar/ChartDialog'
 import { readBackup, useAutosave, type SaveStatus } from '@/editor/autosave'
 import * as C from '@/editor/commands'
 import { openCount, unreadCount, useComments } from '@/editor/comments'
@@ -47,7 +53,7 @@ export function EditorPage() {
   const doc = useDoc((s) => s.doc)
   const revision = useDoc((s) => s.revision)
   const apply = useDoc((s) => s.apply)
-  const { activeSlideId, setActiveSlide, select, edit, drawer, setDrawer, notesOpen, toggleNotes, setClipboard, imageDialog, openImageDialog, closeImageDialog, tableEditId, editTable } = useUi()
+  const { activeSlideId, setActiveSlide, select, edit, drawer, ribbon, setDrawer, notesOpen, toggleNotes, setClipboard, imageDialog, openImageDialog, closeImageDialog, tableEditId, editTable, chartEditId, editChart } = useUi()
   const [load, setLoad] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading')
   const [toast, setToast] = useState<string | null>(null)
   const [menu, setMenu] = useState<{ x: number; y: number; kind: 'insert' | 'more' } | null>(null)
@@ -75,6 +81,18 @@ export function EditorPage() {
     setToast(t)
     setTimeout(() => setToast(null), 4000)
   }, [])
+
+  // A re-layout, a design swap or an AI rewrite draws a slide again: animations follow their objects where the new slide has a successor (effect-commands remapEffects); say so when some could not.
+  useEffect(() => {
+    let prev = useDoc.getState()
+    return useDoc.subscribe((st) => {
+      if (st.past.length > prev.past.length && st.doc && prev.doc && st.doc !== prev.doc) {
+        const n = lostEffects(prev.doc, st.doc)
+        if (n > 0) flash(`${n} animation${n > 1 ? 's' : ''} could not be kept: the slide was redrawn and the object ${n > 1 ? 'they were' : 'it was'} on is gone. Undo (Ctrl+Z) brings ${n > 1 ? 'them' : 'it'} back.`)
+      }
+      prev = st
+    })
+  }, [flash])
 
   // ── load (+ recover unsaved edits from a previous session if they're based on the current server revision)
   useEffect(() => {
@@ -149,6 +167,9 @@ export function EditorPage() {
       const mod = e.metaKey || e.ctrlKey
       const k = e.key.toLowerCase()
       if (mod && k === 's') { e.preventDefault(); void autosave.saveNow(true); flash('Version saved.'); return }
+      // the Animation pane, Selection pane and effect gallery use the arrow and Delete keys themselves; only undo and redo still reach the deck from there
+      const own = e.target instanceof HTMLElement && !!e.target.closest('[data-own-keys]')
+      if (own && !(mod && (k === 'z' || k === 'y'))) return
       if (typing(e.target)) return
       const st = useDoc.getState()
       const ui = useUi.getState()
@@ -261,6 +282,8 @@ export function EditorPage() {
         <div role="status" className="px-4 py-2 text-sm bg-primary/10 text-primary font-medium flex items-center gap-2"><Sparkles aria-hidden size={16} className="animate-pulse" />Writing your presentation: {doc.slides.length - writing} of {doc.slides.length} slides ready. Finished slides can be edited now.</div>
       )}
       <TopToolbar doc={doc} slide={slide} presentationId={id} requireAdvanced={requireAdvanced} onHistory={() => setVersions(true)} flash={flash} />
+      {ribbon === 'animations' && <AnimationsRibbon doc={doc} slide={slide} />}
+      {ribbon === 'transitions' && <TransitionsRibbon doc={doc} slide={slide} />}
 
       {(autosave.status === 'conflict' || autosave.status === 'error' || autosave.status === 'offline') && autosave.message && (
         <div role="alert" className={`px-4 py-2 text-sm flex items-center gap-3 ${autosave.status === 'offline' ? 'bg-amber-50 text-amber-900' : 'bg-red-50 text-red-800'}`}>
@@ -308,6 +331,8 @@ export function EditorPage() {
         </main>
         {drawer === 'comments' && <CommentsPanel doc={doc} slideId={slide.id} deckId={id} role={role} onClose={() => setDrawer('comments')} />}
         {drawer === 'animations' && <AnimationPane doc={doc} slide={slide} onClose={() => setDrawer('animations')} />}
+        {drawer === 'selection' && <SelectionPane slide={slide} onClose={() => setDrawer('selection')} />}
+        {drawer === 'morph' && <MorphPanel doc={doc} slide={slide} onClose={() => setDrawer('morph')} />}
         {drawer === 'style' && <StyleDrawer doc={doc} slide={slide} onClose={() => setDrawer('style')} />}
         {drawer === 'ai' && !aiAvailable && (
           <aside aria-label="AI assistant" className="w-[360px] max-lg:fixed max-lg:z-40 max-lg:right-0 max-lg:top-14 max-lg:bottom-0 max-lg:shadow-2xl max-md:left-0 max-md:top-auto max-md:h-[60vh] max-md:rounded-t-2xl max-md:border-t max-lg:max-w-full shrink-0 bg-white border-l border-border p-5 text-sm">
@@ -332,6 +357,7 @@ export function EditorPage() {
         />
       )}
       {tableEditId && <TableDialog slideId={slide.id} elementId={tableEditId} onClose={() => editTable(null)} />}
+      {chartEditId && <ChartDialog slideId={slide.id} elementId={chartEditId} onClose={() => editChart(null)} />}
       {imageDialog && <ImageDialog key={imageDialog.elementId ?? 'new'} doc={doc} slide={slide} presentationId={id} request={imageDialog} onClose={closeImageDialog} />}
       {remix && <RemixDialog presentationId={id} title={doc.title} slideCount={doc.slides.length} handEdited={doc.slides.filter((x) => x.manual).length} beforeStart={() => autosave.saveNow(false)} onClose={() => setRemix(false)} />}
       {menu && <ContextMenu x={menu.x} y={Math.max(8, menu.y)} items={menu.kind === 'insert' ? insertItems : moreItems} onClose={() => setMenu(null)} />}

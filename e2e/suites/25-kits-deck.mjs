@@ -177,7 +177,7 @@ export default async function () {
     await s.check('J1 + J2 five real sites are looked up in the editor and applied to a deck; screenshots are kept to be read by eye', q, async () => {
       await openBrand(q, deckQ); await q.getByText('Get brand from a website').waitFor({ timeout: 8000 })
       for (const site of SITES) {
-        if ((await q.locator('details[aria-label="Get brand from a website"]').getAttribute('open')) === null) await q.getByText('Get brand from a website').click()
+        if ((await q.locator('details[aria-label="Get brand from a source"]').getAttribute('open')) === null) await q.getByText('Get brand from a website').click()
         await q.getByLabel('Your company website').fill(site); await q.getByRole('button', { name: 'Find brand' }).click()
         await Promise.race([q.getByLabel('What we found').waitFor({ timeout: 40000 }), q.getByRole('alert').first().waitFor({ timeout: 40000 })])
         const f = q.getByLabel('What we found'); expect(await f.count() === 1, `${site}: no result`)

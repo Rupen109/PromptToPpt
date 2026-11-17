@@ -11,7 +11,7 @@ const ids = (...x: string[]) => new Set(x)
 describe('the effect catalogue', () => {
   it('describes every effect the schema allows, in the category the schema files it under', () => {
     for (const [category, types] of Object.entries(EFFECTS)) for (const t of types) expect(EFFECT_INFO[t].category, t).toBe(category)
-    expect(Object.keys(EFFECT_INFO).sort()).toEqual([...EFFECTS.entrance, ...EFFECTS.emphasis, ...EFFECTS.exit].sort())
+    expect(Object.keys(EFFECT_INFO).sort()).toEqual([...EFFECTS.entrance, ...EFFECTS.emphasis, ...EFFECTS.exit, ...EFFECTS.path].sort())
   })
   it('a colour change plays only on things that have a colour', () => {
     expect(effectApplies('color-change', { type: 'text' })).toBe(true)

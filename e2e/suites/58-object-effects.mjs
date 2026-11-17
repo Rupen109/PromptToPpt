@@ -6,7 +6,7 @@ import { api, newDeck, person } from '../kits-lib.mjs'
  *   - the elements that start with an entrance are hidden, the effects play on Space / click in the order set (On Click, After Previous, With Previous), a click while
  *     something moves finishes it, Back takes one step back, and only when a slide has nothing more does the slide change
  *   - coming back to a slide from the next one shows it finished
- *   - a deck without effects behaves as before; rapid keys never leave a mess; Starter and Pro cannot add effects (server)
+ *   - a deck without effects behaves as before; rapid keys never leave a mess; Starter and Pro CAN add effects (they are open to every plan; the Morph gate is suite 59)
  */
 const eff = (id, elementId, extra = {}) => ({ id, elementId, category: 'entrance', type: 'fade-in', start: 'click', duration: 400, delay: 0, easing: 'ease-out', repeat: 1, reverse: false, ...extra })
 
@@ -121,7 +121,7 @@ export default async function () {
       expect((await counter()).startsWith('2 /'), 'the first press did not change the slide')
     })
 
-    await s.check('B8 the plan gate holds on the real server: Starter and Pro cannot save effects', p, async () => {
+    await s.check('B8 object effects are open to every plan (since the 2026-11-09 plan split): Starter and Pro save them; only Morph is gated', p, async () => {
       for (const planId of ['starter', 'pro']) {
         const U = await person(b, 'fxp', planId === 'starter' ? undefined : planId)
         const id = await newDeck(U, 'Gate deck')
@@ -129,7 +129,8 @@ export default async function () {
         const doc = got.data.document; const el = doc.slides[0].elements[0]
         doc.slides[0].effects = [eff('g1', el.id)]
         const r = await U.ctx.request.fetch(`${process.env.E2E_API ?? 'http://localhost:4000'}/api/v1/presentations/${id}`, { method: 'PUT', headers: { Origin: process.env.E2E_WEB ?? 'http://localhost:3000', 'Content-Type': 'application/json' }, data: { baseRevision: got.data.revision, document: doc } })
-        expect(r.status() === 403, `${planId} saved effects (${r.status()})`)
+        expect(r.status() === 200, `${planId} could not save effects (${r.status()})`)
+        expect((await api.get(U, `/presentations/${id}`)).data.document.slides[0].effects?.length === 1, `${planId}: the effects were not stored`)
         await U.ctx.close()
       }
     })

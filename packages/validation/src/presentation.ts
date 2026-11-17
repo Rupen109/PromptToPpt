@@ -89,16 +89,22 @@ export type Motion = z.infer<typeof motionSchema>
 
 /** The effects, by category. Every name listed here is played by the engine (packages/ui/src/motion): nothing is added to this list before it works. */
 export const EFFECTS = {
-  entrance: ['appear', 'fade-in', 'fly-in', 'zoom-in', 'float-in', 'wipe-in', 'split-in', 'rise-up', 'bounce-in', 'pop-in', 'spin-in'],
-  emphasis: ['pulse', 'grow-shrink', 'spin', 'shake', 'bounce', 'color-change', 'transparency', 'teeter'],
+  entrance: ['appear', 'fade-in', 'fly-in', 'zoom-in', 'float-in', 'wipe-in', 'split-in', 'rise-up', 'bounce-in', 'pop-in', 'spin-in', 'grow-turn'],
+  emphasis: ['pulse', 'grow-shrink', 'spin', 'shake', 'bounce', 'color-change', 'transparency', 'teeter', 'blink'],
   exit: ['disappear', 'fade-out', 'fly-out', 'zoom-out', 'float-out', 'wipe-out', 'shrink', 'spin-out'],
+  /** motion paths: the element travels along `path` (a line, an arc, a turn, a circle or one drawn by hand) */
+  path: ['path-line', 'path-arc', 'path-turn', 'path-circle', 'path-custom'],
 } as const
-export const EFFECT_CATEGORIES = ['entrance', 'emphasis', 'exit'] as const
+export const EFFECT_CATEGORIES = ['entrance', 'emphasis', 'exit', 'path'] as const
 export type EffectCategory = (typeof EFFECT_CATEGORIES)[number]
-export const EFFECT_TYPES = [...EFFECTS.entrance, ...EFFECTS.emphasis, ...EFFECTS.exit] as const
+export const EFFECT_TYPES = [...EFFECTS.entrance, ...EFFECTS.emphasis, ...EFFECTS.exit, ...EFFECTS.path] as const
 export const EFFECT_START = ['click', 'with', 'after'] as const // On Click, With Previous, After Previous
 export const EFFECT_EASINGS = ['linear', 'ease', 'ease-in', 'ease-out', 'ease-in-out', 'power2-out', 'power2-in-out', 'back-out'] as const
 export const EFFECT_DIRECTIONS = ['left', 'right', 'up', 'down'] as const
+/** an effect's direction also has the four corners (From Bottom-Left, ...); a transition keeps the four sides */
+export const EFFECT_DIRECTIONS_8 = [...EFFECT_DIRECTIONS, 'up-left', 'up-right', 'down-left', 'down-right'] as const
+/** how a text box is played: all at once, one paragraph, one word or one letter after the other */
+export const EFFECT_TEXT_BY = ['object', 'paragraph', 'word', 'letter'] as const
 
 export const effectSchema = z.object({
   id: idSchema,
@@ -112,7 +118,7 @@ export const effectSchema = z.object({
   /** ms after its start moment */
   delay: z.number().min(0).max(20000).default(0),
   easing: z.enum(EFFECT_EASINGS).default('ease-out'),
-  direction: z.enum(EFFECT_DIRECTIONS).optional(),
+  direction: z.enum(EFFECT_DIRECTIONS_8).optional(),
   /** canvas units a fly / float / rise travels */
   distance: z.number().min(0).max(2000).optional(),
   /** end size for zoom / grow / shrink (1 = same size) */
@@ -124,8 +130,17 @@ export const effectSchema = z.object({
   /** the colour a colour-change effect goes to */
   color: hex.optional(),
   repeat: z.number().int().min(1).max(20).default(1),
+  /** repeat until the end of the slide (PowerPoint's "Until End of Slide"); `repeat` is ignored */
+  loop: z.boolean().optional(),
   /** play back to the start once finished */
   reverse: z.boolean().default(false),
+  /** a text box played by paragraph, word or letter: the parts follow each other, `stagger` ms apart */
+  textBy: z.enum(EFFECT_TEXT_BY).optional(),
+  stagger: z.number().min(0).max(2000).optional(),
+  /** plays when this element is clicked (PowerPoint's Trigger), not in the slide's click sequence; `start` then only says how it follows the effects in its own trigger group */
+  trigger: idSchema.optional(),
+  /** motion path: points as offsets from the element's own place, in canvas units, first point [0,0] by convention; 2 to 100 points (a curve is stored as many short segments) */
+  path: z.array(z.tuple([z.number().min(-4000).max(4000), z.number().min(-4000).max(4000)])).min(2).max(100).optional(),
 }).refine((e) => (EFFECTS[e.category] as readonly string[]).includes(e.type), { message: 'this effect does not belong to that category', path: ['type'] })
 export type Effect = z.infer<typeof effectSchema>
 
@@ -134,17 +149,25 @@ export type Effect = z.infer<typeof effectSchema>
 /** The basic transitions are on every plan; `morph` (matching elements move and change from the previous slide to this one) is Gold and Premium. */
 export const SLIDE_TRANSITION_TYPES = [...TRANSITION_TYPES, 'morph'] as const
 export const MORPH_DEFAULTS = { duration: 900, easing: 'power2-in-out' } as const
+/** Morph: matching text moves as one object (default), word by word, or character by character (pieces travel to their partners; see motion/morph.ts) */
+export const MORPH_BY = ['object', 'word', 'character'] as const
 export const transitionSchema = z.object({
   type: z.enum(SLIDE_TRANSITION_TYPES),
   duration: z.number().min(100).max(4000).default(500),
   easing: z.enum(EFFECT_EASINGS).optional(),
   /** where a push / wipe comes from */
   direction: z.enum(EFFECT_DIRECTIONS).optional(),
+  /** move on by itself this many ms after the slide (and its effects) finished; absent = wait for a click */
+  advanceAfter: z.number().int().min(0).max(3_600_000).optional(),
+  /** a click still moves on while `advanceAfter` is set (default true); false = only the timer moves on */
+  advanceOnClick: z.boolean().optional(),
   /**
    * How two objects that are the same object but not the same picture or words give way to each other. `through` (the default): the old one fades out, then the new one fades in.
    * `cross`: PowerPoint's Morph: both are visible at once, one fading out as the other fades in, while they travel; an object on one slide only fades in or out in place.
    */
   blend: z.enum(['through', 'cross']).optional(),
+  /** Morph only: how matched text travels. Absent = as one object. Falls back to one object when the two texts share too little or are too long. */
+  by: z.enum(MORPH_BY).optional(),
   /** chosen by a person (or by generation for Morph): re-laying out the slide, a theme swap or an AI rewrite keep it, where a transition taken from the theme is replaced */
   own: z.boolean().optional(),
 })
@@ -222,6 +245,10 @@ export type Theme = z.infer<typeof themeSchema>
 
 const box = {
   id: idSchema,
+  /** switched off in the Selection pane (the eye): not drawn in the editor, Present mode, the share link or an export, and left out of animations and Morph; still in the deck */
+  hidden: z.boolean().optional(),
+  /** the name a person gave this object in the Selection pane (the Animation pane and the Morph check show it); never used to match objects for Morph, only ids are */
+  label: z.string().max(80).optional(),
   x: z.number(),
   y: z.number(),
   width: z.number().positive(),
@@ -315,6 +342,8 @@ export const chartElementSchema = z.object({
   labels: z.array(z.string()).min(1).max(24),
   series: z.array(z.object({ name: z.string(), values: z.array(z.number()) })).min(1).max(6),
   unit: z.string().max(16).optional(),
+  /** the figures are stand-ins (a chart kept from a design the person uploaded): the editor shows "Sample data - edit this chart" until the person saves their own data. Never drawn in exports or Present. */
+  placeholder: z.boolean().optional(),
 })
 
 export const tableElementSchema = z.object({
@@ -425,6 +454,8 @@ export const presentationSchema = z.object({
   theme: themeSchema,
   slides: z.array(slideSchema).min(1).max(60),
   sources: z.array(sourceSchema).default([]),
+  /** the uploaded design (a person's own PowerPoint, "Use a file's design") this deck was made in, so the editor can offer its layouts. A reference only: the deck holds its own copies of the slides, so it works the same if the design is deleted. */
+  templateId: z.string().min(1).max(40).optional(),
 })
 export type Presentation = z.infer<typeof presentationSchema>
 

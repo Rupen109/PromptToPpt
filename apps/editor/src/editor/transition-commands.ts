@@ -18,8 +18,11 @@ export function setTransition(d: D, slideId: string, patch: TransitionPatch): bo
   const s = slideOf(d, slideId)
   if (!s || s.locked) return false
   const old = s.transition as Transition | undefined
-  const base = old && old.type === patch.type ? old : initial(patch.type)
-  const next = transitionSchema.safeParse({ ...base, ...patch, own: true })
+  // another type starts from its own defaults, but how the slide moves on (a click, a timer) is not part of the effect and stays
+  const keep = old ? { ...(old.advanceAfter !== undefined ? { advanceAfter: old.advanceAfter } : {}), ...(old.advanceOnClick !== undefined ? { advanceOnClick: old.advanceOnClick } : {}) } : {}
+  const base = old && old.type === patch.type ? old : { ...initial(patch.type), ...keep }
+  const merged = Object.fromEntries(Object.entries({ ...base, ...patch, own: true }).filter(([, v]) => v !== undefined)) // `advanceAfter: undefined` takes the timer away
+  const next = transitionSchema.safeParse(merged)
   if (!next.success) return false
   if (JSON.stringify(next.data) === JSON.stringify(old)) return true
   s.transition = next.data as Draft<Transition>

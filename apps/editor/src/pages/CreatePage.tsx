@@ -1,4 +1,4 @@
-import { ArrowLeft, Check, Lock, Sparkles } from '@prompttoppt/ui/icons'
+import { ArrowLeft, Check, LayoutTemplate, Lock, Sparkles } from '@prompttoppt/ui/icons'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Navigate, useNavigate } from 'react-router'
 import { ApiError, isGateError, type AnalyzeResult, type BrandKit, type JobStatus, type JobView, type ModelOption } from '@prompttoppt/api-client'
@@ -7,15 +7,18 @@ import { BriefCard } from '@/components/BriefCard'
 import { BuildProgress } from '@/components/BuildProgress'
 import { ThinkingLoader } from '@/components/ThinkingLoader'
 import { ModelPicker } from '@/components/ModelPicker'
+import { MorphTemplatePicker } from '@/components/MorphTemplatePicker'
+import { MORPH_TEMPLATES } from '@prompttoppt/theme/morph-templates'
 import { api } from '@/lib/api'
 import { useEntitlements } from '@/lib/entitlements'
-import { clearPending, getPendingJob, getPendingLanguage, getPendingPrompt, getPendingSources, setPendingJob } from '@/lib/pending-prompt'
+import { clearPending, getPendingFileTemplate, getPendingJob, getPendingLanguage, getPendingMorphTemplate, getPendingPrompt, getPendingSources, setPendingJob, type PendingFileTemplate } from '@/lib/pending-prompt'
 
 type Retry = { type: 'analyze' } | { type: 'start'; result: AnalyzeResult; slideCount: number; direction?: Direction | undefined } | { type: 'home' }
 
 type Phase =
   | { kind: 'analyzing' }
   | { kind: 'error'; message: string; retry: Retry }
+  | { kind: 'template' }
   | { kind: 'pick-direction'; result: AnalyzeResult }
   | { kind: 'pick-length'; result: AnalyzeResult; direction?: Direction }
   | { kind: 'generating'; job: JobView | null }
@@ -27,6 +30,9 @@ const STAGES: Record<JobStatus, string> = {
 
 /** The visible steps of a generation, in order (queued shows none as active yet). */
 const STEPS: [JobStatus, string][] = [['analyzing', 'Understand'], ['outlining', 'Outline'], ['generating', 'Write slides'], ['rendering', 'Design'], ['validating', 'Check']]
+
+/** A deck from a template has the template's own slides: one fixed length. */
+const templateLength = (id: string): readonly (readonly [string, number])[] => { const t = MORPH_TEMPLATES.find((x) => x.id === id); return t ? [[t.name, t.scenes.length]] : [] }
 
 const errMessage = (e: unknown) =>
   e instanceof ApiError ? (e.code === 'LIMIT_REACHED' ? e.message : e.code === 'AI_NOT_CONFIGURED' ? 'AI is not configured on this server yet.' : e.message) : 'Something went wrong. Please try again.'
@@ -58,6 +64,7 @@ function PickLength({ result, direction, models, modelId, choice, lengths, onSta
           <span className="text-sm"><span className="flex items-center gap-2 font-semibold">Morph animation <span className="text-xs rounded-full bg-slate-100 border border-border px-2 py-0.5 font-medium text-slate-700">Gold</span></span><span className="block text-slate-600">Slides built from the same pieces, which move and morph into each other when you present.</span></span>
         </button>
       ))}
+      {morph?.allowed && morph.checked && <MorphTemplatePicker value={morph.template} onChange={morph.onTemplate} />}
       <div role="radiogroup" aria-label="Presentation length" className={`mt-6 flex flex-wrap gap-3 rounded-2xl ${nudge && chosen === null ? 'ring-2 ring-primary p-2 -m-2 animate-pulse-soft' : ''}`}>
         {lengths.map(([label, n]) => (
           <button key={label} role="radio" aria-checked={chosen === n} onClick={() => { setChosen(n); setNudge(false); if (!choice) onStart(n, modelId ?? undefined) /* the plan decides the model: choosing the length starts the build */ }} className={`bg-white border rounded-xl px-5 py-3 text-left transition ${chosen === n ? 'border-primary ring-2 ring-primary/25' : 'border-border hover:border-slate-400'}`}>
@@ -86,7 +93,50 @@ function PickLength({ result, direction, models, modelId, choice, lengths, onSta
 }
 
 /** The Morph choice on the length step: shown to every plan, switchable on Gold and Premium, an upgrade prompt on the others. */
-interface MorphOption { allowed: boolean; checked: boolean; onChange: (v: boolean) => void; onLocked: () => void }
+interface MorphOption { allowed: boolean; checked: boolean; onChange: (v: boolean) => void; onLocked: () => void; template: string | null; onTemplate: (id: string | null) => void }
+
+/**
+ * "Use a file's design": the deck is made in the look of the person's uploaded file. Choose who writes the words (the AI from the request, or the person in the editor), the length (default: the
+ * file's own number of slides) and, on plans that choose, the AI model. No analysis step is needed: the server reads the request itself.
+ */
+function TemplateStart({ tpl, prompt, models, modelId, choice, maxSlides, onStart }: { tpl: PendingFileTemplate; prompt: string; models: ModelOption[]; modelId: string | null; choice: boolean; maxSlides: number; onStart: (o: { mode: 'ai' | 'manual'; slideCount?: number; model?: string }) => void }) {
+  const [mode, setMode] = useState<'ai' | 'manual'>(tpl.preferManual ? 'manual' : 'ai')
+  const [count, setCount] = useState(Math.min(tpl.slideCount, maxSlides))
+  const n = Math.max(3, Math.min(maxSlides, Math.round(count) || tpl.slideCount))
+  const go = (model?: string) => onStart({ mode, ...(count !== tpl.slideCount && n !== tpl.slideCount ? { slideCount: n } : {}), ...(model ? { model } : {}) })
+  const opt = (id: 'ai' | 'manual', title: string, text: string) => (
+    <button type="button" role="radio" aria-checked={mode === id} data-testid={`tpl-mode-${id}`} onClick={() => setMode(id)} className={`flex-1 min-w-[220px] bg-white border rounded-xl px-4 py-3 text-left transition ${mode === id ? 'border-primary ring-2 ring-primary/25' : 'border-border hover:border-slate-400'}`}>
+      <div className="font-semibold">{title}</div><div className="text-sm text-slate-600">{text}</div>
+    </button>
+  )
+  return (
+    <>
+      <p className="mt-10 text-[17px]" data-testid="tpl-using"><LayoutTemplate aria-hidden size={18} className="inline -mt-0.5 mr-1.5 text-primary" />Using your template: <b>{tpl.name}</b> <span className="text-slate-500">({tpl.slideCount} slide{tpl.slideCount === 1 ? '' : 's'})</span></p>
+      {tpl.fontsReplaced.length > 0 && <p className="mt-1 text-sm text-amber-700">Fonts replaced: {tpl.fontsReplaced.map((f) => `${f.original} → ${f.mapped}`).join(', ')}.</p>}
+      <p className="mt-2 text-sm text-slate-600">Your presentation keeps the file's colours, fonts and layouts. The words and photos of the original are never copied.</p>
+      <div role="radiogroup" aria-label="Who writes the words?" className="mt-5 flex flex-wrap gap-3">
+        {opt('ai', 'Write it for me', 'The AI writes the words for your request, in your file\'s layouts.')}
+        {opt('manual', "I'll add the data myself", 'You get the slides with "Add your title" style boxes to type into. No AI, no credits.')}
+      </div>
+      <div className="mt-5 flex flex-wrap items-center gap-3">
+        <label className="text-sm font-semibold" htmlFor="tpl-count">Slides</label>
+        <input id="tpl-count" data-testid="tpl-count" type="number" min={3} max={maxSlides} value={count} onChange={(e) => setCount(Number(e.target.value))} className="w-20 rounded-lg border border-border bg-white px-3 py-1.5 text-sm" />
+        <span className="text-sm text-slate-500">{count === tpl.slideCount ? "same as your template" : `your template has ${tpl.slideCount}; layouts repeat or are left out to fit`}</span>
+      </div>
+      {/* the Morph choice, greyed with its reason */}
+      <div aria-disabled className="mt-5 flex items-start gap-3 rounded-xl border border-border bg-slate-50 px-4 py-3 w-fit max-w-full opacity-70" data-testid="tpl-morph-off">
+        <Lock aria-hidden size={16} className="mt-0.5 shrink-0 text-slate-500" />
+        <span className="text-sm"><span className="font-semibold">Morph animation</span><span className="block text-slate-600">Not available with your own design: Morph decks are built from their own pieces.</span></span>
+      </div>
+      {mode === 'ai' && choice ? (
+        <ModelPicker models={models} value={modelId} highlight hint="Click an AI model to start (the highlighted one is your default)." onChange={(id) => go(id)} />
+      ) : (
+        <button type="button" data-testid="tpl-start" onClick={() => go()} className="mt-6 bg-primary text-white rounded-xl px-6 py-3 font-semibold">{mode === 'ai' ? 'Start' : 'Create the slides'}</button>
+      )}
+      {mode === 'manual' && prompt && <p className="mt-3 text-xs text-slate-500">Your request is not used in this mode.</p>}
+    </>
+  )
+}
 
 export function CreatePage() {
   const navigate = useNavigate()
@@ -95,7 +145,8 @@ export function CreatePage() {
   const [modelId, setModelId] = useState<string | null>(null)
   const [choice, setChoice] = useState(false)
   const prompt = getPendingPrompt()
-  const [phase, setPhase] = useState<Phase>(getPendingJob() ? { kind: 'generating', job: null } : { kind: 'analyzing' })
+  const [fileTpl] = useState(getPendingFileTemplate)
+  const [phase, setPhase] = useState<Phase>(getPendingJob() ? { kind: 'generating', job: null } : fileTpl ? { kind: 'template' } : { kind: 'analyzing' })
   /** how many slides of the deck being built are written (reported by the progress list): the editor can be opened early once there is one */
   const [written, setWritten] = useState(0)
   const openDeck = useCallback((deckId: string) => { clearPending(); void refresh(); navigate(`/edit/${deckId}`, { replace: true }) }, [navigate, refresh])
@@ -117,7 +168,9 @@ export function CreatePage() {
   /** the user's default brand kit (paid plans): offered as "build it in my brand", on unless they turn it off */
   const [defaultKit, setDefaultKit] = useState<BrandKit | null>(null)
   const [useKit, setUseKit] = useState(true)
-  const [morph, setMorph] = useState(false)
+  const [morph, setMorph] = useState(() => !!getPendingMorphTemplate())
+  /** a designed Morph template to build the deck from (null: the AI plans the scenes). Arrives from the website's template pages. */
+  const [morphTpl, setMorphTpl] = useState<string | null>(() => { const id = getPendingMorphTemplate(); return id && MORPH_TEMPLATES.some((t) => t.id === id) ? id : null })
   useEffect(() => { api.brandKits().then((r) => setDefaultKit(r.kits.find((k) => k.isDefault) ?? null)).catch(() => {}) }, [])
 
   const analyze = useCallback(async () => {
@@ -132,17 +185,30 @@ export function CreatePage() {
   }, [prompt])
 
   useEffect(() => {
-    if (started.current || getPendingJob()) return // StrictMode runs effects twice in dev
+    if (started.current || getPendingJob() || fileTpl) return // StrictMode runs effects twice in dev (a deck in your own design needs no analysis step)
     started.current = true
     void analyze()
-  }, [analyze])
+  }, [analyze, fileTpl])
+
+  const startFromTemplate = useCallback(async (o: { mode: 'ai' | 'manual'; slideCount?: number; model?: string }) => {
+    if (!prompt || !fileTpl) return
+    setPhase({ kind: 'generating', job: null })
+    try {
+      const job = await api.createJob({ prompt, fromTemplateId: fileTpl.id, templateMode: o.mode, sourceIds: getPendingSources(), ...(getPendingLanguage() ? { language: getPendingLanguage()! } : {}), ...(o.slideCount ? { slideCount: o.slideCount } : {}), ...((o.model ?? modelId) && o.mode === 'ai' ? { model: (o.model ?? modelId)! } : {}), idempotencyKey: idemKey.current })
+      setPendingJob(job.id)
+      setPhase({ kind: 'generating', job })
+    } catch (e) {
+      if (isGateError(e)) { upgrade.show(e.message); setPhase({ kind: 'template' }); return }
+      setPhase({ kind: 'error', message: errMessage(e), retry: { type: 'home' } })
+    }
+  }, [prompt, fileTpl, modelId, upgrade])
 
   const start = useCallback(
     async (result: AnalyzeResult, slideCount: number, direction?: Direction, modelOverride?: string) => {
       if (!prompt) return
       setPhase({ kind: 'generating', job: null })
       try {
-        const job = await api.createJob({ prompt, analysis: result.analysis, slideCount, sourceIds: getPendingSources(), ...(getPendingLanguage() ? { language: getPendingLanguage()! } : {}), ...((modelOverride ?? modelId) ? { model: (modelOverride ?? modelId)! } : {}), ...(direction ? { direction } : {}), ...(defaultKit && useKit ? { brandKitId: defaultKit.id } : {}), ...(morph && ent?.features.morph ? { morph: true } : {}), idempotencyKey: idemKey.current })
+        const job = await api.createJob({ prompt, analysis: result.analysis, slideCount, sourceIds: getPendingSources(), ...(getPendingLanguage() ? { language: getPendingLanguage()! } : {}), ...((modelOverride ?? modelId) ? { model: (modelOverride ?? modelId)! } : {}), ...(direction ? { direction } : {}), ...(defaultKit && useKit ? { brandKitId: defaultKit.id } : {}), ...(morph && ent?.features.morph ? { morph: true, ...(morphTpl ? { morphTemplate: morphTpl } : {}) } : {}), idempotencyKey: idemKey.current })
         setPendingJob(job.id)
         // a new deck exists from the first second, but the person watches the progress screen while it is written (its slides tick off in a list) and the editor
         // opens by itself when the deck is complete, or earlier if they choose ("Open the editor now")
@@ -156,7 +222,7 @@ export function CreatePage() {
         setPhase({ kind: 'error', message: errMessage(e), retry: { type: 'start', result, slideCount, direction } })
       }
     },
-    [prompt, upgrade, modelId, defaultKit, useKit, morph, ent],
+    [prompt, upgrade, modelId, defaultKit, useKit, morph, morphTpl, ent],
   )
 
   const onRetry = (r: Retry) => (r.type === 'analyze' ? void analyze() : r.type === 'start' ? void start(r.result, r.slideCount, r.direction) : navigate('/', { replace: true }))
@@ -218,6 +284,8 @@ export function CreatePage() {
           </Card>
         )}
 
+        {phase.kind === 'template' && fileTpl && <TemplateStart tpl={fileTpl} prompt={prompt ?? ''} models={models} modelId={modelId} choice={choice} maxSlides={ent?.limits.maxSlides ?? 60} onStart={(o) => void startFromTemplate(o)} />}
+
         {phase.kind === 'pick-direction' && phase.result.directions && (
           <>
             <p className="mt-10 text-[17px]">Which angle should this presentation take?</p>
@@ -235,15 +303,16 @@ export function CreatePage() {
 
         {phase.kind === 'pick-length' && (
           <PickLength
+            key={morph && morphTpl ? morphTpl : 'ai'}
             result={phase.result}
             direction={phase.direction}
             models={models}
             modelId={modelId}
             choice={choice}
-            lengths={lengths(phase.result, phase.direction)}
+            lengths={morph && ent?.features.morph && morphTpl ? templateLength(morphTpl) : lengths(phase.result, phase.direction)}
             onStart={(n, model) => { if (model) setModelId(model); void start(phase.result, n, phase.direction, model) }}
             brand={defaultKit ? { kit: defaultKit, checked: useKit, onChange: setUseKit } : undefined}
-            morph={{ allowed: !!ent?.features.morph && (ent.usage.morphDecksThisPeriod < ent.features.morphDecksPerMonth), checked: morph, onChange: setMorph, onLocked: () => upgrade.show(ent?.features.morph ? `You've used your ${ent.features.morphDecksPerMonth} Morph decks for this month.` : 'Morph animation is available on the Gold plan.') }}
+            morph={{ allowed: !!ent?.features.morph && (ent.usage.morphDecksThisPeriod < ent.features.morphDecksPerMonth), checked: morph, onChange: setMorph, template: morphTpl, onTemplate: setMorphTpl, onLocked: () => upgrade.show(ent?.features.morph ? `You've used your ${ent.features.morphDecksPerMonth} Morph decks for this month.` : 'Morph animation is available on the Gold plan.') }}
           />
         )}
 

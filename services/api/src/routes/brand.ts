@@ -5,8 +5,14 @@ import { z } from 'zod'
 import { getEntitlements } from '../billing/entitlements.ts'
 import { GateError } from '../billing/errors.ts'
 import { BrandReadError, findBrand } from '../brand/find.ts'
+import { brandFromFile } from '../brand/from-file.ts'
+import { MAX_BRAND_FILE_BYTES } from '../brand/file-types.ts'
+import { refuseIfOn } from '../flags/flags.ts'
+import { busyAnswer, uploadGate } from '../middleware/upload-gate.ts'
+import { SourceError } from '../sources/errors.ts'
+import { BusyError } from '../sources/parse-pool.ts'
 import { MAX_IMAGE_BYTES, MAX_KITS, KitError, addKitImage, createKit, deleteKit, listKits, removeKitImage, setKitLogo, updateKit } from '../brand/kits.ts'
-import { rateLimit } from '../middleware/rate-limit.ts'
+import { byUser, rateLimit } from '../middleware/rate-limit.ts'
 import { requireAuth, type AppEnv } from '../middleware/session.ts'
 import { BlockedUrlError } from '../sources/ssrf.ts'
 import type { Context } from 'hono'
@@ -31,6 +37,32 @@ brand.post('/extract', rateLimit({ windowMs: 3_600_000, max: 10, message: 'You h
     console.warn('[brand] extract failed:', (e as Error).message)
     const msg = (e as Error).message
     return c.json({ success: false, error: { code: 'BRAND_FAILED', message: e instanceof BrandReadError || /^Invalid URL/.test(msg) ? msg : 'We could not read that website. Check the address and try again.' } }, 422)
+  }
+})
+
+/**
+ * "Use my brand" from a file: a PowerPoint (.pptx) or a PDF gives its colours, fonts, logo and name, in the same review card as a website. No AI call and no credits;
+ * the cost is CPU in the parse worker, so it is rate-limited per user, admitted by memory (uploadGate) and read under the same worker limits as every other upload.
+ * Paid plans only (checked BEFORE the body is read). Nothing is saved except the logo (as the person's own asset): saving a kit is a separate, explicit step.
+ */
+brand.post('/from-file', rateLimit({ windowMs: 3_600_000, max: 20, key: byUser('brand-file'), message: 'You have read a lot of files in the last hour. Please wait a little while and try again.' }), async (c, next) => {
+  const ent = await getEntitlements(c.get('session')!.user.id)
+  if (ent.plan.id === 'starter') throw new GateError('UPGRADE_REQUIRED', 'Matching your brand from a PowerPoint or PDF is available on Pro, Gold and Premium.', 403, { feature: 'brand' })
+  await next()
+}, uploadGate, bodyLimit({ maxSize: MAX_BRAND_FILE_BYTES + 64 * 1024, onError: (c) => c.json({ success: false, error: { code: 'TOO_LARGE', message: 'That file is too large (up to 15 MB).' } }, 413) }), async (c) => {
+  const userId = c.get('session')!.user.id
+  const maint = await refuseIfOn('maintenance_mode', c, userId)
+  if (maint) return maint
+  const file = (await c.req.parseBody())['file']
+  if (!(file instanceof File)) return c.json({ success: false, error: { code: 'NO_FILE', message: 'Attach a PowerPoint or PDF file as "file".' } }, 400)
+  if (file.size > MAX_BRAND_FILE_BYTES) return c.json({ success: false, error: { code: 'TOO_LARGE', message: 'That file is too large (up to 15 MB).' } }, 413)
+  try {
+    return c.json({ success: true, data: await brandFromFile(userId, new Uint8Array(await file.arrayBuffer()), file.name || 'brand') })
+  } catch (e) {
+    if (e instanceof BusyError) return busyAnswer(c)
+    if (e instanceof SourceError) return c.json({ success: false, error: { code: 'PARSE_FAILED', message: e.message } }, 422)
+    console.warn('[brand] file failed:', (e as Error).message)
+    return c.json({ success: false, error: { code: 'BRAND_FAILED', message: 'We could not read that file. Check it opens normally, or try another copy.' } }, 422)
   }
 })
 

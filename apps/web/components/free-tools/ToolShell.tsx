@@ -7,8 +7,8 @@ import { Card } from '@/components/ui/Card'
 export interface Faq { q: string; a: string }
 
 /** Common frame for every free tool: header, H1 + promise, the tool itself, short explainer copy, FAQ (also emitted as JSON-LD), footer. */
-export function ToolShell({ title, intro, children, steps, faqs, related }: {
-  title: string; intro: string; children: ReactNode; steps: { title: string; text: string }[]; faqs: Faq[]; related: { href: string; label: string }[]
+export function ToolShell({ title, intro, children, steps, faqs, related, wide }: {
+  wide?: boolean; title: string; intro: string; children: ReactNode; steps: { title: string; text: string }[]; faqs: Faq[]; related: { href: string; label: string }[]
 }) {
   const ld = { '@context': 'https://schema.org', '@type': 'FAQPage', mainEntity: faqs.map((f) => ({ '@type': 'Question', name: f.q, acceptedAnswer: { '@type': 'Answer', text: f.a } })) }
   return (
@@ -21,7 +21,7 @@ export function ToolShell({ title, intro, children, steps, faqs, related }: {
             <h1 className="mt-3 font-heading font-extrabold text-4xl md:text-5xl leading-[1.05] text-foreground">{title}</h1>
             <p className="mt-4 text-lg leading-7 font-medium text-[#475569] max-w-[680px] mx-auto">{intro}</p>
           </div>
-          <div className="max-w-[880px] mx-auto mt-10">{children}</div>
+          <div className={`${wide ? 'max-w-[1240px]' : 'max-w-[880px]'} mx-auto mt-10`}>{children}</div>
         </section>
 
         <section className="px-5 md:px-10 py-14 md:py-20">

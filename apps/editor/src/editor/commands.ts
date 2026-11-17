@@ -1,7 +1,7 @@
 import { current, isDraft, type Draft } from 'immer'
 import { IMAGE_BG_LAYOUTS, PHOTO_LAYOUTS, applyBrandToTheme, brandLogoElements, commonSlideBackground, composeSlide, contrastRatio, effectiveBackground, isDark, mix, readableOn, resolveColor, designById, getTheme, makeColors, recolor } from '@prompttoppt/theme'
 import { CANVAS, elementSchema, type AspectRatio, type LayoutId, type Presentation, type Slide, type SlideContent, type SlideElement, type TextElement, type Theme } from '@prompttoppt/validation'
-import { copyEffects, pruneEffects } from './effect-commands'
+import { copyEffects, pruneEffects, remapEffects, snapshotElements } from './effect-commands'
 
 /**
  * Document commands: small PURE mutators over an immer draft. The store turns each call into patches + inverse patches,
@@ -45,6 +45,14 @@ function reapplyOwnLook(d: D, s: Draft<Slide>, look: OwnLook | null, mapColor: (
   else delete s.themeOverrides
   s.ownLook = true
   makeSlideReadable(d, s.id)
+}
+
+/** Puts freshly drawn elements on a slide and moves the slide's effects over to the elements that take their objects' places (the rest are removed). */
+function swapElements(s: Draft<Slide>, fresh: Slide['elements']) {
+  const old = snapshotElements(s.elements)
+  s.elements = fresh as Draft<Slide>['elements']
+  remapEffects(s, old)
+  pruneEffects(s)
 }
 
 export function updateElement(d: D, slideId: string, elId: string, patch: Partial<SlideElement>) {
@@ -405,8 +413,7 @@ export function applyThemeObject(d: D, incoming: Theme, opts: { keepBrand?: bool
     if (!s.manual && s.content) {
       const look = ownLookOf(s)
       const fresh = composeSlide(s.content as SlideContent, next, aspect, undefined, { backgroundImage: photoOf(s), photo: slidePhoto(s) })
-      s.elements = fresh.elements as Draft<Slide>['elements']
-      pruneEffects(s)
+      swapElements(s, fresh.elements)
       s.background = fresh.background
       if (!s.transition?.own) s.transition = fresh.transition as Draft<Slide>['transition'] // a transition a person chose stays
       // a colour chosen from the old palette (the deck's own background, its primary…) follows the new palette; any other colour stays
@@ -682,8 +689,7 @@ export function relayout(d: D, slideId: string, to: LayoutId) {
   const fresh = composeSlide(converted, d.theme as Theme, d.aspectRatio)
   s.layoutId = fresh.layoutId
   s.content = fresh.content
-  s.elements = fresh.elements as Draft<Slide>['elements']
-  pruneEffects(s) // the new layout has new elements: effects on the old ones go with them
+  swapElements(s, fresh.elements)
   s.background = fresh.background
   s.manual = false
   reapplyOwnLook(d, s, look)
@@ -697,8 +703,7 @@ export function replaceContent(d: D, slideId: string, content: SlideContent, all
   const fresh = composeSlide(content, d.theme as Theme, d.aspectRatio, undefined, { backgroundImage: photoOf(s), photo: slidePhoto(s) })
   s.layoutId = fresh.layoutId
   s.content = fresh.content
-  s.elements = fresh.elements as Draft<Slide>['elements']
-  pruneEffects(s)
+  swapElements(s, fresh.elements)
   s.background = fresh.background
   if (!s.transition?.own) s.transition = fresh.transition as Draft<Slide>['transition']
   if (content.speakerNotes) s.speakerNotes = content.speakerNotes
@@ -725,8 +730,7 @@ export function setImageBackground(d: D, slideId: string, url: string) {
   const s = findSlide(d, slideId)
   if (!s || s.locked || s.manual || !s.content || !(IMAGE_BG_LAYOUTS as readonly string[]).includes(s.layoutId)) return
   const fresh = composeSlide(s.content as SlideContent, d.theme as Theme, d.aspectRatio, undefined, { backgroundImage: url })
-  s.elements = fresh.elements as Draft<Slide>['elements']
-  pruneEffects(s)
+  swapElements(s, fresh.elements)
   s.background = fresh.background
 }
 
@@ -753,8 +757,7 @@ export function clearImageBackground(d: D, slideId: string) {
   const s = findSlide(d, slideId)
   if (!s || s.background?.type !== 'image' || !s.content) return
   const fresh = composeSlide(s.content as SlideContent, d.theme as Theme, d.aspectRatio)
-  s.elements = fresh.elements as Draft<Slide>['elements']
-  pruneEffects(s)
+  swapElements(s, fresh.elements)
   s.background = fresh.background
   delete s.ownLook // the person took the picture away: the layout's own background is back
 }
@@ -770,8 +773,7 @@ export function placeImageBeside(d: D, slideId: string, img: PlacedImage) {
   const fresh = composeSlide(content, d.theme as Theme, d.aspectRatio)
   s.layoutId = fresh.layoutId
   s.content = fresh.content
-  s.elements = fresh.elements as Draft<Slide>['elements']
-  pruneEffects(s)
+  swapElements(s, fresh.elements)
   s.background = fresh.background
   s.manual = false
   reapplyOwnLook(d, s, look)

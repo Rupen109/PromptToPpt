@@ -16,6 +16,24 @@ export const getPendingPrompt = (): string | null => {
   }
 }
 
+// The Morph template the person picked before typing the request (from the website's template pages): carried to the creation screen.
+const MORPH_TPL_KEY = 'prompttoppt:pending-morph-template'
+export const setPendingMorphTemplate = (id: string | null) => {
+  try {
+    if (id) sessionStorage.setItem(MORPH_TPL_KEY, id)
+    else sessionStorage.removeItem(MORPH_TPL_KEY)
+  } catch {
+    /* ignore */
+  }
+}
+export const getPendingMorphTemplate = (): string | null => {
+  try {
+    return sessionStorage.getItem(MORPH_TPL_KEY)
+  } catch {
+    return null
+  }
+}
+
 // An in-flight generation job id, so a refresh resumes progress instead of starting over (and re-spending credits).
 const JOB_KEY = 'prompttoppt:pending-job'
 export const setPendingJob = (id: string | null) => {
@@ -36,6 +54,8 @@ export const getPendingJob = (): string | null => {
 export const clearPending = () => {
   setPendingJob(null)
   try {
+    sessionStorage.removeItem(MORPH_TPL_KEY)
+    sessionStorage.removeItem('prompttoppt:pending-file-template')
     sessionStorage.removeItem(KEY)
     sessionStorage.removeItem(SRC_KEY)
     sessionStorage.removeItem(LANG_KEY)
@@ -77,5 +97,25 @@ export const getPendingLanguage = (): string | undefined => {
     return sessionStorage.getItem(LANG_KEY) || undefined
   } catch {
     return undefined
+  }
+}
+
+// "Use a file's design": the uploaded design the person picked on the home screen, carried to the creation screen with its summary (so the screen can show it at once).
+export interface PendingFileTemplate { id: string; name: string; slideCount: number; aspect: string; fontsReplaced: { original: string; mapped: string }[]; /** the person left the prompt empty: they will add the data themselves */ preferManual?: boolean }
+const FILE_TPL_KEY = 'prompttoppt:pending-file-template'
+export const setPendingFileTemplate = (t: PendingFileTemplate | null) => {
+  try {
+    if (t) sessionStorage.setItem(FILE_TPL_KEY, JSON.stringify(t))
+    else sessionStorage.removeItem(FILE_TPL_KEY)
+  } catch {
+    /* ignore */
+  }
+}
+export const getPendingFileTemplate = (): PendingFileTemplate | null => {
+  try {
+    const v = JSON.parse(sessionStorage.getItem(FILE_TPL_KEY) ?? 'null') as PendingFileTemplate | null
+    return v && typeof v.id === 'string' && typeof v.name === 'string' && typeof v.slideCount === 'number' ? v : null
+  } catch {
+    return null
   }
 }

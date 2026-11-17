@@ -1,5 +1,6 @@
 # "Get brand from a website" (C1) — functional flows, pass criteria, and how each is proven
 
+> Update 2026-11-17: the same card now also reads a PowerPoint or a PDF, and this section's criteria apply to the website source only. See docs/BRAND_KITS_FUNCTIONAL_FLOWS.md section K.
 Written BEFORE the real run (2026-10-10) so the criteria cannot be bent to fit the results. **Result (2026-10-10): every flow below passed in the real run; extraction criteria X1–X8 are met (see the table at the end).** "Real" = real browser, real API server and database, and the REAL internet (real websites, real DNS, real redirects). There is no AI in this feature, so no AI cost.
 
 Where it lives: Style panel → Brand tab → "Get brand from a website" (paste a site → Find brand → Apply / Save as brand kit / Update my kit).

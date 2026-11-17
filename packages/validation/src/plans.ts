@@ -43,6 +43,8 @@ export const planFeaturesSchema = z.object({
   morph: z.boolean().default(false),
   /** how many Morph decks the AI may build for the person in a billing period (0 = none). Counted from the jobs on the server, never from what the browser says. */
   morphDecksPerMonth: z.number().int().min(0).default(0),
+  /** "Use a file's design": upload a PowerPoint and build new decks in its exact look (theme, fonts, layouts). One value per plan; enforced on the server on upload and on starting a deck from it. */
+  templateFromFile: z.boolean().default(false),
 })
 export type PlanFeatures = z.infer<typeof planFeaturesSchema>
 

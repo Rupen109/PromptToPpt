@@ -23,6 +23,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${BASE_URL}/free-tools/pdf-to-presentation`, priority: 0.8, changeFrequency: 'monthly' as const },
     { url: `${BASE_URL}/free-tools/pdf-to-ppt`, priority: 0.7, changeFrequency: 'monthly' as const },
     { url: `${BASE_URL}/free-tools/pdf-to-jpg`, priority: 0.7, changeFrequency: 'monthly' as const },
+    { url: `${BASE_URL}/free-tools/pdf-editor`, priority: 0.8, changeFrequency: 'monthly' as const },
     { url: `${BASE_URL}/free-tools/sitemap-generator`, priority: 0.7, changeFrequency: 'monthly' as const },
     { url: `${BASE_URL}/free-tools/youtube-transcript-to-slides`, priority: 0.8, changeFrequency: 'monthly' as const },
     { url: `${BASE_URL}/free-tools/video-to-slides`, priority: 0.8, changeFrequency: 'monthly' as const },

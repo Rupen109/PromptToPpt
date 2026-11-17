@@ -72,6 +72,51 @@ export function mockRespond(req: TextRequest): string {
       })),
     })
   }
+  if (task === 'file_template_fill') {
+    type Sl = { id: string; maxChars: number; detail: boolean; numeric?: boolean; role: string }
+    type Ts = { index: number; kind: string; slots: Sl[]; charts?: { id: string; categories: number; series: number }[] }
+    const topic = String(p['topic'] ?? 'Deck')
+    const tss = (p['templateSlides'] ?? []) as Ts[]
+    const n: number = p['slideCount'] ?? 6
+    const shorten = p['shorten'] as { scene: string; id: string; maxChars: number }[] | undefined
+    if (shorten) {
+      const by = new Map<string, Record<string, string>>()
+      for (const x of shorten) by.set(x.scene, { ...(by.get(x.scene) ?? {}), [x.id]: topic.slice(0, Math.max(4, x.maxChars - 2)) })
+      return JSON.stringify({ title: topic.slice(0, 60), slides: Array.from({ length: n }, (_, i) => ({ use: 0, fields: by.get(`s${i}`) ?? {} })) })
+    }
+    const cover = tss.find((t) => t.kind === 'cover') ?? tss[0]
+    const content = tss.filter((t) => t.kind === 'content')
+    const closing = tss.find((t) => t.kind === 'closing')
+    const chrome = (p['chrome'] ?? []) as { id: string; maxChars: number }[]
+    return JSON.stringify({
+      title: topic.slice(0, 60),
+      chrome: Object.fromEntries(chrome.map((c, k) => [c.id, k === 0 ? topic.slice(0, Math.max(4, Math.min(c.maxChars, 14))) : ''])),
+      slides: Array.from({ length: n }, (_, i) => {
+        const t = (i === 0 ? cover : i === n - 1 && closing ? closing : content[(i - 1) % Math.max(1, content.length)] ?? cover)!
+        // a chart gets the figures the request itself contains (the first ones, in order), as the real model is told to do
+        const nums = (words(req.prompt).match(/\d[\d.]*/g) ?? []).map(Number).filter((v) => Number.isFinite(v))
+        const charts = p['figuresAllowed'] && nums.length >= 2 ? Object.fromEntries((t.charts ?? []).map((c) => [c.id, { labels: nums.slice(0, 4).map((_, q) => `Point ${q + 1}`), series: [{ name: 'Figures', values: nums.slice(0, 4) }] }])) : undefined
+        return { use: t.index, notes: `Say something specific about point ${i + 1}.`, ...(charts && Object.keys(charts).length ? { charts } : {}), fields: Object.fromEntries(t.slots.map((s) => [s.id, s.detail || s.numeric ? '' : `${topic} point ${i + 1} ${s.role}`.slice(0, Math.max(4, Math.min(s.maxChars - 2, 60)))])) }
+      }),
+    })
+  }
+  if (task === 'template_fill') {
+    type Sl = { id: string; maxChars: number; detail: boolean; ticker?: boolean; numeric?: boolean }
+    const shorten = p['shorten'] as { scene: string; id: string; maxChars: number }[] | undefined
+    const topic = String(p['topic'] ?? 'Deck')
+    if (shorten) {
+      const by = new Map<string, Record<string, string>>()
+      for (const x of shorten) by.set(x.scene, { ...(by.get(x.scene) ?? {}), [x.id]: topic.slice(0, Math.max(4, x.maxChars - 2)) })
+      return JSON.stringify({ title: topic.slice(0, 60), scenes: [...by].map(([scene, fields]) => ({ scene, fields })) })
+    }
+    const scenes = (p['scenes'] ?? []) as { scene: string; title: string; slots: Sl[] }[]
+    const chrome = (p['chrome'] ?? []) as { id: string; maxChars: number }[]
+    return JSON.stringify({
+      title: topic.slice(0, 60),
+      chrome: Object.fromEntries(chrome.map((c, k) => [c.id, k === 0 ? topic.slice(0, Math.max(4, Math.min(c.maxChars, 14))) : ''])),
+      scenes: scenes.map((sc) => ({ scene: sc.scene, notes: `Say something specific about ${sc.title}.`, fields: Object.fromEntries(sc.slots.map((s) => [s.id, s.detail || s.numeric ? '' : `${topic} ${sc.title}`.slice(0, Math.max(4, Math.min(s.maxChars - 2, 60)))])) })),
+    })
+  }
   if (task === 'morph_plan') {
     const n: number = p['slideCount'] ?? 8
     const mid = ['cards-row', 'spotlight', 'cards-column', 'timeline', 'compare', 'cards-grid']

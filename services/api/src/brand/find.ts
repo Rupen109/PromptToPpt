@@ -132,6 +132,14 @@ export function softRedirectTarget(html: string, base: string): string | null {
   try { return m?.[1] ? new URL(m[1].replace(/&amp;/g, '&'), base).toString() : null } catch { return null }
 }
 
+/** Heading and body fonts → fonts we can render. A site that uses ONE face for both (Stripe's sohne-var) gets one family for both, not a heading look-alike beside a body look-alike. */
+export function mapSiteFonts(f: { heading: string | null; body: string | null; detected: string[] }): BrandProfile['fonts'] {
+  const heading = f.heading ? mapFont(f.heading, 'heading') : null
+  const sameFace = f.heading && f.body && f.heading.toLowerCase() === f.body.toLowerCase()
+  const body = f.body ? (sameFace && heading ? { ...heading } : mapFont(f.body, 'body')) : null
+  return { heading, body, detected: f.detected }
+}
+
 /** Reads a website's brand. Throws a short, user-safe Error when the page cannot be read at all. */
 export async function findBrand(userId: string, rawUrl: string, fetchImpl?: FetchLike): Promise<BrandProfile> {
   const deadline = Date.now() + TOTAL_BUDGET_MS
@@ -181,7 +189,7 @@ export async function findBrand(userId: string, rawUrl: string, fetchImpl?: Fetc
     sourceUrl: page.url,
     name: draft.name,
     colors: { primary, accent, accentDerived: derived, palette: palette.map((p) => p.hex) },
-    fonts: { heading: draft.fonts.heading ? mapFont(draft.fonts.heading, 'heading') : null, body: draft.fonts.body ? mapFont(draft.fonts.body, 'body') : null, detected: draft.fonts.detected },
+    fonts: mapSiteFonts(draft.fonts),
     logo: logo && logoUrl ? { url: logoUrl, aspect: logo.aspect } : null,
     confidence: primary && top >= 6 && (logoAgrees || !logoHex) ? 'high' : 'low',
   }

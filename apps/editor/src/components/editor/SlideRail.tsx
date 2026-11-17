@@ -1,6 +1,8 @@
 import { MoreHorizontal } from '@prompttoppt/ui/icons'
 import { Lock, MessageSquare } from '@prompttoppt/ui/icons'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import type { Slide, Theme } from '@prompttoppt/validation'
+import { api } from '@/lib/api'
 import type { LayoutId, Presentation, SlideElement } from '@prompttoppt/validation'
 import { SlideCanvas } from '@prompttoppt/ui'
 import { othersOf, useLive } from '@/editor/live'
@@ -37,6 +39,20 @@ export function SlideRail({ doc, watermark }: { doc: Presentation; watermark: bo
   const { activeSlideId, setActiveSlide, toggleNotes, select } = useUi()
   const [menu, setMenu] = useState<{ x: number; y: number; slideId: string } | null>(null)
   const [addOpen, setAddOpen] = useState(false)
+  /** the deck's uploaded design ("Use a file's design"): its layouts with placeholder words, fetched when the menu opens. null = not loaded, 'gone' = the design was deleted (the section is hidden; the deck works as before). */
+  const [own, setOwn] = useState<{ theme: Theme; aspect: string; layouts: { index: number; name: string; layoutName: string; slide: Slide }[] } | 'gone' | null>(null)
+  useEffect(() => {
+    if (!addOpen || !doc.templateId || own) return
+    let live = true
+    api.fileTemplateLayouts(doc.templateId).then((r) => live && setOwn(r)).catch(() => live && setOwn('gone'))
+    return () => { live = false }
+  }, [addOpen, doc.templateId, own])
+  const addOwn = (layout: Slide) => {
+    const id = crypto.randomUUID().replace(/-/g, '').slice(0, 12)
+    const slide: Slide = { ...layout, id, elements: layout.elements.map((e) => ({ ...e, id: `${id}:${e.id.split(':').pop()}` })) }
+    apply('Add slide from your template', (d) => C.addSlideAt(d, doc.slides.length, slide as never))
+    setActiveSlide(id)
+  }
   const [dragFrom, setDragFrom] = useState<number | null>(null)
   const [dropAt, setDropAt] = useState<number | null>(null)
 
@@ -72,6 +88,18 @@ export function SlideRail({ doc, watermark }: { doc: Presentation; watermark: bo
         {addOpen && (
           <div role="menu" className="absolute z-30 left-0 right-0 max-md:right-auto max-md:w-60 max-md:bottom-full max-md:mb-1 md:mt-1 bg-white border border-border rounded-xl shadow-xl p-1.5 text-sm max-h-80 overflow-y-auto">
             <button role="menuitem" className="w-full text-left px-2.5 py-2 rounded-lg hover:bg-slate-100" onClick={() => { addAfter(doc.slides.length - 1, 'blank'); setAddOpen(false) }}>Blank slide</button>
+            {own && own !== 'gone' && own.aspect === doc.aspectRatio && own.layouts.length > 0 && (
+              <div data-testid="from-your-template">
+                <div className="px-2.5 pt-2 pb-1 text-[11px] font-bold text-slate-500">FROM YOUR TEMPLATE</div>
+                <div className="grid grid-cols-2 gap-1.5 px-1 pb-1">
+                  {own.layouts.map((l) => (
+                    <button key={l.index} role="menuitem" title={`${l.layoutName} (slide ${l.index + 1} of your template)`} aria-label={`Insert layout ${l.index + 1} from your template`} data-testid={`own-layout-${l.index}`} onClick={() => { addOwn(l.slide); setAddOpen(false) }} className="rounded-md ring-1 ring-border hover:ring-primary overflow-hidden p-0.5 text-left">
+                      <SlideCanvas slide={l.slide} theme={own.theme} aspect={doc.aspectRatio} width={88} />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="px-2.5 pt-2 pb-1 text-[11px] font-bold text-slate-500">FROM A LAYOUT</div>
             {C.INSERTABLE_LAYOUTS.map((l) => <button key={l} role="menuitem" className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-100" onClick={() => { addAfter(doc.slides.length - 1, l); setAddOpen(false) }}>{LAYOUT_LABEL[l] ?? l}</button>)}
           </div>

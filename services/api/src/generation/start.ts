@@ -2,18 +2,22 @@ import { and, count, eq, gte, inArray, isNull, notInArray, sql } from 'drizzle-o
 import { nanoid } from 'nanoid'
 import { z } from 'zod'
 import { designById, getTheme } from '@prompttoppt/theme'
+import { getMorphTemplate } from '@prompttoppt/theme/morph-templates'
 import { SCHEMA_VERSION, deckLanguage, directionSchema, promptAnalysisSchema } from '@prompttoppt/validation'
 import { catalog } from '../ai/gateway.ts'
 import { chooseModel } from '../routes/models.ts'
 import { getKit, MAX_KITS } from '../brand/kits.ts'
 import { GateError } from '../billing/errors.ts'
 import { estimateGeneration, refundCredits, reserveCredits } from '../billing/credits.ts'
-import { assertModelTier, morphDecksUsed, assertMorph, assertMorphQuota, assertPresentationQuota, assertSlideLimit, getEntitlements } from '../billing/entitlements.ts'
+import { assertTemplateFromFile, assertModelTier, morphDecksUsed, assertMorph, assertMorphQuota, assertPresentationQuota, assertSlideLimit, getEntitlements } from '../billing/entitlements.ts'
 import { insertDeck } from '../decks/create.ts'
 import { db } from '../db/index.ts'
 import { generationJob, presentation, presentationVersion, sourceDocument } from '../db/schema.ts'
 import { env } from '../env.ts'
 import { MAX_SLIDES, resolveSlideCount } from './policy.ts'
+import { templateSlideCount } from './uploaded-template.ts'
+import { getUserTemplate } from '../template-import/user-templates.ts'
+import type { UploadedTemplate } from '../template-import/types.ts'
 import { placeholderSlide } from './progress.ts'
 import { laneOfSpeed, PARALLEL_BY_LANE } from './queue.ts'
 import { notifyJob } from './wake.ts'
@@ -50,6 +54,12 @@ export const createJob = z.object({
   sourceIds,
   /** build a Morph deck: slides made from the same elements, which move and regroup from slide to slide (Gold/Premium; a new presentation only) */
   morph: z.boolean().optional(),
+  /** build the deck from one of the Morph templates (its layout, pictures and movement; only the words are written). Counts as a Morph deck. */
+  morphTemplate: z.string().max(40).optional(),
+  /** build the deck in the look of one of YOUR uploaded designs (Pro, Gold, Premium): its theme, fonts and slide layouts; a new presentation only */
+  fromTemplateId: z.string().max(40).optional(),
+  /** with fromTemplateId: 'ai' writes the words from the request; 'manual' makes the slides with neutral placeholders for the person to type into (no AI call, no credits) */
+  templateMode: z.enum(['ai', 'manual']).default('ai'),
   /** the language the person chose for the deck (any of the 100+ in the picker); omitted → detected from the request */
   language: languageField,
   /** generated once per user action in the client; retries of the same action reuse it */
@@ -81,6 +91,14 @@ export async function startDeckJob(userId: string, body: CreateJobInput): Promis
   // Plan gates — all decided from server-side entitlements, never from anything the client sent about its plan.
   const ent = await getEntitlements(userId)
   if (body.slideCount !== undefined) assertSlideLimit(ent, body.slideCount)
+  let fileTpl: UploadedTemplate | undefined
+  if (body.fromTemplateId) {
+    if (body.targetPresentationId || body.remixOf || body.picturesOnly || body.morph || body.morphTemplate) return reply(err('INVALID_REQUEST', 'A presentation in your own design is made as a new presentation: it cannot be combined with remix, rewrite, pictures-only or Morph.'), 400)
+    if (body.designId || body.brandKitId) return reply(err('INVALID_REQUEST', 'A presentation in your own design already has its look: do not choose a template or brand kit as well.'), 400)
+    assertTemplateFromFile(ent) // from the plan, never from the browser: checked on every start
+    fileTpl = (await getUserTemplate(userId, body.fromTemplateId))?.template
+    if (!fileTpl) return reply(err('NOT_FOUND', 'That design was not found. Upload it again.'), 404)
+  }
   const design = body.designId ? designById(body.designId) : undefined
   if (body.designId && !design) return reply(err('INVALID_TEMPLATE', 'Unknown template'), 400)
   if (design?.premium && !ent.features.premiumTemplates) throw new GateError('UPGRADE_REQUIRED', `"${design.name}" is a Pro template.`, 403, { feature: 'premiumTemplates' })
@@ -92,6 +110,10 @@ export async function startDeckJob(userId: string, body: CreateJobInput): Promis
     const [orig] = await db.select({ aspectRatio: presentation.aspectRatio }).from(presentation).where(and(eq(presentation.id, body.remixOf), eq(presentation.userId, userId), isNull(presentation.deletedAt)))
     if (!orig) return reply(err('NOT_FOUND', 'Presentation not found'), 404)
     remixAspect = orig.aspectRatio
+  }
+  if (body.morphTemplate) {
+    if (!getMorphTemplate(body.morphTemplate)) return reply(err('INVALID_MORPH_TEMPLATE', 'That Morph template does not exist.'), 400)
+    body.morph = true // a template deck is a Morph deck: same plan gate, same monthly allowance
   }
   if (body.morph) {
     if (body.targetPresentationId || body.remixOf || body.picturesOnly) return reply(err('INVALID_REQUEST', 'A Morph presentation is made as a new presentation.'), 400)
@@ -112,7 +134,9 @@ export async function startDeckJob(userId: string, body: CreateJobInput): Promis
     const [docRow] = await db.select({ ids: sql<string[]>`coalesce((select jsonb_agg(s->>'id') from jsonb_array_elements(${presentationVersion.document}->'sources') s), '[]'::jsonb)` }).from(presentationVersion).where(and(eq(presentationVersion.presentationId, body.targetPresentationId), eq(presentationVersion.version, t.v)))
     for (const sid of docRow?.ids ?? []) if (!body.sourceIds.includes(sid)) body.sourceIds.push(sid)
   } else assertPresentationQuota(ent) // a rewrite replaces an existing deck: it does not use up a new-deck allowance
-  const slideCount = resolveSlideCount(body.analysis ?? ({ slideCount: undefined } as never), body.direction, body.slideCount ?? (target ? Math.min(Math.max(target.slideCount, 4), ent.limits.maxSlides) : undefined), ent.limits.maxSlides)
+  const morphTpl = body.morphTemplate ? getMorphTemplate(body.morphTemplate) : undefined
+  if (morphTpl && morphTpl.scenes.length > ent.limits.maxSlides) return reply(err('SLIDE_LIMIT', `This template has ${morphTpl.scenes.length} scenes and your plan allows ${ent.limits.maxSlides} slides in a deck.`), 400)
+  const slideCount = fileTpl ? templateSlideCount(fileTpl, body.slideCount ?? body.analysis?.slideCount, ent.limits.maxSlides) : morphTpl ? morphTpl.scenes.length : resolveSlideCount(body.analysis ?? ({ slideCount: undefined } as never), body.direction, body.slideCount ?? (target ? Math.min(Math.max(target.slideCount, 4), ent.limits.maxSlides) : undefined), ent.limits.maxSlides)
   // Model: the user's pick (or the plan default), validated against the live catalogue and THEIR plan's tiers.
   const { rows } = await catalog()
   const picked = chooseModel(ent, rows, body.model)
@@ -120,23 +144,23 @@ export async function startDeckJob(userId: string, body: CreateJobInput): Promis
   const tier = picked.accessTier as 'starter' | 'premium' | 'frontier'
   assertModelTier(ent, tier)
   if (body.picturesOnly && !body.targetPresentationId) return reply(err('INVALID_REQUEST', 'picturesOnly needs a presentation'), 400)
-  const estimate = await estimateGeneration(tier, body.picturesOnly ? Math.max(1, Math.ceil(slideCount / 4)) : slideCount)
+  const estimate = fileTpl && body.templateMode === 'manual' ? 0 : await estimateGeneration(tier, body.picturesOnly ? Math.max(1, Math.ceil(slideCount / 4)) : slideCount)
 
   const id = nanoid()
   await reserveCredits(userId, estimate, 'job', id) // throws INSUFFICIENT_CREDITS (402) before any job exists
   const { prompt, idempotencyKey, ...rest } = body
   const lane = laneOfSpeed(ent.features.speed)
-  const options: Record<string, unknown> & { slideIds?: string[] } = { ...rest, parallel: PARALLEL_BY_LANE[lane], slideCount, tier, model: picked.id, creditsReserved: estimate, premiumTemplates: ent.features.premiumTemplates, ...(target ? { aspectRatio: target.aspectRatio } : remixAspect ? { aspectRatio: remixAspect } : {}) }
+  const options: Record<string, unknown> & { slideIds?: string[] } = { ...rest, parallel: PARALLEL_BY_LANE[lane], slideCount, tier, model: picked.id, creditsReserved: estimate, premiumTemplates: ent.features.premiumTemplates, ...(target ? { aspectRatio: target.aspectRatio } : fileTpl ? { aspectRatio: fileTpl.aspect } : remixAspect ? { aspectRatio: remixAspect } : {}) }
   // A NEW deck (or remix) exists from this moment: the browser opens it at once and watches it being written. A rewrite changes an existing deck at the end.
   let deckId: string | null = null
   if (!target) {
     const aspect = ((options as { aspectRatio?: string }).aspectRatio ?? '16:9') as '16:9' | '4:3' | '1:1'
-    const theme = getTheme('cobalt')
+    const theme = fileTpl ? fileTpl.theme : getTheme('cobalt') // a deck in your own design shows its colours from the first second
     deckId = nanoid()
     const slides = Array.from({ length: slideCount }, () => placeholderSlide(nanoid(12), '', theme))
-    const title = prompt.replace(/\s+/g, ' ').slice(0, 60)
+    const title = fileTpl && body.templateMode === 'manual' ? fileTpl.name.slice(0, 60) : prompt.replace(/\s+/g, ' ').slice(0, 60)
     try {
-      await insertDeck(userId, ent, { id: deckId, title, aspectRatio: aspect, doc: { schemaVersion: SCHEMA_VERSION, id: deckId, title, aspectRatio: aspect, language: 'en', theme, sources: [], slides } })
+      await insertDeck(userId, ent, { id: deckId, title, aspectRatio: aspect, doc: { schemaVersion: SCHEMA_VERSION, id: deckId, title, aspectRatio: aspect, language: 'en', theme, sources: [], slides, ...(fileTpl && body.fromTemplateId ? { templateId: body.fromTemplateId } : {}) } })
     } catch (e) {
       await refundCredits(userId, 'job', id) // the deck limit said no: nothing was started, nothing is charged
       throw e

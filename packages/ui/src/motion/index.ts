@@ -1,6 +1,7 @@
 export * from './catalog'
 export * from './keyframes'
 export * from './timeline'
+export * from './paths'
 export * from './player'
 export * from './react'
 export * from './morph'

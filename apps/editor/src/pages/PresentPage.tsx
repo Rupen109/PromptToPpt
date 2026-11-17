@@ -45,10 +45,10 @@ export function PresentPage() {
   const [morph, setMorph] = useState<{ to: number; dir: 1 | -1; hidden: ReadonlySet<string> } | null>(null)
   const [morphed, setMorphed] = useState(false) // the slide just arrived by a Morph, which was its entrance: it does not fade in again
   const morphHandle = useRef<MorphHandle | null>(null)
-  const go = useCallback((dir: 1 | -1) => {
+  const go = useCallback((dir: 1 | -1, skipEffects = false) => {
     if (morph) { morphHandle.current?.finish(); return } // a key pressed during a Morph completes it
     const p = playerRef.current
-    if (dir === 1 ? p && p.advance() !== 'none' : p?.back()) return
+    if (!skipEffects && (dir === 1 ? p && p.advance() !== 'none' : p?.back())) return
     const target = Math.max(0, Math.min(n - 1, i + dir))
     if (target === i || !deck) return
     const slides = deck.document.slides
@@ -62,6 +62,13 @@ export function PresentPage() {
     setArrival(dir === 1 ? 'forward' : 'back')
     setI(target)
   }, [n, i, deck, morph, playerRef, rootRef])
+  // "Advance after N seconds" (the slide's transition): the slide moves on by itself that long after it appeared, effects or not; the timer restarts on every slide
+  const after = current?.transition?.advanceAfter
+  useEffect(() => {
+    if (after === undefined || morph || !deck || i >= n - 1) return
+    const t = setTimeout(() => go(1, true), after)
+    return () => clearTimeout(t)
+  }, [after, i, morph, deck, n, go])
   const onMorphDone = useCallback(() => {
     if (!morph) return
     setArrival(morph.dir === 1 ? 'forward' : 'back'); setMorphed(true); setI(morph.to); setMorph(null)
@@ -89,11 +96,17 @@ export function PresentPage() {
   const width = Math.floor(Math.min(size.w, (size.h * W) / H))
 
   return (
-    <div className="fixed inset-0 bg-black grid place-items-center select-none" data-testid="present" onClick={(e) => go(e.clientX < size.w / 3 ? -1 : 1)}>
+    <div className="fixed inset-0 bg-black grid place-items-center select-none" data-testid="present" onClick={(e) => {
+      // an object that other effects wait for (a trigger) plays them when it is clicked, and the click is used up
+      const trig = (e.target as HTMLElement).closest?.('[data-pt-el]')?.getAttribute('data-pt-el')
+      if (trig && !morph && playerRef.current?.trigger(trig)) return
+      if (slide.transition?.advanceOnClick === false) return
+      go(e.clientX < size.w / 3 ? -1 : 1)
+    }}>
       {morph ? (
         (() => {
           const t = (morph.dir === 1 ? doc.slides[morph.to] : slide)!.transition!
-          return <MorphLayer from={slide} to={doc.slides[morph.to]!} theme={doc.theme} aspect={doc.aspectRatio} width={width} duration={t.duration ?? MORPH_DEFAULTS.duration} easing={easingCss(t.easing ?? MORPH_DEFAULTS.easing)} blend={t.blend ?? 'through'} watermark={ent?.features.watermark ?? false} hiddenFrom={morph.hidden} handleRef={morphHandle} onDone={onMorphDone} />
+          return <MorphLayer from={slide} to={doc.slides[morph.to]!} theme={doc.theme} aspect={doc.aspectRatio} width={width} duration={t.duration ?? MORPH_DEFAULTS.duration} easing={easingCss(t.easing ?? MORPH_DEFAULTS.easing)} blend={t.blend ?? 'through'} by={t.by ?? 'object'} watermark={ent?.features.watermark ?? false} hiddenFrom={morph.hidden} handleRef={morphHandle} onDone={onMorphDone} />
         })()
       ) : <div key={slide.id} ref={rootRef} style={morphed ? {} : Object.keys(transitionStyle(slide, doc.theme.motion?.transition)).length ? transitionStyle(slide, doc.theme.motion?.transition) : { animation: 'deckFade 300ms ease' }}><SlideCanvas slide={slide} theme={doc.theme} aspect={doc.aspectRatio} width={width} play effects watermark={ent?.features.watermark ?? false} /></div>}
       <div className="fixed bottom-3 left-1/2 -translate-x-1/2 text-xs text-white/60" aria-live="polite">{i + 1} / {n} · ←/→ navigate · N notes · F fullscreen · Esc exit</div>

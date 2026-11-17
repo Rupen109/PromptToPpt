@@ -136,3 +136,13 @@ Enforcement (server): adding or changing a Morph transition on save needs `morph
 
 **Why 10 and 30 (measured, not guessed).** A Morph deck is one planning call plus a tiny design pick: measured average $0.0058 on 11 real jobs on Gemini 3.6 Flash ($0.0077 at worst), less than half of a normal deck ($0.0127). On the dearest model a plan allows (Opus 4.8, Premium) about $0.037. Net revenue a month: Gold $6.11, Premium $11.28. At the limit: Gold 10 x $0.0058 = $0.058 (about 1% of net; 4% if every deck used the dearest Gold model), Premium 30 x $0.037 = $1.11 (about 10%, with every deck on Opus). Gemini Flash prices double on 2027-01-01: the same decks cost about twice that, still under 2% (Gold) on the default model. The limit is therefore a product limit, not a cost limit; change the two numbers in `seed.ts` (+ an UPDATE migration) to move them.
 
+
+
+## "Use a file's design" plan flag (2026-11-13)
+Upload a PowerPoint and build new decks in its exact look (`docs/TEMPLATE_FROM_FILE.md`, Part 2). One value per plan: `features.templateFromFile` (migration 0045 set it; seeds never overwrite, so change it with an UPDATE or in the plan row).
+
+| | Starter | Pro | Gold | Premium |
+|---|---|---|---|---|
+| Use a file's design (`features.templateFromFile`) | no | yes | yes | yes |
+
+Enforcement (server, never the browser): `POST /file-templates` (before the body is read) and starting a job with `fromTemplateId` both call `assertTemplateFromFile` and answer `UPGRADE_REQUIRED` with `details.feature = 'templateFromFile'`. Listing, reading and deleting your own uploaded designs is not gated (a person who downgrades can still see and delete them; they just cannot start new decks from them). A deck made from a design counts as an ordinary new presentation (`assertPresentationQuota`); in "Write it for me" mode it costs the usual credits per slide, in "I'll add the data myself" mode it uses no model and costs no credits. The pricing page lists the feature from the flag (`planHighlights`). The cost of the AI mode is one analysis call plus one writing call (plus one short repair call at most), like a Morph-template deck.

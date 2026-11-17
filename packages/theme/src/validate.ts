@@ -84,7 +84,7 @@ export function validateDeck(doc: Presentation): DeckReport {
   const slides = doc.slides.map((s, i) => {
     const issues = validateSlide(s, doc.theme)
     // a Morph deck is all one layout; what varies is its scene, so that is what counts as "the same layout"
-    const kind = (x: Slide | undefined) => (x?.layoutId === 'morph' ? `morph:${(x.content as { scene?: string } | undefined)?.scene ?? ''}` : x?.layoutId)
+    const kind = (x: Slide | undefined) => (x?.layoutId === 'morph' || x?.layoutId === 'morph-template' ? `${x.layoutId}:${(x.content as { scene?: string } | undefined)?.scene ?? ''}` : x?.layoutId)
     const a = kind(doc.slides[i - 1])
     const b = kind(doc.slides[i - 2])
     if (a && b && a === kind(s) && b === kind(s) && s.layoutId !== 'blank') issues.push({ code: 'duplicate_layout', severity: 'warning', message: `Layout "${kind(s)}" used 3 times in a row` })

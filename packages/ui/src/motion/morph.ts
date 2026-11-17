@@ -9,7 +9,9 @@ import type { Slide, SlideElement } from '@prompttoppt/validation'
  *    with `transform` and `opacity` only, so nothing is laid out during the transition and a text never reflows or stretches: it is scaled evenly by its font size.
  *  · An element on one slide only comes in or goes out.
  */
-export interface MorphPair { from: SlideElement; to: SlideElement; /** the two copies would not line up (other words, or the text wraps differently in its new box): the old copy fades away while the new one fades in, instead of the new one fading in over the old one */ crossfade: boolean }
+/** How a matched text travels piece by piece: `matches` are [index in the old text, index in the new text] pairs, in reading order; pieces left over fade out (old) or in (new). */
+export interface MorphPieces { level: 'word' | 'letter'; from: number; to: number; matches: [number, number][] }
+export interface MorphPair { from: SlideElement; to: SlideElement; /** set when the text moves word by word / letter by letter (the choice asked for, and the two texts allow it); absent = the text moves as one object */ pieces?: MorphPieces; /** the two copies would not line up (other words, or the text wraps differently in its new box): the old copy fades away while the new one fades in, instead of the new one fading in over the old one */ crossfade: boolean }
 export interface MorphPlan { pairs: MorphPair[]; entering: SlideElement[]; exiting: SlideElement[] }
 
 const wordsOf = (e: SlideElement) => (e.type === 'text' ? e.paragraphs.map((p) => p.runs.map((r) => r.text).join('')).join('\n') : '')
@@ -23,14 +25,63 @@ const rewraps = (a: SlideElement, b: SlideElement) => {
   return Math.abs((b.width / b.fontSize) / (a.width / a.fontSize) - 1) > WRAP_TOLERANCE
 }
 
-export function planMorph(from: Pick<Slide, 'elements'>, to: Pick<Slide, 'elements'>, hiddenFrom: ReadonlySet<string> = new Set()): MorphPlan {
+/** The most pieces a text may be split into (per text) before it moves as one object: every piece is an animated element. */
+export const MAX_WORD_PIECES = 60
+export const MAX_LETTER_PIECES = 140
+/** A text needs at least this share of its shorter side matched, and one piece, to travel in pieces: otherwise the two texts are different and cross-fade. */
+const MIN_SHARED = 0.34
+
+/** The pieces of a text exactly as the renderer marks them (SlideCanvas splitParts): words are the runs of non-space characters of each run, letters the characters of those words. */
+export function piecesOf(e: SlideElement, level: 'word' | 'letter'): string[] {
+  if (e.type !== 'text') return []
+  const out: string[] = []
+  for (const p of e.paragraphs) for (const r of p.runs) for (const w of r.text.split(/(\s+)/)) {
+    if (w === '' || /^\s+$/.test(w)) continue
+    if (level === 'word') out.push(w); else out.push(...Array.from(w))
+  }
+  return out
+}
+
+/** The longest run of equal pieces in order (case does not matter): which old piece goes to which new one. Pure. */
+export function matchPieces(a: readonly string[], b: readonly string[]): [number, number][] {
+  const n = a.length, m = b.length
+  const eq = (i: number, j: number) => a[i]!.toLowerCase() === b[j]!.toLowerCase()
+  const dp: number[][] = Array.from({ length: n + 1 }, () => new Array<number>(m + 1).fill(0))
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) dp[i]![j] = eq(i, j) ? dp[i + 1]![j + 1]! + 1 : Math.max(dp[i + 1]![j]!, dp[i]![j + 1]!)
+  const out: [number, number][] = []
+  for (let i = 0, j = 0; i < n && j < m;) {
+    if (eq(i, j)) { out.push([i, j]); i++; j++ }
+    else if (dp[i + 1]![j]! >= dp[i]![j + 1]!) i++
+    else j++
+  }
+  return out
+}
+
+/** Can this pair of texts travel piece by piece? Both plain text at the same rotation, few enough pieces, and enough of the words (or letters) shared; otherwise null (one object). */
+export function planPieces(a: SlideElement, b: SlideElement, by: 'word' | 'character'): MorphPieces | null {
+  if (a.type !== 'text' || b.type !== 'text' || a.rotation !== b.rotation) return null
+  const level = by === 'word' ? 'word' : 'letter'
+  const pa = piecesOf(a, level), pb = piecesOf(b, level)
+  const cap = level === 'word' ? MAX_WORD_PIECES : MAX_LETTER_PIECES
+  if (pa.length === 0 || pb.length === 0 || pa.length > cap || pb.length > cap) return null
+  const matches = matchPieces(pa, pb)
+  if (matches.length === 0 || matches.length < MIN_SHARED * Math.min(pa.length, pb.length)) return null
+  return { level, from: pa.length, to: pb.length, matches }
+}
+
+export function planMorph(from: Pick<Slide, 'elements'>, to: Pick<Slide, 'elements'>, hiddenFrom: ReadonlySet<string> = new Set(), by: 'object' | 'word' | 'character' = 'object'): MorphPlan {
+  from = { elements: from.elements.filter((e) => !e.hidden) } // an object switched off in the Selection pane is not on either slide
+  to = { elements: to.elements.filter((e) => !e.hidden) }
   const before = from.elements.filter((e) => !hiddenFrom.has(e.id)) // an element an exit effect already removed is not on screen to move
   const old = new Map(before.map((e) => [e.id, e]))
   const pairs: MorphPair[] = [], entering: SlideElement[] = []
   const used = new Set<string>()
   for (const e of to.elements) {
     const was = old.get(e.id)
-    if (was && was.type === e.type) { pairs.push({ from: was, to: e, crossfade: was.type === 'text' ? wordsOf(was) !== wordsOf(e) || rewraps(was, e) || (e.type === 'text' && was.type === 'text' && was.color !== e.color) : was.type === 'image' && e.type === 'image' && was.src !== e.src }); used.add(e.id) }
+    if (was && was.type === e.type) {
+      const pieces = by !== 'object' && e.type === 'text' ? planPieces(was, e, by) : null
+      pairs.push({ from: was, to: e, ...(pieces ? { pieces } : {}), crossfade: pieces ? false : was.type === 'text' ? wordsOf(was) !== wordsOf(e) || rewraps(was, e) || (e.type === 'text' && was.type === 'text' && was.color !== e.color) : was.type === 'image' && e.type === 'image' && was.src !== e.src }); used.add(e.id)
+    }
     else entering.push(e)
   }
   return { pairs, entering, exiting: before.filter((e) => !used.has(e.id)) }

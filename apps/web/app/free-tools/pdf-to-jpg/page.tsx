@@ -25,7 +25,7 @@ export default function Page() {
         { q: 'Are there limits?', a: 'PDFs up to 30 MB and 60 pages. Password-protected PDFs must be unlocked first.' },
         { q: 'Can I turn the PDF into slides instead?', a: 'Yes. Use our PDF to PPT converter, or let AI turn it into a designed presentation.' },
       ]}
-      related={[{ href: '/free-tools/pdf-to-ppt', label: 'PDF to PPT converter' }, { href: '/free-tools/pdf-to-presentation', label: 'AI PDF to presentation' }, { href: '/templates', label: 'Presentation templates' }]}
+      related={[{ href: '/free-tools/pdf-editor', label: 'Free PDF editor' }, { href: '/free-tools/pdf-to-ppt', label: 'PDF to PPT converter' }, { href: '/free-tools/pdf-to-presentation', label: 'AI PDF to presentation' }, { href: '/templates', label: 'Presentation templates' }]}
     >
       <PdfToJpgTool />
     </ToolShell>

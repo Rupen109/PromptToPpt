@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { BarChart3, ChevronDown, Droplet, Eraser, History, Wand2, ImagePlus, Images, LineChart, PaintBucket, PieChart, Pencil, Redo2, Shapes, Sparkles, Table2, Type, Undo2, Upload } from '@prompttoppt/ui/icons'
+import { BarChart3, ChevronDown, Droplet, Eraser, Film, History, Wand2, ImagePlus, Images, LineChart, PaintBucket, PieChart, Pencil, Redo2, Shapes, Sparkles, Table2, Type, Undo2, Upload } from '@prompttoppt/ui/icons'
 import { ApiError, isGateError } from '@prompttoppt/api-client'
 import { SHAPE_GROUP_LABEL, SHAPE_LIBRARY, type Presentation, type ShapeGroup, type Slide } from '@prompttoppt/validation'
 import * as C from '@/editor/commands'
@@ -8,7 +8,6 @@ import { useDoc } from '@/editor/store'
 import { useUi } from '@/editor/ui'
 import { api } from '@/lib/api'
 import { useEntitlements } from '@/lib/entitlements'
-import { AnimationsMenu } from '../animation/AnimationsMenu'
 import { ColorPanel } from './ColorPanel'
 import { GRADIENTS, cssGradient } from './data'
 import { MediaLibraryDialog, type PickedGradient, type PickedMedia } from './MediaLibraryDialog'
@@ -44,7 +43,7 @@ const MenuRow = ({ icon, children, onClick, testId }: { icon: ReactNode; childre
   <button type="button" role="menuitem" data-testid={testId} onClick={onClick} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left hover:bg-slate-100 rounded-lg">{icon}{children}</button>
 )
 
-type Which = null | 'shapes' | 'table' | 'media' | 'chart' | 'background' | 'animations'
+type Which = null | 'shapes' | 'table' | 'media' | 'chart' | 'background'
 
 /**
  * The ribbon above the slide (for every deck, AI-made or built from scratch): Text, Shapes, Table, Media, Chart, Background, then Undo, Redo and History.
@@ -57,6 +56,8 @@ export function TopToolbar({ doc, slide, presentationId, requireAdvanced, onHist
   const select = useUi((s) => s.select)
   const edit = useUi((s) => s.edit)
   const selection = useUi((s) => s.selection)
+  const ribbon = useUi((s) => s.ribbon)
+  const setRibbon = useUi((s) => s.setRibbon)
   const { upgrade } = useEntitlements()
   const [open, setOpen] = useState<Which>(null)
   const [bgColor, setBgColor] = useState(false)
@@ -179,9 +180,8 @@ export function TopToolbar({ doc, slide, presentationId, requireAdvanced, onHist
           )}
         </Dropdown>
 
-        <Dropdown label="Animations" icon={<Wand2 aria-hidden size={16} />} testId="tb-animations" width={300} open={open === 'animations'} onOpen={() => setOpen('animations')} onClose={close}>
-          <AnimationsMenu doc={doc} slide={slide} onDone={close} />
-        </Dropdown>
+        <button type="button" className={`${btn} ${ribbon === 'animations' ? 'bg-slate-100' : ''}`} aria-pressed={ribbon === 'animations'} data-testid="tb-animations" title="Animations tab" onClick={() => setRibbon('animations')}><Wand2 aria-hidden size={16} /><span className="max-xl:sr-only">Animations</span></button>
+        <button type="button" className={`${btn} ${ribbon === 'transitions' ? 'bg-slate-100' : ''}`} aria-pressed={ribbon === 'transitions'} data-testid="tb-transitions" title="Transitions tab" onClick={() => setRibbon('transitions')}><Film aria-hidden size={16} /><span className="max-xl:sr-only">Transitions</span></button>
 
         <span className="w-px h-6 bg-border mx-1.5 shrink-0" />
         <button type="button" className={btn} aria-label="Undo" data-testid="tb-undo" title="Undo (Ctrl/Cmd+Z)" disabled={!canUndo} onClick={() => useDoc.getState().undo()}><Undo2 aria-hidden size={17} /><span className="max-xl:sr-only">Undo</span></button>

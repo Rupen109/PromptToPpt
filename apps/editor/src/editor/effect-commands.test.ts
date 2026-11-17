@@ -55,7 +55,7 @@ describe('object effects: commands', () => {
     expect(fx().map((e) => e.id)).toEqual([a, b, c])
     expect(new Set([a, b, c]).size).toBe(3)
     expect(fx().every((e) => e.elementId === first())).toBe(true)
-    expect(doc().slides[0]!.manual).toBe(true) // so a theme or layout swap keeps these elements (and their ids)
+    expect(doc().slides[0]!.manual).toBeFalsy() // adding an effect does not freeze the slide: a layout or theme swap redraws it and the effects follow their objects
   })
 
   it('refuses a missing element, a locked slide, a locked element, or a type from another category', () => {
@@ -145,11 +145,12 @@ describe('object effects: they follow their elements', () => {
     expect(doc().slides[1]!.effects).toBeUndefined()
   })
 
-  it('a theme swap keeps the effects of a slide that has them (the slide is hand-edited, so its elements stay)', () => {
-    apply('add', (d) => { E.addEffect(d, 's1', els(1)[0]!.id, 'entrance', 'fade-in', gen) })
-    const ids = fx(1).map((e) => e.elementId)
+  it('a theme swap redraws the slide and the effects follow their objects: the title keeps its effect on its new element', () => {
+    const title = (els(1) as { id: string; type: string; role?: string }[]).find((e) => e.type === 'text' && e.role === 'title')!
+    apply('add', (d) => { E.addEffect(d, 's1', title.id, 'entrance', 'fade-in', gen) })
     apply('theme', (d) => C.applyTheme(d, 'ember'))
-    expect(fx(1).map((e) => e.elementId)).toEqual(ids)
-    expect(els(1).some((e) => e.id === ids[0])).toBe(true)
+    expect(fx(1)).toHaveLength(1)
+    const now = els(1).find((e) => e.id === fx(1)[0]!.elementId) as { type: string; role?: string } | undefined
+    expect(now?.type).toBe('text'); expect(now?.role).toBe('title')
   })
 })

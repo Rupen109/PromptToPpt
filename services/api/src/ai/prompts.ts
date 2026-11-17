@@ -127,6 +127,79 @@ Return JSON: {"title": string, "concepts": [{"heading": string, "text": string}]
   ].join('\n'),
 })
 
+export interface TemplateFillInput {
+  analysis: PromptAnalysis
+  templateName: string
+  /** what the template is for, in a sentence */
+  templateAbout: string
+  scenes: { scene: string; title: string; purpose: string; slots: { id: string; sample: string; maxChars: number; detail: boolean; ticker: boolean; numeric: boolean }[] }[]
+  /** the branding boxes every scene repeats, written once */
+  chrome: { id: string; sample: string; maxChars: number }[]
+  figuresAllowed: boolean
+  quotesAllowed: boolean
+  sources: { id: string; title: string; text: string }[]
+  userPrompt: string
+  /** a second pass: only these boxes, each too long for its box */
+  shorten?: { scene: string; id: string; text: string; maxChars: number }[]
+}
+
+/** The one call that writes a deck built from a Morph template: the words of its text boxes, scene by scene. The template decides everything else. */
+export const templateFillPrompt = (i: TemplateFillInput) => ({
+  system: `[task:template_fill]
+You write the words of a presentation that is built from a designed template ("${i.templateName}": ${i.templateAbout}). The template fixes the layout, the pictures and the movement; you write only the text boxes. ${DATA_RULES}
+Each scene has a purpose and a list of text boxes. Every box has an id, "sample" (the template's own words: they show the box's ROLE and LENGTH only; they are about another subject, so never copy them or their wording) and "maxChars" (the most characters the box can hold: stay well under it, a box that is too long is cut).
+1. Write for the topic, audience and tone in params, in the language params.language. The deck tells ONE story from the cover to the last scene: each scene says something specific and different that serves its purpose.
+2. Match each box's role: a headline is a short phrase, a label is one to three words in the same style as the sample (capitals if the sample is in capitals), a paragraph is one to three plain sentences, a name or a heading is a few words. Keep the same number of lines as the sample when it has several (a list of items stays a list of items). A box marked "numeric": true holds only a figure (a percentage, a count, a year): write a figure ONLY if the request or the sources give it, otherwise return "" (never a word in it). Sibling boxes of one scene (items, steps, cards, columns) each say something DIFFERENT: never repeat the same word or phrase in two boxes of a scene. A box drawn for ONE big word holds one word of at most maxChars letters (a long word is wrapped in the middle, so choose a shorter one). A box marked "ticker": true is a band that the template repeats across the slide: write ONE or TWO words (a topic word, never a sentence) within maxChars.
+3. Navigation and branding are not boxes you fill. Boxes marked "detail": true hold an address, a phone number, an e-mail, a web address, a handle or a credit: write one ONLY if the request or the sources give it exactly; otherwise return "" for that box. Never invent a person, a company, a contact detail, a quotation or its source.
+4. ${i.figuresAllowed ? 'Use only figures that appear in the request or the sources.' : 'Do not write any figure, percentage, date or statistic: the request gave none. Say it in words.'} ${i.quotesAllowed ? 'A quotation may be used only if it appears in the request, word for word.' : 'No quotations: where a scene is a quote, write the single sentence you want the audience to remember, in your own words, with no credit.'}
+5. "notes": what the presenter should say on that scene (1-3 sentences). "title": the deck's title (at most 8 words).
+6. "chrome": the template's branding boxes (params.chrome: a wordmark, a date or edition line, a section label) appear on EVERY scene, so write each ONCE, in the same style as its sample (capitals if the sample is in capitals) and within its maxChars: a wordmark is the deck's short name (a brand or topic name in one to three words), a label names the deck's kind or topic. A box that would name a date, an edition, a stage, an event, a place or an author you were not given: "".
+Return JSON: {"title": string, "chrome": {"<chrome id>": string}, "scenes": [{"scene": the scene id, "notes": string, "fields": {"<box id>": string}}]} with EVERY scene in order and every box of it.${i.shorten ? ' This is a repair: return only the scenes that have a box listed in params.shorten, with only those boxes, each rewritten shorter (at most its maxChars) and saying the same thing.' : ''}`,
+  prompt: [
+    `<params>${JSON.stringify({ language: i.analysis.language, audience: i.analysis.audience, tone: i.analysis.tone, topic: i.analysis.topic, objective: i.analysis.objective, requiredSections: i.analysis.requiredSections, mustCover: [...i.analysis.requiredSections, ...(i.analysis.facts ?? [])].slice(0, 25), scenes: i.shorten ? undefined : i.scenes, chrome: i.shorten ? undefined : i.chrome, figuresAllowed: i.figuresAllowed, shorten: i.shorten })}</params>`,
+    `<user_request>\n${neutralise(i.userPrompt)}\n</user_request>`,
+    sourceBlock(i.sources),
+  ].join('\n'),
+})
+
+export interface FileTemplateFillInput {
+  analysis: PromptAnalysis
+  templateName: string
+  /** how many slides the deck has */
+  slideCount: number
+  /** the template's slides described by shape (never by words): index, layout name, kind (cover / content / closing), picture count and the text boxes with role and room */
+  templateSlides: { index: number; layout: string; kind: string; pictures: number; charts?: { id: string; chartType: string; categories: number; series: number; labelChars: number }[]; slots: { id: string; role: string; sampleChars: number; maxChars: number; maxLines: number; lines: number; detail: boolean; numeric: boolean; caps: boolean }[] }[]
+  chrome: { id: string; maxChars: number; caps: boolean }[]
+  figuresAllowed: boolean
+  quotesAllowed: boolean
+  sources: { id: string; title: string; text: string }[]
+  userPrompt: string
+  shorten?: { scene: string; id: string; text: string; maxChars: number }[]
+}
+
+/**
+ * The one call that writes a deck built in the look of a person's own uploaded file: for each of the deck's slides it CHOOSES which of the file's slides to use and writes the words of that
+ * slide's text boxes. The code validates the choice and fits the words, so this prompt only has to get the story and the lengths right.
+ */
+export const fileTemplateFillPrompt = (i: FileTemplateFillInput) => ({
+  system: `[task:file_template_fill]
+You write the words of a presentation that is built in the design of a person's own uploaded file ("${neutralise(i.templateName)}"). The file fixes the look and the layouts; you choose which layout each slide uses and write only its text boxes. ${DATA_RULES}
+params.templateSlides lists the file's slides by shape only: "index", "layout" (its name), "kind" (cover, content or closing), "pictures" (photos it holds) and its text boxes: "id", "role", "sampleChars" (how long the file's own words were: they are about another subject and are NOT given), "maxChars" (the most characters the box holds: stay well under it, a longer box is cut), "maxLines", "lines" (how many paragraphs or bullets the original had), "caps" (the original is in capitals).
+1. The deck has exactly params.slideCount slides telling ONE story from the cover to the last slide, in the language params.language, for the topic, audience and tone in params. Each slide says something specific and different.
+2. For each slide return "use": the index of the template slide whose layout suits what the slide says. The first slide uses a "cover" slide. The last slide uses a "closing" slide when the file has one. Slides in between use "content" slides: pick the layout by its boxes (a slide with several short boxes for steps or points, a two-column layout for a comparison, a big-text layout for one idea) and vary them: never the same layout twice in a row, and spread the file's layouts evenly when the deck has more slides than the file.
+3. "fields": every box of the slide you chose, by its id. Match the role: a title is a short phrase, a subtitle or caption one short line, body one to three plain sentences, bullets one short point per line (separate points with a newline; as many lines as "lines" says, never more than maxLines), a label one to three words, a name a few words. Capitals if "caps". A box marked "numeric" holds only a figure: write one ONLY if the request or sources give it, otherwise "". Sibling boxes say DIFFERENT things.
+4. Boxes marked "detail" hold an address, phone, e-mail, web address, handle or credit: write one ONLY if the request or sources give it exactly, otherwise "". Never invent a person, company, contact, quotation or its source.
+5. ${i.figuresAllowed ? 'Use only figures that appear in the request or the sources.' : 'Do not write any figure, percentage, date or statistic: the request gave none. Say it in words.'} ${i.quotesAllowed ? 'A quotation may be used only if it appears in the request, word for word.' : 'No quotations: write the single sentence to remember, in your own words, with no credit.'}
+6. "notes": what the presenter says on that slide (1-3 sentences). "title": the deck's title (at most 8 words). "chrome": the file's small repeated labels (params.chrome: a wordmark, a section label) once for the whole deck within maxChars: the deck's short name or kind; "" if it would need a date, edition, place or author you were not given.
+7. "charts": a template slide may list "charts" (id, chartType, number of categories, number of series, labelChars). ${i.figuresAllowed ? 'For a chart of the slide you chose, add "charts": {"<chart id>": {"labels": [category names, each within labelChars], "series": [{"name": string, "values": [numbers, one per label]}], "unit": optional short unit}} ONLY when the request or sources contain figures for it, and every number must be one of THEIR figures, copied exactly; never estimate, round, convert, sum or invent one. A pie or doughnut has one series. If the figures do not fit a chart, leave that chart out of "charts".' : 'The request gave no figures: do NOT return "charts" (leave it out); the chart keeps neutral sample data.'}
+Return JSON: {"title": string, "chrome": {"<chrome id>": string}, "slides": [{"use": number, "notes": string, "fields": {"<box id>": string}, "charts"?: {"<chart id>": {"labels": string[], "series": [{"name": string, "values": number[]}], "unit"?: string}}}]} with EXACTLY ${i.slideCount} slides in order.${i.shorten ? ' This is a repair: return one entry per slide, in order, with "use" as before and in "fields" ONLY the boxes listed in params.shorten for that slide ("scene" is "s<position>"), each rewritten shorter (at most its maxChars) and saying the same thing; empty fields for a slide with nothing listed.' : ''}`,
+  prompt: [
+    `<params>${JSON.stringify({ language: i.analysis.language, audience: i.analysis.audience, tone: i.analysis.tone, topic: i.analysis.topic, objective: i.analysis.objective, requiredSections: i.analysis.requiredSections, mustCover: [...i.analysis.requiredSections, ...(i.analysis.facts ?? [])].slice(0, 25), slideCount: i.slideCount, templateSlides: i.shorten ? undefined : i.templateSlides, chrome: i.shorten ? undefined : i.chrome, shorten: i.shorten })}</params>`,
+    `<user_request>\n${neutralise(i.userPrompt)}\n</user_request>`,
+    sourceBlock(i.sources),
+  ].join('\n'),
+})
+
 export interface SlidesInput {
   analysis: PromptAnalysis
   deckTitle: string

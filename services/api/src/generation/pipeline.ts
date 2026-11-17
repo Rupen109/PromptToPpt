@@ -1,6 +1,7 @@
 import { and, eq, ne, sql } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
-import { applyValidation, composeDeck, designById, pickDesign, type Photo } from '@prompttoppt/theme'
+import { applyValidation, composeDeck, composeSlide, designById, pickDesign, type Photo } from '@prompttoppt/theme'
+import { getMorphTemplate, templateTheme } from '@prompttoppt/theme/morph-templates'
 import {
   SCHEMA_VERSION, SOURCE_TYPES, accessTierSchema, deckLanguage, directionSchema, morphPlanSchema, outlineSchema, promptAnalysisSchema, slideContentSchema,
   presentationSchema, type Direction, type MorphPlan, type Outline, type Presentation, type PromptAnalysis, type Slide, type SlideContent,
@@ -8,7 +9,7 @@ import {
 import { z } from 'zod'
 import { runPool } from './pool.ts'
 import { gateway } from '../ai/gateway.ts'
-import { analyzePrompt, criticPrompt, morphPlanPrompt, outlinePrompt, slidesPrompt } from '../ai/prompts.ts'
+import { analyzePrompt, criticPrompt, morphPlanPrompt, outlinePrompt, slidesPrompt, templateFillPrompt } from '../ai/prompts.ts'
 import { INSTRUCTIONS_VERSION } from '../ai/instructions/index.ts'
 import { openPictureSession, type PictureRequest, type PictureSession } from '../pictures/pick.ts'
 import { themeForAnalysis } from './theming.ts'
@@ -25,6 +26,9 @@ import { loadSources } from './sources.ts'
 import { chooseDesign } from './design-pick.ts'
 import { DeckWriteCancelled, placeholderSlide, stableElementIds, writeDeck } from './progress.ts'
 import { morphContents, sanitizeMorphPlan } from './morph-plan.ts'
+import { runFileTemplateDeck } from './from-template.ts'
+import type { UploadedFill } from './uploaded-template.ts'
+import { sanitizeChrome, sanitizeFill, stopgap, templateChrome, templateFillSchema, templateSlots, tooLong, type TemplateFill } from './template-deck.ts'
 
 const BATCH = 4
 /** the first batch is small so real text lands within seconds; the rest run in bigger batches side by side */
@@ -63,9 +67,14 @@ const optionsSchema = z.object({
   parallel: z.number().int().min(1).max(16).optional(),
   /** build a Morph deck (Gold/Premium, checked when the job was created): the slides share their elements, which move and regroup from slide to slide */
   morph: z.boolean().default(false),
+  /** build the deck from this Morph template (its layout, pictures and movement; the model writes only the words). Implies `morph`. */
+  morphTemplate: z.string().max(40).optional(),
+  /** build the deck in the look of this uploaded design of the person's (checked against the person and the plan when the job was created) */
+  fromTemplateId: z.string().max(40).optional(),
+  templateMode: z.enum(['ai', 'manual']).default('ai'),
 })
 /** `slideIds`: the ids of the deck's slides, fixed when the deck is created so every write addresses the same slide. `marks`: milliseconds from job creation to each visible milestone (the numbers the speed targets are measured on). */
-type Checkpoint = { slideIds?: string[]; marks?: Record<string, number>; analysis?: PromptAnalysis; outline?: Outline; morph?: MorphPlan; contents?: SlideContent[]; repaired?: boolean; designId?: string; report?: Record<string, unknown> }
+type Checkpoint = { slideIds?: string[]; marks?: Record<string, number>; analysis?: PromptAnalysis; outline?: Outline; morph?: MorphPlan; templateFill?: TemplateFill; fileFill?: UploadedFill; contents?: SlideContent[]; repaired?: boolean; designId?: string; report?: Record<string, unknown> }
 
 /** Moves the job to a stage, extends the lease, and aborts if the user cancelled in the meantime. */
 async function stage(jobId: string, status: JobStatus, progress: number) {
@@ -180,6 +189,20 @@ async function generate(jobId: string, hold: { pictures?: PictureSession }): Pro
   }
   const designOnce = (analysis: PromptAnalysis) => (designed.p ??= settleDesign(analysis))
   const sourceRefs = remixDoc ? [] : opts.picturesOnly && existingDoc ? existingDoc.sources : sources.map((s) => ({ id: s.id, type: (SOURCE_TYPES as readonly string[]).includes(s.type) ? (s.type as (typeof SOURCE_TYPES)[number]) : 'text', title: s.title.slice(0, 300), ...(s.url ? { url: s.url } : {}) }))
+  if (opts.fromTemplateId && deckId) {
+    // a deck in the look of the person's own uploaded file: its own path (generation/from-template.ts); the open deck, checkpoints, cancel and ledger work as for every other path
+    await runFileTemplateDeck({
+      job: { id: jobId, userId: job.userId, lane: job.lane, prompt, createdAt: job.createdAt },
+      opts: { slideCount: opts.slideCount, language: opts.language, analysis: opts.analysis, model: opts.model, tier: opts.tier, fromTemplateId: opts.fromTemplateId, templateMode: opts.templateMode },
+      cp, deckId, slideIds, tierRoute, sources, sourceRefs, prompt, userTexts, allowNumeric, hold,
+      stage: (status, progress) => stage(jobId, status, progress), write, save: async () => { await saveCheckpoint(jobId, cp) }, mark,
+      complete: async (report) => {
+        const done = await db.update(generationJob).set({ status: 'completed', progress: 100, updatedAt: new Date(), lockedUntil: null, checkpoint: { ...cp, report } as Record<string, unknown> }).where(and(eq(generationJob.id, jobId), ne(generationJob.status, 'cancelled'))).returning({ id: generationJob.id })
+        if (done.length === 0) throw new JobCancelled()
+      },
+    })
+    return
+  }
   if (opts.picturesOnly && existingDoc) {
     // Keep every slide's words; only the pictures are re-chosen
     await stage(jobId, 'analyzing', 10)
@@ -197,18 +220,64 @@ async function generate(jobId: string, hold: { pictures?: PictureSession }): Pro
       await saveCheckpoint(jobId, cp)
     }
     analysis = cp.analysis
-    const slideCount = resolveSlideCount(analysis, opts.direction as Direction | undefined, opts.slideCount)
+    const tpl = opts.morphTemplate ? getMorphTemplate(opts.morphTemplate) : undefined
+    if (opts.morphTemplate && !tpl) throw new Error(`unknown Morph template "${opts.morphTemplate}"`)
+    const slideCount = tpl ? tpl.scenes.length : resolveSlideCount(analysis, opts.direction as Direction | undefined, opts.slideCount)
 
     // The deck is already on screen. Its slide ids are fixed now, so every later write (placeholders, batches, the finished deck) addresses the same slides.
     if (deckId) { while (slideIds.length < slideCount) slideIds.push(nanoid(12)); await saveCheckpoint(jobId, cp) }
     let current: Presentation | null = job.shown ? presentationSchema.parse(job.shown) : null // the deck as generation last wrote it
     const skeleton = (theme: Presentation['theme'], title: string, titles: string[]): Presentation => ({ schemaVersion: SCHEMA_VERSION, id: deckId!, title: title.slice(0, 200), aspectRatio: opts.aspectRatio, language: analysis.language, theme, sources: sourceRefs, slides: slideIds.slice(0, slideCount).map((id, i) => placeholderSlide(id, titles[i] ?? '', theme)) })
     // As soon as the topic is understood the deck gets its template and colours: chosen while the outline is still being written (it does not wait for it)
-    const designing = deckId ? designOnce(analysis) : null
+    const designing = deckId && !tpl ? designOnce(analysis) : null // a template deck wears its template's colours: no design is chosen
     const skeletonDone = designing && cp.marks?.['skeleton'] === undefined
       ? designing.then(async (d) => { current = skeleton(d.theme, analysis.topic, []); await write(current); mark('skeleton'); await saveCheckpoint(jobId, cp) })
       : Promise.resolve()
     skeletonDone.catch(() => {}) // awaited below; this only keeps a failure from being reported twice while the outline is running
+
+    if (tpl && deckId) {
+      // 2 ─ a deck from a Morph template: ONE call writes the words of every text box; the template's own layout, pictures and Morph are used as they are (no picture search, no design call)
+      await stage(jobId, 'outlining', 15)
+      const theme = templateTheme(tpl)
+      if (cp.marks?.['skeleton'] === undefined) { current = skeleton(theme, analysis.topic, []); await write(current); mark('skeleton'); await saveCheckpoint(jobId, cp) }
+      const scenes = templateSlots(tpl)
+      const tplAbout = `${tpl.tagline}. ${tpl.description}`.slice(0, 400)
+      const chrome = templateChrome(tpl)
+      const base = { analysis, templateName: tpl.name, templateAbout: tplAbout, scenes, chrome, figuresAllowed: allowNumeric, quotesAllowed: hasQuotation(userTexts), sources, userPrompt: prompt }
+      if (!cp.templateFill) {
+        const raw = await gateway.run({ priority: job.lane, route: tierRoute, model: opts.model, requestType: 'outline_generation', ...templateFillPrompt(base), schema: templateFillSchema, ctx })
+        // boxes that are too long for what they were drawn for: ask once for shorter words (cheaper and better than cutting a sentence off)
+        const long = tooLong(raw, scenes)
+        if (long.length > 0) {
+          try {
+            const again = await gateway.run({ priority: job.lane, route: 'fast', requestType: 'outline_generation', ...templateFillPrompt({ ...base, shorten: long }), schema: templateFillSchema, ctx })
+            for (const sc of again.scenes) { const into = raw.scenes.find((x) => x.scene === sc.scene); if (into) Object.assign(into.fields, sc.fields) }
+          } catch { /* the words are fitted below whatever happens */ }
+        }
+        cp.templateFill = raw
+        await saveCheckpoint(jobId, cp)
+      }
+      await stage(jobId, 'generating', 55)
+      const fill = cp.templateFill
+      const rules = { allowedNumbers: allowedNumbers([...userTexts, ...(analysis.facts ?? [])]), figuresAllowed: allowNumeric }
+      const { fields, missing } = sanitizeFill(fill, scenes, rules)
+      const branding = sanitizeChrome(fill, chrome, rules)
+      const title = (fill.title.trim() || analysis.topic).slice(0, 100)
+      for (const m of missing) { const slot = scenes.find((x) => x.scene === m.scene)?.slots.find((x) => x.id === m.id); if (slot) fields[m.scene]![m.id] = stopgap(slot, title) }
+      const contents: SlideContent[] = scenes.map((sc) => ({
+        layout: 'morph-template', template: tpl.id, scene: sc.scene, fields: { ...branding, ...(fields[sc.scene] ?? {}) }, images: {},
+        speakerNotes: (fill.scenes.find((x) => x.scene === sc.scene)?.notes ?? '').slice(0, 1500), sources: [],
+      }) as SlideContent)
+      const composed = contents.map((c) => composeSlide(c, theme, opts.aspectRatio, () => nanoid(10), { assetBase: env.WEB_URL }))
+      const built: Presentation = { schemaVersion: SCHEMA_VERSION, id: deckId, title, aspectRatio: opts.aspectRatio, language: analysis.language, theme, sources: sourceRefs, slides: composed.map((c, i) => ({ locked: false, validation: { status: 'pending' as const, issues: [] }, ...c, id: slideIds[i]! }) as Slide) }
+      await stage(jobId, 'validating', 92)
+      const { doc: checked, report: tplReport } = applyValidation(built)
+      await write(checked)
+      mark('firstSlide'); mark('done')
+      const done = await db.update(generationJob).set({ status: 'completed', progress: 100, updatedAt: new Date(), lockedUntil: null, checkpoint: { ...cp, report: { template: tpl.id, scenes: scenes.length, boxesWithoutWords: missing.length, timing: cp.marks, completeness: tplReport.completeness, errors: tplReport.errors, warnings: tplReport.warnings } } }).where(and(eq(generationJob.id, jobId), ne(generationJob.status, 'cancelled'))).returning({ id: generationJob.id })
+      if (done.length === 0) throw new JobCancelled()
+      return
+    }
 
     const morphDeck = opts.morph && !!deckId
     if (morphDeck) {

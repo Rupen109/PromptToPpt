@@ -1,5 +1,5 @@
 import { createAuthClient } from 'better-auth/react'
-import type { Direction, Entitlements, ExportFormat, PaidPlanId, PlanId, PlanView, Presentation, PromptAnalysis, SlideContent, SubscriptionSummary, Theme } from '@prompttoppt/validation'
+import type { Direction, Entitlements, ExportFormat, PaidPlanId, PlanId, PlanView, Presentation, PromptAnalysis, Slide, SlideContent, SubscriptionSummary, Theme } from '@prompttoppt/validation'
 
 export interface ApiClientConfig {
   /** e.g. https://api.slidesdone.app */
@@ -68,13 +68,32 @@ export interface CreateJobInput {
   brandKitId?: string
   /** build a Morph deck: slides made from the same elements, which move and morph into each other (Gold and Premium; a new presentation only) */
   morph?: boolean
+  /** build the deck from one of the Morph templates (its layout, pictures and movement; the AI writes the words). Counts as a Morph deck: Gold and Premium. */
+  morphTemplate?: string
   /** remix this deck of yours into a NEW deck with the same look (paid plans); its text comes in as `sourceIds` from remixSource() */
   remixOf?: string
+  /** build the deck in the look of one of YOUR uploaded designs (Pro, Gold, Premium); a new presentation only */
+  fromTemplateId?: string
+  /** with fromTemplateId: 'ai' (default) writes the words; 'manual' makes slides with neutral placeholders to type into (no AI, no credits) */
+  templateMode?: 'ai' | 'manual'
   sourceIds?: string[]
   /** language the person chose for the deck (code from DECK_LANGUAGES); omitted → detected from the request */
   language?: string
   idempotencyKey: string
 }
+/** An uploaded design ("Use a file's design"): summary the picker and the create screen show. */
+export interface FileTemplateSummary {
+  id: string
+  name: string
+  filename: string
+  aspect: '16:9' | '4:3' | '1:1'
+  slideCount: number
+  layouts: { index: number; name: string; layoutName: string; kind: 'cover' | 'content' | 'closing' }[]
+  fontsReplaced: { original: string; mapped: string }[]
+  warnings: string[]
+  createdAt: string
+}
+export interface FileTemplateListItem { id: string; name: string; filename: string; aspect: '16:9' | '4:3' | '1:1'; slideCount: number; createdAt: string; cover: Slide | null; theme: Theme; fontsReplaced: { original: string; mapped: string }[] }
 export interface AskDeckAnswer { answer: string; slides: { n: number; id: string }[]; creditsCharged: number; model: string }
 export interface SitemapRequest { url: string; maxPages?: number; lastmod?: boolean; changefreq?: 'none' | 'always' | 'hourly' | 'daily' | 'weekly' | 'monthly' | 'yearly' | 'never'; priority?: boolean }
 export interface SitemapResponse {
@@ -257,6 +276,20 @@ export interface BrandProfile {
   logo: { url: string; aspect: number } | null
   /** low = few brand signals on the page: check the result before applying */
   confidence: 'high' | 'low'
+}
+/** What "use my brand" found in an uploaded PowerPoint or PDF: the same card as a website, plus plain-language notes and whether the file can also give slide layouts. */
+export interface BrandFileProfile {
+  source: 'pptx' | 'pdf'
+  fileName: string
+  name: string | null
+  colors: BrandProfile['colors']
+  fonts: BrandProfile['fonts']
+  logo: BrandProfile['logo']
+  confidence: 'high' | 'low'
+  /** what could not be read, what was replaced: shown to the person as it is */
+  notes: string[]
+  /** a PowerPoint also has slide layouts to keep as a design (Use a file's design); a PDF is a flat picture of each page */
+  layouts: { available: boolean; reason: string }
 }
 /** A saved brand kit: colours, fonts, logo and pictures that "Apply" puts on a deck and new decks can be built in. */
 export interface BrandKit {
@@ -543,6 +576,14 @@ export function createApiClient({ apiUrl, sessionUser, onSessionChanged }: ApiCl
       body.set('file', file)
       return request<SourceSummary>('/api/v1/sources/file', { method: 'POST', body })
     },
+    /** "Use a file's design": your uploaded designs (newest first), with the first slide of each for a thumbnail. */
+    fileTemplates: () => request<{ templates: FileTemplateListItem[] }>('/api/v1/file-templates').then((r) => r.templates),
+    /** Upload a PowerPoint (.pptx) or a text PDF as a design. Pro, Gold, Premium (402/403 UPGRADE_REQUIRED otherwise). A picture-only or portrait PDF answers 422 PARSE_FAILED with the reason. */
+    uploadFileTemplate: (file: File) => { const body = new FormData(); body.set('file', file); return request<FileTemplateSummary>('/api/v1/file-templates', { method: 'POST', body }) },
+    fileTemplate: (id: string) => request<{ summary: FileTemplateSummary; theme: Theme; aspect: string; slides: Slide[] }>(`/api/v1/file-templates/${encodeURIComponent(id)}`),
+    /** The design's layouts with placeholder words, for the editor's "From your template" menu (404 once the design is deleted). */
+    fileTemplateLayouts: (id: string) => request<{ theme: Theme; aspect: string; layouts: { index: number; name: string; layoutName: string; slide: Slide }[] }>(`/api/v1/file-templates/${encodeURIComponent(id)}/layouts`),
+    deleteFileTemplate: (id: string) => request<null>(`/api/v1/file-templates/${encodeURIComponent(id)}`, { method: 'DELETE' }),
     deleteSource: (id: string) => request<null>(`/api/v1/sources/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
     models: (kind: 'text' | 'image' = 'text') => request<{ default: string | null; /** true = this plan lets the person pick the model (Premium); otherwise the plan decides and no picker is shown */ choice: boolean; models: ModelOption[] }>(`/api/v1/models${kind === 'image' ? '?kind=image' : ''}`),
@@ -632,6 +673,8 @@ export function createApiClient({ apiUrl, sessionUser, onSessionChanged }: ApiCl
     brandKitImageAdd: (id: string, file: File, name?: string) => { const f = new FormData(); f.append('file', file); if (name) f.append('name', name); return request<BrandKit>(`/api/v1/brand/kits/${encodeURIComponent(id)}/images`, { method: 'POST', body: f }) },
     brandKitImageRemove: (id: string, imageId: string) => request<BrandKit>(`/api/v1/brand/kits/${encodeURIComponent(id)}/images/${encodeURIComponent(imageId)}`, { method: 'DELETE' }),
     brandExtract: (url: string) => request<BrandProfile>('/api/v1/brand/extract', { method: 'POST', body: JSON.stringify({ url }) }),
+    /** Read the brand (colours, fonts, logo, name) of an uploaded PowerPoint (.pptx) or PDF (Pro, Gold, Premium; nothing is saved but the logo). */
+    brandFromFile: (file: File) => { const body = new FormData(); body.set('file', file); return request<BrandFileProfile>('/api/v1/brand/from-file', { method: 'POST', body }) },
     cancelSubscription: () => request<Omit<BillingOverview, 'billingEnabled'>>('/api/v1/billing/cancel', { method: 'POST' }),
     /** Development/staging only (404 in production): switch plans without payment to exercise gating. */
 

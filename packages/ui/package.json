@@ -8,6 +8,7 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./motion-core": "./src/motion/core.ts",
     "./logo": "./src/Logo.tsx",
     "./icons": "./src/icons.ts",
     "./markdown": "./src/Markdown.tsx",

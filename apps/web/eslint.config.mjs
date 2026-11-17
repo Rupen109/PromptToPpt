@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // vendored tesseract.js worker + wasm cores (minified third-party files served as they are)
+    "public/ocr/**",
   ]),
 ]);
 

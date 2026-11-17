@@ -106,6 +106,65 @@ export function addChart(d: D, slideId: string, chartType: ChartKind, gen: IdGen
   return id
 }
 
+// ─── chart data ──────────────────────────────────────────────────────────────
+
+type ChartEl = Extract<Slide['elements'][number], { type: 'chart' }>
+export const CHART_MAX_LABELS = 24
+export const CHART_MAX_SERIES = 6
+function chartOf(d: D, slideId: string, elId: string): ChartEl | null {
+  const s = findSlide(d, slideId)
+  const c = s?.elements.find((e) => e.id === elId)
+  if (!s || !c || c.type !== 'chart' || s.locked || c.locked) return null
+  s.manual = true
+  return c as ChartEl
+}
+export function setChartLabel(d: D, slideId: string, elId: string, i: number, text: string) {
+  const c = chartOf(d, slideId, elId)
+  if (c && i >= 0 && i < c.labels.length) c.labels[i] = text.slice(0, 80)
+}
+export function setChartSeriesName(d: D, slideId: string, elId: string, si: number, text: string) {
+  const c = chartOf(d, slideId, elId)
+  if (c?.series[si]) c.series[si]!.name = text.slice(0, 80)
+}
+/** `value` must be a finite number (the dialog turns text into a number and ignores what is not one) */
+export function setChartValue(d: D, slideId: string, elId: string, si: number, i: number, value: number) {
+  const c = chartOf(d, slideId, elId)
+  if (c?.series[si] && i >= 0 && i < c.labels.length && Number.isFinite(value)) c.series[si]!.values[i] = value
+}
+export function setChartUnit(d: D, slideId: string, elId: string, unit: string) {
+  const c = chartOf(d, slideId, elId)
+  if (!c) return
+  const u = unit.trim().slice(0, 16)
+  if (u) c.unit = u; else delete c.unit
+}
+export function addChartRow(d: D, slideId: string, elId: string) {
+  const c = chartOf(d, slideId, elId)
+  if (!c || c.labels.length >= CHART_MAX_LABELS) return
+  c.labels.push(`Item ${c.labels.length + 1}`)
+  for (const s of c.series) s.values.push(0)
+}
+export function removeChartRow(d: D, slideId: string, elId: string, at: number) {
+  const c = chartOf(d, slideId, elId)
+  if (!c || c.labels.length <= 1 || at < 0 || at >= c.labels.length) return
+  c.labels.splice(at, 1)
+  for (const s of c.series) s.values.splice(at, 1)
+}
+export function addChartSeries(d: D, slideId: string, elId: string) {
+  const c = chartOf(d, slideId, elId)
+  if (!c || c.series.length >= CHART_MAX_SERIES || c.chartType === 'pie' || c.chartType === 'doughnut') return
+  c.series.push({ name: `Series ${c.series.length + 1}`, values: c.labels.map(() => 0) })
+}
+export function removeChartSeries(d: D, slideId: string, elId: string, si: number) {
+  const c = chartOf(d, slideId, elId)
+  if (!c || c.series.length <= 1 || !c.series[si]) return
+  c.series.splice(si, 1)
+}
+/** The person has entered their own figures: the "sample data" cue goes away (and stays away). */
+export function confirmChartData(d: D, slideId: string, elId: string) {
+  const c = chartOf(d, slideId, elId)
+  if (c) delete c.placeholder
+}
+
 // ─── backgrounds ─────────────────────────────────────────────────────────────
 
 /** The chosen colour at a given strength: blended toward the deck's own background colour (a slide background is always solid, so "opacity" is a lighter tint of the colour). */

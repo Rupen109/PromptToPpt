@@ -5,7 +5,7 @@ export interface MappedFont { family: string; original: string; /** the exact fo
 /** Well-known commercial / system faces → the closest font we can render (and PPTX can map). */
 const ALIASES: [RegExp, string][] = [
   [/proxima|gotham|montserrat|museo sans/i, 'Montserrat'], [/avenir|nunito|mulish|lato/i, 'Nunito Sans'], [/futura|outfit|jost|century gothic/i, 'Outfit'],
-  [/circular|dm sans|inter tight|graphik|sf pro|sf ui|san francisco|helvetica|akzidenz|neue haas|open sans|roboto|arial/i, 'Inter'],
+  [/circular|dm sans|inter tight|\binter\b|[a-z]inter$|graphik|sf pro|sf ui|san francisco|helvetica|akzidenz|neue haas|open sans|roboto|arial/i, 'Inter'],
   [/source sans|segoe|calibri|myriad|frutiger|ibm plex sans/i, 'IBM Plex Sans'], [/poppins/i, 'Poppins'], [/raleway/i, 'Raleway'], [/work sans/i, 'Work Sans'],
   [/space grotesk|grotesk|manrope/i, 'Manrope'], [/sora/i, 'Sora'], [/jakarta/i, 'Plus Jakarta Sans'],
   [/playfair|didot|bodoni|abril|dm serif|recoleta/i, 'Playfair Display'], [/fraunces/i, 'Fraunces'],

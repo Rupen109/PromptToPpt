@@ -24,7 +24,7 @@ export default function Page() {
         { q: 'Why does my converted file look different from the PDF?', a: 'PDFs describe where each letter sits on a page, not paragraphs and layouts, so any converter has to guess. Exact look avoids guessing; for a better editable result, use the AI redesign instead.' },
         { q: 'Does it work with scanned PDFs?', a: 'Exact look works with any PDF, including scans. Editable text needs a PDF with selectable text.' },
       ]}
-      related={[{ href: '/free-tools/pdf-to-presentation', label: 'AI PDF to presentation' }, { href: '/free-tools/presentation-outline-generator', label: 'Presentation outline generator' }, { href: '/templates', label: 'Presentation templates' }]}
+      related={[{ href: '/free-tools/pdf-editor', label: 'Free PDF editor' }, { href: '/free-tools/pdf-to-presentation', label: 'AI PDF to presentation' }, { href: '/free-tools/presentation-outline-generator', label: 'Presentation outline generator' }, { href: '/templates', label: 'Presentation templates' }]}
     >
       <PdfToPptTool />
     </ToolShell>

@@ -226,7 +226,9 @@ export async function buildPptx(doc: Presentation, load: ImageLoader): Promise<B
   const motion: SlideMotion[] = []
   for (const sl of doc.slides) {
     const slide = pptx.addSlide()
-    const m: SlideMotion = { transition: sl.transition ?? { type: doc.theme.motion?.transition ?? 'none', duration: doc.theme.motion?.duration ?? 500 }, targets: [] }
+    const elementList: { id: string; type: SlideElement['type'] }[] = []
+    const own = new Set((sl.effects ?? []).map((e) => e.elementId)) // an object with effects of its own plays those instead of the theme's automatic entrance
+    const m: SlideMotion = { transition: sl.transition ?? { type: doc.theme.motion?.transition ?? 'none', duration: doc.theme.motion?.duration ?? 500 }, targets: [], effects: sl.effects ?? [], elements: elementList, canvas: { w: width, h: height } }
     motion.push(m)
     const bg = sl.background
     if (bg?.type === 'gradient' && bg.gradient) slide.background = { data: gradientPng(bg.gradient.from, bg.gradient.to, bg.gradient.angle) }
@@ -234,8 +236,9 @@ export async function buildPptx(doc: Presentation, load: ImageLoader): Promise<B
     else slide.background = { color: hex6(bg?.value ?? doc.theme.colors.background) }
 
     for (const el of sortByZ(sl.elements)) {
-      if (SKIP.has(el.type)) continue
-      if (hasEntrance(el.animation)) m.targets.push({ elementId: el.id, animation: el.animation, paragraphs: el.type === 'text' ? el.paragraphs.length : 1 })
+      if (SKIP.has(el.type) || el.hidden) continue // an object switched off in the Selection pane is not exported
+      elementList.push({ id: el.id, type: el.type })
+      if (hasEntrance(el.animation) && !own.has(el.id)) m.targets.push({ elementId: el.id, animation: el.animation, paragraphs: el.type === 'text' ? el.paragraphs.length : 1 })
       switch (el.type) {
         case 'text': addText(slide, el, doc.theme, sl); break
         case 'shape': addShape(pptx, slide, el, doc.theme, sl); break
@@ -248,5 +251,12 @@ export async function buildPptx(doc: Presentation, load: ImageLoader): Promise<B
     }
     if (sl.speakerNotes) slide.addNotes(sl.speakerNotes)
   }
+  // Morph: an object that is the same object (same id and type) on a Morph slide and on the slide before it is named alike on both, which is how PowerPoint pairs them
+  doc.slides.forEach((sl, i) => {
+    if (sl.transition?.type !== 'morph' || i === 0) return
+    const before = new Map(motion[i - 1]!.elements!.map((e) => [e.id, e.type]))
+    const pairs = new Set(motion[i]!.elements!.filter((e) => before.get(e.id) === e.type).map((e) => e.id))
+    for (const k of [i - 1, i]) motion[k]!.morphPairs = new Set([...(motion[k]!.morphPairs ?? []), ...pairs])
+  })
   return injectMotion((await pptx.write({ outputType: 'nodebuffer' })) as Buffer, motion)
 }

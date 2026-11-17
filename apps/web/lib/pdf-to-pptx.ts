@@ -20,7 +20,7 @@ export async function openPdf(file: File) {
   const data = new Uint8Array(await file.arrayBuffer())
   if (new TextDecoder('latin1').decode(data.subarray(0, 5)) !== '%PDF-') throw new PdfConvertError('That file is not a PDF.')
   try {
-    const pdf = await pdfjs.getDocument({ data }).promise
+    const pdf = await pdfjs.getDocument({ data, fontExtraProperties: true }).promise
     if (pdf.numPages > MAX_PAGES) throw new PdfConvertError(`That PDF has ${pdf.numPages} pages. This free tool converts up to ${MAX_PAGES}.`)
     return pdf
   } catch (e) {

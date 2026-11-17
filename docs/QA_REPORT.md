@@ -18,7 +18,7 @@ Run: `pnpm e2e` (141 checks, 9 suites, ~9 min incl. real AI calls). Plan: `docs/
 | S3 | Templates | Photo slides ignored the design's colours (dark cover on a light deck) | photo slides use the design's own ground + text colours |
 
 ## Known limits (not defects of this pass)
-- PPTX does not carry entrance animations/transitions, diagonal / arch picture crops (plain rectangles) or the live footer; fonts must be installed on the viewing machine.
+- (Since 2026-11-13 PPTX carries effects, transitions and Morph: docs/OBJECT_ANIMATIONS.md.) PPTX does not carry diagonal / arch picture crops (plain rectangles) or the live footer; fonts must be installed on the viewing machine.
 - Not built (controls removed rather than left dead): share links, brand kit, starred / recently deleted, owner sections listed as "COMING".
 - Not automated: completing a Razorpay payment (verified manually earlier; the suite checks checkout opens, forged signatures and unsigned webhooks are refused), Google sign-in round-trip, Safari / Firefox.
 - Template photography for some categories is still being generated (quota ≈ 1 image / min); missing pictures 404 until the job finishes.

@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useState, type ChangeEvent, type FormEvent } from 'react'
-import { ApiError, isGateError, type BrandKit, type BrandProfile } from '@prompttoppt/api-client'
+import { FileUp } from '@prompttoppt/ui/icons'
+import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
+import { ApiError, isGateError, type BrandKit, type BrandKitInput, type BrandProfile } from '@prompttoppt/api-client'
 import { SUPPORTED_FONTS } from '@prompttoppt/theme'
 import type { Presentation } from '@prompttoppt/validation'
 import * as C from '@/editor/commands'
 import { useDoc } from '@/editor/store'
 import { api } from '@/lib/api'
+import { uploadDesign } from '@/components/FileTemplatePicker'
 import { useEntitlements } from '@/lib/entitlements'
 
 type Form = { name: string; primary: string; accent: string; heading: string; body: string }
@@ -64,7 +66,7 @@ export function BrandTab({ doc, slideId }: { doc: Presentation; slideId: string 
     return (
       <div className="rounded-xl border border-border p-4 space-y-2" aria-label="Brand kit">
         <h3 className="font-semibold">Your brand, on every slide</h3>
-        <p className="text-sm text-slate-600">Save your company's colours, fonts and logo once, or read them from your website, and apply them to any presentation. Available on Pro and Gold.</p>
+        <p className="text-sm text-slate-600">Save your company's colours, fonts and logo once, or read them from your website, a PowerPoint or a PDF, and apply them to any presentation. Available on Pro and Gold.</p>
         <button onClick={() => upgrade.show('Brand kits are available on Pro, Gold and Premium.')} className="bg-primary text-white rounded-lg px-4 py-2 text-sm font-semibold">See plans</button>
       </div>
     )
@@ -160,94 +162,226 @@ export function BrandTab({ doc, slideId }: { doc: Presentation; slideId: string 
         </section>
       )}
 
-      <FromWebsite kits={kits} limit={limit} sel={sel} busy={!!busy} onSave={(p) => run('site', async () => {
-        const body = { name: p.name ?? 'My brand', primary: p.colors.primary, accent: p.colors.accent, extra: p.colors.palette.filter((c) => c !== p.colors.primary && c !== p.colors.accent).slice(0, 6), headingFont: p.fonts.heading?.family ?? null, bodyFont: p.fonts.body?.family ?? null, sourceUrl: p.sourceUrl, ...(p.logo ? { logoUrl: p.logo.url } : {}) }
-        return kits.length < limit ? api.brandKitCreate(body) : api.brandKitUpdate(sel ?? kits[0]!.id, body)
-      }, (k) => { if (kits.some((x) => x.id === k.id)) replace(k); else setKits([...kits, k]); setSel(k.id); setForm(formOf(k)); setNote(`Saved to your brand kit "${k.name}".`) })} onFail={fail} />
+      <GetBrand kits={kits} limit={limit} sel={sel} busy={!!busy} onSave={(body) => run('site', async () => (kits.length < limit ? api.brandKitCreate(body) : api.brandKitUpdate(sel ?? kits[0]!.id, body)),
+        (k) => { if (kits.some((x) => x.id === k.id)) replace(k); else setKits([...kits, k]); setSel(k.id); setForm(formOf(k)); setNote(`Saved to your brand kit "${k.name}".`) })} onFail={fail} />
     </div>
   )
 }
 
-/** "Get brand from a website": reads a company site's colours, fonts and logo; apply them straight away or save them into a kit. */
-function FromWebsite({ kits, limit, sel, busy, onSave, onFail }: { kits: BrandKit[]; limit: number; sel: string | null; busy: boolean; onSave: (p: BrandProfile) => void; onFail: (e: unknown) => void }) {
+type Source = 'website' | 'pptx' | 'pdf'
+/** One review card for every source: what was found, ready to edit. */
+interface Found {
+  kind: Source
+  /** the address (website) or the file's name */
+  from: string
+  name: string | null
+  colors: BrandProfile['colors']
+  fonts: BrandProfile['fonts']
+  logo: BrandProfile['logo']
+  confidence: 'high' | 'low'
+  notes: string[]
+  /** can this source ALSO give slide layouts, and the honest sentence about it */
+  layouts: { available: boolean; reason: string }
+  file: File | null
+}
+const SOURCES: { id: Source; label: string; hint: string }[] = [
+  { id: 'website', label: 'From a website (URL)', hint: 'We read the site\'s public colours, fonts and logo.' },
+  { id: 'pptx', label: 'From a PowerPoint (.pptx)', hint: 'We read its theme colours, the colours its slides really use, its fonts and its logo.' },
+  { id: 'pdf', label: 'From a PDF', hint: 'We read the colours its pages draw, the fonts its text uses and a logo repeated on the pages.' },
+]
+const WEBSITE_LAYOUTS = 'A website has no slide layouts, so it can give colours, fonts and a logo only. A PowerPoint file can also give its slide layouts.'
+/** flip when PDFs can be used as a design (the "Use a file\'s design" flow answers "coming soon" for them today) */
+
+/**
+ * "Get brand from a website, PowerPoint or PDF": reads the colours, fonts and logo of a company site, or of a PowerPoint or PDF you upload, into one review card where you can
+ * edit them; apply them straight away or save them into a kit. A PowerPoint can also be kept as a design (its slide layouts) from the same card.
+ */
+function GetBrand({ kits, limit, sel, busy, onSave, onFail }: { kits: BrandKit[]; limit: number; sel: string | null; busy: boolean; onSave: (body: BrandKitInput) => void; onFail: (e: unknown) => void }) {
   const apply = useDoc((s) => s.apply)
+  const { upgrade } = useEntitlements()
+  const [source, setSource] = useState<Source>('website')
   const [url, setUrl] = useState('')
   const [looking, setLooking] = useState(false)
-  const [found, setFound] = useState<BrandProfile | null>(null)
+  const [found, setFound] = useState<Found | null>(null)
   const [primary, setPrimary] = useState('#000000')
   const [accent, setAccent] = useState('#000000')
+  const [heading, setHeading] = useState('')
+  const [body, setBody] = useState('')
+  const [name, setName] = useState('')
   const [pick, setPick] = useState({ colors: true, fonts: true, logo: true })
   const [done, setDone] = useState(false)
   const [problem, setProblem] = useState<string | null>(null)
+  const [over, setOver] = useState(false)
+  const [design, setDesign] = useState<{ state: 'idle' | 'busy' | 'done' | 'failed'; message?: string }>({ state: 'idle' })
+  const fileInput = useRef<HTMLInputElement>(null)
+
+  function show(f: Found) {
+    setFound(f); setPrimary(f.colors.primary ?? '#2563EB'); setAccent(f.colors.accent ?? '#7C3AED'); setHeading(f.fonts.heading?.family ?? ''); setBody(f.fonts.body?.family ?? ''); setName(f.name ?? '')
+    setPick({ colors: !!f.colors.primary, fonts: !!f.fonts.heading, logo: !!f.logo }); setDesign({ state: 'idle' })
+  }
+  const reset = () => { setFound(null); setDone(false); setProblem(null); setDesign({ state: 'idle' }) }
+  const fail = (err: unknown) => {
+    if (isGateError(err)) onFail(err) // the upgrade prompt
+    else setProblem(err instanceof ApiError ? err.message : 'We could not reach the server. Check your connection and try again.')
+  }
 
   async function find(e: FormEvent) {
     e.preventDefault()
     const typed = url.trim()
     if (!typed || looking) return
     // a website looks like name.tld (a path or http(s):// in front is fine); anything else never reaches the server
-    if (typed.length > 2000 || /\s/.test(typed) || !/^(https?:\/\/)?[^/\s]+\.[^/\s.]{2,}([/?#].*)?$/i.test(typed)) { setFound(null); setProblem('Enter a website address like yourcompany.com'); return }
-    setLooking(true); setFound(null); setDone(false); setProblem(null)
+    if (typed.length > 2000 || /\s/.test(typed) || !/^(https?:\/\/)?[^/\s]+\.[^/\s.]{2,}([/?#].*)?$/i.test(typed)) { reset(); setProblem('Enter a website address like yourcompany.com'); return }
+    setLooking(true); reset()
     try {
-      const b = await api.brandExtract(url.trim())
-      setFound(b); setPrimary(b.colors.primary ?? '#2563EB'); setAccent(b.colors.accent ?? '#7C3AED')
-      setPick({ colors: !!b.colors.primary, fonts: !!b.fonts.heading, logo: !!b.logo })
-    } catch (err) {
-      if (isGateError(err)) onFail(err) // the upgrade prompt
-      else setProblem(err instanceof ApiError ? err.message : 'We could not reach the server. Check your connection and try again.')
-    } finally { setLooking(false) }
+      const b = await api.brandExtract(typed)
+      show({ kind: 'website', from: b.sourceUrl, name: b.name ?? new URL(b.sourceUrl).hostname, colors: b.colors, fonts: b.fonts, logo: b.logo, confidence: b.confidence, notes: [], layouts: { available: false, reason: WEBSITE_LAYOUTS }, file: null })
+    } catch (err) { fail(err) } finally { setLooking(false) }
   }
-  const withColours = (p: BrandProfile): BrandProfile => ({ ...p, colors: { ...p.colors, primary: pick.colors ? primary : null, accent: pick.colors ? accent : null } })
-  const nothing = !found || (!(pick.colors && found.colors.primary) && !(pick.fonts && found.fonts.heading) && !(pick.logo && found.logo))
+
+  async function readFile(file: File | undefined) {
+    if (!file || looking) return
+    const kind: Source = source === 'pdf' ? 'pdf' : 'pptx'
+    const okType = kind === 'pdf' ? /\.pdf$/i.test(file.name) : /\.pptx$/i.test(file.name)
+    if (!okType) { reset(); setProblem(kind === 'pdf' ? 'Choose a PDF file (.pdf).' : /\.ppt$/i.test(file.name) ? 'Old .ppt files are not supported: open it in PowerPoint and save as .pptx.' : 'Choose a PowerPoint file (.pptx).'); return }
+    if (file.size > 15 * 1024 * 1024) { reset(); setProblem(`${file.name} is larger than 15 MB.`); return }
+    setLooking(true); reset()
+    try {
+      const b = await api.brandFromFile(file)
+      show({ kind: b.source, from: b.fileName, name: b.name, colors: b.colors, fonts: b.fonts, logo: b.logo, confidence: b.confidence, notes: b.notes, layouts: b.layouts, file })
+    } catch (err) { fail(err) } finally { setLooking(false) }
+  }
+
+  /** the second one-click action: hand the same PowerPoint to "Use a file's design" so the slide layouts come too */
+  async function keepLayouts() {
+    if (!found?.file || design.state === 'busy') return
+    setDesign({ state: 'busy' })
+    const r = await uploadDesign(found.file, upgrade.show)
+    setDesign(r.ok ? { state: 'done', message: `Saved as the design "${r.summary.name}" with ${r.summary.slideCount} slide${r.summary.slideCount === 1 ? '' : 's'}.` } : { state: 'failed', message: r.message })
+  }
+
+  const colours = (): BrandProfile['colors'] | null => (found ? { ...found.colors, primary: pick.colors ? primary : null, accent: pick.colors ? accent : null } : null)
+  const asBrand = () => {
+    const c = colours()!
+    const fam = (v: string, was: BrandProfile['fonts']['heading']) => (v ? { family: v, original: was?.original ?? v, exact: was ? was.family === v && was.exact : true } : null)
+    return { name: name.trim() || found!.name || 'My brand', colors: c, fonts: { heading: pick.fonts ? fam(heading, found!.fonts.heading) : null, body: pick.fonts ? fam(body, found!.fonts.body) : null }, logo: pick.logo ? found!.logo : null }
+  }
+  const nothing = !found || (!(pick.colors && found.colors.primary) && !(pick.fonts && heading && body) && !(pick.logo && found.logo))
+  const save = () => {
+    if (!found) return
+    const c = colours()!
+    onSave({ name: name.trim() || found.name || 'My brand', primary: c.primary, accent: c.accent, extra: found.colors.palette.filter((x) => x !== c.primary && x !== c.accent).slice(0, 6), headingFont: pick.fonts && heading ? heading : null, bodyFont: pick.fonts && body ? body : null, sourceUrl: found.kind === 'website' ? found.from : null, ...(pick.logo && found.logo ? { logoUrl: found.logo.url } : {}) })
+  }
   const box = 'flex items-start gap-2 text-sm'
+  const cur = SOURCES.find((x) => x.id === source)!
 
   return (
-    <details className="rounded-xl border border-border p-3" aria-label="Get brand from a website">
-      <summary className="cursor-pointer text-sm font-medium">Get brand from a website</summary>
-      <form onSubmit={find} className="space-y-2 mt-3">
-        <label className="block text-sm" htmlFor="brand-url">Your company website</label>
-        <div className="flex gap-2">
-          <input id="brand-url" value={url} onChange={(e) => { setUrl(e.target.value); setProblem(null) }} aria-invalid={!!problem} aria-describedby={problem ? 'brand-url-problem' : undefined} placeholder="yourcompany.com" inputMode="url" autoComplete="url" className="min-w-0 flex-1 border border-border rounded-lg px-3 py-2 text-sm" />
-          <button disabled={looking || !url.trim()} className="shrink-0 bg-primary text-white rounded-lg px-3 py-2 text-sm font-semibold disabled:opacity-50">{looking ? 'Looking…' : 'Find brand'}</button>
-        </div>
-        {problem && <p id="brand-url-problem" role="alert" className="text-sm font-medium text-red-700">{problem}</p>}
-        <p className="text-xs text-slate-500">We read the site's public colours, fonts and logo. Nothing is changed until you apply or save it.</p>
-      </form>
+    <details className="rounded-xl border border-border p-3" aria-label="Get brand from a source" data-testid="brand-source">
+      <summary className="cursor-pointer text-sm font-medium">Get brand from a website, PowerPoint or PDF</summary>
+      <div role="tablist" aria-label="Where should we read your brand from?" className="mt-3 grid grid-cols-1 gap-1 sm:grid-cols-3">
+        {SOURCES.map((x) => (
+          <button key={x.id} role="tab" type="button" id={`brand-src-${x.id}`} aria-selected={source === x.id} aria-controls="brand-src-panel" onClick={() => { setSource(x.id); reset() }}
+            className={`rounded-lg border px-2 py-1.5 text-xs font-semibold ${source === x.id ? 'border-primary bg-primary/10 text-primary' : 'border-border text-slate-600 hover:bg-slate-50'}`}>{x.label}</button>
+        ))}
+      </div>
+
+      <div id="brand-src-panel" role="tabpanel" aria-labelledby={`brand-src-${source}`} className="mt-3">
+        {source === 'website' ? (
+          <form onSubmit={find} className="space-y-2">
+            <label className="block text-sm" htmlFor="brand-url">Your company website</label>
+            <div className="flex gap-2">
+              <input id="brand-url" value={url} onChange={(e) => { setUrl(e.target.value); setProblem(null) }} aria-invalid={!!problem} aria-describedby={problem ? 'brand-src-problem' : undefined} placeholder="yourcompany.com" inputMode="url" autoComplete="url" className="min-w-0 flex-1 border border-border rounded-lg px-3 py-2 text-sm" />
+              <button disabled={looking || !url.trim()} className="shrink-0 bg-primary text-white rounded-lg px-3 py-2 text-sm font-semibold disabled:opacity-50">{looking ? 'Looking…' : 'Find brand'}</button>
+            </div>
+          </form>
+        ) : (
+          <div
+            onDragOver={(e) => { e.preventDefault(); setOver(true) }} onDragLeave={() => setOver(false)} onDrop={(e) => { e.preventDefault(); setOver(false); void readFile(e.dataTransfer.files[0]) }}
+            className={`rounded-xl border-2 border-dashed p-4 text-center transition ${over ? 'border-primary bg-primary/5' : 'border-border bg-slate-50'}`}
+          >
+            <FileUp aria-hidden size={22} className="mx-auto text-slate-500" />
+            <p className="mt-1.5 text-sm font-medium">{looking ? 'Reading your file…' : source === 'pdf' ? 'Drop a PDF here, or' : 'Drop a PowerPoint (.pptx) here, or'}</p>
+            <button type="button" disabled={looking} onClick={() => fileInput.current?.click()} className="mt-2 rounded-lg bg-primary text-white px-3 py-1.5 text-sm font-semibold disabled:opacity-60">Choose a file</button>
+            <input ref={fileInput} type="file" hidden aria-label={source === 'pdf' ? 'Brand PDF file' : 'Brand PowerPoint file'} data-testid="brand-file-input" accept={source === 'pdf' ? '.pdf,application/pdf' : '.pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation'} onChange={(e) => { void readFile(e.target.files?.[0]); e.target.value = '' }} />
+            <p className="mt-1.5 text-xs text-slate-500">Up to 15 MB. The file is read once and not kept; only the logo is saved.</p>
+          </div>
+        )}
+        {problem && <p id="brand-src-problem" role="alert" className="mt-2 text-sm font-medium text-red-700">{problem}</p>}
+        <p className="mt-2 text-xs text-slate-500">{cur.hint} Nothing is changed until you apply or save it.</p>
+      </div>
 
       {found && (
         <section className="mt-3 space-y-3" aria-label="What we found">
-          <div className="font-semibold truncate">{found.name ?? new URL(found.sourceUrl).hostname}</div>
-          {found.confidence === 'low' && <p className="text-xs text-amber-800 bg-amber-50 rounded-lg px-2.5 py-1.5">We found few brand signals on this page (some sites build their look with scripts). Check the colours before applying.</p>}
+          <div>
+            <label className="block text-xs text-slate-500" htmlFor="brand-found-name">Name</label>
+            <input id="brand-found-name" aria-label="Brand name" value={name} maxLength={60} onChange={(e) => setName(e.target.value)} className="w-full border border-border rounded-lg px-3 py-1.5 text-sm font-semibold" />
+            <p className="text-[11px] text-slate-500 mt-0.5 truncate">Read from {found.from}</p>
+          </div>
+          {found.confidence === 'low' && <p className="text-xs text-amber-800 bg-amber-50 rounded-lg px-2.5 py-1.5">{found.kind === 'website' ? 'We found few brand signals on this page (some sites build their look with scripts). Check the colours before applying.' : 'We are not sure these colours are your brand. Check them before applying.'}</p>}
+          {found.notes.length > 0 && <ul aria-label="Notes" className="text-xs text-slate-700 bg-slate-50 rounded-lg px-2.5 py-1.5 space-y-1 list-disc pl-5">{found.notes.map((n) => <li key={n}>{n}</li>)}</ul>}
+
           <label className={box}><input type="checkbox" checked={pick.colors} disabled={!found.colors.primary} onChange={(e) => setPick({ ...pick, colors: e.target.checked })} className="mt-1" />
             <span className="flex-1">Colours
               {found.colors.primary ? (
-                <span className="flex items-center gap-3 mt-1.5">
-                  <label className="flex items-center gap-1.5 text-xs text-slate-600">Main <input type="color" aria-label="Found main colour" value={primary} onChange={(e) => setPrimary(e.target.value.toUpperCase())} className="w-7 h-7 rounded border border-border p-0" /></label>
-                  <label className="flex items-center gap-1.5 text-xs text-slate-600">Accent <input type="color" aria-label="Found accent colour" value={accent} onChange={(e) => setAccent(e.target.value.toUpperCase())} className="w-7 h-7 rounded border border-border p-0" /></label>
-                </span>
+                <>
+                  <span className="flex flex-wrap items-center gap-3 mt-1.5">
+                    <label className="flex items-center gap-1.5 text-xs text-slate-600">Main <input type="color" aria-label="Found main colour" value={primary} onChange={(e) => setPrimary(e.target.value.toUpperCase())} className="w-7 h-7 rounded border border-border p-0" /></label>
+                    <label className="flex items-center gap-1.5 text-xs text-slate-600">Accent <input type="color" aria-label="Found accent colour" value={accent} onChange={(e) => setAccent(e.target.value.toUpperCase())} className="w-7 h-7 rounded border border-border p-0" /></label>
+                  </span>
+                  {found.colors.palette.length > 2 && (
+                    <span className="flex flex-wrap items-center gap-1 mt-1.5" aria-label="Other colours found">
+                      <span className="text-[11px] text-slate-500 mr-1">Also found:</span>
+                      {found.colors.palette.filter((c) => c !== found.colors.primary && c !== found.colors.accent).map((c) => (
+                        <button key={c} type="button" title={`Use ${c} as the main colour`} aria-label={`Use ${c} as main colour`} onClick={() => setPrimary(c)} style={{ background: c }} className="w-5 h-5 rounded-full border border-border" />
+                      ))}
+                    </span>
+                  )}
+                </>
               ) : <span className="block text-xs text-slate-500">No brand colours found</span>}
-              {found.colors.accentDerived && found.colors.primary && <span className="block text-xs text-slate-500 mt-1">The site uses one brand colour; the accent was chosen to go with it.</span>}
+              {found.colors.accentDerived && found.colors.primary && <span className="block text-xs text-slate-500 mt-1">Only one brand colour was found; the accent was chosen to go with it.</span>}
             </span>
           </label>
-          <label className={box}><input type="checkbox" checked={pick.fonts} disabled={!found.fonts.heading} onChange={(e) => setPick({ ...pick, fonts: e.target.checked })} className="mt-1" />
+          <label className={box}><input type="checkbox" checked={pick.fonts} disabled={!heading || !body} onChange={(e) => setPick({ ...pick, fonts: e.target.checked })} className="mt-1" />
             <span className="flex-1">Fonts
               {found.fonts.heading && found.fonts.body ? (
-                <span className="block text-xs text-slate-600 mt-1">
-                  Headings: <b>{found.fonts.heading.family}</b>{!found.fonts.heading.exact && <> (closest to {found.fonts.heading.original})</>}<br />
-                  Text: <b>{found.fonts.body.family}</b>{!found.fonts.body.exact && <> (closest to {found.fonts.body.original})</>}
-                </span>
-              ) : <span className="block text-xs text-slate-500">No fonts found</span>}
+                <>
+                  <span className="grid grid-cols-2 gap-2 mt-1.5">
+                    {([['Headings', heading, setHeading, found.fonts.heading], ['Text', body, setBody, found.fonts.body]] as const).map(([lab, val, set, was]) => (
+                      <label key={lab} className="block text-xs text-slate-600">{lab}
+                        <select aria-label={`${lab} font found`} value={val} onChange={(e) => set(e.target.value)} className="mt-0.5 w-full border border-border rounded-lg px-2 py-1 text-sm">
+                          {!SUPPORTED_FONTS.includes(val) && <option>{val}</option>}
+                          {SUPPORTED_FONTS.map((f) => <option key={f}>{f}</option>)}
+                        </select>
+                        {!was.exact && val === was.family && <span className="block text-[11px] text-slate-500 mt-0.5">Closest to {was.original}</span>}
+                      </label>
+                    ))}
+                  </span>
+                </>
+              ) : <span className="block text-xs text-slate-500">{found.kind === 'pdf' || found.kind === 'pptx' ? 'No fonts could be read from this file. You can choose them after saving.' : 'No fonts found'}</span>}
             </span>
           </label>
           <label className={box}><input type="checkbox" checked={pick.logo} disabled={!found.logo} onChange={(e) => setPick({ ...pick, logo: e.target.checked })} className="mt-1" />
             <span className="flex-1">Logo
-              {found.logo ? <img src={found.logo.url} alt="Logo found on the site" className="mt-1.5 h-10 max-w-[160px] object-contain bg-white border border-border rounded p-1" /> : <span className="block text-xs text-slate-500">No usable PNG or JPEG logo found</span>}
+              {found.logo ? <img src={found.logo.url} alt={found.kind === 'website' ? 'Logo found on the site' : 'Logo found in the file'} className="mt-1.5 h-10 max-w-[160px] object-contain bg-white border border-border rounded p-1" /> : <span className="block text-xs text-slate-500">{found.kind === 'website' ? 'No usable PNG or JPEG logo found' : 'No logo found. You can upload one after saving.'}</span>}
+              {found.logo && <span className="block text-[11px] text-slate-500 mt-1">Wrong picture? Save the kit, then use "Replace logo" in it.</span>}
             </span>
           </label>
+
           <div className="flex gap-2">
-            <button onClick={() => { apply('Apply brand', (d) => C.applyBrand(d, withColours(found), pick)); setDone(true) }} disabled={nothing} className="flex-1 bg-foreground text-white rounded-lg py-2 text-sm font-semibold disabled:opacity-40">Apply to this presentation</button>
-            <button onClick={() => onSave(withColours(found))} disabled={busy || nothing} title={kits.length >= limit && sel ? 'Replaces what is in your selected kit' : undefined} className="flex-1 border border-border rounded-lg py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-40">{kits.length < limit ? 'Save as brand kit' : 'Update my kit'}</button>
+            <button onClick={() => { apply('Apply brand', (d) => C.applyBrand(d, asBrand(), pick)); setDone(true) }} disabled={nothing} className="flex-1 bg-foreground text-white rounded-lg py-2 text-sm font-semibold disabled:opacity-40">Apply to this presentation</button>
+            <button onClick={save} disabled={busy || nothing} title={kits.length >= limit && sel ? 'Replaces what is in your selected kit' : undefined} className="flex-1 border border-border rounded-lg py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-40">{kits.length < limit ? 'Save as brand kit' : 'Update my kit'}</button>
           </div>
           {done && <p role="status" className="text-xs text-green-800">Applied to every slide. You can undo it with ⌘Z.</p>}
+
+          <div className="rounded-lg border border-border p-2.5 space-y-1.5" data-testid="brand-layouts">
+            <div className="text-sm font-medium">Slide layouts</div>
+            <p className="text-xs text-slate-600">{found.layouts.reason}</p>
+            {found.file && found.layouts.available && design.state !== 'done' && (
+              <button type="button" onClick={() => void keepLayouts()} disabled={design.state === 'busy'} data-testid="brand-use-layouts" className="rounded-lg border border-primary text-primary px-3 py-1.5 text-sm font-semibold hover:bg-primary/5 disabled:opacity-50">{design.state === 'busy' ? 'Saving the design…' : 'Also use its slide layouts as a design (same format)'}</button>
+            )}
+            {design.state === 'done' && <p role="status" data-testid="brand-layouts-done" className="text-xs text-green-800">{design.message} To start a presentation in it, open Home and choose <b>Use a file's design</b> (<a href="/" target="_blank" rel="noopener" className="underline">open Home</a>).</p>}
+            {design.state === 'failed' && <p role="alert" className="text-xs font-medium text-red-700">{design.message}</p>}
+            {!found.file && <p className="text-xs text-slate-500">To get layouts as well, upload a PowerPoint file instead.</p>}
+          </div>
         </section>
       )}
     </details>

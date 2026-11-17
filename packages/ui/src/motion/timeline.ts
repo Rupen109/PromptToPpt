@@ -18,13 +18,31 @@ export interface Placed {
 }
 export interface Step { effects: Placed[]; /** ms until everything in the step is finished */ duration: number }
 
-/** how long an effect plays once it has begun: its duration, repeated, and doubled when it plays back to the start */
-export const playTime = (e: Effect) => e.duration * e.repeat * (e.reverse ? 2 : 1)
+/** how long an effect plays once it has begun: its duration, repeated, and doubled when it plays back to the start. An effect that loops until the end of the slide counts as one round for the timing of what follows. */
+export const playTime = (e: Effect) => e.duration * (e.loop ? 1 : e.repeat) * (e.reverse ? 2 : 1)
+
+/** The effects that play when their trigger object is clicked, one group per trigger object, in list order. Inside a group the first effect starts at once; the rest follow With / After Previous. */
+export function compileTriggers(effects: readonly Effect[], elementIds: ReadonlySet<string>): Map<string, Step> {
+  const groups = new Map<string, Step>()
+  const state = new Map<string, { at: number; end: number }>()
+  for (const effect of effects) {
+    if (!effect.trigger || !elementIds.has(effect.elementId) || !elementIds.has(effect.trigger)) continue
+    const step = groups.get(effect.trigger) ?? { effects: [], duration: 0 }
+    const st = state.get(effect.trigger) ?? { at: 0, end: 0 }
+    const at = step.effects.length === 0 || effect.start === 'click' ? 0 : effect.start === 'with' ? st.at : st.end
+    const begin = at + effect.delay, end = begin + playTime(effect)
+    step.effects.push({ effect, at, begin, end })
+    step.duration = Math.max(step.duration, end)
+    groups.set(effect.trigger, step); state.set(effect.trigger, { at, end })
+  }
+  return groups
+}
 
 export function compileTimeline(effects: readonly Effect[], elementIds: ReadonlySet<string>): Step[] {
   const steps: Step[] = [{ effects: [], duration: 0 }]
   let prevAt = 0, prevEnd = 0
   for (const effect of effects) {
+    if (effect.trigger) continue // played by a click on its trigger object, not by the slide's sequence
     if (!elementIds.has(effect.elementId)) continue // an effect whose element is gone plays nothing
     if (effect.start === 'click') { steps.push({ effects: [], duration: 0 }); prevAt = 0; prevEnd = 0 } // each On Click starts a step; step 0 stays the automatic one (possibly empty)
     const step = steps[steps.length - 1]!

@@ -108,6 +108,11 @@ export function assertMorph(ent: Pick<Entitlements, 'features' | 'plan'>) {
   if (!ent.features.morph) throw new GateError('UPGRADE_REQUIRED', 'Morph animation is available on the Gold plan.', 403, { feature: 'morph' })
 }
 
+/** "Use a file's design" (upload a PowerPoint, build decks in its look): one value per plan (`features.templateFromFile`). Checked on upload and when a deck is started from an uploaded design. */
+export function assertTemplateFromFile(ent: Pick<Entitlements, 'features' | 'plan'>) {
+  if (!ent.features.templateFromFile) throw new GateError('UPGRADE_REQUIRED', "Building a presentation in your own file's design is available on Pro, Gold and Premium.", 403, { feature: 'templateFromFile' })
+}
+
 /** The month's allowance of AI-built Morph decks (counted from the jobs; a failed or cancelled one does not count). */
 export function assertMorphQuota(ent: Pick<Entitlements, 'features' | 'usage' | 'plan'>) {
   const cap = ent.features.morphDecksPerMonth

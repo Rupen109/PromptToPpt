@@ -49,6 +49,7 @@ export function planHighlights(plan: PlanView, previous?: PlanView): { lead: str
   if (f.aiEdits) items.push('AI edits')
   items.push('Object animations and slide transitions')
   if (f.morph) items.push(`Morph animation: ${f.morphDecksPerMonth} AI-built Morph decks a month`)
+  if (f.templateFromFile) items.push("Use your own PowerPoint's design: upload a .pptx and make new decks in the same look")
   items.push('Write decks in 100+ languages')
   if (f.askDeck) items.push('Chat with your presentation (AskPPT)')
   if (f.webData === 'web') items.push('Wikipedia & live web search data')

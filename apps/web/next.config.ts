@@ -30,6 +30,10 @@ const nextConfig: NextConfig = {
       // the menu and the Morph pages' stills: same file names when a still is redone, so a day fresh and a week of instant-then-refresh (stale-while-revalidate), instead of the default "check every time"
       { source: '/morph-posters/:path*', headers: [{ key: 'Cache-Control', value: 'public, max-age=86400, stale-while-revalidate=604800' }] },
       { source: '/ppt/:path*', headers: [{ key: 'Access-Control-Allow-Origin', value: '*' }, { key: 'Cache-Control', value: 'public, max-age=86400' }] }, // the old address, see rewrites
+      // the in-browser text finder (tesseract.js worker, wasm core, English model): the version is in the folder name, so a year-long immutable cache is safe (a new version gets a new folder)
+      { source: '/ocr/:path*', headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }] },
+      // PDF editor fonts (open licence, static files; a font file never changes under the same name)
+      { source: '/pdf-fonts/:path*', headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }] },
       { source: '/template-assets/:path*', headers: [{ key: 'Access-Control-Allow-Origin', value: '*' }, { key: 'Cache-Control', value: 'public, max-age=86400' }] },
     ]
   },

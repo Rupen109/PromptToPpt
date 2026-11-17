@@ -1,6 +1,7 @@
 import type { MorphTemplate } from '@prompttoppt/theme/morph-templates'
 import { previewSlides } from '@/lib/morph-demos'
 import { MorphPreview } from '@/components/morph/MorphPreview'
+import { EDITOR_URL } from '@/lib/env'
 
 /** The live previews of some Morph templates, each with what it is best for and its scenes. Server side: the scenes arrive in the page already composed. */
 export function TemplateShowcase({ templates, headingLevel = 3 }: { templates: readonly MorphTemplate[]; headingLevel?: 2 | 3 }) {
@@ -20,6 +21,8 @@ export function TemplateShowcase({ templates, headingLevel = 3 }: { templates: r
               <ul className="mt-2 flex flex-wrap gap-2">{tpl.topics.slice(0, 10).map((t) => <li key={t} className="rounded-full border-2 border-foreground bg-white px-3 py-1 text-sm font-semibold capitalize">{t}</li>)}</ul>
               <h4 className="mt-5 font-heading font-extrabold text-sm uppercase tracking-wide text-foreground">{tpl.scenes.length} scenes</h4>
               <p className="mt-2 text-sm text-[#475569] leading-6">{[...new Set(tpl.scenes.map((s) => s.title))].join(' · ')}</p>
+              <a href={`${EDITOR_URL}/?morphTemplate=${encodeURIComponent(tpl.id)}`} data-testid="use-template" className="mt-6 inline-flex items-center gap-2 bg-primary text-white font-heading font-extrabold px-6 py-3 rounded-xl border-2 border-foreground shadow-[3px_3px_0_0_#0f172a]">Use this template<span className="sr-only"> ({tpl.name})</span></a>
+              <p className="mt-2 text-xs text-[#475569]">Gold and Premium plans. Tell us your topic and the AI writes the words; the layout, pictures and movement are the template&apos;s.</p>
             </div>
           </article>
         )

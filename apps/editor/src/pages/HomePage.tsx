@@ -1,14 +1,17 @@
-import { Clapperboard, FileSpreadsheet, FileText, Globe, Image as ImageIcon, Link2, Mail, Mic, NotebookPen, PencilRuler, Presentation, Send, Sparkles, Table, X, type LucideIcon } from '@prompttoppt/ui/icons'
+import { Clapperboard, FileSpreadsheet, FileText, Globe, Image as ImageIcon, LayoutTemplate, Link2, Lock, Mail, Mic, NotebookPen, PencilRuler, Presentation, Send, Sparkles, Table, X, type LucideIcon } from '@prompttoppt/ui/icons'
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router'
+import { Link, useNavigate, useSearchParams } from 'react-router'
+import { MORPH_TEMPLATES } from '@prompttoppt/theme/morph-templates'
 import { ApiError, type PresentationSummary, type SourceSummary } from '@prompttoppt/api-client'
 import { OFFERED_DECK_LANGUAGES } from '@prompttoppt/validation'
 import { SourcesDialog, isYouTubeLink } from '@/components/SourcesDialog'
+import { FileTemplatePicker, asPending, uploadDesign } from '@/components/FileTemplatePicker'
+import { useEntitlements } from '@/lib/entitlements'
 import { api } from '@/lib/api'
 import { MaintenanceBanner } from '@/lib/flags'
 import { DeckThumb } from '@/components/DeckThumb'
 import { Sidebar } from '@/components/Sidebar'
-import { clearPending, setPendingLanguage, setPendingPrompt, setPendingSources } from '@/lib/pending-prompt'
+import { clearPending, setPendingFileTemplate, setPendingLanguage, setPendingMorphTemplate, setPendingPrompt, setPendingSources, type PendingFileTemplate } from '@/lib/pending-prompt'
 
 const MAX_SOURCES = 10
 const FILE_TYPES = /\.(pdf|pptx|docx|docm|xlsx|xlsm|csv|tsv|eml|txt|md|markdown|jpe?g|png|webp|srt|vtt|mp3|m4a|wav|ogg|flac|aac|mp4|mov|webm)$/i
@@ -57,7 +60,20 @@ const hostOf = (u: string) => { try { return new URL(u).hostname.replace(/^www\.
 export function HomePage() {
   const [prompt, setPrompt] = useState('')
   const navigate = useNavigate()
+  const [params, setParams] = useSearchParams()
+  /** `/?morphTemplate=<id>` (the website's "Use this template"): the deck will be built from this Morph template */
+  const morphTpl = MORPH_TEMPLATES.find((t) => t.id === params.get('morphTemplate')) ?? null
   const [sources, setSources] = useState<SourceSummary[]>([])
+  const { ent, upgrade } = useEntitlements()
+  /** "Use a file's design": the uploaded design the new deck will be made in (its look, fonts and layouts) */
+  const [fileTpl, setFileTpl] = useState<PendingFileTemplate | null>(null)
+  const [picker, setPicker] = useState(false)
+  const [designBusy, setDesignBusy] = useState<string | null>(null)
+  /** the .pptx files attached as sources this visit, by source id: "Use its design too" uploads the same file as a design */
+  const pptxFiles = useRef(new Map<string, File>())
+  const [pptxIds, setPptxIds] = useState<string[]>([])
+  const LOCKED = "Building a presentation in your own file's design is available on Pro, Gold and Premium."
+  const openPicker = () => { if (ent && !ent.features.templateFromFile) return upgrade.show(LOCKED); setPicker(true) }
   const [dialog, setDialog] = useState(false)
   /** a pasted YouTube link opens the dialog on the transcript tab with the link filled in */
   const [ytLink, setYtLink] = useState<string | null>(null)
@@ -117,7 +133,17 @@ export function HomePage() {
     }
     if (f.size > 15 * 1024 * 1024) return setAttachError(`${f.name} is larger than 15 MB.`)
     const kind = /\.(docx|docm)$/i.test(f.name) ? FileText : /\.(xlsx|xlsm)$/i.test(f.name) ? FileSpreadsheet : /\.(csv|tsv)$/i.test(f.name) ? Table : /\.eml$/i.test(f.name) ? Mail : /\.pptx$/i.test(f.name) ? Presentation : FileText
-    attach(f.name, kind, () => api.addFileSource(f))
+    attach(f.name, kind, async () => { const s = await api.addFileSource(f); if (/\.pptx$/i.test(f.name)) { pptxFiles.current.set(s.id, f); setPptxIds((x) => [...x, s.id]) } return s })
+  }
+  /** one click on an attached .pptx: the same file also becomes the design (the source flow is untouched) */
+  async function designToo(s: SourceSummary) {
+    const f = pptxFiles.current.get(s.id)
+    if (!f) return
+    if (ent && !ent.features.templateFromFile) return upgrade.show(LOCKED)
+    setDesignBusy(s.id); setAttachError(null)
+    const r = await uploadDesign(f, upgrade.show)
+    setDesignBusy(null)
+    if (r.ok) setFileTpl(asPending(r.summary)); else setAttachError(r.message)
   }
   /** A pasted file, or a paste that is nothing but web links, becomes an attachment instead of text in the box. Other text pastes normally. */
   function onPaste(e: ClipboardEvent<HTMLTextAreaElement>) {
@@ -141,11 +167,13 @@ export function HomePage() {
       if (jobs.current.size) { const ok = await Promise.all([...jobs.current]); if (ok.includes(false)) return }
       const list = sourcesRef.current
       const text = prompt.trim()
-      if (!text) return // attachments alone don't start a deck: the user says what it should be about
+      if (!text && !fileTpl) return // attachments alone don't start a deck: the user says what it should be about (a chosen design may stand alone: the person then adds the data in the editor)
       clearPending() // a new request must never inherit a previous run's job/sources
-      setPendingPrompt(text)
+      setPendingPrompt(text || `New presentation in the design of ${fileTpl!.name}`)
+      setPendingFileTemplate(fileTpl ? { ...fileTpl, preferManual: !text } : null)
       setPendingSources(list.map((s) => s.id))
       setPendingLanguage(language)
+      setPendingMorphTemplate(morphTpl?.id ?? null) // picked on the website's template pages: the creation screen starts on it
       navigate('/create')
     } finally {
       submitting.current = false
@@ -167,6 +195,12 @@ export function HomePage() {
           </div>
           <h1 className="font-heading font-extrabold text-2xl sm:text-4xl text-center text-foreground tracking-tight">What will you present today?</h1>
           <p className="text-center text-slate-500 mt-2 text-sm sm:text-base">Describe it, add a link or a file, and we’ll build the deck.</p>
+          {morphTpl && (
+            <p className="mt-4 mx-auto w-fit flex items-center gap-2 rounded-full bg-white ring-1 ring-black/10 pl-4 pr-2 py-1.5 text-sm" data-testid="home-morph-template">
+              <Sparkles aria-hidden size={14} /> Morph template: <b>{morphTpl.name}</b> · {morphTpl.scenes.length} slides
+              <button type="button" aria-label="Remove the template" onClick={() => { params.delete('morphTemplate'); setParams(params, { replace: true }) }} className="rounded-full p-1 hover:bg-slate-100"><X aria-hidden size={14} /></button>
+            </p>
+          )}
           <form
             onSubmit={submit}
             onDragOver={(e) => hasFiles(e) && e.preventDefault()}
@@ -186,6 +220,22 @@ export function HomePage() {
                 if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void submit(e)
               }}
             />
+            <div className="mx-3 sm:mx-5 mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-dashed border-primary/40 bg-primary/5 px-3.5 py-2.5" data-testid="file-design-strip">
+              {fileTpl ? (
+                <span data-testid="home-file-template" className="inline-flex flex-wrap items-center gap-2 rounded-full bg-white ring-1 ring-black/10 pl-3 pr-1.5 py-1 text-sm max-w-full">
+                  <LayoutTemplate aria-hidden size={15} className="shrink-0 text-primary" />
+                  <span>Design: <b className="break-all">{fileTpl.name}</b> · {fileTpl.slideCount} slide{fileTpl.slideCount === 1 ? '' : 's'}</span>
+                  {fileTpl.fontsReplaced.length > 0 && <span className="text-xs text-amber-700" data-testid="home-file-template-fonts">fonts replaced: {fileTpl.fontsReplaced.map((f) => `${f.original} → ${f.mapped}`).join(', ')}</span>}
+                  <button type="button" aria-label="Remove the design" data-testid="home-file-template-remove" onClick={() => setFileTpl(null)} className="rounded-full p-1 hover:bg-slate-100"><X aria-hidden size={14} /></button>
+                </span>
+              ) : (
+                <button type="button" data-testid="file-tpl-open" disabled={!!morphTpl} onClick={openPicker} title={morphTpl ? 'Not available together with a Morph template' : undefined} className="inline-flex items-center gap-2 rounded-full bg-white ring-1 ring-primary/40 px-4 py-2 text-sm font-semibold text-primary hover:bg-primary/10 transition disabled:opacity-50 disabled:cursor-not-allowed disabled:text-slate-500">
+                  <LayoutTemplate aria-hidden size={16} />Use a file's design (same format)
+                  {ent && !ent.features.templateFromFile && <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 text-slate-700 text-[11px] px-2 py-0.5 font-medium"><Lock aria-hidden size={11} />Pro</span>}
+                </button>
+              )}
+              <p className="text-xs sm:text-sm text-slate-600 min-w-0 flex-1 basis-56">{fileTpl ? 'Your new presentation keeps this file\'s colours, fonts and layouts. Describe the new content above, or add it yourself in the editor.' : morphTpl ? 'Not available together with a Morph template.' : 'Upload a PowerPoint and make a new presentation in exactly its look, with different content.'}</p>
+            </div>
             <div className="flex items-end gap-3 px-3 sm:px-5 pb-3 sm:pb-4">
               <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 sm:gap-3">
               <button type="button" onClick={() => setDialog(true)} className="inline-flex items-center gap-2 rounded-full border border-border bg-slate-50 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-white hover:border-primary/50 transition">
@@ -196,6 +246,7 @@ export function HomePage() {
                 <span key={s.id} title={s.title} className="inline-flex items-center gap-1.5 bg-primary/10 text-slate-800 rounded-full pl-2.5 pr-1.5 py-1 text-xs max-w-[220px]">
                   {(() => { const I = SOURCE_ICON[s.type]; return <I aria-hidden size={14} className="shrink-0" /> })()}
                   <span className="truncate">{s.title}</span>
+                  {pptxIds.includes(s.id) && !morphTpl && !fileTpl && <button type="button" data-testid="use-design-too" disabled={designBusy === s.id} onClick={() => void designToo(s)} className="rounded-full bg-primary text-white px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap disabled:opacity-60">{designBusy === s.id ? 'Reading…' : 'Use its design too'}</button>}
                   <button type="button" aria-label={`Remove ${s.title}`} onClick={() => { keep(sourcesRef.current.filter((x) => x.id !== s.id)); void api.deleteSource(s.id) }} className="w-4 h-4 rounded-full hover:bg-primary/20 leading-none"><X aria-hidden size={16} /></button>
                 </span>
               ))}
@@ -217,15 +268,15 @@ export function HomePage() {
               </div>
               <button
                 type="submit"
-                disabled={!prompt.trim()}
+                disabled={!prompt.trim() && !fileTpl}
                 aria-label="Create Presentation"
-                title={!prompt.trim() ? 'Type what your presentation should be about' : 'Create Presentation'}
+                title={!prompt.trim() && !fileTpl ? 'Type what your presentation should be about' : 'Create Presentation'}
                 className="shrink-0 grid h-11 w-11 place-items-center rounded-full bg-primary text-white shadow-sm hover:brightness-110 transition disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none disabled:cursor-not-allowed"
               >
                 <Send size={20} strokeWidth={2} aria-hidden />
               </button>
             </div>
-            {(sources.length + pending.length > 0 && !prompt.trim()) && <p className="px-5 sm:px-7 pb-4 -mt-1 text-sm text-slate-500">Add a line about what the presentation should be — then press Create.</p>}
+            {(sources.length + pending.length > 0 && !prompt.trim() && !fileTpl) && <p className="px-5 sm:px-7 pb-4 -mt-1 text-sm text-slate-500">Add a line about what the presentation should be — then press Create.</p>}
             {attachError && <p role="alert" className="px-5 sm:px-7 pb-4 -mt-1 text-sm font-medium text-red-700">{attachError}</p>}
           </form>
           <div className="mt-4 flex flex-wrap justify-center gap-2" aria-label="Ideas to start from">
@@ -256,7 +307,8 @@ export function HomePage() {
           )}
         </div>
       </main>
-      {dialog && <SourcesDialog count={sources.length} language={language} {...(ytLink ? { initialTab: 'youtube' as const, initialUrl: ytLink } : {})} onAdd={(s) => keep(sourcesRef.current.some((x) => x.id === s.id) ? sourcesRef.current : [...sourcesRef.current, s])} onClose={() => { setDialog(false); setYtLink(null) }} />}
+      {picker && <FileTemplatePicker onPick={(t) => { setFileTpl(t); setPicker(false) }} onClose={() => setPicker(false)} />}
+      {dialog && <SourcesDialog count={sources.length} language={language} {...(ytLink ? { initialTab: 'youtube' as const, initialUrl: ytLink } : {})} onAdd={(s, f) => { if (f && /\.pptx$/i.test(f.name)) { pptxFiles.current.set(s.id, f); setPptxIds((x) => [...x, s.id]) } keep(sourcesRef.current.some((x) => x.id === s.id) ? sourcesRef.current : [...sourcesRef.current, s]) }} onClose={() => { setDialog(false); setYtLink(null) }} />}
     </div>
   )
 }

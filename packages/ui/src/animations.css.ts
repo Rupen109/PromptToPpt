@@ -17,6 +17,15 @@ export const MOTION_CSS = `
 @keyframes pt-t-slide { from { opacity: 0; transform: translateX(7%) } to { opacity: var(--pt-op, 1); transform: none } }
 @keyframes pt-t-zoom { from { opacity: 0; transform: scale(1.06) } to { opacity: var(--pt-op, 1); transform: none } }
 @keyframes pt-t-push { from { transform: translateX(100%) } to { transform: none } }
+@keyframes pt-t-push-left { from { transform: translateX(-100%) } to { transform: none } }
+@keyframes pt-t-push-up { from { transform: translateY(-100%) } to { transform: none } }
+@keyframes pt-t-push-down { from { transform: translateY(100%) } to { transform: none } }
+@keyframes pt-t-slide-left { from { opacity: 0; transform: translateX(-7%) } to { opacity: var(--pt-op, 1); transform: none } }
+@keyframes pt-t-slide-up { from { opacity: 0; transform: translateY(-7%) } to { opacity: var(--pt-op, 1); transform: none } }
+@keyframes pt-t-slide-down { from { opacity: 0; transform: translateY(7%) } to { opacity: var(--pt-op, 1); transform: none } }
+@keyframes pt-t-wipe-right { from { clip-path: inset(0 0 0 100%) } to { clip-path: inset(0 0 0 0) } }
+@keyframes pt-t-wipe-up { from { clip-path: inset(0 0 100% 0) } to { clip-path: inset(0 0 0 0) } }
+@keyframes pt-t-wipe-down { from { clip-path: inset(100% 0 0 0) } to { clip-path: inset(0 0 0 0) } }
 @keyframes pt-t-wipe { from { clip-path: inset(0 100% 0 0) } to { clip-path: inset(0 0 0 0) } }
 @media (prefers-reduced-motion: reduce) { [data-pt-anim], [data-pt-transition] { animation: none !important; opacity: 1 !important; transform: none !important; clip-path: none !important; filter: none !important } }
 `

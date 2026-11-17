@@ -1,4 +1,4 @@
-import { chromium } from 'playwright-core'
+import { chromium, firefox, webkit } from 'playwright-core'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -14,7 +14,9 @@ const CHROMIUM = process.env.E2E_CHROMIUM ?? `${process.env.HOME}/Library/Caches
 /** The website loads Google's translate script quietly for every visitor. Tests do not need it (and hundreds of loads from one machine make Google answer "unusual traffic"), so it is blocked unless a suite asks for the real thing: `launch({ google: true })`. */
 const GOOGLE_TRANSLATE = /translate\.google\.com|translate\.googleapis\.com|translate-pa\.googleapis\.com|www\.gstatic\.com\/(_\/translate|images\/branding)/
 export async function launch({ google = false } = {}) {
-  const browser = await chromium.launch({ executablePath: CHROMIUM })
+  // E2E_BROWSER=firefox|webkit runs a suite in that engine (installed with playwright's own installer); the default is the local Chromium
+  const engine = { firefox, webkit }[process.env.E2E_BROWSER ?? '']
+  const browser = engine ? await engine.launch() : await chromium.launch({ executablePath: CHROMIUM })
   if (!google) {
     const make = browser.newContext.bind(browser)
     // answered empty (not failed) so the console stays clean

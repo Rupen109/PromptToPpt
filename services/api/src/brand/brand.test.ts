@@ -220,3 +220,18 @@ describe('findBrand — real-world hardening', () => {
     expect(b.colors.primary).toBe('#E4572E') // the page's own theme-color still counts
   })
 })
+
+describe('found by the real-site audit (2026-11): BBC and font pairs', () => {
+  it('ignores the colour every favicon generator pre-fills in msapplication-TileColor (BBC: #da532c was reported as its brand)', () => {
+    const html = '<meta name="msapplication-TileColor" content="#da532c"><meta name="theme-color" content="#ffffff">'
+    expect(scoreColors('', html).map((c) => c.hex)).not.toContain('#DA532C')
+    // a site that really chose a tile colour keeps it
+    expect(scoreColors('', '<meta name="msapplication-TileColor" content="#c0392b">').map((c) => c.hex)).toContain('#C0392B')
+  })
+  it('one face for headings and text maps to one family for both (Stripe sohne-var gave two different look-alikes)', async () => {
+    const { mapSiteFonts } = await import('./find.ts')
+    const f = mapSiteFonts({ heading: 'sohne-var', body: 'sohne-var', detected: ['sohne-var'] })
+    expect(f.heading!.family).toBe(f.body!.family)
+    expect(mapSiteFonts({ heading: 'NotionInter', body: 'NotionInter', detected: [] }).body!.family).toBe('Inter')
+  })
+})

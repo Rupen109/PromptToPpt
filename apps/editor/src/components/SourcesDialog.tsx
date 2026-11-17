@@ -14,7 +14,7 @@ const MAX_SOURCES = 10
 const WEB_CREDITS = 60
 
 /** Attach reference material: pasted text, a web page, or a PDF. Each becomes a server-side source with page/section locators. */
-export function SourcesDialog({ count, language, initialTab, initialUrl, onAdd, onClose }: { count: number; language?: string; initialTab?: Tab; initialUrl?: string; onAdd: (s: SourceSummary) => void; onClose: () => void }) {
+export function SourcesDialog({ count, language, initialTab, initialUrl, onAdd, onClose }: { count: number; language?: string; initialTab?: Tab; initialUrl?: string; onAdd: (s: SourceSummary, file?: File) => void; onClose: () => void }) {
   const [ytUrl, setYtUrl] = useState(initialUrl ?? '')
   const { ent, upgrade, refresh } = useEntitlements()
   const [mode, setMode] = useState<'wikipedia' | 'web'>('wikipedia')
@@ -26,13 +26,13 @@ export function SourcesDialog({ count, language, initialTab, initialUrl, onAdd, 
   const file = useRef<HTMLInputElement>(null)
   const dialogRef = useDialog<HTMLDivElement>(true, onClose)
 
-  async function run(fn: () => Promise<SourceSummary>) {
+  async function run(fn: () => Promise<SourceSummary>, picked?: File) {
     if (count >= MAX_SOURCES) return setError(`You can attach up to ${MAX_SOURCES} sources.`)
     setBusy(true)
     setError(null)
     setNote('')
     try {
-      onAdd(await fn())
+      onAdd(await fn(), picked)
       onClose()
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Something went wrong. Please try again.')
@@ -86,7 +86,7 @@ export function SourcesDialog({ count, language, initialTab, initialUrl, onAdd, 
       return void run(async () => { const s = await api.addImageSource(picked); void refresh(); return s }) // credits changed
     }
     if (picked.size > 15 * 1024 * 1024) return setError('That file is larger than 15 MB.')
-    void run(() => api.addFileSource(picked))
+    void run(() => api.addFileSource(picked), picked)
   }
 
   const input = 'w-full border border-border rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-primary'

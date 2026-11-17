@@ -83,12 +83,21 @@ export interface ViewProps {
 }
 
 /** How an element is drawn when its slide's object effects are played by a SlidePlayer (motion/player.ts): inside a marked wrapper, hidden from the start when its first effect is an entrance. */
-export interface EffectView { hidden: boolean }
+export interface EffectView { hidden: boolean; /** the finest way a text of this element is played in parts ('word' also marks paragraphs, 'letter' also words) */ parts?: 'paragraph' | 'word' | 'letter' }
+
+/** Words (and letters) of a run as marked inline-block parts, so an effect can play them one after the other. Spaces stay plain text so the line breaks where it always did. */
+function splitParts(text: string, level: 'word' | 'letter'): ReactNode[] {
+  return text.split(/(\s+)/).map((w, i) => {
+    if (w === '' || /^\s+$/.test(w)) return w
+    return <span key={i} data-pt-part="w" style={{ display: 'inline-block', whiteSpace: 'nowrap' }}>{level === 'letter' ? Array.from(w).map((c, k) => <span key={k} data-pt-part="l" style={{ display: 'inline-block' }}>{c}</span>) : w}</span>
+  })
+}
 
 /** CSS logical alignment: identical to left/right for left-to-right text, mirrored for right-to-left paragraphs. */
 const ALIGN_LOGICAL = { left: 'start', center: 'center', right: 'end' } as const
 
 export function ElementView({ el, theme, slide, play = false, fx }: { el: SlideElement; theme: Theme; slide: Slide; fx?: EffectView | undefined } & ViewProps) {
+  if (el.hidden) return null // an object switched off in the Selection pane is not drawn anywhere (editor, Present mode, the share link, thumbnails, Morph)
   const colors = { ...theme.colors, ...slide.themeOverrides } as Record<string, string>
   // Animations use `transform`, which would clobber a rotation — so an animated, rotated element gets a positioned wrapper that
   // plays the animation, and the element itself sits at 0,0 inside it carrying the rotation.
@@ -113,11 +122,11 @@ export function ElementView({ el, theme, slide, play = false, fx }: { el: SlideE
       return wrap(
         <div style={style} {...(el.animation && play ? { 'data-pt-anim': '' } : {})}>
           {el.paragraphs.map((p, i) => (
-            <div key={i} {...(byP ? { 'data-pt-anim': '' } : {})} style={{ marginBottom: i < el.paragraphs.length - 1 ? el.fontSize * (el.paraGap ?? 0.5) : 0, unicodeBidi: 'plaintext', paddingInlineStart: p.list ? el.fontSize * 0.9 : 0, position: 'relative', // each paragraph reads in the direction of its own first strong letter
+            <div key={i} {...(byP ? { 'data-pt-anim': '' } : {})} {...(fx?.parts ? { 'data-pt-part': 'p' } : {})} style={{ marginBottom: i < el.paragraphs.length - 1 ? el.fontSize * (el.paraGap ?? 0.5) : 0, unicodeBidi: 'plaintext', paddingInlineStart: p.list ? el.fontSize * 0.9 : 0, position: 'relative', // each paragraph reads in the direction of its own first strong letter
           ...(byP ? anim(el.animation, true, i * (el.animation?.stagger ?? 100)) : {}) }}>
               {p.list && <span style={{ position: 'absolute', insetInlineStart: 0 }}>{p.list === 'bullet' ? el.bullet : `${i + 1}.`}</span>}
               {p.runs.map((r, k) => {
-                const inner = isCount && play ? <CountUp text={r.text} duration={el.animation!.duration} delay={el.animation!.delay} play /> : r.text
+                const inner = isCount && play ? <CountUp text={r.text} duration={el.animation!.duration} delay={el.animation!.delay} play /> : fx?.parts === 'word' || fx?.parts === 'letter' ? splitParts(r.text, fx.parts) : r.text
                 const st: CSSProperties = { fontWeight: r.bold ? 700 : undefined, fontStyle: r.italic ? 'italic' : undefined, ...(r.underline ? { textDecoration: 'underline', textUnderlineOffset: '0.15em' } : {}), ...(r.color ? { color: resolveColor(r.color, theme, slide) } : {}) }
                 return safeHref(r.link) ? (
                   <a key={k} href={safeHref(r.link)} target="_blank" rel="noopener noreferrer" style={{ ...st, color: 'inherit', textDecoration: 'underline', textUnderlineOffset: '0.15em' }}>{inner}</a>
@@ -260,7 +269,14 @@ export interface SlideCanvasProps extends ViewProps {
 export function SlideCanvas({ slide, theme, aspect, width, watermark = false, footer, play = false, effects = false }: SlideCanvasProps) {
   useMotionCss()
   const scripted = effects && !!slide.effects?.length
-  const fxIds = useMemo(() => (scripted ? new Set(slide.effects!.map((e) => e.elementId)) : null), [scripted, slide.effects])
+  // the elements that carry effects, and those whose click triggers one (they need the marked wrapper too), and how each text is split into parts
+  const fxIds = useMemo(() => (scripted ? new Set(slide.effects!.flatMap((e) => (e.trigger ? [e.elementId, e.trigger] : [e.elementId]))) : null), [scripted, slide.effects])
+  const partsOf = useMemo(() => {
+    const rank = { paragraph: 1, word: 2, letter: 3 } as const
+    const m = new Map<string, 'paragraph' | 'word' | 'letter'>()
+    if (scripted) for (const e of slide.effects!) if (e.textBy && e.textBy !== 'object' && rank[e.textBy] > (m.has(e.elementId) ? rank[m.get(e.elementId)!] : 0)) m.set(e.elementId, e.textBy)
+    return m
+  }, [scripted, slide.effects])
   const hidden = useMemo(() => (scripted ? hiddenAtStart(slide) : null), [scripted, slide])
   useEffect(() => ensureFonts([theme.fonts.heading, theme.fonts.body]), [theme.fonts.heading, theme.fonts.body])
   const { width: W, height: H } = CANVAS[aspect]
@@ -273,7 +289,7 @@ export function SlideCanvas({ slide, theme, aspect, width, watermark = false, fo
         {slide.elements.map((el) => {
           // in a slide played by effects, the theme's entrance would fight the effects: only the ambient loops stay
           const own = scripted && el.animation && !AMBIENT.has(el.animation.type) ? withoutAnimation(el) : el
-          return <ElementView key={el.id} el={own} theme={theme} slide={slide} play={play} fx={fxIds?.has(el.id) ? { hidden: !!hidden?.has(el.id) } : undefined} />
+          return <ElementView key={el.id} el={own} theme={theme} slide={slide} play={play} fx={fxIds?.has(el.id) ? { hidden: !!hidden?.has(el.id), ...(partsOf.has(el.id) ? { parts: partsOf.get(el.id)! } : {}) } : undefined} />
         })}
         {footer && <Footer info={footer} theme={theme} slide={slide} W={W} H={H} M={M} />}
         {/* View-time overlay driven by the plan, NOT stored in the document: upgrading removes it everywhere instantly. */}
@@ -304,5 +320,9 @@ export function transitionStyle(slide: Slide, fallback: string | undefined): CSS
   const chosen = slide.transition?.type ?? fallback ?? 'none'
   const t = chosen === 'morph' ? 'fade' : chosen // a page that cannot play a Morph (it has no outgoing slide to match) fades instead
   if (t === 'none') return {}
-  return { animation: `pt-t-${t} ${slide.transition?.duration ?? 500}ms cubic-bezier(.2,.7,.2,1) both` }
+  // the stored direction says where a slide / push / wipe comes from; the base keyframes are the default (slide and push from the right, wipe from the left)
+  const d = slide.transition?.direction
+  const def = t === 'wipe' ? 'left' : 'right'
+  const name = (t === 'slide' || t === 'push' || t === 'wipe') && d && d !== def ? `${t}-${d}` : t
+  return { animation: `pt-t-${name} ${slide.transition?.duration ?? 500}ms cubic-bezier(.2,.7,.2,1) both` }
 }

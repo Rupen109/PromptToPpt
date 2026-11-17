@@ -1,119 +1,147 @@
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate'
-import type { Animation, Transition } from '@prompttoppt/validation'
+import type { Animation, Effect, SlideElement, Transition } from '@prompttoppt/validation'
+import { buildTiming, type LegacyEntrance, type ShapeInfo } from './effects-xml.ts'
 
 /**
- * PowerPoint keeps animation as XML inside each slide: <p:transition> (how the slide appears) and <p:timing> (one entrance effect per
- * element). pptxgenjs writes neither, so this runs on the finished file: elements are tagged with the name "pt:<elementId>" while the
- * deck is built, and here those names are turned into shape ids and the effects are written to match what our own player does
- * (same direction, distance and timing). Ambient loops (Ken Burns, float, drift) have no entrance and stay out of the file.
+ * PowerPoint keeps animation as XML inside each slide: <p:transition> (how the slide appears) and <p:timing> (the effects). pptxgenjs writes neither, so this
+ * runs on the finished file: elements are tagged with the name "pt:<elementId>" while the deck is built, and here those names are turned into shape ids
+ * and the slide's effects (effects-xml.ts), its transition and Morph are written to match what our own player does.
+ * Ambient loops (Ken Burns, float, drift) have no entrance and stay out of the file.
  */
 
 export const NAME_PREFIX = 'pt:'
+/** PowerPoint's Morph pairs shapes whose names start with this on two consecutive slides */
+export const MORPH_PREFIX = '!!'
 export interface MotionTarget { elementId: string; animation: Animation; paragraphs: number }
-export interface SlideMotion { transition: Transition | null; targets: MotionTarget[] }
+export interface SlideMotion {
+  transition: Transition | null
+  /** the theme's own entrance of elements that have no effects of their own */
+  targets: MotionTarget[]
+  /** the slide's object effects (`slide.effects`) */
+  effects?: readonly Effect[]
+  /** the objects that are in the file, by element id */
+  elements?: readonly { id: string; type: SlideElement['type'] }[]
+  canvas?: { w: number; h: number }
+  /** elements that are the same object on this slide and its neighbour in a Morph: both shapes get the same "!!" name */
+  morphPairs?: ReadonlySet<string>
+}
 
 const ENTRANCES = new Set(['fade', 'fade-up', 'fade-down', 'slide-left', 'slide-right', 'zoom', 'pop', 'wipe', 'blur', 'count-up'])
 export const hasEntrance = (a: Animation | undefined): a is Animation => !!a && ENTRANCES.has(a.type)
 
-/** PowerPoint plays a "linear" effect and a "Medium" transition slower than our eased browser player feels, so the file is tuned snappier. */
-const MAX_EFFECT_MS = 450
-/** however many elements a slide has, the last one starts within this long after the slide appears */
-const MAX_START_MS = 700
+// ─── transitions ────────────────────────────────────────────────────────────────────────────────────────────────────
 
-const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, Math.round(n)))
+const MC = 'http://schemas.openxmlformats.org/markup-compatibility/2006'
+const P14 = 'http://schemas.microsoft.com/office/powerpoint/2010/main'
+const P159 = 'http://schemas.microsoft.com/office/powerpoint/2015/09/main'
 
-/** Our player's slide transitions, in PowerPoint's vocabulary (dir = direction of movement). */
+/** "comes from the left" (what the editor stores) is, in PowerPoint's words, moving to the right: `dir` names the way the motion goes */
+const MOVES: Record<NonNullable<Transition['direction']>, string> = { left: 'r', right: 'l', up: 'd', down: 'u' }
+const MORPH_OPTION = { object: 'byObject', word: 'byWord', character: 'byChar' } as const
+
+/** Our player's slide transitions, in PowerPoint's vocabulary. Written like PowerPoint 2010+ writes them: exact milliseconds (p14:dur) with a plain `spd` fallback. */
 export function transitionXml(t: Transition | null): string {
-  if (!t || t.type === 'none') return ''
-  const spd = t.duration <= 700 ? 'fast' : t.duration <= 1200 ? 'med' : 'slow'
-  const body = { fade: '<p:fade/>', slide: '<p:cover dir="l"/>', push: '<p:push dir="l"/>', zoom: '<p:zoom dir="in"/>', wipe: '<p:wipe dir="r"/>' }[t.type === 'morph' ? 'fade' : t.type] // Morph is exported as Fade until the PowerPoint Morph transition is written (docs/OBJECT_ANIMATIONS.md)
-  return body ? `<p:transition spd="${spd}">${body}</p:transition>` : ''
-}
-
-class Ids {
-  private n = 2 // 1 = the main sequence's parent
-  next() { return ++this.n }
-}
-
-const tgt = (spid: number, para?: number) =>
-  `<p:tgtEl><p:spTgt spid="${spid}">${para === undefined ? '' : `<p:txEl><p:pRg st="${para}" end="${para}"/></p:txEl>`}</p:spTgt></p:tgtEl>`
-
-const animNum = (ids: Ids, spid: number, attr: string, dur: number, from: string, to: string, para?: number) =>
-  `<p:anim calcmode="lin" valueType="num"><p:cBhvr additive="base"><p:cTn id="${ids.next()}" dur="${dur}" fill="hold"/>${tgt(spid, para)}<p:attrNameLst><p:attrName>${attr}</p:attrName></p:attrNameLst></p:cBhvr><p:tavLst><p:tav tm="0"><p:val><p:strVal val="${from}"/></p:val></p:tav><p:tav tm="100000"><p:val><p:strVal val="${to}"/></p:val></p:tav></p:tavLst></p:anim>`
-
-const fadeIn = (ids: Ids, spid: number, dur: number, para?: number) =>
-  `<p:animEffect transition="in" filter="fade"><p:cBhvr><p:cTn id="${ids.next()}" dur="${dur}"/>${tgt(spid, para)}</p:cBhvr></p:animEffect>`
-
-/** One entrance effect for one target (a whole shape, or one paragraph of it). */
-function effect(ids: Ids, spid: number, a: Animation, first: boolean, delay: number, para?: number): string {
-  const dur = clamp(a.duration, 100, MAX_EFFECT_MS)
-  const preset = ({ fade: [10, 0], 'count-up': [10, 0], blur: [10, 0], 'fade-up': [42, 0], 'fade-down': [42, 0], 'slide-left': [2, 8], 'slide-right': [2, 2], zoom: [53, 16], pop: [53, 16], wipe: [22, 8] } as Record<string, number[]>)[a.type] ?? [10, 0]
-  const show = `<p:set><p:cBhvr><p:cTn id="${ids.next()}" dur="1" fill="hold"><p:stCondLst><p:cond delay="0"/></p:stCondLst></p:cTn>${tgt(spid, para)}<p:attrNameLst><p:attrName>style.visibility</p:attrName></p:attrNameLst></p:cBhvr><p:to><p:strVal val="visible"/></p:to></p:set>`
-  let body = ''
-  switch (a.type) {
-    case 'wipe': body = `<p:animEffect transition="in" filter="wipe(left)"><p:cBhvr><p:cTn id="${ids.next()}" dur="${dur}"/>${tgt(spid, para)}</p:cBhvr></p:animEffect>`; break
-    case 'fade-up': body = fadeIn(ids, spid, dur, para) + animNum(ids, spid, 'ppt_y', dur, '#ppt_y+0.04', '#ppt_y', para); break
-    case 'fade-down': body = fadeIn(ids, spid, dur, para) + animNum(ids, spid, 'ppt_y', dur, '#ppt_y-0.04', '#ppt_y', para); break
-    case 'slide-left': body = fadeIn(ids, spid, dur, para) + animNum(ids, spid, 'ppt_x', dur, '#ppt_x-0.04', '#ppt_x', para); break
-    case 'slide-right': body = fadeIn(ids, spid, dur, para) + animNum(ids, spid, 'ppt_x', dur, '#ppt_x+0.04', '#ppt_x', para); break
-    case 'zoom': case 'pop': {
-      const s = a.type === 'pop' ? 70000 : 88000
-      body = fadeIn(ids, spid, dur, para) + `<p:animScale><p:cBhvr><p:cTn id="${ids.next()}" dur="${dur}" fill="hold"/>${tgt(spid, para)}</p:cBhvr><p:from x="${s}" y="${s}"/><p:to x="100000" y="100000"/></p:animScale>`
-      break
-    }
-    default: body = fadeIn(ids, spid, dur, para) // fade, blur and count-up play as a fade
+  if (!t) return ''
+  const advance = `${t.advanceOnClick === false ? ' advClick="0"' : ''}${t.advanceAfter !== undefined ? ` advTm="${Math.round(t.advanceAfter)}"` : ''}`
+  if (t.type === 'none' && !advance) return ''
+  const ms = Math.round(Math.min(60000, Math.max(100, t.duration)))
+  const spd = ms <= 700 ? 'fast' : ms <= 1200 ? 'med' : 'slow'
+  const dir = (d: Transition['direction'], fallback: NonNullable<Transition['direction']>) => MOVES[d ?? fallback]
+  const body = ({ none: '', fade: '<p:fade/>', slide: `<p:cover dir="${dir(t.direction, 'right')}"/>`, push: `<p:push dir="${dir(t.direction, 'right')}"/>`, zoom: '<p:zoom dir="in"/>', wipe: `<p:wipe dir="${dir(t.direction, 'left')}"/>`, morph: '<p:fade/>' } as const)[t.type]
+  const tag = (inner: string, extra = '') => (inner ? `<p:transition spd="${spd}"${extra}${advance}>${inner}</p:transition>` : `<p:transition spd="${spd}"${extra}${advance}/>`)
+  if (t.type === 'morph') {
+    const by = MORPH_OPTION[t.by ?? 'object']
+    return `<mc:AlternateContent xmlns:mc="${MC}"><mc:Choice xmlns:p159="${P159}" Requires="p159"><p:transition spd="${spd}" xmlns:p14="${P14}" p14:dur="${ms}"${advance}><p159:morph option="${by}"/></p:transition></mc:Choice><mc:Fallback>${tag(body)}</mc:Fallback></mc:AlternateContent>`
   }
-  return `<p:par><p:cTn id="${ids.next()}" presetID="${preset[0]}" presetClass="entr" presetSubtype="${preset[1]}" fill="hold" decel="100000"${para !== undefined ? ' grpId="0"' : ''} nodeType="${first ? 'afterEffect' : 'withEffect'}"><p:stCondLst><p:cond delay="${clamp(delay, 0, 60000)}"/></p:stCondLst><p:childTnLst>${show}${body}</p:childTnLst></p:cTn></p:par>`
+  return `<mc:AlternateContent xmlns:mc="${MC}"><mc:Choice xmlns:p14="${P14}" Requires="p14">${tag(body, ` p14:dur="${ms}"`)}</mc:Choice><mc:Fallback>${tag(body)}</mc:Fallback></mc:AlternateContent>`
 }
 
-/** The slide's whole animation: every effect starts on its own delay after the slide appears, no clicks needed (like present mode). */
-export function timingXml(effects: { spids: number[]; animation: Animation; paragraphs: number }[]): string {
-  if (effects.length === 0) return ''
-  const ids = new Ids()
-  const outer = ids.next(), inner = ids.next()
-  // one factor for the whole slide keeps the order and rhythm of the stagger while capping the total wait
-  const starts = effects.flatMap((e) => (e.animation.byParagraph && e.paragraphs > 1 ? Array.from({ length: e.paragraphs }, (_, p) => e.animation.delay + p * (e.animation.stagger ?? 150)) : [e.animation.delay]))
-  const squeeze = Math.min(1, MAX_START_MS / Math.max(1, ...starts))
-  let first = true
-  const parts: string[] = []
-  const builds: string[] = []
-  for (const e of effects) {
-    const a = e.animation
-    const perParagraph = !!a.byParagraph && e.paragraphs > 1
-    e.spids.forEach((spid, k) => {
-      if (perParagraph && k === 0) {
-        for (let p = 0; p < e.paragraphs; p++) { parts.push(effect(ids, spid, a, first, (a.delay + p * (a.stagger ?? 150)) * squeeze, p)); first = false }
-        builds.push(`<p:bldP spid="${spid}" grpId="0" build="p"/>`)
-      } else { parts.push(effect(ids, spid, a, first, a.delay * squeeze)); first = false }
-    })
+// ─── the file ───────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/** every opened tag is closed in order, attribute quotes are paired, entities are known (a cheap well-formedness check that runs on every slide before it is written) */
+export function wellFormed(xml: string): boolean {
+  const stack: string[] = []
+  const rest = xml.replace(/<\?[\s\S]*?\?>/g, '').replace(/<!--[\s\S]*?-->/g, '')
+  const tag = /<(\/?)([A-Za-z_][\w:.-]*)((?:\s+[\w:.-]+\s*=\s*(?:"[^"<]*"|'[^'<]*'))*)\s*(\/?)>/g
+  let last = 0
+  for (let m = tag.exec(rest); m; m = tag.exec(rest)) {
+    if (rest.slice(last, m.index).includes('<')) return false // a stray "<" outside a tag
+    last = m.index + m[0].length
+    if (m[4]) continue
+    if (m[1]) { if (stack.pop() !== m[2]) return false } else stack.push(m[2]!)
   }
-  return `<p:timing><p:tnLst><p:par><p:cTn id="1" dur="indefinite" restart="never" nodeType="tmRoot"><p:childTnLst><p:seq concurrent="1" nextAc="seek"><p:cTn id="2" dur="indefinite" nodeType="mainSeq"><p:childTnLst><p:par><p:cTn id="${outer}" fill="hold"><p:stCondLst><p:cond delay="indefinite"/><p:cond evt="onBegin" delay="0"><p:tn val="2"/></p:cond></p:stCondLst><p:childTnLst><p:par><p:cTn id="${inner}" fill="hold"><p:stCondLst><p:cond delay="0"/></p:stCondLst><p:childTnLst>${parts.join('')}</p:childTnLst></p:cTn></p:par></p:childTnLst></p:cTn></p:par></p:childTnLst></p:cTn><p:prevCondLst><p:cond evt="onPrev" delay="0"><p:tgtEl><p:sldTgt/></p:tgtEl></p:cond></p:prevCondLst><p:nextCondLst><p:cond evt="onNext" delay="0"><p:tgtEl><p:sldTgt/></p:tgtEl></p:cond></p:nextCondLst></p:seq></p:childTnLst></p:cTn></p:par></p:tnLst>${builds.length ? `<p:bldLst>${builds.join('')}</p:bldLst>` : ''}</p:timing>`
+  return stack.length === 0 && !/<[^>]*$/.test(rest.slice(last)) && !/&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);)/.test(rest)
 }
+
+const SHAPE_BLOCK = /<p:(sp|pic|graphicFrame|cxnSp)>[\s\S]*?<\/p:\1>/g
+
+/** what each exported shape is in the file (the effects need to know: a picture has no text to build by paragraph, a chart is built as one) */
+function shapeInfos(xml: string): Map<number, Omit<ShapeInfo, 'spids'>> {
+  const out = new Map<number, Omit<ShapeInfo, 'spids'>>()
+  for (const m of xml.matchAll(SHAPE_BLOCK)) {
+    const block = m[0]
+    const id = Number(/<p:cNvPr id="(\d+)"/.exec(block)?.[1])
+    if (!Number.isFinite(id)) continue
+    const kind = m[1] === 'sp' ? 'sp' : m[1] === 'pic' ? 'pic' : m[1] === 'cxnSp' ? 'cxn' : /drawingml\/2006\/chart/.test(block) ? 'chart' : 'table'
+    out.set(id, { kind, textBox: false, paragraphs: (block.match(/<a:p>|<a:p /g) ?? []).length })
+  }
+  return out
+}
+
+const elementOfName = (name: string) => name.replace(/^!!/, '').slice(NAME_PREFIX.length).replace(/#\d+$/, '')
 
 /**
- * Adds transitions and entrance animations to a finished .pptx. Any problem with one slide leaves that slide as it was (no motion is
+ * Adds transitions, Morph and every kind of animation to a finished .pptx. Any problem with one slide leaves that slide as it was (no motion is
  * better than a file PowerPoint offers to "repair"). Shape ids are renumbered per slide so every animation target is unambiguous.
  */
 export function injectMotion(file: Buffer, slides: SlideMotion[]): Buffer {
-  if (!slides.some((s) => s.transition?.type !== undefined && s.transition.type !== 'none' || s.targets.length > 0)) return file
+  if (!slides.some((s) => (s.transition && (s.transition.type !== 'none' || s.transition.advanceAfter !== undefined || s.transition.advanceOnClick === false)) || s.targets.length > 0 || (s.effects?.length ?? 0) > 0)) return file
   const files = unzipSync(new Uint8Array(file))
   slides.forEach((m, i) => {
     const path = `ppt/slides/slide${i + 1}.xml`
     const raw = files[path]
     if (!raw) return
     try {
-      let xml = strFromU8(raw)
+      const original = strFromU8(raw)
+      let xml = original
       const byName = new Map<string, number[]>()
+      const seen = new Map<string, number>()
       let n = 0
       xml = xml.replace(/<p:cNvPr id="\d+" name="([^"]*)"/g, (_m, name: string) => {
         n += 1
-        if (name.startsWith(NAME_PREFIX)) byName.set(name.slice(NAME_PREFIX.length), [...(byName.get(name.slice(NAME_PREFIX.length)) ?? []), n])
-        return `<p:cNvPr id="${n}" name="${name}"`
+        let out = name
+        if (name.startsWith(NAME_PREFIX)) {
+          const id = name.slice(NAME_PREFIX.length)
+          byName.set(id, [...(byName.get(id) ?? []), n])
+          // Morph pairs shapes by name: the same "!!" name on both slides, unique inside each (a second shape of one object gets a number)
+          if (m.morphPairs?.has(id)) { const k = (seen.get(id) ?? 0) + 1; seen.set(id, k); out = `${MORPH_PREFIX}${name}${k > 1 ? `#${k}` : ''}` }
+        }
+        return `<p:cNvPr id="${n}" name="${out}"`
       })
-      const effects = m.targets.flatMap((t) => { const spids = byName.get(t.elementId); return spids?.length ? [{ spids, animation: t.animation, paragraphs: t.paragraphs }] : [] })
-      const extra = transitionXml(m.transition) + timingXml(effects)
-      if (!extra || !xml.includes('</p:sld>') || /<p:(transition|timing)[ >]/.test(xml)) return
-      files[path] = strToU8(xml.replace('</p:sld>', `${extra}</p:sld>`))
+      if (!xml.includes('</p:clrMapOvr>') || /<p:(transition|timing)[ >]|<mc:AlternateContent/.test(xml)) { if (xml !== original && wellFormed(xml)) files[path] = strToU8(xml); return }
+
+      let transition = ''
+      try { transition = transitionXml(m.transition) } catch { transition = '' }
+      let timing = ''
+      try {
+        const infos = shapeInfos(xml)
+        const types = new Map((m.elements ?? []).map((e) => [e.id, e.type]))
+        const shapes = new Map<string, ShapeInfo>()
+        for (const [id, spids] of byName) {
+          const first = infos.get(spids[0]!)
+          // pptxgenjs does not flag text boxes in the file: the editor's own element type says which shape is text (a text, or an icon, which is its name as text)
+          if (first) shapes.set(id, { ...first, spids, textBox: first.kind === 'sp' && (types.get(id) === 'text' || types.get(id) === 'icon') })
+        }
+        const legacy: LegacyEntrance[] = m.targets.map((t) => ({ elementId: t.elementId, animation: t.animation, paragraphs: t.paragraphs }))
+        timing = buildTiming({ effects: m.effects ?? [], shapes, elementTypes: types, canvas: m.canvas ?? { w: 1920, h: 1080 }, legacy })
+        const ids = new Set(infos.keys())
+        for (const t of timing.matchAll(/spid="(\d+)"/g)) if (!ids.has(Number(t[1]))) throw new Error('animation target is not in the slide')
+      } catch { timing = '' } // this slide is left without animation
+      const withMotion = (t: string, x: string) => xml.replace('</p:clrMapOvr>', `</p:clrMapOvr>${x}${t}`)
+      let out = withMotion(timing, transition)
+      if (!wellFormed(out)) out = withMotion('', transition)
+      if (!wellFormed(out)) out = xml
+      if (out !== original && wellFormed(out)) files[path] = strToU8(out)
     } catch { /* leave this slide without motion */ }
   })
   return Buffer.from(zipSync(files))
