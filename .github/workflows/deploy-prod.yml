@@ -43,7 +43,7 @@ jobs:
       NEXT_PUBLIC_MICROSOFT_AUTH: 'false'
       RELEASE: ${{ inputs.release && '1' || '' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_PROD_ACCESS_KEY_ID }}
