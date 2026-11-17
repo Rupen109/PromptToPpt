@@ -70,7 +70,7 @@ function SessionWatcher({ user }: { user: CurrentUser }) {
 
 /** Asks who is signed in. A brief outage (the server restarting, a dropped connection) is retried quietly; only a failure that lasts reaches the person. */
 async function meWithRetry(isCancelled: () => boolean): Promise<CurrentUser | null> {
-  const waits = [400, 1000, 2000, 3500]
+  const waits = [600, 2000] // two quiet retries, then the person is told (never an endless background loop)
   for (let i = 0; ; i++) {
     try {
       return await api.me()
@@ -102,13 +102,12 @@ export function RequireAuth({ children }: { children: ReactNode }) {
     }
   }, [attempt])
 
-  // while the error shows, keep trying: the page comes back by itself as soon as the server does (the draft in the address stays untouched)
+  // the one automatic retry left: the moment the browser says the connection is back
   useEffect(() => {
     if (state.status !== 'error') return
-    const t = setInterval(() => setAttempt((n) => n + 1), 8000)
     const online = () => setAttempt((n) => n + 1)
     window.addEventListener('online', online)
-    return () => { clearInterval(t); window.removeEventListener('online', online) }
+    return () => window.removeEventListener('online', online)
   }, [state.status])
 
   if (state.status === 'error')
@@ -116,7 +115,7 @@ export function RequireAuth({ children }: { children: ReactNode }) {
       <div className="min-h-screen grid place-items-center text-center p-6">
         <div role="alert">
           <p className="font-bold mb-1">We couldn&apos;t reach the server.</p>
-          <p className="text-sm text-slate-600 mb-3">Your prompt is safe. We&apos;ll keep trying, or you can retry now.</p>
+          <p className="text-sm text-slate-600 mb-3">Your prompt is safe. Check your connection and press Retry.</p>
           <button onClick={() => { setState({ status: 'loading' }); setAttempt((n) => n + 1) }} className="bg-primary text-white px-4 py-2 rounded-md font-bold">
             Retry
           </button>

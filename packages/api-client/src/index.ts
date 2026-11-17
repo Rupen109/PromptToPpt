@@ -376,6 +376,8 @@ export function createApiClient({ apiUrl, sessionUser, onSessionChanged }: ApiCl
     const res = await fetch(`${base}${path}`, {
       ...init,
       credentials: 'include', // session cookie (httpOnly) travels cross-origin
+      // a request that gets no answer ends after a while instead of leaving the page waiting for ever (uploads and exports pass their own signal or are long-running, so they keep none)
+      ...(init.signal || init.body instanceof FormData || method !== 'GET' ? {} : { signal: AbortSignal.timeout(20_000) }),
       // FormData sets its own multipart boundary header; everything else is JSON
       headers: { ...(init.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }), ...(expected ? { 'X-Session-User': expected } : {}), ...(init.headers as Record<string, string> | undefined) },
     })
