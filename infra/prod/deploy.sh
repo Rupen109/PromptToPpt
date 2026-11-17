@@ -2,6 +2,8 @@
 # Build, upload and start SlidesDone in production (Sydney, behind CloudFront).
 #
 #   infra/prod/deploy.sh [api] [web] [editor] [server] [config]     (no argument = everything)
+#   RELEASE=1 infra/prod/deploy.sh web                              a release build: the website build FAILS while an owner field in apps/web/lib/legal.ts is still TODO
+#                                                                   (docs/LEGAL_PAGES.md). Set it for the public launch and every deploy after it; staging deploys leave it off.
 #
 # api / web : build the image for the server's ARM chip, tag it with the git commit, push to ECR
 # server    : build the Caddy (Route 53 plugin) and Postgres (WAL-G) images; needed once, and after changing infra/prod/images
@@ -44,7 +46,8 @@ NEW=()
 if has api; then build api services/api/Dockerfile; NEW+=("API_IMAGE=$(image api)"); fi
 if has web; then
   build web apps/web/Dockerfile --build-arg NEXT_PUBLIC_SITE_URL="https://$DOMAIN" --build-arg NEXT_PUBLIC_API_URL="https://api.$DOMAIN" --build-arg NEXT_PUBLIC_EDITOR_URL="https://app.$DOMAIN" \
-    --build-arg NEXT_PUBLIC_GOOGLE_AUTH="${NEXT_PUBLIC_GOOGLE_AUTH:-true}" --build-arg NEXT_PUBLIC_MICROSOFT_AUTH="${NEXT_PUBLIC_MICROSOFT_AUTH:-false}"
+    --build-arg NEXT_PUBLIC_GOOGLE_AUTH="${NEXT_PUBLIC_GOOGLE_AUTH:-true}" --build-arg NEXT_PUBLIC_MICROSOFT_AUTH="${NEXT_PUBLIC_MICROSOFT_AUTH:-false}" \
+    ${RELEASE:+--build-arg APP_ENV=production --build-arg RELEASE_CHECK=1}
   NEW+=("WEB_IMAGE=$(image web)")
 fi
 if has server; then

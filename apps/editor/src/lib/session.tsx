@@ -68,15 +68,28 @@ function SessionWatcher({ user }: { user: CurrentUser }) {
   )
 }
 
+/** Asks who is signed in. A brief outage (the server restarting, a dropped connection) is retried quietly; only a failure that lasts reaches the person. */
+async function meWithRetry(isCancelled: () => boolean): Promise<CurrentUser | null> {
+  const waits = [400, 1000, 2000, 3500]
+  for (let i = 0; ; i++) {
+    try {
+      return await api.me()
+    } catch (e) {
+      if (isCancelled() || i >= waits.length) throw e
+      await new Promise((r) => setTimeout(r, waits[i]))
+    }
+  }
+}
+
 export function RequireAuth({ children }: { children: ReactNode }) {
   const [state, setState] = useState<{ status: 'loading' } | { status: 'error' } | { status: 'ready'; user: CurrentUser }>({
     status: 'loading',
   })
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     let cancelled = false
-    api
-      .me()
+    meWithRetry(() => cancelled)
       .then((user) => {
         if (cancelled) return
         if (!user) return redirectToLogin()
@@ -87,14 +100,24 @@ export function RequireAuth({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [attempt])
+
+  // while the error shows, keep trying: the page comes back by itself as soon as the server does (the draft in the address stays untouched)
+  useEffect(() => {
+    if (state.status !== 'error') return
+    const t = setInterval(() => setAttempt((n) => n + 1), 8000)
+    const online = () => setAttempt((n) => n + 1)
+    window.addEventListener('online', online)
+    return () => { clearInterval(t); window.removeEventListener('online', online) }
+  }, [state.status])
 
   if (state.status === 'error')
     return (
       <div className="min-h-screen grid place-items-center text-center p-6">
-        <div>
-          <p className="font-bold mb-3">We couldn&apos;t reach the server.</p>
-          <button onClick={() => window.location.reload()} className="bg-primary text-white px-4 py-2 rounded-md font-bold">
+        <div role="alert">
+          <p className="font-bold mb-1">We couldn&apos;t reach the server.</p>
+          <p className="text-sm text-slate-600 mb-3">Your prompt is safe. We&apos;ll keep trying, or you can retry now.</p>
+          <button onClick={() => { setState({ status: 'loading' }); setAttempt((n) => n + 1) }} className="bg-primary text-white px-4 py-2 rounded-md font-bold">
             Retry
           </button>
         </div>

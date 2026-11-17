@@ -29,6 +29,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${BASE_URL}/free-tools/video-to-slides`, priority: 0.8, changeFrequency: 'monthly' as const },
     { url: `${BASE_URL}/free-tools/script-to-slides`, priority: 0.8, changeFrequency: 'monthly' as const },
     { url: `${BASE_URL}/support`, priority: 0.5, changeFrequency: 'yearly' as const },
+    ...['/legal', '/terms', '/privacy', '/cookies', '/refunds'].map((p) => ({ url: `${BASE_URL}${p}`, priority: 0.3, changeFrequency: 'yearly' as const })),
     { url: `${BASE_URL}/pricing`, priority: 0.8, changeFrequency: 'weekly' as const },
     ...LANDINGS.map((l) => ({ url: `${BASE_URL}/free-templates/${l.slug}`, priority: 0.8, changeFrequency: 'monthly' as const })),
     ...DESIGNS.map((d) => ({ url: `${BASE_URL}/templates/${d.id}`, priority: 0.6, changeFrequency: 'monthly' as const })),

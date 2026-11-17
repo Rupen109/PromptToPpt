@@ -15,6 +15,10 @@ on:
           - 'editor'
           - 'server'
           - 'config'
+      release:
+        description: 'Release build: the website build fails while an owner field in apps/web/lib/legal.ts is still TODO (tick it for the public launch and every deploy after)'
+        type: boolean
+        default: false
 
 # the workflow token can only read the repository
 permissions:
@@ -37,6 +41,7 @@ jobs:
       DOMAIN: slidesdone.app
       NEXT_PUBLIC_GOOGLE_AUTH: 'true'
       NEXT_PUBLIC_MICROSOFT_AUTH: 'false'
+      RELEASE: ${{ inputs.release && '1' || '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: aws-actions/configure-aws-credentials@v4
@@ -48,5 +53,9 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version-file: .nvmrc, cache: pnpm }
       - run: pnpm install --frozen-lockfile
+      # release builds only: stop here, before any image is built, if the legal pages still have placeholders
+      - name: Legal pages are ready
+        if: inputs.release
+        run: RELEASE_CHECK=1 node scripts/check-legal.mjs
       - name: Build, publish and restart
         run: infra/prod/deploy.sh ${{ inputs.what }}

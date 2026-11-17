@@ -7,6 +7,7 @@ import { Sidebar } from '@/components/Sidebar'
 import { api } from '@/lib/api'
 import { checkoutErrorMessage, setSimulatorMode, subscribe, testModeHint } from '@/lib/checkout'
 import { useEntitlements } from '@/lib/entitlements'
+import { WEB_URL } from '@/lib/env'
 
 const when = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
 
@@ -105,6 +106,7 @@ export function BillingPage() {
             </div>
           </div>
           {data && !data.billingEnabled && <p className="text-xs text-amber-700 mt-3">Payments are not configured on this server yet.</p>}
+          <p className="text-xs text-slate-600 mt-3">Paid plans renew automatically until you cancel; credits do not roll over. See the <a href={`${WEB_URL}/refunds`} className="underline">cancellation and refund policy</a> and the <a href={`${WEB_URL}/terms`} className="underline">Terms</a>.</p>
         </section>
 
         {data?.simulator && (

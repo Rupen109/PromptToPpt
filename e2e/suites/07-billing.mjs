@@ -22,8 +22,11 @@ export default async function () {
     const dlg = p.getByRole('dialog', { name: 'Upgrade your plan' }); await dlg.waitFor({ timeout: 5000 })
     await dlg.getByRole('button', { name: /Subscribe to Pro/ }).waitFor({ timeout: 10000 })
     const t = await dlg.innerText(); expect(/Pro/.test(t) && /Gold/.test(t), 'plans missing'); expect(/₹/.test(t), 'prices not in INR (BILLING_FORCE_CURRENCY)')
-    const before = t; await dlg.getByRole('button', { name: /Monthly/i }).click(); await settle(300)
+    expect(/MONTHLY/.test(t) && (await dlg.getByRole('button', { name: /^MONTHLY$/ }).getAttribute('aria-pressed')) === 'true', 'the modal does not open on Monthly')
+    expect(!/save\s*\d+\s*%/i.test(t), 'the modal still advertises a saving')
+    const before = t; await dlg.getByRole('button', { name: /^ANNUAL$/ }).click(); await settle(300)
     expect(before !== await dlg.innerText(), 'interval toggle did nothing')
+    expect(!/save\s*\d+\s*%/i.test(await dlg.innerText()), 'the annual tab advertises a saving')
     await dlg.getByLabel('Close').click(); await settle(200); expect(await p.getByRole('dialog').count() === 0, 'modal did not close')
   })
   await s.check('upgrade modal: Escape closes it and focus returns to the page', p, async () => {

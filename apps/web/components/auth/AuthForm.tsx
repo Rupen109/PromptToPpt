@@ -99,6 +99,10 @@ export function AuthForm({ mode, next, defaultEmail, failed }: { mode: Mode; nex
         {mode === 'login' ? 'Log in to continue to your presentations.' : 'Start generating presentations in seconds.'}
       </p>
 
+      {mode === 'signup' && (
+        <p className="text-xs text-slate-600 mb-4" data-testid="signup-consent">By creating an account you agree to the <Link href="/terms" className="font-bold text-primary hover:underline">Terms</Link> and <Link href="/privacy" className="font-bold text-primary hover:underline">Privacy Policy</Link>.</p>
+      )}
+
       {providers.length > 0 && (
         <>
           <div className="space-y-3">

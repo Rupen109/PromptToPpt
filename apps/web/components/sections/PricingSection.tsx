@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import type { PlansResponse } from '@prompttoppt/api-client'
 import { API_URL } from '@/lib/env'
 import { PricingCards } from './PricingCards'
@@ -34,6 +35,7 @@ export async function PricingSection({ heading = 'h2' }: { heading?: 'h1' | 'h2'
         max="max-w-[672px]"
       />
       <PricingCards initial={initial} />
+      <p className="mt-8 text-center text-sm font-medium text-[#475569]">Paid plans renew automatically until you cancel, and credits do not roll over. Cancel any time; see the <Link href="/refunds" className="font-bold text-primary underline">cancellation and refund policy</Link> and the <Link href="/terms" className="font-bold text-primary underline">Terms</Link>.</p>
     </Section>
   )
 }

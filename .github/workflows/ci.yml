@@ -5,6 +5,11 @@ name: CI
 #   pull_request:
 on:
   workflow_dispatch:
+    inputs:
+      release:
+        description: 'Release check: also fail while an owner field in apps/web/lib/legal.ts is still TODO'
+        type: boolean
+        default: false
 
 # least privilege: the workflow token can only read the repository
 permissions:
@@ -37,6 +42,10 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version-file: .nvmrc, cache: pnpm }
       - run: pnpm install --frozen-lockfile
+      # the legal pages' own unit tests always run; the release check (placeholders still TODO) only when this run was started as a release check
+      - run: pnpm test:legal
+      - if: inputs.release
+        run: RELEASE_CHECK=1 pnpm check:legal
       # known-vulnerable production dependencies fail the build (high and above)
       - run: pnpm audit --prod --audit-level=high
       - run: pnpm db:migrate

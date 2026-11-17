@@ -12,7 +12,7 @@ export function UpgradeModal() {
   const { ent, refresh, upgrade } = useEntitlements()
   const [plans, setPlans] = useState<PlansResponse | null>(null)
   const [busy, setBusy] = useState<PlanId | null>(null)
-  const [interval, setInterval] = useState<BillingInterval>('year')
+  const [interval, setInterval] = useState<BillingInterval>('month')
   const [error, setError] = useState<string | null>(null)
   const [paid, setPaid] = useState<{ plan: string; credits: number; slides: number; renews: string } | null>(null)
   const [testHint, setTestHint] = useState(false)
@@ -30,7 +30,6 @@ export function UpgradeModal() {
 
   if (!upgrade.open) return null
   const choices = plans?.plans.filter((p) => p.id !== 'starter') ?? []
-  const saving = choices[0] ? priceFor(choices[0], 'year')?.saving : null
 
   async function pay(id: PaidPlanId) {
     setBusy(id)
@@ -82,7 +81,7 @@ export function UpgradeModal() {
             {ent && <p className="text-xs text-slate-500 mb-4">You&apos;re on {ent.plan.name} · {ent.credits.balance} credits left · resets {new Date(ent.credits.resetsAt).toLocaleDateString()}</p>}
             <div className="flex justify-center mb-4">
               <div role="group" aria-label="Billing period" className="bg-slate-100 p-1 rounded-full inline-flex text-xs font-bold">
-                {([['month', 'MONTHLY'], ['year', saving ? `ANNUAL · ${saving.toUpperCase()}` : 'ANNUAL']] as const).map(([k, label]) => (
+                {([['month', 'MONTHLY'], ['year', 'ANNUAL']] as const).map(([k, label]) => (
                   <button key={k} type="button" aria-pressed={interval === k} onClick={() => setInterval(k)} className={`py-1.5 px-4 rounded-full ${interval === k ? 'bg-white shadow-sm' : 'text-slate-500'}`}>{label}</button>
                 ))}
               </div>

@@ -19,6 +19,19 @@ import { canonicalEmail } from './security/email.ts'
 /** How long the confirmation and password-reset links in our e-mails work (the e-mails say "30 minutes": change both together). */
 export const LINK_VALID_SECONDS = 30 * 60
 
+/**
+ * The same mailbox can be written more than one way (`first.last@gmail.com`, `firstlast@gmail.com`, `first+x@gmail.com`). Better Auth finds a person's existing account by the exact
+ * address, so a Google or Microsoft sign-in spelled differently from the sign-up looked like a brand-new person and was refused as "User already exists". When the provider has
+ * verified the address and an account for the same mailbox exists, the sign-in is pointed at that account's own address, so the provider is linked to it and the person gets in.
+ * An address the provider has not verified is never matched this way.
+ */
+export async function existingAddressFor(profile: { email?: string | null; email_verified?: unknown }): Promise<{ email: string } | Record<string, never>> {
+  const email = profile.email?.trim().toLowerCase()
+  if (!email || (profile.email_verified !== true && profile.email_verified !== 'true')) return {}
+  const [existing] = await db.select({ email: schema.user.email }).from(schema.user).where(eq(schema.user.emailCanonical, canonicalEmail(email))).limit(1)
+  return existing && existing.email.toLowerCase() !== email ? { email: existing.email } : {}
+}
+
 export const auth = betterAuth({
   baseURL: env.API_URL,
   secret: env.AUTH_SECRET,
@@ -62,8 +75,8 @@ export const auth = betterAuth({
   rateLimit: { enabled: false },
   // each button on the log-in page appears only when its keys are set (see NEXT_PUBLIC_*_AUTH on the website)
   socialProviders: {
-    ...(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET ? { google: { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET } } : {}),
-    ...(env.MICROSOFT_CLIENT_ID && env.MICROSOFT_CLIENT_SECRET ? { microsoft: { clientId: env.MICROSOFT_CLIENT_ID, clientSecret: env.MICROSOFT_CLIENT_SECRET, tenantId: env.MICROSOFT_TENANT_ID } } : {}),
+    ...(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET ? { google: { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET, mapProfileToUser: existingAddressFor } } : {}),
+    ...(env.MICROSOFT_CLIENT_ID && env.MICROSOFT_CLIENT_SECRET ? { microsoft: { clientId: env.MICROSOFT_CLIENT_ID, clientSecret: env.MICROSOFT_CLIENT_SECRET, tenantId: env.MICROSOFT_TENANT_ID, mapProfileToUser: existingAddressFor } } : {}),
   },
   databaseHooks: {
     user: {

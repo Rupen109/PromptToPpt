@@ -28,6 +28,8 @@ export async function GET() {
 - [Free tools](${SITE_URL}/free-tools): outline generator, PDF to presentation, PDF to PPT, PDF to JPG, PDF editor, YouTube transcript to slides, video to slides, script to slides, sitemap generator
 - [Support](${SITE_URL}/support): contact us, ${SUPPORT_MAIL}
 
+- [Terms of Service](${SITE_URL}/terms), [Privacy Policy](${SITE_URL}/privacy), [Cookie notice](${SITE_URL}/cookies), [Cancellation and refund policy](${SITE_URL}/refunds): the legal documents (index: [Legal](${SITE_URL}/legal))
+
 ## Free template collections
 ${LANDINGS.map((l) => `- [${l.noun} presentation templates](${SITE_URL}/free-templates/${l.slug})`).join('\n')}
 

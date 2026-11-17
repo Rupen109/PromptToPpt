@@ -18,8 +18,29 @@ export interface Period {
   end: Date
 }
 
-/** The allowance period: subscription period for paid users, calendar month (UTC) for Starter. */
-export function periodFor(sub: { currentPeriodStart: Date; currentPeriodEnd: Date } | null, now = new Date()): Period {
+/** `start` moved forward by `n` calendar months (UTC), keeping the day of the month, or the last day of a shorter month (Jan 31 + 1 month = Feb 28/29). */
+export function addMonthsUtc(start: Date, n: number): Date {
+  const y = start.getUTCFullYear(), m = start.getUTCMonth() + n
+  const last = new Date(Date.UTC(y, m + 1, 0)).getUTCDate()
+  return new Date(Date.UTC(y, m, Math.min(start.getUTCDate(), last), start.getUTCHours(), start.getUTCMinutes(), start.getUTCSeconds(), start.getUTCMilliseconds()))
+}
+
+/**
+ * The allowance period: what credits, "per month" limits (presentations, pictures, Morph decks) and their usage counters are measured over.
+ * - Starter: the calendar month (UTC).
+ * - A monthly subscription: its billing period (about one month; Razorpay's renewal moves it).
+ * - A YEARLY subscription: one MONTH at a time inside the paid year (the first window starts when the year starts, the next one a month later, …),
+ *   so a customer who paid for 12 months gets 12 monthly allowances, not one allowance for the whole year. The access period (when the plan
+ *   ends) is still the whole year (`livePlanFor` compares against `currentPeriodEnd`).
+ */
+export function periodFor(sub: { currentPeriodStart: Date; currentPeriodEnd: Date; interval?: string } | null, now = new Date()): Period {
+  if (sub && sub.interval === 'year') {
+    let n = 0
+    while (n < 11 && addMonthsUtc(sub.currentPeriodStart, n + 1) <= now) n++
+    const start = addMonthsUtc(sub.currentPeriodStart, n)
+    const next = addMonthsUtc(sub.currentPeriodStart, n + 1)
+    return { key: n === 0 ? sub.currentPeriodStart.toISOString() : `${sub.currentPeriodStart.toISOString()}#${n}`, start, end: next < sub.currentPeriodEnd ? next : sub.currentPeriodEnd }
+  }
   if (sub) return { key: sub.currentPeriodStart.toISOString(), start: sub.currentPeriodStart, end: sub.currentPeriodEnd }
   const start = startOfMonthUtc(now)
   return { key: start.toISOString().slice(0, 7), start, end: startOfNextMonthUtc(now) }

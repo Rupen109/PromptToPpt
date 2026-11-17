@@ -31,7 +31,7 @@ const CARD: Record<'starter' | 'pro' | 'gold' | 'premium', { label: string; tone
 export function PricingCards({ initial }: { initial: PlansResponse | null }) {
   const [data, setData] = useState<PlansResponse | null>(initial)
   const [failed, setFailed] = useState(false)
-  const [interval, setInterval] = useState<BillingInterval>('year')
+  const [interval, setInterval] = useState<BillingInterval>('month')
 
   useEffect(() => {
     api.plans().then(setData).catch(() => !initial && setFailed(true))
@@ -41,15 +41,13 @@ export function PricingCards({ initial }: { initial: PlansResponse | null }) {
 
   const byId = Object.fromEntries(data.plans.map((p) => [p.id, p]))
   const order = ['pro', 'gold', 'premium'].map((id) => byId[id]).filter((p): p is NonNullable<typeof p> => !!p)
-  const saving = byId['pro'] ? priceFor(byId['pro'], 'year')?.saving : null
-  const savingPct = saving?.replace('Save ', '').toUpperCase()
 
   return (
     <>
       <div className="mt-8 flex justify-center">
         <div role="group" aria-label="Billing period" className={`inline-flex items-center gap-1 bg-[#f3f4f9] border-2 border-foreground rounded-2xl p-1.5 ${HARD.sm}`}>
           <Button size="sm" depth={interval === 'month' ? 'sm' : 'none'} variant={interval === 'month' ? 'yellow' : 'ghost'} aria-pressed={interval === 'month'} onClick={() => setInterval('month')} className="!text-foreground">Monthly</Button>
-          <Button size="sm" depth={interval === 'year' ? 'sm' : 'none'} variant={interval === 'year' ? 'yellow' : 'ghost'} aria-pressed={interval === 'year'} onClick={() => setInterval('year')} className="!text-foreground">Annual{savingPct ? ` (Save ${savingPct})` : ''}</Button>
+          <Button size="sm" depth={interval === 'year' ? 'sm' : 'none'} variant={interval === 'year' ? 'yellow' : 'ghost'} aria-pressed={interval === 'year'} onClick={() => setInterval('year')} className="!text-foreground">Annual</Button>
         </div>
       </div>
 
@@ -73,7 +71,7 @@ export function PricingCards({ initial }: { initial: PlansResponse | null }) {
                   <>
                     <span className="font-heading font-extrabold text-5xl leading-none text-foreground">{price.text}</span>
                     <span className="text-sm font-bold text-[#475569]">{free ? ' / month forever' : ' / month'}</span>
-                    {!free && <div className="text-xs mt-2 text-[#475569]">{price.billed}{price.saving ? ` · ${price.saving}` : ''}</div>}
+                    {!free && <div className="text-xs mt-2 text-[#475569]">{price.billed}</div>}
                   </>
                 ) : <span className="text-sm opacity-70">Not available in your currency yet</span>}
               </div>

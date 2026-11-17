@@ -26,7 +26,19 @@ function parseEntity(raw: string): Entity {
   return { headers, body }
 }
 
-const textDecoder = (cs: string) => { try { return new TextDecoder(cs.trim().replace(/^["']|["']$/g, '').toLowerCase() || 'utf-8') } catch { return new TextDecoder('utf-8') } }
+/**
+ * Mail says "iso-8859-1" / "latin1" / "us-ascii" for text that is, in practice, windows-1252 (the euro sign, curly quotes and dashes sit at 0x80-0x9F, which real ISO-8859-1 leaves
+ * as invisible control characters). Browsers and mail apps all read these labels as windows-1252 (WHATWG Encoding Standard). Node's own TextDecoder has not always done so
+ * (its Latin-1 label changed behaviour between releases), so the result would depend on the Node version: the whole family is decoded here, the same way on every Node.
+ */
+const CP1252_HIGH = '\u20AC\u0081\u201A\u0192\u201E\u2026\u2020\u2021\u02C6\u2030\u0160\u2039\u0152\u008D\u017D\u008F\u0090\u2018\u2019\u201C\u201D\u2022\u2013\u2014\u02DC\u2122\u0161\u203A\u0153\u009D\u017E\u0178'
+const WESTERN_LABELS = new Set(['iso-8859-1', 'iso8859-1', 'iso_8859-1', 'latin1', 'l1', 'us-ascii', 'ascii', 'windows-1252', 'cp1252', 'x-cp1252'])
+const windows1252 = { decode: (b: Uint8Array) => { let o = ''; for (const c of b) o += c >= 0x80 && c < 0xa0 ? CP1252_HIGH[c - 0x80] : String.fromCharCode(c); return o } }
+const textDecoder = (cs: string): { decode(b: Uint8Array): string } => {
+  const label = cs.trim().replace(/^["']|["']$/g, '').toLowerCase()
+  if (WESTERN_LABELS.has(label)) return windows1252
+  try { return new TextDecoder(label || 'utf-8') } catch { return new TextDecoder('utf-8') }
+}
 
 function qpBytes(s: string, q = false): Buffer {
   const t = (q ? s.replace(/_/g, ' ') : s.replace(/=\r?\n/g, ''))

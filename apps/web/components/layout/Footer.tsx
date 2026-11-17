@@ -7,6 +7,8 @@ const COLS = [
   { title: 'Formats & Sources', links: [['PDF & PowerPoint input', '/#modalities'], ['Website link sources', '/#modalities'], ['Animated templates', '/templates'], ['Export on Pro & Gold', '/pricing']] },
 ] as const
 
+const LEGAL_LINKS = [['Terms of Service', '/terms'], ['Privacy Policy', '/privacy'], ['Cookie notice', '/cookies'], ['Cancellation & refunds', '/refunds']] as const
+
 export function Footer() {
   return (
     <footer className="bg-white border-t-2 border-foreground px-5 md:px-10 pt-14">
@@ -26,7 +28,10 @@ export function Footer() {
           ))}
           <div>
             <h5 className="font-heading font-extrabold text-xs uppercase tracking-[0.6px] text-foreground mb-3">Trust & Privacy</h5>
-            <p className="text-xs leading-4 text-[#475569] max-w-[270px]">Your decks and sources are private to your account, and never go into analytics tools.</p>
+            <p className="text-xs leading-4 text-[#475569] max-w-[270px] mb-3">Your decks and sources are private to your account, and never go into analytics tools.</p>
+            <ul className="flex flex-col gap-2">
+              {LEGAL_LINKS.map(([label, href]) => <li key={href}><Link href={href} className="font-heading font-bold text-xs leading-4 text-[#475569] hover:text-primary transition-colors">{label}</Link></li>)}
+            </ul>
           </div>
         </div>
         <div className="py-8 flex flex-col sm:flex-row items-center justify-between gap-3 font-heading font-bold text-xs text-[#475569]">

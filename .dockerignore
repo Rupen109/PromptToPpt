@@ -12,3 +12,8 @@ scripts
 # the website's next.config.ts imports the shared security-header definition
 !scripts/csp.mjs
 !scripts/csp.d.mts
+# the legal release guard runs inside the web image build
+!scripts/check-legal.mjs
+# local dev state (mail outbox with sign-in links, generated pictures, embedded dev database): never part of an image
+**/.data
+**/*.log

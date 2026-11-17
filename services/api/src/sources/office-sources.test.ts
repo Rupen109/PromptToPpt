@@ -257,7 +257,11 @@ describe('Email (.eml)', () => {
   })
   it('D4 quoted-printable, base64, charsets and encoded subjects are decoded', () => {
     const qp = eml(`From: =?UTF-8?B?w4FzaGE=?= <a@example.com>\nSubject: =?ISO-8859-1?Q?Caf=E9_menu?=\nMIME-Version: 1.0\nContent-Type: text/plain; charset=iso-8859-1\nContent-Transfer-Encoding: quoted-printable\n\nCaf=E9 =E2=82=AC soft=\nbreak =3D done`)
-    expect(qp.title).toBe('Café menu'); expect(qp.parts[0]!.text).toContain('Café â\u0082¬ softbreak = done')
+    expect(qp.title).toBe('Café menu'); // the bytes E2 82 AC under a Latin-1 label read as windows-1252 (as in every browser and mail app): 0x82 is the low quotation mark, not an invisible control character
+    expect(qp.parts[0]!.text).toContain('Café â\u201A¬ softbreak = done')
+    // the same on every Node version: the euro sign, curly quotes and a dash in a windows-1252 mail (one raw byte each)
+    const w = eml(`${HEAD}Content-Type: text/plain; charset=windows-1252\nContent-Transfer-Encoding: quoted-printable\n\nPrice =80 =93quoted=94 =96 caf=E9`)
+    expect(w.parts[0]!.text).toContain('Price \u20AC \u201Cquoted\u201D \u2013 caf\u00E9')
     const b64 = eml(`${HEAD}Content-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: base64\n\n${Buffer.from('नमस्ते — 100% ✓').toString('base64')}`)
     expect(b64.parts[0]!.text).toContain('नमस्ते — 100% ✓')
     expect(eml(`From: Zoë <z@example.com>\nSubject: Résumé\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\n\nbody text`).title).toBe('Résumé')

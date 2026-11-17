@@ -1,3 +1,4 @@
+import { constants } from 'node:fs'
 import { mkdir, rm, open, stat, readdir, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -19,7 +20,9 @@ export const partSize = (bytes: number, n: number) => (n < partsFor(bytes) - 1 ?
 
 export async function writePart(id: string, n: number, bytes: Uint8Array): Promise<void> {
   await mkdir(MEDIA_DIR, { recursive: true })
-  const fh = await open(filePath(id), 'a+') // created if missing; positional writes below make a re-sent part harmless
+  // Created if missing, never truncated. NOT the 'a+' flag: with O_APPEND Linux ignores the write position (it always appends, so a re-sent part would be added twice) and Node 22 refuses
+  // the positional write outright (ENOTSUP), which made every upload part fail in the Linux container while macOS accepted it.
+  const fh = await open(filePath(id), constants.O_RDWR | constants.O_CREAT, 0o600)
   try { await fh.write(bytes, 0, bytes.length, n * PART_BYTES) } finally { await fh.close() }
 }
 export const fileSize = async (id: string) => (await stat(filePath(id)).catch(() => null))?.size ?? -1

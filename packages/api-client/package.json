@@ -15,7 +15,7 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "better-auth": "^1.7.7",
+    "better-auth": "^1.7.25",
     "@prompttoppt/validation": "workspace:*"
   },
   "peerDependencies": {

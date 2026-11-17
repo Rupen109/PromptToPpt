@@ -14,6 +14,8 @@
     "db:generate": "pnpm --filter @prompttoppt/api db:generate",
     "db:migrate": "pnpm --filter @prompttoppt/api db:migrate",
     "db:local": "pnpm --filter @prompttoppt/api db:local",
+    "check:legal": "node scripts/check-legal.mjs",
+    "test:legal": "node --test scripts/check-legal.test.mjs",
     "e2e": "node e2e/run.mjs"
   },
   "devDependencies": {
@@ -25,13 +27,22 @@
     "typescript": "^5.5.0"
   },
   "engines": {
-    "node": ">=20.0.0",
+    "node": ">=22.19.0",
     "pnpm": ">=9.0.0"
   },
   "packageManager": "pnpm@9.0.0",
   "pnpm": {
     "overrides": {
-      "image-size": ">=2.0.3"
+      "image-size": ">=2.0.3",
+      "dompurify": "^3.4.17",
+      "seroval": "^1.6.10",
+      "seroval-plugins": "^1.6.10",
+      "source-map-js": "^1.2.2",
+      "vite": "^8.3.3",
+      "zod": "^4.6.6",
+      "@esbuild-kit/core-utils>esbuild": "^0.25.0",
+      "postcss-selector-parser": "^6.1.5",
+      "tsup>esbuild": "^0.28.1"
     }
   }
 }
