@@ -8,6 +8,7 @@ import { api } from '@/lib/api'
 import { checkoutErrorMessage, setSimulatorMode, subscribe, testModeHint } from '@/lib/checkout'
 import { useEntitlements } from '@/lib/entitlements'
 import { WEB_URL } from '@/lib/env'
+import { SlideLoader } from '../components/SlideLoader'
 
 const when = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
 
@@ -144,7 +145,7 @@ export function BillingPage() {
 
         <section className="bg-white border border-border rounded-xl p-5" aria-label="Payment history">
           <h2 className="font-heading font-bold text-lg mb-3">Payment history</h2>
-          {!data ? <p className="text-slate-600 text-sm">Loading…</p> : data.payments.length === 0 ? <p className="text-slate-600 text-sm">No payments yet.</p> : (
+          {!data ? <SlideLoader size="sm" /> : data.payments.length === 0 ? <p className="text-slate-600 text-sm">No payments yet.</p> : (
             <table className="w-full text-sm">
               <thead><tr className="text-left text-slate-600"><th className="py-1 font-medium">Date</th><th className="font-medium">Plan</th><th className="font-medium">Status</th><th className="text-right font-medium">Amount</th></tr></thead>
               <tbody>

@@ -71,13 +71,17 @@ export default async function () {
     await p.keyboard.press('PageUp'); await settle(200)
     expect(await thumbs().nth(2).getAttribute('aria-current') === 'true', 'PageUp failed')
   })
-  await s.check('rail: + New slide → blank slide and a layout slide are added and selected', p, async () => {
+  await s.check('rail: + New slide adds a Title and content slide after the current one; the arrow offers the layouts (blank, comparison) and each is added and selected', p, async () => {
     const n0 = await thumbs().count()
-    await p.getByRole('button', { name: '+ New slide' }).click(); await p.getByRole('menuitem', { name: 'Blank slide' }).click(); await settle(300)
-    expect(await thumbs().count() === n0 + 1, 'blank not added')
-    await p.getByRole('button', { name: '+ New slide' }).click(); await p.getByRole('menuitem', { name: 'Comparison' }).click(); await settle(300)
-    expect(await thumbs().count() === n0 + 2, 'layout slide not added')
-    expect(await thumbs().last().getAttribute('aria-current') === 'true', 'new slide not selected')
+    await thumbs().nth(0).click()
+    await p.getByRole('button', { name: '+ New slide' }).click(); await settle(300)
+    expect(await thumbs().count() === n0 + 1, 'the New slide button did not add a slide')
+    expect(await thumbs().nth(1).getAttribute('aria-current') === 'true', 'the new slide is not right after the current one, selected')
+    await p.getByRole('button', { name: 'Choose a layout' }).click(); await p.getByRole('menuitem', { name: 'Blank slide' }).click(); await settle(300)
+    expect(await thumbs().count() === n0 + 2, 'blank not added')
+    await p.getByRole('button', { name: 'Choose a layout' }).click(); await p.getByRole('menuitem', { name: 'Comparison' }).click(); await settle(300)
+    expect(await thumbs().count() === n0 + 3, 'layout slide not added')
+    expect(await thumbs().nth(3).getAttribute('aria-current') === 'true', 'new slide not selected')
   })
   await s.check('rail: slide options menu — duplicate, move up/down, lock, colours, sticker, delete', p, async () => {
     const n0 = await thumbs().count()

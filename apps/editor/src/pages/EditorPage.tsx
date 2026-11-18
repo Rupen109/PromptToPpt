@@ -35,6 +35,7 @@ import { useDeckBuild } from '@/lib/useDeckBuild'
 import { PRESENT_LOCKED, useEntitlements } from '@/lib/entitlements'
 import { useFlag } from '@/lib/flags'
 import { download, exportClient, type ClientFormat } from '@/lib/export'
+import { SlideLoader } from '../components/SlideLoader'
 
 const STICKERS = ['⭐', '✅', '💡', '🚀', '⚠️', '❤️', '🎯', '📈']
 const STATUS: Record<SaveStatus, { text: string; cls: string }> = {
@@ -202,7 +203,7 @@ export function EditorPage() {
     return () => window.removeEventListener('keydown', onKey)
   }, [load, autosave, requireAdvanced, select, edit, setClipboard, setActiveSlide, flash])
 
-  if (load === 'loading') return <div className="min-h-screen grid place-items-center text-muted">Loading…</div>
+  if (load === 'loading') return <SlideLoader fullScreen size="lg" label="Opening your presentation" />
   if (load !== 'ready' || !doc || !slide) {
     return <div className="min-h-screen grid place-items-center text-center"><div><p className="font-bold mb-3">{load === 'missing' ? 'Presentation not found.' : 'Could not load the presentation.'}</p><Link to="/" className="text-primary font-semibold">Back to home</Link></div></div>
   }

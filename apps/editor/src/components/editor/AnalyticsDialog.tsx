@@ -5,6 +5,7 @@ import { Portal } from '@/components/Portal'
 import { api } from '@/lib/api'
 import { useEntitlements } from '@/lib/entitlements'
 import { useDialog } from '@/lib/useDialog'
+import { SlideLoader } from '../SlideLoader'
 
 const dur = (s: number) => (s < 60 ? `${Math.round(s)}s` : `${Math.floor(s / 60)}m ${String(Math.round(s % 60)).padStart(2, '0')}s`)
 const ago = (iso: string | null) => {
@@ -78,7 +79,7 @@ export function AnalyticsDialog({ deckId, onClose }: { deckId: string; onClose: 
         </div>
         <p className="text-sm text-slate-600 mb-4">How people view your shared link. Your own views and your collaborators' are not counted. Nothing personal is recorded — no names, e-mail addresses, IP addresses or cookies.</p>
         {error && <p role="alert" className="text-sm font-medium text-red-700 mb-3">{error} <button onClick={load} className="underline">Try again</button></p>}
-        {!data && !error && <p className="text-sm text-slate-600">Loading…</p>}
+        {!data && !error && <SlideLoader size="sm" />}
 
         {data && !data.detail && (
           <div className="rounded-xl border border-border bg-slate-50 p-4 space-y-2" aria-label="Views summary">

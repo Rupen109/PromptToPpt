@@ -7,6 +7,7 @@ import { useParams } from 'react-router'
 import { api } from '@/lib/api'
 import { WEB_URL } from '@/lib/env'
 import { useShareTracking } from '@/lib/shareTracking'
+import { SlideLoader } from '../components/SlideLoader'
 
 /** Public, view-only deck (a share link). No login, no editing, no speaker notes. Keyboard, swipe-free big buttons, responsive. */
 const NO_SLIDE = { elements: [] } // a stable value while the deck is loading (a new one every render would restart the player)
@@ -101,7 +102,7 @@ export function SharedViewPage() {
       </div>
     </div>
   )
-  if (!deck) return <div className="min-h-screen grid place-items-center bg-[#111] text-white/60">Loading…</div>
+  if (!deck) return <SlideLoader fullScreen size="lg" tone="dark" label="Opening the presentation" />
   const doc = deck.document
   const slide = doc.slides[i]!
   const { width: W, height: H } = CANVAS[doc.aspectRatio]

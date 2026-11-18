@@ -122,9 +122,9 @@ export function ElementView({ el, theme, slide, play = false, fx }: { el: SlideE
       return wrap(
         <div style={style} {...(el.animation && play ? { 'data-pt-anim': '' } : {})}>
           {el.paragraphs.map((p, i) => (
-            <div key={i} {...(byP ? { 'data-pt-anim': '' } : {})} {...(fx?.parts ? { 'data-pt-part': 'p' } : {})} style={{ marginBottom: i < el.paragraphs.length - 1 ? el.fontSize * (el.paraGap ?? 0.5) : 0, unicodeBidi: 'plaintext', paddingInlineStart: p.list ? el.fontSize * 0.9 : 0, position: 'relative', // each paragraph reads in the direction of its own first strong letter
+            <div key={i} {...(byP ? { 'data-pt-anim': '' } : {})} {...(fx?.parts ? { 'data-pt-part': 'p' } : {})} style={{ marginBottom: i < el.paragraphs.length - 1 ? el.fontSize * (el.paraGap ?? 0.5) : 0, unicodeBidi: 'plaintext', paddingInlineStart: p.list && p.runs.some((r) => r.text !== '') ? el.fontSize * 0.9 : 0, position: 'relative', // each paragraph reads in the direction of its own first strong letter
           ...(byP ? anim(el.animation, true, i * (el.animation?.stagger ?? 100)) : {}) }}>
-              {p.list && <span style={{ position: 'absolute', insetInlineStart: 0 }}>{p.list === 'bullet' ? el.bullet : `${i + 1}.`}</span>}
+              {p.list && p.runs.some((r) => r.text !== '') /* an empty line draws no bullet or number (PowerPoint does the same), so a new slide's empty text box shows nothing */ && <span style={{ position: 'absolute', insetInlineStart: 0 }}>{p.list === 'bullet' ? el.bullet : `${i + 1}.`}</span>}
               {p.runs.map((r, k) => {
                 const inner = isCount && play ? <CountUp text={r.text} duration={el.animation!.duration} delay={el.animation!.delay} play /> : fx?.parts === 'word' || fx?.parts === 'letter' ? splitParts(r.text, fx.parts) : r.text
                 const st: CSSProperties = { fontWeight: r.bold ? 700 : undefined, fontStyle: r.italic ? 'italic' : undefined, ...(r.underline ? { textDecoration: 'underline', textUnderlineOffset: '0.15em' } : {}), ...(r.color ? { color: resolveColor(r.color, theme, slide) } : {}) }

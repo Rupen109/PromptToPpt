@@ -6,6 +6,7 @@ import { AnalyticsDialog } from './AnalyticsDialog'
 import { api } from '@/lib/api'
 import { useEntitlements } from '@/lib/entitlements'
 import { useDialog } from '@/lib/useDialog'
+import { SlideLoader } from '../SlideLoader'
 
 type Tab = 'people' | 'link'
 const msg = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback)
@@ -131,7 +132,7 @@ export function ShareDialog({ deckId, onClose }: { deckId: string; onClose: () =
           {tab === 'link' && (
             <>
               <p className="text-sm text-slate-600 mb-3">Anyone with the link can <strong>view</strong> the presentation — no account needed. They can't edit it, and speaker notes stay private. You can turn the link off at any time.</p>
-              {link === undefined ? <p className="text-sm text-slate-500">Loading…</p> : link ? (
+              {link === undefined ? <SlideLoader size="sm" /> : link ? (
                 <>
                   <div className="flex gap-2">
                     <input readOnly value={link} aria-label="Share link" onFocus={(e) => e.currentTarget.select()} className="flex-1 min-w-0 border border-border rounded-lg px-3 py-2.5 text-sm bg-slate-50" />

@@ -83,9 +83,13 @@ export default async function () {
     const idDel = a.slides[2].id; await p.getByRole('button', { name: 'Slide 3 options' }).click(); await p.getByRole('menuitem', { name: /Delete slide/ }).click(); await settle(700)
     a = await doc(); expect(a.slides.length === n && !a.slides.some((x) => x.id === idDel), 'wrong slide deleted')
   })
-  await s.check('slides › a new layout slide (Comparison) arrives with real placeholder content, not empty frames', p, async () => {
-    await p.getByRole('button', { name: '+ New slide' }).click(); await p.getByRole('menuitem', { name: 'Comparison' }).click(); await settle(800)
-    const d = await doc(); const last = d.slides.at(-1); expect(last.layoutId === 'comparison', last.layoutId); expect(textLen(last) > 80, 'comparison slide is empty')
+  await s.check('slides › a new layout slide (Comparison) arrives with empty boxes that say what goes in them (PowerPoint style); an older designed layout still arrives with sample words', p, async () => {
+    const n0 = (await doc()).slides.length
+    await p.getByRole('button', { name: 'Choose a layout' }).click(); await p.getByRole('menuitem', { name: 'Comparison' }).click(); await settle(800)
+    let d = await doc(); const made = d.slides.find((x, i) => i >= n0 - 1 && x.elements.some((e) => e.type === 'text' && e.hint) && x.elements.filter((e) => e.type === 'text' && e.hint).length >= 5)
+    expect(!!made, 'no comparison slide with prompted boxes'); expect(made.elements.filter((e) => e.type === 'text').every((e) => e.paragraphs.every((q) => q.runs.every((r) => r.text === ''))), 'the prompted boxes are not empty')
+    await p.getByRole('button', { name: 'Choose a layout' }).click(); await p.getByRole('menuitem', { name: 'Process' }).click(); await settle(800)
+    d = await doc(); const proc = d.slides.find((x) => x.layoutId === 'process' && x.content); expect(!!proc && textLen(proc) > 20, 'the designed Process layout lost its sample words')
   })
   await s.check('insert › text box / rectangle / circle land INSIDE the slide with the right type', p, async () => {
     const W = (await doc()).aspectRatio === '16:9' ? 1920 : 1440

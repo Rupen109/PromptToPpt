@@ -27,7 +27,7 @@ export default async function () {
   async function sharedDeck(title, o2 = {}) {
     const id = await newDeck(O, title)
     await openDeck(o, id)
-    for (let i = 0; i < 3; i++) { await o.getByRole('button', { name: '+ New slide' }).click(); await o.getByRole('menuitem', { name: 'Blank slide' }).click(); await o.waitForTimeout(300) }
+    for (let i = 0; i < 3; i++) { await o.getByRole('button', { name: 'Choose a layout' }).click(); await o.getByRole('menuitem', { name: 'Blank slide' }).click(); await o.waitForTimeout(300) }
     await saved(o); await o.waitForTimeout(1800)
     const link = await api.post(O, `/presentations/${id}/share`, o2.password ? { password: o2.password } : {})
     expect(link.status === 200 || link.status === 201, `share ${link.status} ${JSON.stringify(link.body)}`)

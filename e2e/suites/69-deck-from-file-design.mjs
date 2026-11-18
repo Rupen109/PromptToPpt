@@ -204,7 +204,7 @@ export default async function () {
     await s.check('T9 the editor\'s New slide menu: "From your template" lists the layouts, inserting one adds a slide with placeholders; a deleted design hides the section and the deck still works', p, async () => {
       await p.goto(`${EDITOR}/edit/${manualDeck}`, { waitUntil: 'networkidle' })
       await tid(p, 'stage').waitFor({ timeout: 20000 })
-      await p.getByRole('button', { name: '+ New slide' }).click()
+      await p.getByRole('button', { name: 'Choose a layout' }).click()
       await tid(p, 'from-your-template').waitFor({ timeout: 10000 })
       expect((await p.locator('[data-testid^="own-layout-"]').count()) === 5, 'not 5 layouts')
       await tid(p, 'own-layout-1').click()
@@ -218,7 +218,7 @@ export default async function () {
       expect((await api.del(G, `/file-templates/${manualTplId}`)).status === 200, 'delete')
       await p.reload({ waitUntil: 'networkidle' })
       await tid(p, 'stage').waitFor({ timeout: 20000 })
-      await p.getByRole('button', { name: '+ New slide' }).click()
+      await p.getByRole('button', { name: 'Choose a layout' }).click()
       await p.waitForTimeout(1500)
       expect((await tid(p, 'from-your-template').count()) === 0, 'the section stays after the design is deleted')
       expect((await p.getByRole('menuitem', { name: 'Blank slide' }).count()) === 1, 'the menu broke')

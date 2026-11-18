@@ -4,7 +4,8 @@ import { mix } from '../color'
 import * as L from './content'
 import { COVER_ONLY_DECOR, decor } from './decor'
 import { header } from './header'
-import { defaultId, isDark, makeCtx, pal, para, rect, text, type IdGen } from './primitives'
+import { defaultId, isDark, makeCtx, pal, para, rect, text, type Ctx, type IdGen } from './primitives'
+import { blankHints, contentBody, titleOnlyBody, twoContentBody } from './placeholders'
 import { lookupMorphTemplate } from '../morph-templates/lookup'
 import { composeTemplateScene } from '../morph-templates/compose'
 import { MORPH_TRANSITION, morphSlide, named } from './morph'
@@ -29,6 +30,18 @@ export interface ComposeOptions {
   variant?: number | undefined
   /** where a Morph template's own pictures are served from (the web app's address) */
   assetBase?: string | undefined
+}
+
+/** The background of a plain content slide in the design's body style (a quote sits on the surface colour). Sets `c.bodyBg`, which cards and text pick their contrast from. */
+function bodyBackground(c: Ctx, layout: string): Slide['background'] {
+  const k = pal(c)
+  if (layout === 'quote') c.bodyBg = k.surface
+  else if (c.style.bodyBackground === 'tint') c.bodyBg = mix(k.background, k.primary, 0.035)
+  const background: Slide['background'] = c.style.bodyBackground === 'gradient' && layout !== 'quote'
+    ? { type: 'gradient', value: k.background, gradient: { from: k.background, to: mix(k.background, k.primary, 0.1), angle: 160 } }
+    : { type: 'color', value: c.bodyBg }
+  if (c.style.bodyBackground === 'gradient') c.bodyBg = mix(k.background, k.primary, 0.05) // mid-point, for card contrast decisions
+  return background
 }
 
 export function composeSlide(content: SlideContent, theme: Theme, aspect: AspectRatio, idGen: IdGen = defaultId, opts: ComposeOptions = {}): Composed {
@@ -75,12 +88,7 @@ export function composeSlide(content: SlideContent, theme: Theme, aspect: Aspect
     const bg = titleSlide(c, content, content.layout as 'title' | 'section-divider' | 'thank-you')
     background = bg.gradient ? { type: 'gradient', value: bg.value, gradient: bg.gradient } : { type: 'color', value: bg.value }
   } else {
-    if (content.layout === 'quote') c.bodyBg = k.surface
-    else if (c.style.bodyBackground === 'tint') c.bodyBg = mix(k.background, k.primary, 0.035)
-    background = c.style.bodyBackground === 'gradient' && content.layout !== 'quote'
-      ? { type: 'gradient', value: k.background, gradient: { from: k.background, to: mix(k.background, k.primary, 0.1), angle: 160 } }
-      : { type: 'color', value: c.bodyBg }
-    if (c.style.bodyBackground === 'gradient') c.bodyBg = mix(k.background, k.primary, 0.05) // mid-point, for card contrast decisions
+    background = bodyBackground(c, content.layout)
     decor(c, false, COVER_ONLY_DECOR.has(c.style.decor) ? 'none' : c.style.decor)
     switch (content.layout) {
       case 'title-body': L.titleBody(c, content); break
@@ -113,6 +121,35 @@ export function composeSlide(content: SlideContent, theme: Theme, aspect: Aspect
     content,
     ...(tr !== 'none' && theme.motion ? { transition: { type: tr, duration: 500 } } : {}),
   }
+}
+
+
+/** The layouts a person picks for a NEW slide, in PowerPoint's order. Content slides are plain (flat background, no ornaments); the title slide and section header keep the design's cover look. */
+export const PLACEHOLDER_KINDS = ['content', 'title', 'section', 'two-content', 'comparison', 'title-only'] as const
+export type PlaceholderKind = (typeof PLACEHOLDER_KINDS)[number]
+export const PLACEHOLDER_LABEL: Record<PlaceholderKind, string> = { content: 'Title and content', title: 'Title slide', section: 'Section header', 'two-content': 'Two content', comparison: 'Comparison', 'title-only': 'Title only' }
+
+/**
+ * A new slide made of empty, prompted boxes ("Click to add title"). With `sample: true` the boxes hold sample words instead: that is the preview in the layout gallery. The slide has
+ * no semantic `content` (nobody's words are stored for a redesign to bring back), so the caller marks it hand-made.
+ */
+export function composePlaceholderSlide(kind: PlaceholderKind, theme: Theme, aspect: AspectRatio, idGen: IdGen = defaultId, o: { sample?: boolean } = {}): Composed {
+  let out: Composed
+  if (kind === 'title') out = composeSlide({ layout: 'title', title: 'Presentation title', subtitle: 'Subtitle', speakerNotes: '', sources: [] }, theme, aspect, idGen)
+  else if (kind === 'section') out = composeSlide({ layout: 'section-divider', title: 'Section title', speakerNotes: '', sources: [] }, theme, aspect, idGen)
+  else if (kind === 'comparison') out = composeSlide({ layout: 'comparison', title: 'Slide title', left: { heading: 'Heading', bullets: ['First point'] }, right: { heading: 'Heading', bullets: ['First point'] }, speakerNotes: '', sources: [] }, theme, aspect, idGen)
+  else {
+    const c = makeCtx(theme, aspect, idGen)
+    const background: Slide['background'] = { type: 'color', value: c.bodyBg } // plain: the design's own background colour, no tint, gradient or ornaments behind a slide you are about to fill in
+    ;(kind === 'content' ? contentBody : kind === 'two-content' ? twoContentBody : titleOnlyBody)(c)
+    brandLogo(c, isDark(c.bodyBg))
+    const tr = c.motion.transition
+    out = { layoutId: 'title-body', background, elements: c.els, speakerNotes: '', sources: [], ...(tr !== 'none' && theme.motion ? { transition: { type: tr, duration: 500 } } : {}) }
+  }
+  const { content: _content, ...composed } = out
+  // the designed covers (title, section) keep their look; every other new slide is plain, so the comparison loses its background ornaments and tint too
+  const rest = kind === 'comparison' ? { ...composed, background: { type: 'color' as const, value: theme.colors.background }, elements: composed.elements.filter((e) => !(e.decorative && e.type === 'shape')) } : composed
+  return o.sample ? rest : { ...rest, elements: blankHints(rest.elements) }
 }
 
 export { MORPH_TRANSITION } from './morph'

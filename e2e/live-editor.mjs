@@ -70,7 +70,7 @@ await check('edit text and click on the slide itself (empty area): the words sta
 })
 await check('slide menu: add a blank slide, then delete it (Duplicate is a paid-plan tool)', async () => {
   const thumbs = p.locator('nav[aria-label="Slides"] [data-testid^="thumb-"]'); const before = await thumbs.count()
-  await p.getByRole('button', { name: '+ New slide' }).click(); await p.getByRole('menuitem', { name: 'Blank slide' }).click(); await settle(1500)
+  await p.getByRole('button', { name: 'Choose a layout' }).click(); await p.getByRole('menuitem', { name: 'Blank slide' }).click(); await settle(1500)
   need(await thumbs.count() === before + 1, 'blank slide not added')
   await p.getByRole('button', { name: 'Slide 3 options' }).click(); await p.getByRole('menuitem', { name: /Delete slide/ }).click(); await settle(500) // a visible slide: scrolling the list would close the menu
   if (await p.getByRole('button', { name: /^Delete/ }).count()) await p.getByRole('button', { name: /^Delete/ }).last().click().catch(() => {})
@@ -78,7 +78,7 @@ await check('slide menu: add a blank slide, then delete it (Duplicate is a paid-
 })
 await check('undo and redo from the toolbar (own edit: add a slide, undo removes it, redo brings it back)', async () => {
   const thumbs = p.locator('nav[aria-label="Slides"] [data-testid^="thumb-"]'); const before = await thumbs.count()
-  await p.getByRole('button', { name: '+ New slide' }).click(); await p.getByRole('menuitem', { name: 'Blank slide' }).click(); await settle(1000)
+  await p.getByRole('button', { name: 'Choose a layout' }).click(); await p.getByRole('menuitem', { name: 'Blank slide' }).click(); await settle(1000)
   need(await thumbs.count() === before + 1, 'slide not added'); await p.getByTestId('tb-undo').click(); await settle(600)
   need(await thumbs.count() === before, 'undo did not remove the slide'); await p.getByTestId('tb-redo').click(); await settle(600)
   need(await thumbs.count() === before + 1, 'redo did not bring it back')

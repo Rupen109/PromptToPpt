@@ -5,6 +5,7 @@ import type { LoadedPresentation } from '@prompttoppt/api-client'
 import { MorphLayer, SlideCanvas, easingCss, transitionStyle, useSlidePlayer, type MorphHandle } from '@prompttoppt/ui'
 import { api } from '@/lib/api'
 import { PRESENT_LOCKED, useEntitlements } from '@/lib/entitlements'
+import { SlideLoader } from '../components/SlideLoader'
 
 const NO_SLIDE = { elements: [] } // a stable value while the deck is loading (a new one every render would restart the player)
 
@@ -89,7 +90,7 @@ export function PresentPage() {
 
   if (locked) return null
   if (failed) return <div className="min-h-screen grid place-items-center bg-black text-white"><div className="text-center"><p className="mb-3">Could not load the presentation.</p><Link to="/" className="underline">Back to home</Link></div></div>
-  if (!deck) return <div className="min-h-screen grid place-items-center bg-black text-white/60">Loading…</div>
+  if (!deck) return <SlideLoader fullScreen size="lg" tone="dark" label="Getting your slideshow ready" />
   const doc = deck.document
   const slide = doc.slides[i]!
   const { width: W, height: H } = CANVAS[doc.aspectRatio]

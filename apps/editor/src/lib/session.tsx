@@ -3,6 +3,7 @@ import type { CurrentUser } from '@prompttoppt/api-client'
 import { Portal } from '@/components/Portal'
 import { api, SESSION_CHANGED_EVENT, setSessionUser } from './api'
 import { WEB_URL } from './env'
+import { SlideLoader } from '../components/SlideLoader'
 
 const SessionContext = createContext<CurrentUser | null>(null)
 export const useUser = () => {
@@ -122,7 +123,7 @@ export function RequireAuth({ children }: { children: ReactNode }) {
         </div>
       </div>
     )
-  if (state.status === 'loading') return <div className="min-h-screen grid place-items-center text-muted">Loading…</div>
+  if (state.status === 'loading') return <SlideLoader fullScreen size="lg" label="Opening your workspace" />
   return (
     <SessionContext value={state.user}>
       {children}

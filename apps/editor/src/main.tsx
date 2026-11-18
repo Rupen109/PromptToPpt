@@ -10,18 +10,21 @@ import { DevGallery } from '@/pages/DevGallery'
 import { RequireAuth } from '@/lib/session'
 import { HomePage } from '@/pages/HomePage'
 import { StartPage } from '@/pages/StartPage'
-import { CreatePage } from '@/pages/CreatePage'
-import { ScratchPage } from '@/pages/ScratchPage'
-import { EditorPage } from '@/pages/EditorPage'
-import { BillingPage } from '@/pages/BillingPage'
-import { PresentPage } from '@/pages/PresentPage'
-import { CreatedPage } from '@/pages/CreatedPage'
-import { TemplatesPage } from '@/pages/TemplatesPage'
-import { InvitePage } from '@/pages/InvitePage'
-import { SharedPage } from '@/pages/SharedPage'
-import { SharedViewPage } from '@/pages/SharedViewPage'
 import './index.css'
 import '@prompttoppt/ui/prose.css'
+import { SlideLoader } from './components/SlideLoader'
+
+// Each page is its own chunk: signing in no longer downloads the whole editor, the slideshow player and the billing screens first; a page's code arrives when it is opened.
+const CreatePage = lazy(() => import('@/pages/CreatePage').then((m) => ({ default: m.CreatePage })))
+const ScratchPage = lazy(() => import('@/pages/ScratchPage').then((m) => ({ default: m.ScratchPage })))
+const EditorPage = lazy(() => import('@/pages/EditorPage').then((m) => ({ default: m.EditorPage })))
+const BillingPage = lazy(() => import('@/pages/BillingPage').then((m) => ({ default: m.BillingPage })))
+const PresentPage = lazy(() => import('@/pages/PresentPage').then((m) => ({ default: m.PresentPage })))
+const CreatedPage = lazy(() => import('@/pages/CreatedPage').then((m) => ({ default: m.CreatedPage })))
+const TemplatesPage = lazy(() => import('@/pages/TemplatesPage').then((m) => ({ default: m.TemplatesPage })))
+const InvitePage = lazy(() => import('@/pages/InvitePage').then((m) => ({ default: m.InvitePage })))
+const SharedPage = lazy(() => import('@/pages/SharedPage').then((m) => ({ default: m.SharedPage })))
+const SharedViewPage = lazy(() => import('@/pages/SharedViewPage').then((m) => ({ default: m.SharedViewPage })))
 
 // Owner dashboard is its own chunk: regular users never download it (the API enforces admin-only regardless).
 const AdminLayout = lazy(() => import('@/pages/admin/AdminLayout'))
@@ -37,12 +40,13 @@ createRoot(document.getElementById('root')!).render(
     <BrowserRouter>
       <Routes>
         {/* Public routes live OUTSIDE the login wall (share links later; dev gallery only in dev). */}
-        <Route path="/s/:token" element={<SharedViewPage />} />
+        <Route path="/s/:token" element={<Suspense fallback={<SlideLoader fullScreen size="lg" label="Opening the presentation" />}><SharedViewPage /></Suspense>} />
         {import.meta.env.DEV && <Route path="/dev/gallery" element={<DevGallery />} />}
         <Route path="/*" element={
       <RequireAuth>
         <EntitlementsProvider>
         <FlagsProvider>
+        <Suspense fallback={<SlideLoader fullScreen size="lg" label="Loading" />}>
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/start" element={<StartPage />} />
@@ -56,7 +60,7 @@ createRoot(document.getElementById('root')!).render(
           <Route path="/shared" element={<SharedPage />} />
           <Route path="/invite/:token" element={<InvitePage />} />
           <Route path="/present/:id" element={<PresentPage />} />
-          <Route path="/admin" element={<Suspense fallback={<div className="min-h-screen grid place-items-center text-muted">Loading…</div>}><AdminLayout /></Suspense>}>
+          <Route path="/admin" element={<Suspense fallback={<SlideLoader fullScreen size="lg" label="Loading" />}><AdminLayout /></Suspense>}>
             <Route index element={<Suspense fallback={null}><views.Overview /></Suspense>} />
             <Route path="tokens" element={<Suspense fallback={null}><views.Tokens /></Suspense>} />
             <Route path="models" element={<Suspense fallback={null}><views.Models /></Suspense>} />
@@ -68,6 +72,7 @@ createRoot(document.getElementById('root')!).render(
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </Suspense>
         <UpgradeModal />
         </FlagsProvider>
         </EntitlementsProvider>

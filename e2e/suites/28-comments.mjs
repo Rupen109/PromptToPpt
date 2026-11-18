@@ -36,7 +36,7 @@ export default async function () {
     await s.check('setup: a deck with four slides, a collaborator invited through the real invitation flow', o, async () => {
       deck = await newDeck(O, 'Comments deck'); O.id = deck
       await openDeck(o, deck)
-      for (let i = 0; i < 3; i++) { await o.getByRole('button', { name: '+ New slide' }).click(); await o.getByRole('menuitem', { name: 'Blank slide' }).click(); await o.waitForTimeout(300) }
+      for (let i = 0; i < 3; i++) { await o.getByRole('button', { name: 'Choose a layout' }).click(); await o.getByRole('menuitem', { name: 'Blank slide' }).click(); await o.waitForTimeout(300) }
       await saved(o); await o.waitForTimeout(1800)
       const fe = F.email
       const inv = await api.post(O, `/presentations/${deck}/members`, { email: fe }); expect(inv.status === 201 || inv.status === 200, `invite ${inv.status}`)

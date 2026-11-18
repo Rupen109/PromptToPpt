@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { ApiError, type InvitePreview } from '@prompttoppt/api-client'
 import { api } from '@/lib/api'
+import { SlideLoader } from '../components/SlideLoader'
 
 /** /invite/:token — shown after signing in. Accepting works only for the mailbox the invitation was sent to. */
 export function InvitePage() {
@@ -28,7 +29,7 @@ export function InvitePage() {
             <p className="text-slate-600 mb-5">It may have expired, been withdrawn, or the link is incomplete. Ask the owner to send a new one.</p>
             <Link to="/" className="text-primary font-semibold">Go to my presentations</Link>
           </>
-        ) : !inv ? <p className="text-slate-500">Loading…</p> : (
+        ) : !inv ? <SlideLoader size="sm" /> : (
           <>
             <h1 className="font-heading font-bold text-2xl mb-2">{inv.from} invited you to edit</h1>
             <p className="text-lg font-semibold mb-4">“{inv.title}”</p>

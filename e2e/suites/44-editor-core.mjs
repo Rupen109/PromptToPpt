@@ -344,8 +344,8 @@ export default async function () {
   await s.check('theme: a slide added AFTER the theme change uses the new fonts and colours', p, async () => {
     const th = (await server(tdeck)).document.theme
     const n0 = await thumbs().count()
-    await p.getByRole('button', { name: /New slide/ }).first().click(); await settle(300)
-    await p.getByRole('menuitem', { name: /Title.*(body|content)|Bullets|Text/i }).first().click()
+    await p.getByRole('button', { name: 'Choose a layout' }).first().click(); await settle(300)
+    await p.getByRole('menuitem', { name: /Title and content/i }).first().click()
     await settle(600)
     expect(await thumbs().count() > n0, 'could not add a slide')
     await saved()

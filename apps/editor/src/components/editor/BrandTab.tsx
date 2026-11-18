@@ -8,6 +8,7 @@ import { useDoc } from '@/editor/store'
 import { api } from '@/lib/api'
 import { uploadDesign } from '@/components/FileTemplatePicker'
 import { useEntitlements } from '@/lib/entitlements'
+import { SlideLoader } from '../SlideLoader'
 
 type Form = { name: string; primary: string; accent: string; heading: string; body: string }
 const formOf = (k: BrandKit): Form => ({ name: k.name, primary: k.colors.primary ?? '', accent: k.colors.accent ?? '', heading: k.fonts.heading ?? '', body: k.fonts.body ?? '' })
@@ -61,7 +62,7 @@ export function BrandTab({ doc, slideId }: { doc: Presentation; slideId: string 
   const applyKit = () => { if (!kit || !form) return; apply('Apply brand kit', (d) => C.applyBrand(d, { name: kit.name, colors: { primary: kit.colors.primary, accent: kit.colors.accent }, fonts: { heading: kit.fonts.heading ? { family: kit.fonts.heading } : null, body: kit.fonts.body ? { family: kit.fonts.body } : null }, logo: kit.logo }, pick)); setNote('Applied to every slide. You can undo it with ⌘Z.') }
 
   // ── starter plan / loading
-  if (kits === null) return <p className="text-sm text-slate-500">Loading…</p>
+  if (kits === null) return <SlideLoader size="sm" />
   if (limit === 0) {
     return (
       <div className="rounded-xl border border-border p-4 space-y-2" aria-label="Brand kit">

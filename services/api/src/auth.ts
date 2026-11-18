@@ -51,7 +51,7 @@ export const auth = betterAuth({
     },
     // a reset signs everyone out (see above): tell the owner of the mailbox, in case it was not them
     onPasswordReset: async ({ user }) => {
-      await sendMail({ to: user.email, ...mail.passwordChanged({ name: user.name }) }).catch((e) => console.error('[password-changed mail]', (e as Error).message))
+      void sendMail({ to: user.email, ...mail.passwordChanged({ name: user.name }) }).catch((e) => console.error('[password-changed mail]', (e as Error).message)) // not awaited: the reset does not wait for the mail provider
     },
   },
   emailVerification: {
@@ -68,7 +68,7 @@ export const auth = betterAuth({
     },
     // the account is real now: say hello (best effort, never blocks the sign-in)
     afterEmailVerification: async (user) => {
-      await sendMail({ to: user.email, ...mail.welcome({ name: user.name }) }).catch((e) => console.error('[welcome mail]', (e as Error).message))
+      void sendMail({ to: user.email, ...mail.welcome({ name: user.name }) }).catch((e) => console.error('[welcome mail]', (e as Error).message)) // not awaited: the link opens the app now, the mail follows
     },
   },
   // Better Auth's own limiter mis-buckets behind multi-hop proxies (one shared bucket for everyone); ours is database-backed, see security/auth-guard.ts
@@ -92,7 +92,7 @@ export const auth = betterAuth({
         },
         // Google / Microsoft sign-ups arrive already verified (no confirmation mail, so no "afterEmailVerification"): welcome them here
         after: async (user) => {
-          if (user.emailVerified) await sendMail({ to: user.email, ...mail.welcome({ name: user.name }) }).catch((e) => console.error('[welcome mail]', (e as Error).message))
+          if (user.emailVerified) void sendMail({ to: user.email, ...mail.welcome({ name: user.name }) }).catch((e) => console.error('[welcome mail]', (e as Error).message))
         },
       },
     },
@@ -109,6 +109,8 @@ export const auth = betterAuth({
   plugins: isProd ? [haveIBeenPwned({ customPasswordCompromisedMessage: 'That password appears in known data breaches. Please choose a different one.' })] : [],
   session: { expiresIn: 60 * 60 * 24 * 30, updateAge: 60 * 60 * 24 },
   advanced: {
+    // E-mails (confirmation, reset, welcome) go out in the background: the person is signed in / redirected as soon as the account work is done, not after the mail provider has answered (a slow provider delayed every sign-up and Google sign-in). A failure is logged by Better Auth.
+    backgroundTasks: { handler: (promise: Promise<unknown>) => { void promise } },
     useSecureCookies: isProd,
     ...(env.COOKIE_DOMAIN ? { crossSubDomainCookies: { enabled: true, domain: env.COOKIE_DOMAIN } } : {}),
   },

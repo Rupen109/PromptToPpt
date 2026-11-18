@@ -1,11 +1,12 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as RPE } from 'react'
 import { CANVAS, type Slide, type SlideElement, type TextElement, type Theme } from '@prompttoppt/validation'
-import { resolveColor } from '@prompttoppt/theme'
+import { effectiveBackground, isDark, resolveColor } from '@prompttoppt/theme'
 import * as C from '@/editor/commands'
 import { useDoc } from '@/editor/store'
 import { useUi } from '@/editor/ui'
 import { ElementView, backgroundCss } from '@prompttoppt/ui'
 import { pointer } from '@/editor/live'
+import { Trash2 } from '@prompttoppt/ui/icons'
 import { FormatBar } from './FormatBar'
 import { useComments } from '@/editor/comments'
 import { CommentPins } from './CommentPins'
@@ -33,6 +34,9 @@ function useFitWidth(max: number) {
 }
 
 type Flag = 'bold' | 'italic' | 'underline'
+/** A text box nobody has typed in (its words are all empty). */
+const isEmptyText = (el: TextElement) => el.paragraphs.every((p) => p.runs.every((r) => r.text.trim() === ''))
+
 /**
  * Inline editor for a text element: commits on blur / Escape as ONE undoable edit. It looks like the slide while you type: every paragraph is its own block, list items keep
  * their bullet / number (drawn by CSS, never part of the text), Enter makes the next bullet, Enter on an empty bullet or Backspace at the start of one leaves the list,
@@ -133,6 +137,8 @@ interface Props {
 }
 
 export function EditorCanvas({ slide, theme, aspect, watermark, requireAdvanced }: Props) {
+  /** where the pointer went down on a box: a click that did not move is a click, not the end of a drag */
+  const downAt = useRef<{ x: number; y: number; was: boolean } | null>(null)
   const apply = useDoc((s) => s.apply)
   const { selection, editingId, select, edit } = useUi()
   const { width: W, height: H } = CANVAS[aspect]
@@ -239,15 +245,22 @@ export function EditorCanvas({ slide, theme, aspect, watermark, requireAdvanced 
                     key={el.id}
                     data-element={el.id}
                     data-testid={`el-${el.type}`}
-                    onPointerDown={(e) => begin(e, el, 'move')}
+                    onPointerDown={(e) => { downAt.current = { x: e.clientX, y: e.clientY, was: selection.includes(el.id) }; begin(e, el, 'move') }}
                     onPointerMove={move}
                     onPointerUp={end}
+                    onClick={(e) => { const d0 = downAt.current; /* the first click on an empty "Click to add …" box selects it (its tools, with Delete, show); a click on the box while it is selected starts typing */ if (el.type === 'text' && el.hint && !el.locked && !locked && isEmptyText(el) && d0?.was && Math.hypot(e.clientX - d0.x, e.clientY - d0.y) < 4) edit(el.id) }}
                     onDoubleClick={(e) => { e.stopPropagation(); if (el.type === 'text' && !el.locked && !locked) edit(el.id); else if (el.type === 'table' && !el.locked && !locked) useUi.getState().editTable(el.id); else if (el.type === 'chart' && !el.locked && !locked) useUi.getState().editChart(el.id) }}
                     style={{ position: 'absolute', left: el.x, top: el.y, width: el.width, height: el.height, zIndex: 5000 + el.zIndex, ...(clip ? { clipPath: clip } : {}), cursor: el.locked || locked ? 'default' : 'move', touchAction: 'none', pointerEvents: 'auto', outline: isSel ? `${Math.max(2, 2 / scale)}px solid #2563eb` : undefined }}
                     className={isSel ? '' : 'hover:outline hover:outline-2 hover:outline-blue-300/70'}
                   />
                 )
               })}
+              {/* an empty text box of a new slide says what goes in it, here only: like the chart cue below, this layer is not part of the slide, so thumbnails, Present, the shared view and every export draw nothing */}
+              {shown.map((el) => (el.type === 'text' && el.hint && el.id !== editingId && isEmptyText(el) ? (
+                <div key={`hint-${el.id}`} aria-hidden data-testid="text-hint" style={{ position: 'absolute', left: el.x, top: el.y, width: el.width, height: el.height, zIndex: 4000, pointerEvents: 'none', display: 'flex', flexDirection: 'column', justifyContent: { top: 'flex-start', middle: 'center', bottom: 'flex-end' }[el.valign], textAlign: { left: 'start', center: 'center', right: 'end' }[el.align] as 'start' | 'center' | 'end', color: isDark(effectiveBackground(slide, theme, el)) ? 'rgba(255,255,255,.62)' : '#94a3b8', fontSize: Math.min(el.fontSize, 56), lineHeight: el.lineHeight ?? 1.3, fontFamily: `'${HEADING.has(el.role) ? theme.fonts.heading : theme.fonts.body}', system-ui, sans-serif`, fontWeight: el.role === 'title' ? 700 : 400, outline: `${Math.max(2, 2 / scale)}px dashed ${isDark(effectiveBackground(slide, theme, el)) ? 'rgba(255,255,255,.4)' : '#cbd5e1'}`, outlineOffset: -1, overflow: 'hidden', userSelect: 'none' }}>
+                  <span>{el.hint}</span>
+                </div>
+              ) : null))}
               {/* a chart that still holds sample data says so, here only: this layer is not part of the slide, so thumbnails, Present, shared view and every export draw a plain chart */}
               {shown.map((el) => (el.type === 'chart' && el.placeholder ? (
                 <button key={`sample-${el.id}`} type="button" data-testid="chart-sample-cue" aria-label="Sample data: edit this chart" onPointerDown={(e) => e.stopPropagation()} onClick={() => { if (!el.locked && !locked) useUi.getState().editChart(el.id) }}
@@ -284,6 +297,16 @@ export function EditorCanvas({ slide, theme, aspect, watermark, requireAdvanced 
               onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); useComments.getState().setPending({ slideId: slide.id, x: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), y: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)) }) }}
               onKeyDown={(e) => { if (e.key === 'Escape') useComments.getState().setPlacing(false) }} />
           )}
+          {(() => {
+            const typing = editingId ? shown.find((x) => x.id === editingId) : undefined
+            if (!typing || locked || typing.locked) return null
+            return (
+              <div role="toolbar" aria-label="Text box tools" style={{ position: 'absolute', top: Math.max(4, typing.y * scale - 46), left: Math.max(4, typing.x * scale), zIndex: 20 }} className="flex items-center gap-1 bg-white border border-border rounded-xl shadow-lg px-1.5 py-1 text-xs text-slate-600">
+                <span className="px-1">Typing · Esc to finish</span>
+                <button type="button" aria-label="Delete" title="Delete this box" onMouseDown={(e) => e.preventDefault()} onClick={() => { if (!requireAdvanced()) return; apply('Delete', (d) => C.deleteElements(d, slide.id, [typing.id])); select([]); edit(null) }} className="w-8 h-8 grid place-items-center rounded-lg text-red-600 hover:bg-red-50"><Trash2 aria-hidden size={16} /></button>
+              </div>
+            )
+          })()}
           {primary && !editingId && !drag && !resize && <FormatBar el={primary} slideId={slide.id} scale={scale} stageWidth={width} theme={theme} requireAdvanced={requireAdvanced} />}
         </div>
       )}

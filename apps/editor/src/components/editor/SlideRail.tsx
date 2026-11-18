@@ -1,10 +1,11 @@
-import { MoreHorizontal } from '@prompttoppt/ui/icons'
+import { ChevronDown, MoreHorizontal } from '@prompttoppt/ui/icons'
 import { Lock, MessageSquare } from '@prompttoppt/ui/icons'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Slide, Theme } from '@prompttoppt/validation'
 import { api } from '@/lib/api'
 import type { LayoutId, Presentation, SlideElement } from '@prompttoppt/validation'
 import { SlideCanvas } from '@prompttoppt/ui'
+import { PLACEHOLDER_KINDS, PLACEHOLDER_LABEL, type PlaceholderKind } from '@prompttoppt/theme'
 import { othersOf, useLive } from '@/editor/live'
 import * as C from '@/editor/commands'
 import { useDoc } from '@/editor/store'
@@ -12,8 +13,10 @@ import { isUnread, useComments } from '@/editor/comments'
 import { useUi } from '@/editor/ui'
 import { ContextMenu, type MenuItem } from './ContextMenu'
 
+/** the designed layouts the PowerPoint set already covers (they would only be listed twice) */
+const PLACEHOLDER_ALREADY = new Set<LayoutId>(['title', 'section-divider', 'comparison'])
 const STICKERS = ['⭐', '✅', '💡', '🚀', '⚠️', '❤️', '🎯', '📈']
-const LAYOUT_LABEL: Partial<Record<LayoutId, string>> = { 'title-body': 'Title + body', 'split-image-text': 'Image + text', comparison: 'Comparison', process: 'Process', timeline: 'Timeline', quote: 'Quote', table: 'Table', 'section-divider': 'Section divider', title: 'Title', 'thank-you': 'Thank you', agenda: 'Agenda', team: 'Team', matrix: '2×2 matrix', roadmap: 'Roadmap', architecture: 'Architecture', 'case-study': 'Case study', 'big-number': 'Big number' }
+const LAYOUT_LABEL: Partial<Record<LayoutId, string>> = { 'title-body': 'Designed bullets', 'split-image-text': 'Image + text', comparison: 'Comparison', process: 'Process', timeline: 'Timeline', quote: 'Quote', table: 'Table', 'section-divider': 'Section divider', title: 'Title', 'thank-you': 'Thank you', agenda: 'Agenda', team: 'Team', matrix: '2×2 matrix', roadmap: 'Roadmap', architecture: 'Architecture', 'case-study': 'Case study', 'big-number': 'Big number' }
 
 /** A small speech bubble with the number of open comment threads on this slide (a red dot when some are unread). */
 function Bubble({ slideId, index }: { slideId: string; index: number }) {
@@ -39,6 +42,20 @@ export function SlideRail({ doc, watermark }: { doc: Presentation; watermark: bo
   const { activeSlideId, setActiveSlide, toggleNotes, select } = useUi()
   const [menu, setMenu] = useState<{ x: number; y: number; slideId: string } | null>(null)
   const [addOpen, setAddOpen] = useState(false)
+  /** the layout gallery opened from a slide's menu: change THAT slide's layout (fixed at the place of the menu, so it stays in view when the rail is scrolled) */
+  const [changeFor, setChangeFor] = useState<{ slideId: string; x: number; y: number } | null>(null)
+  /** where the gallery of "New slide" opens: beside the rail (the rail scrolls and clips, so the gallery is fixed on the page) */
+  const [addAt, setAddAt] = useState<{ x: number; y: number } | null>(null)
+  const galleryOpen = addOpen || !!changeFor
+  const closeGallery = () => { setAddOpen(false); setChangeFor(null) }
+  useEffect(() => {
+    if (!galleryOpen) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { setAddOpen(false); setChangeFor(null) } }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [galleryOpen])
+  /** what each PowerPoint layout looks like, with sample words (the slide you get has empty boxes instead); worked out only while the gallery is open */
+  const previews = useMemo(() => (galleryOpen ? Object.fromEntries(PLACEHOLDER_KINDS.map((k) => [k, C.previewSlide(k, doc.theme, doc.aspectRatio)])) as Record<PlaceholderKind, Slide> : null), [galleryOpen, doc.theme, doc.aspectRatio])
   /** the deck's uploaded design ("Use a file's design"): its layouts with placeholder words, fetched when the menu opens. null = not loaded, 'gone' = the design was deleted (the section is hidden; the deck works as before). */
   const [own, setOwn] = useState<{ theme: Theme; aspect: string; layouts: { index: number; name: string; layoutName: string; slide: Slide }[] } | 'gone' | null>(null)
   useEffect(() => {
@@ -57,10 +74,16 @@ export function SlideRail({ doc, watermark }: { doc: Presentation; watermark: bo
   const [dropAt, setDropAt] = useState<number | null>(null)
 
   const indexOf = (id: string) => doc.slides.findIndex((s) => s.id === id)
-  const addAfter = (idx: number, layout: LayoutId | 'blank') => {
-    const slide = layout === 'blank' ? C.blankSlide(doc.theme) : C.slideFromLayout(layout, doc.theme, doc.aspectRatio)
+  const addAfter = (idx: number, layout: LayoutId | PlaceholderKind | 'blank') => {
+    const slide = layout === 'blank' ? C.blankSlide(doc.theme) : (PLACEHOLDER_KINDS as readonly string[]).includes(layout) ? C.newSlide(layout as PlaceholderKind, doc.theme, doc.aspectRatio) : C.slideFromLayout(layout as LayoutId, doc.theme, doc.aspectRatio)
     apply('Add slide', (d) => C.addSlideAt(d, idx + 1, slide as never))
     setActiveSlide(slide.id)
+  }
+  /** a new slide goes in right after the slide you are on, like PowerPoint (at the end when none is selected) */
+  const here = Math.max(0, indexOf(activeSlideId ?? '') < 0 ? doc.slides.length - 1 : indexOf(activeSlideId ?? ''))
+  const pick = (kind: PlaceholderKind) => {
+    if (changeFor) { const id = changeFor.slideId; apply('Change layout', (d) => C.changeLayout(d, id, kind)); setActiveSlide(id) } else addAfter(here, kind)
+    closeGallery()
   }
 
   function menuItems(slideId: string): MenuItem[] {
@@ -68,7 +91,8 @@ export function SlideRail({ doc, watermark }: { doc: Presentation; watermark: bo
     const slide = doc.slides[i]!
     return [
       { label: 'Duplicate slide', onClick: () => { let id: string | null = null; apply('Duplicate slide', (d) => { id = C.duplicateSlide(d, slideId) }); if (id) setActiveSlide(id) } },
-      { label: 'Add slide below', onClick: () => addAfter(i, 'title-body') },
+      { label: 'Add slide below', onClick: () => addAfter(i, 'content') },
+      ...(C.canChangeLayout(slide as Slide) ? [{ label: 'Layout…', onClick: () => { const m = menu; setChangeFor({ slideId, x: m?.x ?? 240, y: m?.y ?? 120 }) } }] : []),
       { label: 'Move up', disabled: i === 0, onClick: () => apply('Move slide', (d) => C.moveSlide(d, i, i - 1)) },
       { label: 'Move down', disabled: i === doc.slides.length - 1, onClick: () => apply('Move slide', (d) => C.moveSlide(d, i, i + 1)) },
       { type: 'divider' },
@@ -83,25 +107,42 @@ export function SlideRail({ doc, watermark }: { doc: Presentation; watermark: bo
 
   return (
     <nav aria-label="Slides" className="max-md:order-last md:w-[208px] shrink-0 bg-white border-t md:border-t-0 md:border-r border-border p-2 md:p-3 max-md:flex max-md:gap-2 max-md:overflow-x-auto md:overflow-y-auto md:space-y-2.5 relative">
-      <div className="relative max-md:shrink-0 max-md:w-24">
-        <button onClick={() => setAddOpen((v) => !v)} aria-haspopup="menu" aria-expanded={addOpen} className="w-full max-md:h-full border border-border rounded-lg py-2 text-sm font-semibold hover:bg-slate-50">+ New slide</button>
-        {addOpen && (
-          <div role="menu" className="absolute z-30 left-0 right-0 max-md:right-auto max-md:w-60 max-md:bottom-full max-md:mb-1 md:mt-1 bg-white border border-border rounded-xl shadow-xl p-1.5 text-sm max-h-80 overflow-y-auto">
-            <button role="menuitem" className="w-full text-left px-2.5 py-2 rounded-lg hover:bg-slate-100" onClick={() => { addAfter(doc.slides.length - 1, 'blank'); setAddOpen(false) }}>Blank slide</button>
-            {own && own !== 'gone' && own.aspect === doc.aspectRatio && own.layouts.length > 0 && (
-              <div data-testid="from-your-template">
-                <div className="px-2.5 pt-2 pb-1 text-[11px] font-bold text-slate-500">FROM YOUR TEMPLATE</div>
-                <div className="grid grid-cols-2 gap-1.5 px-1 pb-1">
-                  {own.layouts.map((l) => (
-                    <button key={l.index} role="menuitem" title={`${l.layoutName} (slide ${l.index + 1} of your template)`} aria-label={`Insert layout ${l.index + 1} from your template`} data-testid={`own-layout-${l.index}`} onClick={() => { addOwn(l.slide); setAddOpen(false) }} className="rounded-md ring-1 ring-border hover:ring-primary overflow-hidden p-0.5 text-left">
-                      <SlideCanvas slide={l.slide} theme={own.theme} aspect={doc.aspectRatio} width={88} />
-                    </button>
-                  ))}
-                </div>
-              </div>
+      <div className="relative max-md:shrink-0 max-md:w-36">
+        <div className="flex">
+          <button onClick={() => { closeGallery(); addAfter(here, 'content') }} className="flex-1 border border-border rounded-l-lg py-2 text-sm font-semibold hover:bg-slate-50">+ New slide</button>
+          <button onClick={(e) => { if (galleryOpen) { closeGallery(); return } const r = e.currentTarget.closest('nav')!.getBoundingClientRect(); const wide = window.innerWidth >= 768; setAddAt({ x: wide ? r.right + 8 : r.left + 8, y: wide ? e.currentTarget.getBoundingClientRect().top : r.top }); setAddOpen(true) }} aria-label="Choose a layout" aria-haspopup="menu" aria-expanded={galleryOpen} className="px-2 border border-l-0 border-border rounded-r-lg hover:bg-slate-50 grid place-items-center"><ChevronDown aria-hidden size={16} /></button>
+        </div>
+        {galleryOpen && <div aria-hidden className="fixed inset-0 z-20" onClick={closeGallery} />}
+        {galleryOpen && previews && (
+          <div role="menu" aria-label={changeFor ? 'Change layout' : 'New slide layout'} style={{ left: Math.max(8, Math.min((changeFor ?? addAt)?.x ?? 8, window.innerWidth - 296)), top: Math.max(8, Math.min((changeFor ?? addAt)?.y ?? 8, window.innerHeight - 460)) }} className="fixed z-30 w-72 bg-white border border-border rounded-xl shadow-xl p-2 text-sm max-h-[85vh] overflow-y-auto">
+            <div className="px-1 pb-1.5 text-[11px] font-bold text-slate-500">{changeFor ? 'CHANGE LAYOUT' : 'NEW SLIDE'}</div>
+            <div className="grid grid-cols-2 gap-2">
+              {PLACEHOLDER_KINDS.map((k) => (
+                <button key={k} role="menuitem" aria-label={PLACEHOLDER_LABEL[k]} data-testid={`layout-${k}`} onClick={() => pick(k)} className="text-left rounded-lg p-1 hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-primary">
+                  <span className="block rounded ring-1 ring-border overflow-hidden"><SlideCanvas slide={previews[k]} theme={doc.theme} aspect={doc.aspectRatio} width={120} /></span>
+                  <span className="block text-xs mt-1 text-slate-700">{PLACEHOLDER_LABEL[k]}</span>
+                </button>
+              ))}
+            </div>
+            {!changeFor && (
+              <>
+                <button role="menuitem" className="w-full text-left mt-1.5 px-2.5 py-2 rounded-lg hover:bg-slate-100" onClick={() => { addAfter(here, 'blank'); closeGallery() }}>Blank slide</button>
+                {own && own !== 'gone' && own.aspect === doc.aspectRatio && own.layouts.length > 0 && (
+                  <div data-testid="from-your-template">
+                    <div className="px-2.5 pt-2 pb-1 text-[11px] font-bold text-slate-500">FROM YOUR TEMPLATE</div>
+                    <div className="grid grid-cols-2 gap-1.5 px-1 pb-1">
+                      {own.layouts.map((l) => (
+                        <button key={l.index} role="menuitem" title={`${l.layoutName} (slide ${l.index + 1} of your template)`} aria-label={`Insert layout ${l.index + 1} from your template`} data-testid={`own-layout-${l.index}`} onClick={() => { addOwn(l.slide); closeGallery() }} className="rounded-md ring-1 ring-border hover:ring-primary overflow-hidden p-0.5 text-left">
+                          <SlideCanvas slide={l.slide} theme={own.theme} aspect={doc.aspectRatio} width={88} />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div className="px-2.5 pt-2 pb-1 text-[11px] font-bold text-slate-500">MORE LAYOUTS</div>
+                {C.INSERTABLE_LAYOUTS.filter((l) => !PLACEHOLDER_ALREADY.has(l)).map((l) => <button key={l} role="menuitem" className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-100" onClick={() => { addAfter(here, l); closeGallery() }}>{LAYOUT_LABEL[l] ?? l}</button>)}
+              </>
             )}
-            <div className="px-2.5 pt-2 pb-1 text-[11px] font-bold text-slate-500">FROM A LAYOUT</div>
-            {C.INSERTABLE_LAYOUTS.map((l) => <button key={l} role="menuitem" className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-100" onClick={() => { addAfter(doc.slides.length - 1, l); setAddOpen(false) }}>{LAYOUT_LABEL[l] ?? l}</button>)}
           </div>
         )}
       </div>

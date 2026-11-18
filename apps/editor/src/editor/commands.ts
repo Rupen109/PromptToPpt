@@ -1,5 +1,6 @@
 import { current, isDraft, type Draft } from 'immer'
-import { IMAGE_BG_LAYOUTS, PHOTO_LAYOUTS, applyBrandToTheme, brandLogoElements, commonSlideBackground, composeSlide, contrastRatio, effectiveBackground, isDark, mix, readableOn, resolveColor, designById, getTheme, makeColors, recolor } from '@prompttoppt/theme'
+import { IMAGE_BG_LAYOUTS, PHOTO_LAYOUTS, applyBrandToTheme, brandLogoElements, commonSlideBackground, composePlaceholderSlide, composeSlide, contrastRatio, effectiveBackground, isDark, mix, readableOn, resolveColor, designById, getTheme, makeColors, recolor } from '@prompttoppt/theme'
+import type { PlaceholderKind } from '@prompttoppt/theme'
 import { CANVAS, elementSchema, type AspectRatio, type LayoutId, type Presentation, type Slide, type SlideContent, type SlideElement, type TextElement, type Theme } from '@prompttoppt/validation'
 import { copyEffects, pruneEffects, remapEffects, snapshotElements } from './effect-commands'
 
@@ -268,6 +269,61 @@ export function slideFromLayout(layout: LayoutId, theme: Theme, aspect: AspectRa
   const content = PLACEHOLDER[layout]
   if (!content) return blankSlide(theme, idGen())
   return { id: idGen(), locked: false, validation: { status: 'pending', issues: [] }, ...composeSlide(content, theme, aspect, idGen) }
+}
+
+// ─── new slides made of empty, prompted boxes (PowerPoint's layouts) ─────────
+
+/** A new slide: its title / text boxes are empty and show "Click to add …" in the editor (and nothing anywhere else). Hand-made: no stored words for a redesign to bring back. */
+export function newSlide(kind: PlaceholderKind, theme: Theme, aspect: AspectRatio, idGen: IdGen = newId): Slide {
+  return { id: idGen(), locked: false, manual: true, validation: { status: 'pending', issues: [] }, ...composePlaceholderSlide(kind, theme, aspect, idGen) } as Slide
+}
+
+/** The same layout with sample words in its boxes: what the layout gallery shows. */
+export function previewSlide(kind: PlaceholderKind, theme: Theme, aspect: AspectRatio): Slide {
+  let n = 0
+  return { id: `preview-${kind}`, locked: false, manual: true, validation: { status: 'pending', issues: [] }, ...composePlaceholderSlide(kind, theme, aspect, () => `p${++n}`, { sample: true }) } as Slide
+}
+
+const isTyped = (e: SlideElement): e is TextElement => e.type === 'text' && e.paragraphs.some((p) => p.runs.some((r) => r.text.trim() !== ''))
+
+/**
+ * A slide made only of prompted text boxes (a new slide, whatever has been typed in it): its layout can be changed without losing the words. A slide with a picture, chart, table,
+ * diagram or icon on it is not one, and keeps the layout it has.
+ */
+export function canChangeLayout(s: Slide): boolean {
+  return !s.locked && s.elements.some((e) => e.type === 'text' && e.hint !== undefined) && !s.elements.some((e) => e.type === 'image' || e.type === 'chart' || e.type === 'table' || e.type === 'diagram' || e.type === 'icon')
+}
+
+/**
+ * Gives the slide another PowerPoint layout. Every box with words in it hands them to the box of the same kind in the new layout (a title to the title, text to the text, in reading
+ * order); words with no box of that kind left go to the last text box of the body, and are dropped only when the new layout has none (Title only; undo brings them back). One undo step.
+ */
+export function changeLayout(d: D, slideId: string, kind: PlaceholderKind, idGen: IdGen = newId) {
+  const s = findSlide(d, slideId)
+  if (!s || !canChangeLayout(s as Slide)) return
+  const queues: Record<string, TextElement['paragraphs'][]> = { title: [], subtitle: [], heading: [], body: [] }
+  const slot = (role: TextElement['role']) => (role === 'caption' || role === 'quote' || role === 'metric' ? 'body' : role)
+  for (const e of [...(plain(s.elements) as SlideElement[])].sort((a, b) => a.y - b.y || a.x - b.x)) if (isTyped(e)) queues[slot(e.role)]!.push(e.paragraphs)
+  const fresh = newSlide(kind, d.theme as Theme, d.aspectRatio, idGen)
+  let last: TextElement | null = null
+  const elements = fresh.elements.map((e) => {
+    if (e.type !== 'text' || e.hint === undefined) return e
+    const words = queues[slot(e.role)]!.shift()
+    if (slot(e.role) === 'body') last = e
+    return words ? { ...e, paragraphs: words } : e
+  })
+  const rest = Object.values(queues).flat()
+  if (rest.length && last) {
+    const at = elements.findIndex((e) => e === last)
+    const el = elements[at] as TextElement
+    const empty = !isTyped(el)
+    elements[at] = { ...el, paragraphs: [...(empty ? [] : el.paragraphs), ...rest.flat()] }
+  }
+  s.layoutId = fresh.layoutId
+  s.background = fresh.background
+  delete s.content
+  swapElements(s, elements)
+  s.manual = true
 }
 
 export function addSlideAt(d: D, index: number, slide: Slide) {

@@ -5,6 +5,7 @@ import { ApiError, type VersionSummary } from '@prompttoppt/api-client'
 import type { Presentation } from '@prompttoppt/validation'
 import { api } from '@/lib/api'
 import { useDialog } from '@/lib/useDialog'
+import { SlideLoader } from '../SlideLoader'
 
 const WHO: Record<VersionSummary['createdBy'], string> = { generation: 'As generated', user: 'Your edits', restore: 'Restored copy', ai_edit: 'AI edit' }
 
@@ -35,7 +36,7 @@ export function VersionsDialog({ id, revision, onRestored, onClose }: { id: stri
       <div ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Version history" className="bg-white rounded-2xl w-full max-w-md p-6 shadow-xl outline-none max-h-[85vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-4"><h2 className="font-heading font-bold text-xl">Version history</h2><button onClick={onClose} aria-label="Close" className="text-2xl leading-none text-slate-500"><X aria-hidden size={24} /></button></div>
         {error && <p role="alert" className="text-sm text-red-700 mb-3">{error}</p>}
-        {!rows ? <p className="text-slate-500 text-sm">Loading…</p> : (
+        {!rows ? <SlideLoader size="sm" /> : (
           <ul className="divide-y divide-border">
             {rows.map((r, i) => (
               <li key={r.version} className="py-3 flex items-center justify-between gap-3">

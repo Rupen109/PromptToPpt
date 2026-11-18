@@ -297,6 +297,8 @@ export const textElementSchema = z.object({
   lineHeight: z.number().min(0.7).max(2.2).optional(),
   /** space between paragraphs, in multiples of the font size (default 0.5) */
   paraGap: z.number().min(0).max(2).optional(),
+  /** the grey prompt the EDITOR shows while this box is empty ("Click to add title"): a box of a new slide that nobody has typed in yet. Never drawn in thumbnails, Present, the shared view or any export. */
+  hint: z.string().max(80).optional(),
 })
 
 /** #RRGGBB or #RRGGBBAA — lets an overlay fade to transparent */

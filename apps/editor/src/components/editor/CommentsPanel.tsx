@@ -6,6 +6,7 @@ import { encodeMentions, isUnread, MAX_BODY, messageOf, prunePicks, showMentions
 import { useLive } from '@/editor/live'
 import { useUi } from '@/editor/ui'
 import { api } from '@/lib/api'
+import { SlideLoader } from '../SlideLoader'
 
 const ago = (iso: string) => {
   const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000)
@@ -220,7 +221,7 @@ export function CommentsPanel({ doc, slideId, deckId, role, onClose }: { doc: Pr
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {error && <p role="alert" className="text-sm font-medium text-red-700">{error} <button onClick={refresh} className="underline">Try again</button></p>}
         {!connected && loaded && <p className="text-[11px] text-slate-500">Updates arrive every minute while the live connection is off.</p>}
-        {!loaded && <p className="text-sm text-slate-500">Loading…</p>}
+        {!loaded && <SlideLoader size="sm" />}
         {loaded && threads.length === 0 && (
           <div className="text-sm text-slate-600 space-y-1" aria-label="No comments yet">
             <p className="font-medium">No comments yet</p>
