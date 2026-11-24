@@ -39,7 +39,7 @@
     "fflate": "^0.8.3",
     "google-auth-library": "^11.1.0",
     "hono": "^4.13.19",
-    "linkedom": "^0.18.13",
+    "linkedom": "^0.18.15",
     "nanoid": "^6.0.1",
     "pg": "^8.23.1",
     "pino": "^9.3.0",
