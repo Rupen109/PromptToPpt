@@ -10,7 +10,9 @@ export default async function setup() {
   const url = new URL(process.env['TEST_DATABASE_URL'] ?? process.env['DATABASE_URL']!)
   const name = process.env['TEST_DATABASE_URL'] ? url.pathname.slice(1) : 'prompttoppt_test'
   if (!process.env['TEST_DATABASE_URL']) {
-    const admin = new pg.Client({ connectionString: process.env['DATABASE_URL'] })
+    // dropped and made from the server's own maintenance database: Postgres cannot drop the database a connection is on, and in CI DATABASE_URL IS the test database
+    const maintenance = new URL(url); maintenance.pathname = '/postgres'
+    const admin = new pg.Client({ connectionString: maintenance.toString() })
     await admin.connect()
     // A fresh database every run. The usage ledger and payments are append-only, so rows from earlier runs can never be deleted, and tests that measure "a private time window"
     // (admin cost/margin/product) would eventually land on a day an old run already used and fail for no reason. `name` is our own fixed test database, never user input.
