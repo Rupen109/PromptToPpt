@@ -22,7 +22,7 @@ const GRAD = { from: '#0A0F24', to: '#1A1146', angle: 160 }
 
 export const PITCH_ORBIT = authored(
   {
-    id: 'pitch-orbit', category: 'pitch', name: 'Orbit Pitch', tagline: 'Every idea in motion around one core',
+    id: 'pitch-orbit', category: 'pitch', fillPictures: ['core', 's1', 's2', 's3', 's4'], fillFrame: { core: { clip: 'circle', inset: 0.08 }, s1: { clip: 'circle' }, s2: { clip: 'circle' }, s3: { clip: 'circle' }, s4: { clip: 'circle' } }, name: 'Orbit Pitch', tagline: 'Every idea in motion around one core',
     description: 'An investor deck where one glowing core and its orbits carry the whole story: problem, solution, market, product, traction, pricing, team, roadmap and ask, each flowing into the next as the orbits turn.',
     audience: 'The Orbit Pitch template suits startup and investor pitches, fundraising and seed decks, product and platform stories, accelerator demo days and any talk where one idea sits at the centre of everything else.',
     topics: ['pitch', 'pitch deck', 'investor', 'investors', 'startup', 'fundraising', 'seed', 'venture', 'founder', 'demo day', 'platform', 'saas', 'technology', 'business model'],

@@ -525,6 +525,85 @@ describe('putting back assistant changes', () => {
   })
 })
 
+describe('the deck design settings (Style > Design)', () => {
+  it('a setting changes the deck design and redraws the designed slides as ONE undo step; a value outside the schema is refused; the same value changes nothing', () => {
+    const before = structuredClone(doc())
+    let ok = false
+    apply('design', (d) => { ok = C.setDesignStyle(d, { uppercaseHeadings: true, headingWeight: 600, footer: 'number' }) })
+    expect(ok).toBe(true)
+    expect(doc().theme.style).toMatchObject({ uppercaseHeadings: true, headingWeight: 600, footer: 'number' })
+    expect(doc().slides.map((s) => s.layoutId)).toEqual(before.slides.map((s) => s.layoutId))
+    expect(presentationSchema.safeParse(doc()).success).toBe(true)
+    apply('bad', (d) => { ok = C.setDesignStyle(d, { headingWeight: 1200 }) })
+    expect(ok).toBe(false); expect(doc().theme.style?.headingWeight).toBe(600)
+    apply('same', (d) => { ok = C.setDesignStyle(d, { footer: 'number' }) })
+    expect(ok).toBe(false)
+    useDoc.getState().undo()
+    expect(doc().theme).toEqual(before.theme)
+  })
+  it('the footer text: empty takes it off (the deck title shows again)', () => {
+    apply('f', (d) => void C.setDesignStyle(d, { footer: 'brand', footerText: 'Acme · Q3' }))
+    expect(doc().theme.style?.footerText).toBe('Acme · Q3')
+    apply('f2', (d) => void C.setDesignStyle(d, { footerText: '' }))
+    expect(doc().theme.style?.footerText).toBeUndefined()
+  })
+})
+
+describe('a brand on some slides only', () => {
+  const brand = { name: 'Acme Roasters', colors: { primary: '#E4572E', accent: '#17BEBB' }, fonts: { heading: { family: 'Playfair Display' }, body: { family: 'Inter' } }, logo: { url: 'https://api.example.com/api/v1/assets/abcdefghijklmnopqrstuvwxyz012345', aspect: 3 } }
+  const all = { colors: true, fonts: true, logo: true }
+  const logosOn = (i: number) => doc().slides[i]!.elements.filter((e) => e.brand && e.type === 'image')
+  it('only the chosen slides take the brand (colours, fonts, logo), as ONE undo step; the deck and the other slides stay exactly as they were', async () => {
+    const { slideTheme } = await import('@prompttoppt/theme')
+    const before = structuredClone(doc())
+    const ids = [doc().slides[1]!.id, doc().slides[2]!.id]
+    let n = 0
+    apply('Apply brand to slides', (d) => { n = C.applyBrandToSlides(d, ids, brand, all) })
+    expect(n).toBe(2)
+    expect(doc().theme).toEqual(before.theme) // the deck's design is untouched
+    expect(doc().slides[0]).toEqual(before.slides[0]) // so is every other slide
+    for (const i of [1, 2]) {
+      const t = slideTheme(doc().theme, doc().slides[i]!)
+      expect(t.fonts).toEqual({ heading: 'Playfair Display', body: 'Inter' })
+      expect(t.colors.primary.toLowerCase()).not.toBe(before.theme.colors.primary.toLowerCase())
+      expect(logosOn(i), `logo on slide ${i + 1}`).toHaveLength(1)
+    }
+    expect(logosOn(0)).toHaveLength(0)
+    expect(presentationSchema.safeParse(doc()).success).toBe(true)
+    useDoc.getState().undo()
+    expect(doc()).toEqual(before)
+  })
+  it('the brand\'s colours are worked out against the deck, so its text stays readable; a hand-picked background on the slide keeps working on top', async () => {
+    const { slideTheme, contrastRatio } = await import('@prompttoppt/theme')
+    const id = doc().slides[1]!.id
+    apply('bg', (d) => C.setSlideBackground(d, id, '#0B1F3A'))
+    apply('brand', (d) => void C.applyBrandToSlides(d, [id], brand, all))
+    const s = doc().slides[1]!
+    expect(s.background).toMatchObject({ type: 'color', value: '#0B1F3A' }) // the own look stays
+    const t = slideTheme(doc().theme, s)
+    expect(contrastRatio(t.colors.textPrimary, '#0B1F3A')).toBeGreaterThanOrEqual(4.5)
+  })
+  it('a hand-edited slide gets the logo without being redrawn; taking the brand off puts the deck\'s look back; a locked slide is left alone', () => {
+    const sl = doc().slides[2]!; const el = sl.elements.find((e) => e.type === 'text')! as TextElement
+    apply('hand edit', (d) => C.setText(d, sl.id, el.id, el.paragraphs))
+    const texts = JSON.stringify(doc().slides[2]!.elements.filter((e) => e.type === 'text'))
+    apply('brand', (d) => void C.applyBrandToSlides(d, [sl.id], brand, { colors: false, fonts: false, logo: true }))
+    expect(logosOn(2)).toHaveLength(1)
+    expect(JSON.stringify(doc().slides[2]!.elements.filter((e) => e.type === 'text'))).toBe(texts)
+    let n = 0
+    apply('off', (d) => { n = C.removeSlideBrand(d, [sl.id]) })
+    expect(n).toBe(1); expect(doc().slides[2]!.brand).toBeUndefined(); expect(logosOn(2)).toHaveLength(0)
+    apply('lock', (d) => C.setSlideLocked(d, doc().slides[0]!.id, true))
+    apply('brand', (d) => { n = C.applyBrandToSlides(d, [doc().slides[0]!.id], brand, all) })
+    expect(n).toBe(0); expect(doc().slides[0]!.brand).toBeUndefined()
+  })
+  it('the brand applied to the whole deck afterwards takes over: no slide keeps a brand of its own', () => {
+    apply('some', (d) => void C.applyBrandToSlides(d, [doc().slides[1]!.id], brand, all))
+    apply('all', (d) => C.applyBrand(d, { ...brand, name: 'Other', colors: { primary: '#123456', accent: '#654321' } }, all))
+    expect(doc().slides.every((s) => !s.brand)).toBe(true)
+  })
+})
+
 describe('brand from a website', () => {
   const brand = { name: 'Acme Roasters', colors: { primary: '#E4572E', accent: '#17BEBB' }, fonts: { heading: { family: 'Playfair Display' }, body: { family: 'Inter' } }, logo: { url: 'https://api.example.com/api/v1/assets/abcdefghijklmnopqrstuvwxyz012345', aspect: 3 } }
   const logos = () => doc().slides.flatMap((s) => s.elements).filter((e) => e.type === 'image' && /logo/i.test((e as { alt?: string }).alt ?? ''))

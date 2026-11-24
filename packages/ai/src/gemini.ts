@@ -5,7 +5,23 @@ interface GeminiResponse {
   usageMetadata?: { promptTokenCount?: number; cachedContentTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number }
   modelVersion?: string
   promptFeedback?: { blockReason?: string }
-  error?: { code?: number; message?: string; status?: string }
+  error?: { code?: number; message?: string; status?: string; details?: { '@type'?: string; retryDelay?: string; violations?: { quotaId?: string }[] }[] }
+}
+
+/** a model is passed over at most this long for a used-up long-window quota, then tried again (a quota raised or a new day is picked up) */
+const MAX_EXHAUSTED_MS = 6 * 60 * 60_000
+
+/**
+ * A 429 that says a DAILY quota is used up (Google's QuotaFailure names a "...PerDay..." quota): how long to pass the model over, from Google's RetryInfo
+ * (e.g. "75110s"), else an hour, capped. A per-minute 429 returns undefined: that one is a busy moment the limiter waits out.
+ */
+export function exhaustedFor(error: GeminiResponse['error']): number | undefined {
+  const details = error?.details ?? []
+  const daily = details.some((d) => d.violations?.some((v) => /PerDay/i.test(v.quotaId ?? '')))
+  if (!daily) return undefined
+  const delay = details.map((d) => d.retryDelay).find(Boolean)
+  const secs = delay ? Number(/^([\d.]+)s$/.exec(delay)?.[1]) : NaN
+  return Math.min(MAX_EXHAUSTED_MS, Number.isFinite(secs) && secs > 0 ? secs * 1000 : 60 * 60_000)
 }
 
 export interface GeminiBackend {
@@ -70,7 +86,7 @@ export class GeminiProvider implements AIProvider {
       // Vertex answers a wrong path/model with an HTML 404 → body is {} → fall through to statusText
       const retryable = res.status === 429 || res.status >= 500
       // Never echo the key; Google's messages don't include it, but cap length defensively.
-      throw new ProviderError(this.scrub(body.error?.message ?? res.statusText).slice(0, 300), body.error?.status ?? `http_${res.status}`, retryable, res.status, retryAfterMs(res))
+      throw new ProviderError(this.scrub(body.error?.message ?? res.statusText).slice(0, 300), body.error?.status ?? `http_${res.status}`, retryable, res.status, retryAfterMs(res), res.status === 429 ? exhaustedFor(body.error) : undefined)
     }
     if (body.promptFeedback?.blockReason) throw new ProviderError(`blocked: ${body.promptFeedback.blockReason}`, 'blocked', false)
 
@@ -113,7 +129,7 @@ export class GeminiProvider implements AIProvider {
       throw new ProviderError(aborted ? 'request timed out' : this.scrub(`network error: ${(e as Error).message}`), aborted ? 'timeout' : 'network', true)
     }
     const body = (await res.json().catch(() => ({}))) as GeminiResponse
-    if (!res.ok) throw new ProviderError(this.scrub(body.error?.message ?? res.statusText).slice(0, 300), body.error?.status ?? `http_${res.status}`, res.status === 429 || res.status >= 500, res.status, retryAfterMs(res))
+    if (!res.ok) throw new ProviderError(this.scrub(body.error?.message ?? res.statusText).slice(0, 300), body.error?.status ?? `http_${res.status}`, res.status === 429 || res.status >= 500, res.status, retryAfterMs(res), res.status === 429 ? exhaustedFor(body.error) : undefined)
     if (body.promptFeedback?.blockReason) throw new ProviderError(`blocked: ${body.promptFeedback.blockReason}`, 'blocked', false)
     const cand = body.candidates?.[0]
     const part = cand?.content?.parts?.find((p) => p.inlineData?.data)

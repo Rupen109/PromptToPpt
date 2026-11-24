@@ -1,4 +1,4 @@
-import { Clapperboard, FileSpreadsheet, FileText, Globe, Image as ImageIcon, LayoutTemplate, Link2, Lock, Mail, Mic, NotebookPen, PencilRuler, Presentation, Send, Sparkles, Table, X, type LucideIcon } from '@prompttoppt/ui/icons'
+import { Clapperboard, FileSpreadsheet, FileText, FileUp, Globe, Image as ImageIcon, LayoutTemplate, Link2, Lock, Mail, Mic, NotebookPen, PencilRuler, Presentation, Send, Sparkles, Table, X, type LucideIcon } from '@prompttoppt/ui/icons'
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 import { MORPH_TEMPLATES } from '@prompttoppt/theme/morph-templates'
@@ -6,6 +6,7 @@ import { ApiError, type PresentationSummary, type SourceSummary } from '@promptt
 import { OFFERED_DECK_LANGUAGES } from '@prompttoppt/validation'
 import { SourcesDialog, isYouTubeLink } from '@/components/SourcesDialog'
 import { FileTemplatePicker, asPending, uploadDesign } from '@/components/FileTemplatePicker'
+import { RemixFileDialog } from '@/components/RemixFileDialog'
 import { useEntitlements } from '@/lib/entitlements'
 import { api } from '@/lib/api'
 import { MaintenanceBanner } from '@/lib/flags'
@@ -68,11 +69,13 @@ export function HomePage() {
   /** "Use a file's design": the uploaded design the new deck will be made in (its look, fonts and layouts) */
   const [fileTpl, setFileTpl] = useState<PendingFileTemplate | null>(null)
   const [picker, setPicker] = useState(false)
+  const [remixFile, setRemixFile] = useState(false)
   const [designBusy, setDesignBusy] = useState<string | null>(null)
   /** the .pptx files attached as sources this visit, by source id: "Use its design too" uploads the same file as a design */
   const pptxFiles = useRef(new Map<string, File>())
   const [pptxIds, setPptxIds] = useState<string[]>([])
   const LOCKED = "Building a presentation in your own file's design is available on Pro, Gold and Premium."
+  const openRemixFile = () => { if (ent?.plan.id === 'starter') return upgrade.show('Remixing a presentation is available on Pro, Gold and Premium.'); setRemixFile(true) }
   const openPicker = () => { if (ent && !ent.features.templateFromFile) return upgrade.show(LOCKED); setPicker(true) }
   const [dialog, setDialog] = useState(false)
   /** a pasted YouTube link opens the dialog on the transcript tab with the link filled in */
@@ -174,7 +177,7 @@ export function HomePage() {
       setPendingSources(list.map((s) => s.id))
       setPendingLanguage(language)
       setPendingMorphTemplate(morphTpl?.id ?? null) // picked on the website's template pages: the creation screen starts on it
-      navigate('/create')
+      navigate(morphTpl ? `/create?morphTemplate=${encodeURIComponent(morphTpl.id)}` : '/create')
     } finally {
       submitting.current = false
     }
@@ -234,6 +237,10 @@ export function HomePage() {
                   {ent && !ent.features.templateFromFile && <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 text-slate-700 text-[11px] px-2 py-0.5 font-medium"><Lock aria-hidden size={11} />Pro</span>}
                 </button>
               )}
+              <button type="button" data-testid="remix-pptx-open" onClick={openRemixFile} className="inline-flex items-center gap-2 rounded-full bg-white ring-1 ring-primary/40 px-4 py-2 text-sm font-semibold text-primary hover:bg-primary/10 transition">
+                <FileUp aria-hidden size={16} />Remix a PowerPoint
+                {ent?.plan.id === 'starter' && <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 text-slate-700 text-[11px] px-2 py-0.5 font-medium"><Lock aria-hidden size={11} />Pro</span>}
+              </button>
               <p className="text-xs sm:text-sm text-slate-600 min-w-0 flex-1 basis-56">{fileTpl ? 'Your new presentation keeps this file\'s colours, fonts and layouts. Describe the new content above, or add it yourself in the editor.' : morphTpl ? 'Not available together with a Morph template.' : 'Upload a PowerPoint and make a new presentation in exactly its look, with different content.'}</p>
             </div>
             <div className="flex items-end gap-3 px-3 sm:px-5 pb-3 sm:pb-4">
@@ -307,6 +314,7 @@ export function HomePage() {
           )}
         </div>
       </main>
+      {remixFile && <RemixFileDialog onClose={() => setRemixFile(false)} />}
       {picker && <FileTemplatePicker onPick={(t) => { setFileTpl(t); setPicker(false) }} onClose={() => setPicker(false)} />}
       {dialog && <SourcesDialog count={sources.length} language={language} {...(ytLink ? { initialTab: 'youtube' as const, initialUrl: ytLink } : {})} onAdd={(s, f) => { if (f && /\.pptx$/i.test(f.name)) { pptxFiles.current.set(s.id, f); setPptxIds((x) => [...x, s.id]) } keep(sourcesRef.current.some((x) => x.id === s.id) ? sourcesRef.current : [...sourcesRef.current, s]) }} onClose={() => { setDialog(false); setYtLink(null) }} />}
     </div>

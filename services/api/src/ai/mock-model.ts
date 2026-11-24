@@ -44,6 +44,7 @@ export function mockRespond(req: TextRequest): string {
   if (task === 'askdeck') {
     const deck = req.prompt.match(/<deck>\n([\s\S]*?)\n<\/deck>/)?.[1] ?? ''
     const q = req.prompt.match(/<question>([\s\S]*?)<\/question>/)?.[1] ?? ''
+    if (/^(make|add|delete|change)\b/i.test(q.trim())) return JSON.stringify({ answer: 'That is a change.', slides: [], isEdit: true }) // (the mock reads a change request the way the real model is told to)
     return JSON.stringify(/not in the deck|unknowable/i.test(q) ? { answer: 'The deck does not say.', slides: [] } : { answer: `From the deck: ${deck.split('\n')[0]?.slice(0, 200) ?? ''}`, slides: [1] })
   }
   if (task === 'imageread') {
@@ -63,6 +64,7 @@ export function mockRespond(req: TextRequest): string {
   if (task === 'webresearch') return 'Mock web brief: the topic is widely covered; key facts follow. [example.com]'
   if (task === 'critic') return JSON.stringify({ defects: [] })
   if (task === 'design_pick') { const m = /<templates>\n([^\n|]+) \|/.exec(req.prompt); return JSON.stringify({ designId: m?.[1]?.trim() ?? '', reason: 'mock' }) }
+  if (task === 'morph_match') { const m = /<templates>\n([^\n|]+) \|/.exec(req.prompt); return JSON.stringify({ choice: m?.[1]?.trim() ?? 'none', confidence: 0.8, reason: 'mock' }) }
   if (task === 'picture_query') return JSON.stringify({ queries: [String(p['topic'] ?? p['intent'] ?? 'business meeting').slice(0, 60)] })
   if (task === 'picture_verify') return JSON.stringify({ score: 4, reason: 'mock' })
   if (task === 'directions') {
@@ -175,6 +177,7 @@ export function mockRespond(req: TextRequest): string {
     const tag = (s: unknown) => (typeof s === 'string' ? `${s} ✎` : s)
     return JSON.stringify({ slide: { ...slide, ...(slide.title ? { title: tag(slide.title) } : {}), ...(slide.bullets ? { bullets: slide.bullets.map(tag) } : {}) } })
   }
+  if (task === 'subjectbox') return JSON.stringify(/unicorn/i.test(req.prompt) ? { found: false } : { found: true, box_2d: [200, 550, 650, 850] }) // (a subject on the right of the picture; "unicorn" is never there)
   if (task === 'assist_understand') return mockUnderstand(req.prompt)
   if (task === 'assist_write') return mockWrite(req.system, req.prompt)
   if (task === 'aiassist') {

@@ -247,6 +247,9 @@ export default async function () {
     await s.check('F4 Duplicate starts with no comments; the original keeps its own', o, async () => {
       await o.getByRole('button', { name: 'More' }).click(); await o.getByRole('menuitem', { name: 'Duplicate presentation' }).click()
       await o.waitForURL((u) => !u.pathname.endsWith(deck) && /\/edit\//.test(u.pathname), { timeout: 20000 }); await stage(o).waitFor({ timeout: 15000 })
+      // the copy must be LOADED before the panel is looked at: right after the address changes the editor is still loading it, the panel is not drawn yet, and a click
+      // on Comments then toggles the (still open) drawer closed
+      await o.waitForFunction(() => /^Copy of /.test(document.querySelector('input[aria-label="Presentation title"]')?.value ?? ''), null, { timeout: 15000 })
       const copy = new URL(o.url()).pathname.split('/').pop()
       await openPanel(o); await panel(o).getByLabel('No comments yet').waitFor({ timeout: 8000 })
       expect(counts(copy).threads === 0 && counts(deck).threads >= 3, `copy ${counts(copy).threads}, original ${counts(deck).threads}`)

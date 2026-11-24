@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { SlideElement } from '@prompttoppt/validation'
+import type { Effect, SlideElement } from '@prompttoppt/validation'
 import { editorOf, useLive } from './live'
 
 export interface ImageDialogRequest {
@@ -13,10 +13,17 @@ interface UiState {
   imageDialog: ImageDialogRequest | null
   openImageDialog: (req?: ImageDialogRequest) => void
   closeImageDialog: () => void
+  /** the picture whose background is being removed (development only, see lib/bgremoval) */
+  bgRemoval: { slideId: string; elementId: string } | null
+  openBgRemoval: (req: { slideId: string; elementId: string }) => void
+  closeBgRemoval: () => void
   /** the table whose cells are being edited (double-click a table) */
   tableEditId: string | null
   editTable: (id: string | null) => void
   chartEditId: string | null
+  /** the picture whose crop dialog is open */
+  cropId: string | null
+  openCrop: (id: string | null) => void
   editChart: (id: string | null) => void
   activeSlideId: string | null
   selection: string[]
@@ -24,6 +31,11 @@ interface UiState {
   drawer: 'style' | 'ai' | 'comments' | 'animations' | 'selection' | 'morph' | null
   /** the ribbon strip under the toolbar (PowerPoint's Animations and Transitions tabs) */
   ribbon: 'animations' | 'transitions' | null
+  /** the Export menu, open with a choice of slides already made ("Download this slide" from a slide's menu opens it on that slide) */
+  exportMenu: { scope: 'all' | 'current' } | null
+  openExport: (scope: 'all' | 'current' | null) => void
+  /** the person may export this deck (its owner) */
+  canExport: boolean
   /** the effect the Timing group and Effect Options edit (the one last clicked in the pane or the one of the selected object) */
   activeEffectId: string | null
   /** Animation Painter: the object whose animations the next click copies onto another object */
@@ -38,6 +50,8 @@ interface UiState {
   transitionPreview: { run: number; /** stays on screen (the Morph scrubber) until stopped */ hold: boolean } | null
   notesOpen: boolean
   clipboard: SlideElement[]
+  /** the effects (animation) of the copied elements, pasted with them */
+  clipboardEffects: Effect[]
   setActiveSlide: (id: string | null) => void
   select: (ids: string[], additive?: boolean) => void
   edit: (id: string | null) => void
@@ -52,22 +66,30 @@ interface UiState {
   startTransitionPreview: (hold?: boolean) => void
   stopTransitionPreview: () => void
   toggleNotes: (open?: boolean) => void
-  setClipboard: (els: SlideElement[]) => void
+  setClipboard: (els: SlideElement[], effects?: Effect[]) => void
 }
 
 export const useUi = create<UiState>((set) => ({
   imageDialog: null,
   openImageDialog: (req = {}) => set({ imageDialog: req }),
   closeImageDialog: () => set({ imageDialog: null }),
+  bgRemoval: null,
+  openBgRemoval: (bgRemoval) => set({ bgRemoval }),
+  closeBgRemoval: () => set({ bgRemoval: null }),
   tableEditId: null,
   editTable: (tableEditId) => set({ tableEditId }),
   chartEditId: null,
+  cropId: null,
+  openCrop: (cropId) => set({ cropId }),
   editChart: (chartEditId) => set({ chartEditId }),
   activeSlideId: null,
   selection: [],
   editingId: null,
   drawer: null,
   ribbon: null,
+  exportMenu: null,
+  canExport: false,
+  openExport: (scope) => set({ exportMenu: scope ? { scope } : null }),
   activeEffectId: null,
   painterFrom: null,
   pathEditId: null,
@@ -76,6 +98,7 @@ export const useUi = create<UiState>((set) => ({
   transitionPreview: null,
   notesOpen: false,
   clipboard: [],
+  clipboardEffects: [],
   setActiveSlide: (id) => set({ activeSlideId: id, selection: [], editingId: null, activeEffectId: null, painterFrom: null, pathEditId: null, pathDrawing: false, preview: null, transitionPreview: null }),
   select: (ids, additive) => set((s) => ({ selection: additive ? [...new Set([...s.selection, ...ids])] : ids, editingId: null })),
   edit: (id) => {
@@ -95,5 +118,5 @@ export const useUi = create<UiState>((set) => ({
   startTransitionPreview: (hold = false) => set((s) => ({ transitionPreview: { run: (s.transitionPreview?.run ?? 0) + 1, hold }, preview: null })),
   stopTransitionPreview: () => set({ transitionPreview: null }),
   toggleNotes: (open) => set((s) => ({ notesOpen: open ?? !s.notesOpen })),
-  setClipboard: (clipboard) => set({ clipboard }),
+  setClipboard: (clipboard, clipboardEffects = []) => set({ clipboard, clipboardEffects }),
 }))

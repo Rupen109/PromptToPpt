@@ -50,6 +50,20 @@ export interface GatewayOptions {
   rateLimitPatienceMs?: number
   /** called when a fallback model is used (feeds the "fallback rate" metric) */
   onFallback?: (from: string, to: string, reason: string) => void
+  /**
+   * The BACKUP provider (e.g. "openrouter" behind Gemini direct): its models are only tried after the main ones (ModelRegistry backups). `onBackup` is told each time
+   * one of them gives the answer, with why the main models did not (the owner's signal to raise the main provider's limits).
+   */
+  backupProvider?: string
+  onBackup?: (used: ModelDefinition, why: string) => void
+  /** a model whose queue would make a new call wait longer than this goes behind the ready models (default 5 s): overflow, before the provider refuses */
+  overflowAfterMs?: number
+  /** a provider that refused for billing or its key (401/402) is passed over for this long before it is tried again (default 2 min) */
+  refusalPauseMs?: number
+  /** after this many server or network failures in a row a provider is passed over (default 3), for `outagePauseMs` (default 1 min) */
+  outageFailures?: number
+  outagePauseMs?: number
+  now?: () => number
 }
 
 export interface RunInput<T> {
@@ -137,7 +151,12 @@ const stripFences = (t: string) => t.trim().replace(/^```(?:json)?\s*/i, '').rep
 /** The reason of a failed attempt for the usage log: short, and made only of validation paths / provider messages (never the prompt or the model's answer). */
 const whyFailed = (e: { message?: string }): string => String(e.message ?? '').replace(/\s+/g, ' ').slice(0, 300)
 
-const isRateLimit = (e: unknown) => e instanceof ProviderError && (e.status === 429 || e.code === 'rate_limited' || e.code === 'RESOURCE_EXHAUSTED')
+// a 402 also says RESOURCE_EXHAUSTED on Gemini ("Your prepay credit balance is depleted"): that is billing, not a busy moment, so it is never waited out
+const isRateLimit = (e: unknown) => e instanceof ProviderError && e.status !== 402 && (e.status === 429 || e.code === 'rate_limited' || e.code === 'RESOURCE_EXHAUSTED')
+/** the provider itself said no to everything for now: no credit (402), a key it does not accept (401) (a busy model is a rate limit instead, and a refused prompt is "blocked") */
+const isProviderRefusal = (e: unknown) => e instanceof ProviderError && (e.status === 401 || e.status === 402 || e.code === 'UNAUTHENTICATED')
+/** the provider is failing: server errors, unreachable, or access refused (403 can be one model the key may not use, so it counts here, a few in a row, not at once) */
+const isOutage = (e: unknown) => e instanceof ProviderError && ((e.status ?? 0) >= 500 || e.status === 403 || e.code === 'UNAVAILABLE' || e.code === 'network' || e.code === 'PERMISSION_DENIED')
 const limitKey = (def: ModelDefinition) => `${def.provider}:${def.model}`
 /** rough size of a call for the tokens-per-minute bucket: characters / 3.5 for the input plus the output we expect */
 const estimateTokens = (chars: number, maxOut?: number) => Math.ceil(chars / 3.5) + Math.min(maxOut ?? 2000, 4000)
@@ -145,35 +164,74 @@ const estimateTokens = (chars: number, maxOut?: number) => Math.ceil(chars / 3.5
 export class AIGateway {
   constructor(private readonly o: GatewayOptions) {}
 
-  /** one provider call, taking its turn at the limiter; the outcome teaches the limiter (a 429 pauses the model and shrinks its share) */
+  /**
+   * CIRCUIT BREAKER, per provider: a billing or key refusal (401/402) passes the provider over for `refusalPauseMs`; `outageFailures` server, network or access (403) failures in a row
+   * pass it over for `outagePauseMs`. "Passed over" = its models go behind the others in every chain (they are still the last resort, which is also how it is tried again
+   * when the pause ends). Any good answer closes it.
+   */
+  private readonly health = new Map<string, { downUntil: number; failures: number }>()
+  private clock = () => (this.o.now ?? Date.now)()
+  private noteOutcome(provider: string, err?: unknown) {
+    const h = this.health.get(provider) ?? { downUntil: 0, failures: 0 }
+    if (err === undefined) { h.downUntil = 0; h.failures = 0 }
+    else if (isProviderRefusal(err)) h.downUntil = this.clock() + (this.o.refusalPauseMs ?? 120_000)
+    else if (isOutage(err) && ++h.failures >= (this.o.outageFailures ?? 3)) { h.downUntil = this.clock() + (this.o.outagePauseMs ?? 60_000); h.failures = 0 }
+    this.health.set(provider, h)
+  }
+  /** ms this provider is still passed over for (0 = in use) */
+  providerDownFor(provider: string): number {
+    return Math.max(0, (this.health.get(provider)?.downUntil ?? 0) - this.clock())
+  }
+  /** inside one request: a model whose provider was just passed over is skipped while a model of a working provider is still to come (it would fail the same way) */
+  private skipDown(chain: ModelDefinition[], i: number): boolean {
+    const p = chain[i]!.provider
+    return this.providerDownFor(p) > 0 && chain.slice(i + 1).some((m) => m.provider !== p && this.providerDownFor(m.provider) === 0)
+  }
+  /** the backup answered: tell the owner why the main models did not */
+  private usedBackup(def: ModelDefinition, causes: string[]) {
+    if (this.o.backupProvider && def.provider === this.o.backupProvider) this.o.onBackup?.(def, causes.length ? causes.join(' | ').slice(0, 300) : 'main models busy (overflow)')
+  }
+
+  /** one provider call, taking its turn at the limiter; the outcome teaches the limiter (a 429 pauses the model and shrinks its share) and the circuit breaker */
   private async limited<R>(def: ModelDefinition, tokens: number, signal: AbortSignal | undefined, call: () => Promise<R>, priority = 0): Promise<R> {
     const lim = this.o.limiter
-    if (!lim) return call()
+    if (!lim) {
+      try { const r = await call(); this.noteOutcome(def.provider); return r } catch (e) { this.noteOutcome(def.provider, e); throw e }
+    }
     const permit = await lim.acquire(limitKey(def), tokens, signal, priority)
     try {
       const r = await call()
       permit.release({ ok: true })
+      this.noteOutcome(def.provider)
       return r
     } catch (e) {
+      this.noteOutcome(def.provider, e)
       // the provider says this model does not exist (closed to new accounts, retired): stop asking it for ten minutes, the other models answer meanwhile
       if (e instanceof ProviderError && (e.status === 404 || e.code === 'NOT_FOUND' || e.code === 'model_not_found')) lim.pause(limitKey(def), 10 * 60_000)
+      // its quota for the day is used up (or the key's tier may not use it): pass it over until the time the provider gave; the next model answers meanwhile
+      if (e instanceof ProviderError && e.exhaustedForMs) lim.pause(limitKey(def), e.exhaustedForMs)
       permit.release({ ok: false, rateLimited: isRateLimit(e), ...(e instanceof ProviderError && e.retryAfterMs ? { retryAfterMs: e.retryAfterMs } : {}) })
       throw e
     }
   }
 
-  /** ready models first, in their own order; a model paused for long (rate-limited) goes last, so the call is answered by another instead of waiting */
-  private readyFirst(chain: ModelDefinition[]): ModelDefinition[] {
+  /**
+   * Ready models first, in their own order. Passed to the back (so another answers instead of the call waiting): a model paused for long (rate-limited), a model whose queue is
+   * long (overflow: it would refuse soon), and every model of a provider the circuit breaker passed over. If all of them are, the order stays as it is.
+   */
+  private readyFirst(chain: ModelDefinition[], tokens = 0): ModelDefinition[] {
     const lim = this.o.limiter
-    if (!lim) return chain
-    const limit = this.o.skipPausedOverMs ?? 2000
-    const paused = chain.filter((m) => lim.pausedFor(limitKey(m)) > limit)
-    return paused.length === 0 || paused.length === chain.length ? chain : [...chain.filter((m) => !paused.includes(m)), ...paused]
+    const pausedLimit = this.o.skipPausedOverMs ?? 2000
+    const busyLimit = this.o.overflowAfterMs ?? 5000
+    const deferred = chain.filter((m) => this.providerDownFor(m.provider) > 0 || (lim ? lim.pausedFor(limitKey(m)) > pausedLimit || lim.waitFor(limitKey(m), tokens) > busyLimit : false))
+    return deferred.length === 0 || deferred.length === chain.length ? chain : [...chain.filter((m) => !deferred.includes(m)), ...deferred]
   }
 
   /** a retry is allowed only while retries stay a small share of the calls; the pause after a 429 is the limiter's job, so no extra sleeping then */
   private canRetry(def: ModelDefinition, err: unknown, isLast = true): boolean {
     const lim = this.o.limiter
+    // a used-up daily quota does not come back in seconds: never retry it, hand over to the next model (the last one fails with the reason)
+    if (err instanceof ProviderError && err.exhaustedForMs) return false
     if (!lim) return true
     // A refusal for rate limit cost nothing (the provider did no work) and the limiter is what slows the system down, so these calls are not counted against
     // the retry budget: they wait their turn again, up to `rateLimitPatienceMs` in all, instead of failing the whole deck for a busy moment.
@@ -185,7 +243,7 @@ export class AIGateway {
 
   async run<T>(input: RunInput<T>): Promise<T> {
     const registry = typeof this.o.registry === 'function' ? await this.o.registry() : this.o.registry
-    const chain = this.readyFirst(input.model ? registry.chainFor(input.model) : registry.chain(input.route))
+    const chain = this.readyFirst(input.model ? registry.chainFor(input.model) : registry.chain(input.route), estimateTokens(input.system.length + input.prompt.length, input.maxOutputTokens))
     if (chain.length === 0) throw new AIUnavailableError(input.model ? `model "${input.model}" is not available` : `no models configured for route "${input.route}"`, [])
     const causes: string[] = []
 
@@ -195,8 +253,11 @@ export class AIGateway {
         causes.push(`${def.model}: provider "${def.provider}" not configured`)
         continue
       }
+      if (this.skipDown(chain, i)) continue
       try {
-        return await this.runOnModel(def, provider, input, i === chain.length - 1)
+        const out = await this.runOnModel(def, provider, input, i === chain.length - 1)
+        this.usedBackup(def, causes)
+        return out
       } catch (e) {
         if (input.signal?.aborted) throw e
         const reason = e instanceof Error ? e.message : String(e)
@@ -215,7 +276,7 @@ export class AIGateway {
    */
   async image(input: ImageRunInput): Promise<ImageResult> {
     const registry = typeof this.o.registry === 'function' ? await this.o.registry() : this.o.registry
-    const chain = registry.imageChainFor(input.model)
+    const chain = this.readyFirst(registry.imageChainFor(input.model))
     if (chain.length === 0) throw new AIUnavailableError(`image model "${input.model}" is not available`, [])
     const causes: string[] = []
     const retries = this.o.retriesPerModel ?? 1
@@ -226,6 +287,7 @@ export class AIGateway {
         causes.push(`${def.model}: provider "${def.provider}" cannot generate images`)
         continue
       }
+      if (this.skipDown(chain, i)) continue
       for (let attempt = 0; ; attempt++) {
         const started = Date.now()
         const signal = AbortSignal.any([AbortSignal.timeout(this.o.imageTimeoutMs ?? 90_000), ...(input.signal ? [input.signal] : [])])
@@ -241,6 +303,7 @@ export class AIGateway {
           if (!(IMAGE_MIMES as readonly string[]).includes(res.mime)) throw new ProviderError(`unsupported image type ${res.mime}`, 'bad_image', false)
           if (res.bytes.length === 0 || res.bytes.length > MAX_IMAGE_BYTES) throw new ProviderError(`image size out of range (${res.bytes.length} bytes)`, 'bad_image', false)
           await rec('success')
+          this.usedBackup(def, causes)
           return { bytes: res.bytes, mime: res.mime, model: def, providerCostUsd: computeCostUsd({ ...usage, inputTokens: 0, outputTokens: 0 }, def.pricing) }
         } catch (e) {
           const err = e instanceof ProviderError ? e : new ProviderError((e as Error).message, 'unknown', false)
@@ -268,22 +331,24 @@ export class AIGateway {
    */
   async search(input: SearchRunInput): Promise<SearchResult> {
     const registry = typeof this.o.registry === 'function' ? await this.o.registry() : this.o.registry
-    const chain = input.model ? registry.chainFor(input.model) : registry.chain(input.route)
+    const chain = this.readyFirst(input.model ? registry.chainFor(input.model) : registry.chain(input.route))
     if (chain.length === 0) throw new AIUnavailableError('no models configured for search', [])
     const causes: string[] = []
-    for (const def of chain) {
+    for (const [i, def] of chain.entries()) {
       const provider = this.o.providers[def.provider]
       if (!provider) { causes.push(`${def.model}: provider "${def.provider}" not configured`); continue }
+      if (this.skipDown(chain, i)) continue
       const started = Date.now()
       const signal = AbortSignal.any([AbortSignal.timeout(this.o.timeoutMs ?? 60_000), ...(input.signal ? [input.signal] : [])])
       let usage = ZERO_USAGE
       let reported: number | undefined
       let extra = 0
       try {
-        const res = await this.limited(def, estimateTokens(input.system.length + input.prompt.length, input.maxOutputTokens), signal, () => provider.generateText({ model: def.model, system: input.system, prompt: input.prompt, webSearch: true, signal, maxOutputTokens: input.maxOutputTokens ?? 4000, thinkingBudget: 0 }))
+        const res = await this.limited(def, estimateTokens(input.system.length + input.prompt.length, input.maxOutputTokens), signal, () => provider.generateText({ model: def.model, system: input.system, prompt: input.prompt, webSearch: true, signal, maxOutputTokens: input.maxOutputTokens ?? 4000, thinkingBudget: def.minThinkingBudget ?? 0 }))
         usage = res.usage; reported = res.reportedCostUsd; extra = res.extraCostUsd ?? 0
         if (!res.text.trim()) throw new ProviderError('model returned no text', 'empty', false)
         await this.record(def, { ...input, schema: undefined as never }, usage, res.modelVersion, started, 'success', undefined, reported, undefined, extra)
+        this.usedBackup(def, causes)
         return { text: res.text, citations: res.citations ?? [], model: def }
       } catch (e) {
         const err = e instanceof ProviderError ? e : new ProviderError((e as Error).message, 'unknown', false)
@@ -316,7 +381,7 @@ export class AIGateway {
           ...(input.temperature !== undefined ? { temperature: input.temperature } : {}),
           // never leave the output unbounded: a runaway or prompt-injected generation must have a ceiling (generous: these are JSON documents, not chat)
           maxOutputTokens: input.maxOutputTokens ?? MAX_OUTPUT_TOKENS_DEFAULT,
-          thinkingBudget: input.thinkingBudget ?? this.o.defaultThinkingBudget ?? 0,
+          thinkingBudget: Math.max(input.thinkingBudget ?? this.o.defaultThinkingBudget ?? 0, def.minThinkingBudget ?? 0),
         }), input.priority ?? 0)
         usage = res.usage
         modelVersion = res.modelVersion

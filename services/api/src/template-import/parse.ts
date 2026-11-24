@@ -18,7 +18,7 @@ import { at, findAll, kid, kids, num, type XNode } from './xml.ts'
 
 export const TIME_BUDGET_MS = 20_000
 
-const ASPECTS: { id: AspectRatio; ratio: number }[] = [{ id: '16:9', ratio: 16 / 9 }, { id: '4:3', ratio: 4 / 3 }, { id: '1:1', ratio: 1 }]
+const ASPECTS: { id: AspectRatio; ratio: number }[] = [{ id: '16:9', ratio: 16 / 9 }, { id: '4:3', ratio: 4 / 3 }, { id: '1:1', ratio: 1 }, { id: '9:16', ratio: 9 / 16 }]
 export function aspectFor(cx: number, cy: number): { aspect: AspectRatio; fitted: boolean } {
   const r = cx / cy
   const best = [...ASPECTS].sort((a, b) => Math.abs(Math.log(r / a.ratio)) - Math.abs(Math.log(r / b.ratio)))[0]!
@@ -255,7 +255,7 @@ export async function parsePptxTemplate(bytes: Uint8Array, filename: string): Pr
   if (flags.has('3d')) warnings.push('3-D effects are not kept')
   if (deck.shadows) warnings.push('Shadows, glows and soft edges are not kept')
   if (flags.has('arrowheads')) warnings.push('Arrowheads on lines are not kept')
-  if (flags.has('dashes')) warnings.push('Dashed lines are drawn solid')
+  if (flags.has('dashes')) warnings.push('Dash-dot lines are drawn as plain dashes')
   if (f.media || flags.has('media')) warnings.push('Video and audio are not imported (only their poster pictures)')
   if (f.ole || flags.has('ole')) warnings.push('Embedded objects (for example Excel sheets) are kept only as pictures')
   if (f.hasAnimations || f.hasTransitions) warnings.push('Animations and slide transitions in the file are not imported')

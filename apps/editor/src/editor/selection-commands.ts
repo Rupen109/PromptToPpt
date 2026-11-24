@@ -39,6 +39,21 @@ export function moveLayer(d: D, slideId: string, elementId: string, to: 'up' | '
   return true
 }
 
+/** Puts an object right in front of (`above`) or right behind (`behind`) another object of the same slide; the others keep their order. Returns false when refused. */
+export function placeNextTo(d: D, slideId: string, elementId: string, otherId: string, where: 'above' | 'behind'): boolean {
+  const s = slideOf(d, slideId)
+  if (!s || s.locked || elementId === otherId) return false
+  const front = stackOrder(s as Slide)
+  const i = front.findIndex((e) => e.id === elementId)
+  if (i < 0 || front[i]!.locked || !front.some((e) => e.id === otherId)) return false
+  const [item] = front.splice(i, 1)
+  const j = front.findIndex((e) => e.id === otherId)
+  front.splice(where === 'above' ? j : j + 1, 0, item!)
+  const n = front.length
+  front.forEach((e, k) => { const real = s.elements.find((x) => x.id === e.id)!; if (real.zIndex !== n - k) real.zIndex = n - k })
+  return true
+}
+
 /** Switches an object off (hidden) or on (the eye in the Selection pane). Not drawn anywhere and left out of animations and Morph while hidden; still in the deck. Locked slides and locked objects refuse. `hidden` omitted = toggle. Returns false when refused. */
 export function setHidden(d: D, slideId: string, elementId: string, hidden?: boolean): boolean {
   const s = slideOf(d, slideId)

@@ -9,7 +9,7 @@ import { env, isProd } from './env.ts'
 import { countryFromHeaders } from './lib/country.ts'
 import * as mail from './lib/email-templates.ts'
 import { sendMail } from './lib/mailer.ts'
-import { canonicalEmail } from './security/email.ts'
+import { canonicalEmail, signupAllowed } from './security/email.ts'
 
 /**
  * Single identity provider for web (Next.js) and editor (React).
@@ -83,6 +83,8 @@ export const auth = betterAuth({
       create: {
         // Record the signup country from our edge header (analytics + pricing display). Null if unknown.
         before: async (user, ctx) => {
+          // QA is invite-only (its AI runs on a free daily allowance): an address not on SIGNUP_ALLOWED_EMAILS cannot make an account, by password or Google/Microsoft
+          if (!signupAllowed(user.email, env.SIGNUP_ALLOWED_EMAILS)) throw new APIError('FORBIDDEN', { message: 'Sign-up on this test site is by invitation only.' })
           const country = ctx?.request ? countryFromHeaders(ctx.request.headers) : null
           // One mailbox = one account, whichever way it arrives (password sign-up or Google): `a+1@gmail.com` cannot farm a second allowance.
           const emailCanonical = canonicalEmail(user.email)
@@ -112,6 +114,7 @@ export const auth = betterAuth({
     // E-mails (confirmation, reset, welcome) go out in the background: the person is signed in / redirected as soon as the account work is done, not after the mail provider has answered (a slow provider delayed every sign-up and Google sign-in). A failure is logged by Better Auth.
     backgroundTasks: { handler: (promise: Promise<unknown>) => { void promise } },
     useSecureCookies: isProd,
+    cookiePrefix: env.COOKIE_PREFIX,
     ...(env.COOKIE_DOMAIN ? { crossSubDomainCookies: { enabled: true, domain: env.COOKIE_DOMAIN } } : {}),
   },
 })

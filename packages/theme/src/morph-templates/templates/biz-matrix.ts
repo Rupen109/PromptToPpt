@@ -142,7 +142,7 @@ const AGENDA_COPY: Record<K, string> = { R: 'Win more of the customers we alread
 
 export const BIZ_MATRIX = authored(
   {
-    id: 'biz-matrix', category: 'business', name: 'Strategy Matrix', tagline: 'Four bets on one page, each one zoomed through',
+    id: 'biz-matrix', category: 'business', fillPictures: ['solids'], fillRadius: 24, name: 'Strategy Matrix', tagline: 'Four bets on one page, each one zoomed through',
     description: 'A light, Bauhaus-minded strategy deck built on a 2 x 2 matrix of colour tiles. The cover assembles the tiles; every quadrant (grow, optimise, explore, protect) then fills the whole slide in its own colour before handing over to the next; the tiles shrink into a budget treemap, dots on impact and effort axes, roadmap bars, a decision stripe and the close.',
     audience: 'The Strategy Matrix template suits strategy reviews, annual and quarterly business planning, consulting readouts, OKR and portfolio reviews, SWOT-style workshops, management and board updates and any talk that sorts a lot of work into a few clear themes.',
     topics: ['strategy', 'business strategy', 'strategic plan', 'strategic planning', 'business plan', 'business planning', 'annual plan', 'annual review', 'quarterly review', 'consulting', 'consultant', 'management', 'leadership', 'executive', 'board', 'okr', 'okrs', 'objectives', 'key results', 'swot', 'matrix', '2x2', 'portfolio', 'prioritisation', 'prioritization', 'roadmap', 'growth', 'operations', 'innovation', 'risk', 'investment', 'budget', 'transformation', 'planning', 'workshop'],

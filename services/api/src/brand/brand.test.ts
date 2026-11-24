@@ -110,12 +110,14 @@ describe('findBrand (network faked)', () => {
 })
 
 describe('POST /brand/extract', () => {
-  it('is for paid plans, needs a sign-in, and refuses private addresses with a clear code', async () => {
-    const free = await signUp('br'), pro = await signUp('br')
-    await setPlan(pro.id, 'pro')
-    const denied = await api(free.cookie, 'POST', '/brand/extract', { url: 'acme.example' })
-    expect(denied.status).toBe(403)
-    expect((await json(denied)).error.code).toBe('UPGRADE_REQUIRED')
+  it('is for plans with brand kits (Starter and Pro refused), needs a sign-in, and refuses private addresses with a clear code', async () => {
+    const free = await signUp('br'), proUser = await signUp('br'), pro = await signUp('br')
+    await setPlan(proUser.id, 'pro'); await setPlan(pro.id, 'gold')
+    for (const who of [free, proUser]) {
+      const denied = await api(who.cookie, 'POST', '/brand/extract', { url: 'acme.example' })
+      expect(denied.status).toBe(403)
+      expect((await json(denied)).error.code).toBe('UPGRADE_REQUIRED')
+    }
     expect((await api('', 'POST', '/brand/extract', { url: 'acme.example' })).status).toBe(401)
     const blocked = await api(pro.cookie, 'POST', '/brand/extract', { url: 'http://127.0.0.1:4000/' })
     expect(blocked.status).toBe(400)

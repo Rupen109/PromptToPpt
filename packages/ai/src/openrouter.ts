@@ -64,7 +64,7 @@ export class OpenRouterProvider implements AIProvider {
           usage: { include: true },
           ...(req.webSearch ? { plugins: [{ id: 'web', max_results: WEB_RESULTS }] } : {}),
           // 0 = no hidden reasoning (billed as output). Models that always reason simply ignore it.
-          ...(req.thinkingBudget === 0 ? { reasoning: { enabled: false } } : {}),
+          ...(req.thinkingBudget === 0 ? { reasoning: { enabled: false } } : req.thinkingBudget ? { reasoning: { max_tokens: req.thinkingBudget } } : {}),
           // JSON is requested in the prompt and validated by the gateway; `response_format` isn't honoured by every model.
         }),
         ...(req.signal ? { signal: req.signal } : {}),

@@ -30,7 +30,12 @@ export interface PictureRequest {
   topic: string
   category: string
   aspect: AspectGroup
+  /** pictures this lookup must NOT return ("replace the pictures": the slide's current one), matched by address without its size settings */
+  avoid?: string[] | undefined
 }
+/** the same picture whatever size or quality its address asks for (stock addresses carry ?w=…&q=… settings) */
+export const samePicture = (a: string, b: string) => { try { const x = new URL(a), y = new URL(b); return x.host === y.host && x.pathname === y.pathname } catch { return a === b } }
+const avoided = (req: PictureRequest, src: string) => (req.avoid ?? []).some((x) => samePicture(x, src))
 export interface PickedPicture {
   src: string
   alt: string
@@ -262,7 +267,7 @@ async function pickStock(req: PictureRequest, st: State): Promise<PickedPicture 
       if (st.signal.aborted) return null
       const photos = await searchOnce(provider, query, req.aspect, st)
       const ranked = photos
-        .filter((p) => !st.used.has(`stock:${provider.name}:${p.id}`))
+        .filter((p) => !st.used.has(`stock:${provider.name}:${p.id}`) && !avoided(req, p.imageUrl))
         .map((p) => ({ p, o: altOverlap(query, p.alt) }))
         .sort((a, b) => b.o.ratio - a.o.ratio) // Unsplash's own relevance order is kept for ties (the sort is stable)
       const best = ranked[0]
@@ -292,7 +297,7 @@ const shapeRank = (key: string, want: AspectGroup) => (slotAspect(key) === want 
  */
 function pickLibrary(req: PictureRequest, st: State): PickedPicture | null {
   const base = st.deps.config.webUrl.replace(/\/+$/, '')
-  const tagged = scoreLibrary(req).find((m) => !st.used.has(`lib:${m.key}`))
+  const tagged = scoreLibrary(req).find((m) => !st.used.has(`lib:${m.key}`) && !avoided(req, `${base}/template-assets/${m.key}.jpg`))
   if (!tagged) return null
   st.used.add(`lib:${tagged.key}`)
   return { src: `${base}/template-assets/${tagged.key}.jpg`, alt: LIBRARY_TAGS[tagged.key]?.description ?? `${req.category} presentation photo`, source: 'library', score: 3 }
@@ -312,7 +317,7 @@ async function pickOne(req: PictureRequest, st: State): Promise<PickedPicture | 
 }
 
 /** What identifies a lookup: if a slide's request is unchanged, the work already started for it is simply reused. */
-const fingerprint = (r: PictureRequest) => JSON.stringify([r.layout, r.aspect, r.title, r.text, r.intent, r.query ?? '', r.topic, r.category])
+const fingerprint = (r: PictureRequest) => JSON.stringify([r.layout, r.aspect, r.title, r.text, r.intent, r.query ?? '', r.topic, r.category, r.avoid ?? []])
 
 /**
  * A picture lookup that runs ALONGSIDE the rest of generation instead of after it.

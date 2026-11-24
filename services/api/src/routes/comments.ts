@@ -36,30 +36,31 @@ const writes = rateLimit({ windowMs: 60_000, max: 40, key: byUser('comments'), m
 export const cleanBody = (s: string) => s.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '').replace(/\r\n?/g, '\n').trim()
 const MENTION = /@\{([A-Za-z0-9_-]{6,64})\}/g
 
-interface Person { id: string; name: string; role: 'owner' | 'editor' }
+interface Person { id: string; name: string; role: 'owner' | 'editor' | 'viewer' }
 /** The people a comment may mention: the owner and everyone with an active invitation. Names only. */
 async function peopleOf(presentationId: string, ownerId: string): Promise<Person[]> {
-  const members = await db.select({ id: user.id, name: user.name }).from(presentationMember).innerJoin(user, eq(user.id, presentationMember.userId)).where(and(eq(presentationMember.presentationId, presentationId), eq(presentationMember.status, 'active')))
+  const members = await db.select({ id: user.id, name: user.name, role: presentationMember.role }).from(presentationMember).innerJoin(user, eq(user.id, presentationMember.userId)).where(and(eq(presentationMember.presentationId, presentationId), eq(presentationMember.status, 'active')))
   const [owner] = await db.select({ id: user.id, name: user.name }).from(user).where(eq(user.id, ownerId))
   const out: Person[] = owner ? [{ ...owner, role: 'owner' }] : []
-  for (const m of members) if (m.id !== ownerId) out.push({ ...m, role: 'editor' })
+  for (const m of members) if (m.id !== ownerId) out.push({ id: m.id, name: m.name, role: m.role === 'viewer' ? 'viewer' : 'editor' })
   return out
 }
 
 const commentsInDeck = async (presentationId: string) => (await db.select({ n: count() }).from(comment).innerJoin(commentThread, eq(commentThread.id, comment.threadId)).where(eq(commentThread.presentationId, presentationId)))[0]?.n ?? 0
 const DECK_FULL = `A presentation can hold up to ${MAX_COMMENTS_PER_DECK} comments. Delete resolved threads to add more.`
 
-async function slideIdsOf(presentationId: string): Promise<Set<string> | null> {
+/** the deck's slides as saved (ids, and each slide's object ids: a comment on an object must name one that is there) */
+async function slidesOf(presentationId: string): Promise<Map<string, Set<string>> | null> {
   const [p] = await db.select({ v: presentation.latestVersion }).from(presentation).where(eq(presentation.id, presentationId))
   if (!p) return null
-  const [row] = await db.select({ slides: sql<{ id?: string }[]>`${presentationVersion.document}->'slides'` }).from(presentationVersion).where(and(eq(presentationVersion.presentationId, presentationId), eq(presentationVersion.version, p.v)))
-  return new Set((row?.slides ?? []).map((s) => s.id).filter((x): x is string => !!x))
+  const [row] = await db.select({ slides: sql<{ id?: string; elements?: { id?: string }[] }[]>`${presentationVersion.document}->'slides'` }).from(presentationVersion).where(and(eq(presentationVersion.presentationId, presentationId), eq(presentationVersion.version, p.v)))
+  return new Map((row?.slides ?? []).filter((s) => !!s.id).map((s) => [s.id!, new Set((s.elements ?? []).map((e) => e.id).filter((x): x is string => !!x))]))
 }
 
 const access = async (c: any) => {
   const actor = c.get('session')!.user as { id: string; name: string }
   const id = c.req.param('id') as string
-  try { const a = await resolveAccess(id, actor.id); return a ? { id, actor, ...a } : null } catch (e) { if (e instanceof GateError) throw e; return null }
+  try { const a = await resolveAccess(id, actor.id, 'view'); return a ? { id, actor, ...a } : null } catch (e) { if (e instanceof GateError) throw e; return null }
 }
 
 /** Mentions inside a body: keep the ones that name a real person on this deck; anything else becomes plain "@unknown". */
@@ -96,7 +97,7 @@ const threadsOf = async (deckId: string, me: string, people: Person[]) => {
   for (const r of rows) by.set(r.c.threadId, [...(by.get(r.c.threadId) ?? []), r])
   void people
   return threads.map((t) => ({
-    id: t.id, slideId: t.slideId, x: t.x === null ? null : Number(t.x), y: t.y === null ? null : Number(t.y), status: t.status, createdAt: t.createdAt.toISOString(),
+    id: t.id, slideId: t.slideId, x: t.x === null ? null : Number(t.x), y: t.y === null ? null : Number(t.y), elementId: t.elementId ?? null, status: t.status, createdAt: t.createdAt.toISOString(),
     resolvedAt: t.resolvedAt?.toISOString() ?? null, resolvedByName: t.resolvedBy ? (names.get(t.resolvedBy) ?? null) : null,
     comments: (by.get(t.id) ?? []).map((r) => ({ id: r.c.id, authorId: r.c.authorId, authorName: r.name, body: r.c.body, createdAt: r.c.createdAt.toISOString(), editedAt: r.c.editedAt?.toISOString() ?? null, mine: r.c.authorId === me })),
   }))
@@ -125,29 +126,51 @@ comments.post('/:id/comments/seen', rateLimit({ windowMs: 60_000, max: 60, key: 
 const bodyField = z.string().max(20_000)
 const pin = z.number().min(0).max(1)
 
-comments.post('/:id/comments', writes, zValidator('json', z.object({ slideId: z.string().min(1).max(64), x: pin.optional(), y: pin.optional(), body: bodyField })), async (c) => {
-  const a = await access(c); if (!a) return notFound(c)
-  const { slideId, x, y, body: raw } = c.req.valid('json')
-  if ((x === undefined) !== (y === undefined)) return bad(c, 422, 'INVALID_INPUT', 'A pin needs both a horizontal and a vertical position.')
-  const people = await peopleOf(a.id, a.ownerId)
-  const slides = await slideIdsOf(a.id)
-  if (!slides?.has(slideId)) return bad(c, 422, 'INVALID_INPUT', 'That slide is not in this presentation.')
+/**
+ * A new comment thread on a slide (optionally pinned), written by `actor`: ONE code path for the Comments panel and the assistant (which adds as the person, with an AI label), so the limits,
+ * mentions, emails and live updates are the same. Returns the ids, or the plain reason it was refused.
+ */
+export async function addThread(deckId: string, ownerId: string, actor: { id: string; name: string }, o: { slideId: string; x?: number | undefined; y?: number | undefined; elementId?: string | undefined; body: string }): Promise<{ ok: true; threadId: string; commentId: string } | { ok: false; status: 422 | 429; code: string; why: string }> {
+  const { slideId, x, y, elementId, body: raw } = o
+  if ((x === undefined) !== (y === undefined)) return { ok: false, status: 422, code: 'INVALID_INPUT', why: 'A pin needs both a horizontal and a vertical position.' }
+  const people = await peopleOf(deckId, ownerId)
+  const slides = await slidesOf(deckId)
+  if (!slides?.has(slideId)) return { ok: false, status: 422, code: 'INVALID_INPUT', why: 'That slide is not in this presentation.' }
+  if (o.elementId !== undefined && !slides.get(slideId)!.has(o.elementId)) return { ok: false, status: 422, code: 'INVALID_INPUT', why: 'That object is not on the slide (it may not be saved yet, or it was removed).' }
   const text = cleanBody(raw)
-  if (!text) return bad(c, 422, 'INVALID_INPUT', 'Write something first.')
-  if (text.length > MAX_BODY) return bad(c, 422, 'TOO_LONG', `Comments can be up to ${MAX_BODY} characters (this one is ${text.length}).`)
-  const [{ n } = { n: 0 }] = await db.select({ n: count() }).from(commentThread).where(eq(commentThread.presentationId, a.id))
-  if (n >= MAX_THREADS) return bad(c, 429, 'LIMIT_REACHED', `A presentation can hold up to ${MAX_THREADS} comment threads. Resolve and delete some to add more.`)
-  if (await commentsInDeck(a.id) >= MAX_COMMENTS_PER_DECK) return bad(c, 429, 'LIMIT_REACHED', DECK_FULL)
+  if (!text) return { ok: false, status: 422, code: 'INVALID_INPUT', why: 'Write something first.' }
+  if (text.length > MAX_BODY) return { ok: false, status: 422, code: 'TOO_LONG', why: `Comments can be up to ${MAX_BODY} characters (this one is ${text.length}).` }
+  const [{ n } = { n: 0 }] = await db.select({ n: count() }).from(commentThread).where(eq(commentThread.presentationId, deckId))
+  if (n >= MAX_THREADS) return { ok: false, status: 429, code: 'LIMIT_REACHED', why: `A presentation can hold up to ${MAX_THREADS} comment threads. Resolve and delete some to add more.` }
+  if (await commentsInDeck(deckId) >= MAX_COMMENTS_PER_DECK) return { ok: false, status: 429, code: 'LIMIT_REACHED', why: DECK_FULL }
   const { body, mentioned } = checkMentions(text, people)
   const threadId = nanoid(), commentId = nanoid()
   await db.transaction(async (tx) => {
-    await tx.insert(commentThread).values({ id: threadId, presentationId: a.id, slideId, x: x === undefined ? null : String(x), y: y === undefined ? null : String(y), createdBy: a.actor.id })
-    await tx.insert(comment).values({ id: commentId, threadId, authorId: a.actor.id, body })
+    await tx.insert(commentThread).values({ id: threadId, presentationId: deckId, slideId, x: x === undefined ? null : String(x), y: y === undefined ? null : String(y), elementId: elementId ?? null, createdBy: actor.id })
+    await tx.insert(comment).values({ id: commentId, threadId, authorId: actor.id, body })
   })
-  const [deck] = await db.select({ title: presentation.title }).from(presentation).where(eq(presentation.id, a.id))
-  void mailMentions(a.id, deck?.title ?? 'a presentation', a.actor, mentioned, body, people)
-  publishComments(a.id, a.actor.id)
-  return c.json({ success: true, data: { threadId, commentId } }, 201)
+  const [deck] = await db.select({ title: presentation.title }).from(presentation).where(eq(presentation.id, deckId))
+  void mailMentions(deckId, deck?.title ?? 'a presentation', actor, mentioned, body, people)
+  publishComments(deckId, actor.id)
+  return { ok: true, threadId, commentId }
+}
+
+/** The deck's threads with their comments (the Comments panel's own list), for the assistant's summaries. */
+export async function deckThreads(deckId: string, ownerId: string, me: string) { return threadsOf(deckId, me, await peopleOf(deckId, ownerId)) }
+
+/** Threads marked resolved by `actor` (the panel's own rule); returns how many changed. */
+export async function resolveThreads(deckId: string, actor: { id: string }, ids: string[]): Promise<number> {
+  if (!ids.length) return 0
+  const res = await db.update(commentThread).set({ status: 'resolved', resolvedBy: actor.id, resolvedAt: new Date() }).where(and(eq(commentThread.presentationId, deckId), inArray(commentThread.id, ids), eq(commentThread.status, 'open'))).returning({ id: commentThread.id })
+  if (res.length) publishComments(deckId, actor.id)
+  return res.length
+}
+
+comments.post('/:id/comments', writes, zValidator('json', z.object({ slideId: z.string().min(1).max(64), x: pin.optional(), y: pin.optional(), elementId: z.string().min(1).max(64).optional(), body: bodyField })), async (c) => {
+  const a = await access(c); if (!a) return notFound(c)
+  const r = await addThread(a.id, a.ownerId, a.actor, c.req.valid('json'))
+  if (!r.ok) return bad(c, r.status, r.code, r.why)
+  return c.json({ success: true, data: { threadId: r.threadId, commentId: r.commentId } }, 201)
 })
 
 comments.post('/:id/comments/:threadId/replies', writes, zValidator('json', z.object({ body: bodyField })), async (c) => {

@@ -8,7 +8,7 @@ export const STYLES: { id: ImageStyle | 'none'; label: string }[] = [
 ]
 
 /** Picture shape that fits where it will go (so little is cropped): background → the slide's ratio; beside → the near-square picture frame; else landscape. */
-export function aspectFor(placement: C.ImagePlacement, deck: AspectRatio): '16:9' | '4:3' | '1:1' | '3:4' {
+export function aspectFor(placement: C.ImagePlacement, deck: AspectRatio): '16:9' | '4:3' | '1:1' | '3:4' | '9:16' {
   if (placement === 'background') return deck
   if (placement === 'beside') return '1:1'
   if (placement === 'replace') return '4:3'

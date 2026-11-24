@@ -12,14 +12,15 @@ type Tab = 'people' | 'link'
 const msg = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback)
 
 /** Share: invite people to edit together (Pro / Gold; their AI use is charged to the owner) or create a view-only link (plans with live preview, not Starter). Owner only. */
-export function ShareDialog({ deckId, onClose }: { deckId: string; onClose: () => void }) {
+export function ShareDialog({ deckId, onClose, initialEmail, initialRole = 'editor' }: { deckId: string; onClose: () => void; /** what the invite offers first (the assistant fills "as a viewer") */ initialRole?: 'editor' | 'viewer'; /** filled in by the assistant from the person's own message; nothing is sent until they press Invite */ initialEmail?: string | undefined }) {
   const ref = useDialog<HTMLDivElement>(true, onClose)
   const { ent, upgrade } = useEntitlements()
   const canInvite = ent?.features.advancedSharing ?? false
   const [tab, setTab] = useState<Tab>('people')
   const [members, setMembers] = useState<MemberView[] | null>(null)
+  const [role, setRole] = useState<'editor' | 'viewer'>(initialRole)
   const [limit, setLimit] = useState(0)
-  const [email, setEmail] = useState('')
+  const [email, setEmail] = useState(initialEmail ?? '')
   const [linkInfo, setLinkInfo] = useState<ShareLinkView | undefined>(undefined) // undefined = loading
   const link = linkInfo === undefined ? undefined : linkInfo.url
   const [pw, setPw] = useState('')
@@ -37,13 +38,18 @@ export function ShareDialog({ deckId, onClose }: { deckId: string; onClose: () =
     api.getShareLink(deckId).then((r) => { setLinkInfo(r); setExpiry(r.expiresAt ? 'custom' : 'never') }).catch(() => setLinkInfo({ url: null, hasPassword: false, expiresAt: null }))
   }, [deckId, refreshMembers])
 
+  async function changeRole(m: MemberView, to: 'editor' | 'viewer') {
+    if (to === m.role || busy) return
+    setBusy(true); setError(null); setNote(null)
+    try { await api.setMemberRole(deckId, m.id, to); setNote(`${m.email} ${to === 'viewer' ? 'can now view and comment only' : 'can now edit'}.`); await refreshMembers() } catch (err) { setError(err instanceof ApiError ? err.message : 'Could not change that. Please try again.') } finally { setBusy(false) }
+  }
   async function invite(e: FormEvent) {
     e.preventDefault()
     if (!email.trim() || busy) return
     setBusy(true); setError(null); setNote(null)
     try {
-      await api.inviteMember(deckId, email.trim())
-      setNote(`Invitation sent to ${email.trim()}. It works for 14 days.`)
+      await api.inviteMember(deckId, email.trim(), role)
+      setNote(`Invitation sent to ${email.trim()}${role === 'viewer' ? ' (view and comment only)' : ''}. It works for 14 days.`)
       setEmail('')
       await refreshMembers()
     } catch (err) {
@@ -105,15 +111,23 @@ export function ShareDialog({ deckId, onClose }: { deckId: string; onClose: () =
               <>
                 <form onSubmit={invite} className="flex gap-2">
                   <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="friend@email.com" aria-label="Email to invite" maxLength={254} className="flex-1 min-w-0 border border-border rounded-lg px-3 py-2.5 text-sm" />
+                  <select aria-label="What they can do" value={role} onChange={(e) => setRole(e.target.value as 'editor' | 'viewer')} className="border border-border rounded-lg px-2 py-2.5 text-sm bg-white">
+                    <option value="editor">Can edit</option>
+                    <option value="viewer">Can view and comment</option>
+                  </select>
                   <button disabled={busy || !email.trim() || (members?.length ?? 0) >= limit} className="px-4 py-2.5 rounded-lg bg-primary text-white text-sm font-semibold disabled:opacity-50">Invite</button>
                 </form>
-                <p className="text-xs text-slate-600 mt-2">People you invite can edit this presentation. <strong>Anything the AI does while they edit uses your credits.</strong> They cannot export, share, delete or rebuild the whole deck.</p>
+                <p className="text-xs text-slate-600 mt-2">People who can edit change this presentation with you. <strong>Anything the AI does while they edit uses your credits.</strong> People who can view and comment only look, present and comment. Nobody you invite can export, share, delete or rebuild the whole deck.</p>
                 <div className="mt-4 text-xs font-semibold text-slate-500">{members ? `${members.length} of ${limit} people` : 'Loading…'}</div>
                 <ul className="mt-1 divide-y divide-border" aria-label="People with access">
                   {(members ?? []).map((m) => (
                     <li key={m.id} className="flex items-center gap-3 py-2.5 text-sm">
                       <span className="min-w-0 flex-1 truncate">{m.email}</span>
-                      <span className={`text-xs rounded-full px-2 py-0.5 ${m.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>{m.status === 'active' ? 'Can edit' : 'Invited'}</span>
+                      {m.status === 'pending' && <span className="text-xs rounded-full px-2 py-0.5 bg-amber-100 text-amber-800">Invited</span>}
+                      <select aria-label={`What ${m.email} can do`} value={m.role} disabled={busy} onChange={(e) => void changeRole(m, e.target.value as 'editor' | 'viewer')} className="text-xs border border-border rounded-md px-1.5 py-1 bg-white">
+                        <option value="editor">Can edit</option>
+                        <option value="viewer">Can view and comment</option>
+                      </select>
                       <button onClick={() => void remove(m)} aria-label={`Remove ${m.email}`} className="text-slate-500 hover:text-red-700 px-1"><X aria-hidden size={14} /></button>
                     </li>
                   ))}

@@ -63,7 +63,7 @@ const PTL = { kind: 'text', text: '', px: 24, weight: 500, color: C.sage, lh: 1.
 
 export const BIZ_ANNUAL = authored(
   {
-    id: 'biz-annual', category: 'business', name: 'Annual Report', tagline: 'A printed annual report that moves',
+    id: 'biz-annual', category: 'business', fillPictures: ['p1', 'p2', 'p3', 'p4'], name: 'Annual Report', tagline: 'A printed annual report that moves',
     description: 'A quietly luxurious annual report in deep forest green and brass: tall architectural photographs trade widths like an accordion, giant serif numerals count from one chapter to the next, and the same brass shapes become bars, a stacked column and a line of dots for the financial results.',
     audience: 'The Annual Report template suits annual and integrated reports, investor updates, board and shareholder presentations, quarterly and half-year reviews, financial results, corporate overviews, ESG and sustainability reports and any institutional story that needs to feel established and trustworthy.',
     topics: ['annual report', 'financial results', 'investor update', 'investor relations', 'corporate', 'quarterly review', 'board report', 'board meeting', 'shareholders', 'shareholder letter', 'esg', 'sustainability report', 'company overview', 'financial highlights', 'earnings', 'fiscal year', 'year in review', 'ceo letter', 'revenue', 'governance', 'corporate responsibility', 'business review', 'outlook'],

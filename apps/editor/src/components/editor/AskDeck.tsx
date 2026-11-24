@@ -5,7 +5,7 @@ import { api } from '@/lib/api'
 import { useEntitlements } from '@/lib/entitlements'
 import { useUi } from '@/editor/ui'
 
-type Turn = { role: 'user'; text: string } | { role: 'ai'; text: string; slides: { n: number; id: string }[]; credits: number } | { role: 'error'; text: string }
+type Turn = { role: 'user'; text: string } | { role: 'ai'; text: string; slides: { n: number; id: string }[]; credits: number; editRequest?: string } | { role: 'error'; text: string }
 
 /** Conversations are kept in memory per deck for this page session (questions are cheap to ask again; nothing is written to the deck). */
 const KEPT = new Map<string, Turn[]>()
@@ -16,7 +16,7 @@ const STARTERS = ['Summarise this deck in 3 bullets', 'What are the key numbers?
  * "Chat with your presentation": ask about the deck's own words, get a short answer plus buttons that jump to the slides it came from.
  * Read-only — it never edits the deck (the Edit tab does that). Paid plans; each question costs a few credits and failed ones are refunded.
  */
-export function AskDeck({ doc, presentationId }: { doc: Presentation; presentationId: string }) {
+export function AskDeck({ doc, presentationId, onEdit }: { doc: Presentation; presentationId: string; /** an edit typed into Ask: switch to Edit and send the same words (only when the person clicks) */ onEdit?: ((text: string) => void) | undefined }) {
   const { ent, refresh, upgrade } = useEntitlements()
   const setActiveSlide = useUi((s) => s.setActiveSlide)
   const [turns, setTurns] = useState<Turn[]>(() => KEPT.get(presentationId) ?? [])
@@ -39,7 +39,7 @@ export function AskDeck({ doc, presentationId }: { doc: Presentation; presentati
     setPending(true)
     try {
       const r = await api.askDeck(presentationId, { question, history, requestId: crypto.randomUUID() })
-      setTurns((t) => [...t, { role: 'ai', text: r.answer, slides: r.slides, credits: r.creditsCharged }])
+      setTurns((t) => [...t, { role: 'ai', text: r.answer, slides: r.slides, credits: r.creditsCharged, ...(r.editRequest ? { editRequest: r.editRequest } : {}) }])
       void refresh()
     } catch (e) {
       if (isGateError(e)) upgrade.show(e.message)
@@ -74,6 +74,7 @@ export function AskDeck({ doc, presentationId }: { doc: Presentation; presentati
                   {m.slides.filter((s) => ids.has(s.id)).map((s) => <button key={s.id} onClick={() => setActiveSlide(s.id)} className="text-xs border border-primary text-primary rounded-full px-2.5 py-0.5 hover:bg-primary hover:text-white">Slide {doc.slides.findIndex((x) => x.id === s.id) + 1}</button>)}
                 </div>
               )}
+              {m.editRequest && onEdit && <button onClick={() => onEdit(m.editRequest!)} className="text-xs bg-primary text-white rounded-full px-3 py-1 hover:opacity-90">Do it in Edit</button>}
               <p className="text-[11px] text-slate-500">{m.credits} {m.credits === 1 ? 'credit' : 'credits'}</p>
             </div>
           ),

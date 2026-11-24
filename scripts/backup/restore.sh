@@ -28,6 +28,6 @@ cat <<MSG
 Uploaded to s3://$BUCKET/$KEY
 Now, on the server (AWS Systems Manager > Session Manager, or: aws ssm start-session --target <instance id>):
     sudo /opt/slidesdone/import-dump.sh $KEY
-then bring the app back with the normal deploy:  infra/prod/deploy.sh server
+then bring the app back with the normal deploy:  infra/scripts/deploy.sh config
 When it is back and checked, remove the plain dump:  aws s3 rm s3://$BUCKET/$KEY
 MSG

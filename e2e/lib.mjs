@@ -87,3 +87,26 @@ export async function startBuild(p, { model = /3\.6 Flash/ } = {}) {
   } else if (await start.count()) await start.click()
   else await len.click()
 }
+
+/**
+ * Sign up through the real form and end in the editor, signed in, whatever the API's REQUIRE_EMAIL_VERIFICATION is. With it on (the default now), sign-up shows
+ * "Check your email" and creates no session: the address is confirmed with the QA script (what the person's click on the emailed link does), then they log in.
+ * `next` = where the login returns to (the editor by default).
+ */
+export async function signUpAndEnter(p, { name = 'QA Tester', email, password = PASSWORD, next } = {}) {
+  const { execSync } = await import('node:child_process')
+  await p.goto(WEB + '/signup', { waitUntil: 'networkidle' })
+  await p.locator('input[name=name]').fill(name); await p.locator('input[name=email]').fill(email); await p.locator('input[name=password]').fill(password)
+  await p.getByRole('button', { name: 'Sign up free' }).click()
+  const landed = await Promise.race([
+    p.waitForURL(/localhost:3001/, { timeout: 20000 }).then(() => 'editor'),
+    p.getByRole('heading', { name: 'Check your email' }).waitFor({ timeout: 20000 }).then(() => 'confirm'),
+  ])
+  if (landed === 'editor') return 'signed-in'
+  execSync(`pnpm --filter @prompttoppt/api exec tsx --env-file-if-exists=.env scripts/qa-verify-email.ts ${email}`, { cwd: new URL('..', import.meta.url).pathname, stdio: 'pipe' })
+  await p.goto(WEB + '/login' + (next ? `?next=${encodeURIComponent(next)}` : ''), { waitUntil: 'networkidle' })
+  await p.locator('input[name=email]').fill(email); await p.locator('input[name=password]').fill(password)
+  await p.getByRole('button', { name: 'Log in' }).click()
+  await p.waitForURL(/localhost:3001/, { timeout: 20000 })
+  return 'confirmed'
+}

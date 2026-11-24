@@ -13,6 +13,7 @@ import { BlockedUrlError, SourceError, fromText, FILE_MAX_BYTES, PDF_MAX_BYTES }
 import { BusyError, parseUpload } from '../sources/parse-pool.ts'
 import { busyAnswer, uploadGate } from '../middleware/upload-gate.ts'
 import { readLink } from '../sources/link.ts'
+import { assetUrl, storeAsset } from '../brand/assets.ts'
 import { saveSource } from '../sources/store.ts'
 import { canonicalYouTubeUrl, fromTranscript, youtubeId } from '../sources/transcript.ts'
 import { MEDIA_MAX_BYTES, MediaError, inspectMedia, mediaBlocks, mediaReadOutput, mediaReadPrompt } from '../sources/media-read.ts'
@@ -171,12 +172,17 @@ sources.post('/image', uploadGate, rateLimit({ windowMs: 60_000, max: 8, key: by
   await reserveCredits(userId, price, 'read_image', ref, { strict: true }) // 402 INSUFFICIENT_CREDITS before any model call
   try {
     const out = await gateway.run({ route: 'fast', requestType: 'image_read', ...imageReadPrompt(file.name || 'picture'), images: [{ mimeType: info.mime, data: bytes }], schema: imageReadOutput, maxOutputTokens: 8000, ctx: { userId } })
-    if (!out.legible || out.text.trim().length < 3) {
+    const canKeep = info.mime !== 'image/webp' // a PNG or JPEG can be shown on the slides, so a plain photo is a useful attachment even when there is nothing to read in it
+    if (canKeep && (!out.legible || out.text.trim().length < 3)) out.text = out.text.trim().length >= 3 ? out.text : `A picture the person attached: ${out.title || file.name || 'picture'}. It holds no text; use it as a picture on the slides.`
+    if (!out.legible && !canKeep || out.text.trim().length < 3) {
       await refundCredits(userId, 'read_image', ref)
       return fail(c, 422, 'NOTHING_READABLE', "I couldn't find any text or content in that picture to build a deck from. Try a sharper picture, or one with words, a table or a chart in it. You were not charged.")
     }
     const title = (out.title || file.name.replace(/\.[a-z0-9]+$/i, '') || 'Picture').slice(0, 200)
-    const saved = await saveSource(userId, 'image', fromText(title, out.text))
+    // The picture itself is kept (PNG or JPEG) so a deck can SHOW it (the person's own product in a template), not only read it; it also appears in their Media library
+    let pictureUrl: string | undefined
+    if (info.mime !== 'image/webp') { try { pictureUrl = assetUrl(await storeAsset(userId, 'brand', Buffer.from(bytes), info.mime, title)) } catch (e) { console.error('[image-keep]', (e as Error).message) } }
+    const saved = await saveSource(userId, 'image', fromText(title, out.text), pictureUrl)
     return c.json({ success: true, data: { ...saved, creditsCharged: price } }, 201)
   } catch (e) {
     await refundCredits(userId, 'read_image', ref)

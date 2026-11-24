@@ -1,5 +1,7 @@
 # Deployment topology
 
+> **2026-11-24: the separate production server (`infra/prod`, CloudFront, WAL-G) was dropped by the owner to keep AWS to one server.** The live site https://slidesdone.app runs on the former QA server (`infra/tofu`, `infra/compose`, `infra/scripts/deploy.sh`); branches and releases: `docs/RELEASES.md`. The `infra/prod` parts below are kept as history only.
+
 > **Going live?** The full list of checks (blockers, security, billing, pictures, performance, legal, launch day) is in [`PRODUCTION_RELEASE_CHECKLIST.md`](./PRODUCTION_RELEASE_CHECKLIST.md). Note: the production AI provider is still an open decision there — the catalogue serves OpenRouter models in production, not Vertex.
 
 ## Domains (example: `slidesdone.app`)
@@ -25,7 +27,11 @@ single session cookie scoped to `.slidesdone.app` authenticates all three withou
 | `TRUSTED_PROXY_HOPS` | `0` | `2` (CloudFront + ALB) — otherwise rate limiting keys on the wrong IP |
 | `EDGE_SHARED_SECRET` | *(unset: only local development trusts country headers)* | **required** (≥24 chars): the same value CloudFront sends as the `X-Origin-Verify` origin header; without it anyone could spoof the country header and get the India price |
 | `AUTH_SECRET` | any ≥32 chars | unique, from Secrets Manager; never share between envs |
-| `AI_PROVIDER` | `vertex` or `mock` | `vertex` (or `gemini`); key from Secrets Manager. Prefer an IAM-bound service account over a long-lived key in production |
+| `AI_PROVIDER` | `gemini` (AI Studio) or `mock` | `gemini` (AI Studio, decided 2026-11-24), key `GEMINI_API_KEY` in Parameter Store |
+| `AI_BACKUP_PROVIDER` | `none` | `openrouter`: the same Gemini models through OpenRouter when Gemini refuses or is too busy. The server scripts set it as soon as `OPENROUTER_API_KEY` is stored |
+| `AI_KEY_TIER` | `free` (a free-tier Gemini key from a Google project with no billing; QA too) | `paid` (default; the API refuses `free` in production). See `docs/RELEASES.md` |
+| `COOKIE_PREFIX` | *(default `better-auth`)* | default. QA sets `slidesdone-qa` so its login never mixes with production's |
+| `SIGNUP_ALLOWED_EMAILS` | *(empty: everyone)* | empty. QA: the invited addresses / `@domains` |
 | `DATABASE_URL` | local Postgres | RDS, from Secrets Manager |
 | `SOURCE_PARSE_CONCURRENCY` / `SOURCE_PARSE_HEAP_MB` / `SOURCE_UPLOAD_BUDGET_MB` | `1` / `256` / `96` | **Size the API task for these** (see "Reading uploaded files" below). Defaults suit a **1 GB** task; with 2 GB use concurrency `2`–`3` and budget `192` |
 

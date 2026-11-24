@@ -199,7 +199,7 @@ export function setText(el: TextElement, text: string, theme: Presentation['them
 
 /** Wraps the file's slots into the shape template-deck.ts's sanitiser expects: one "scene" per story slide. */
 const asScenes = (tpl: UploadedTemplate, assignment: number[]): TemplateSceneSlots[] =>
-  assignment.map((k, i) => ({ scene: `s${i}`, title: tpl.slides[k]!.name, purpose: '', slots: tpl.slides[k]!.slots.map((s) => ({ id: s.elementId, sample: s.sample, maxChars: s.maxChars, detail: s.detail, numeric: s.numeric, ticker: false })) }))
+  assignment.map((k, i) => ({ scene: `s${i}`, title: tpl.slides[k]!.name, purpose: '', slots: tpl.slides[k]!.slots.map((s) => ({ id: s.elementId, sample: s.sample, maxChars: s.maxChars, detail: s.detail, numeric: s.numeric, spec: false, ticker: false })) }))
 
 /** The model's words for the chosen slides, as the model's slide `i` (matched by position, never by what it says it used). */
 const toFill = (fill: UploadedFill): TemplateFill => ({ title: fill.title, chrome: fill.chrome, scenes: fill.slides.map((s, i) => ({ scene: `s${i}`, notes: s.notes, fields: s.fields })) })
@@ -276,7 +276,7 @@ export function buildDeck(i: BuildInput): { doc: Presentation; report: BuildRepo
       if (next) elements.push({ ...next, id: stableId(sid, el.id) })
     }
     const { writing: _w, ...slide } = clone
-    return { ...slide, id: sid, elements, speakerNotes: (ai ? i.fill!.slides[idx]?.notes ?? '' : '').slice(0, 1500), sources: [], validation: { status: 'pending', issues: [] } } as Slide
+    return { ...slide, fromFile: true, id: sid, elements, speakerNotes: (ai ? i.fill!.slides[idx]?.notes ?? '' : '').slice(0, 1500), sources: [], validation: { status: 'pending', issues: [] } } as Slide
   })
   const doc: Presentation = { schemaVersion: SCHEMA_VERSION, id: 'template', title: i.title.slice(0, 200), aspectRatio: tpl.aspect, language: i.language, theme: tpl.theme, sources: i.sources, slides }
   return { doc, report }

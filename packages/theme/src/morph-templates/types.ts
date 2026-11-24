@@ -113,5 +113,21 @@ export interface MorphTemplate {
   pictures: Record<string, TemplatePicture>
   /** the source deck's wording that is replaced everywhere (its branding), by normalised text */
   replace: Record<string, string>
+  /**
+   * A template whose pictures show ONE product (headphones, a drinks can): when the person attaches a picture of THEIR product, these pictures are replaced by it, the objects that only make
+   * sense on the original product (call-out lines aimed at its parts, the accessories) are hidden, and scenes that are about the original product's box are left out. Without it the
+   * template's own pictures stay (a request about the same kind of thing keeps them).
+   */
+  /** the person's attached pictures are placed in this template's photo slots when a deck is made (see pictures.ts): `true` = every photo slot, or the listed picture objects only (a template whose other pictures are decorative 3D objects). Every template's pictures can be replaced afterwards in the editor. */
+  fillPictures?: boolean | string[]
+  /** corner radius of the person's picture where it replaces a cut-out object of this template that has no frame of its own (a 3D icon, a coin stack): a photo in a softly rounded frame */
+  fillRadius?: number
+  /** the fraction of its box a replaced cut-out object keeps free around the person's picture (a 3D icon had empty margin of its own; a photo fills its whole box and would touch the words beside it) */
+  fillInset?: number
+  /** words are drawn above the person's pictures in this template (its sample cans stood in front of the words; a photograph with its own background would hide them) */
+  textAboveOwn?: boolean
+  /** the frame of the person's picture for one replaced object, where it differs from the rest (a sphere becomes a round picture, a laptop screen a rounded one) */
+  fillFrame?: Record<string, { clip?: 'circle'; radius?: number; inset?: number }>
+  swap?: { pictures: string[]; hide: string[]; dropScenes?: string[]; fit?: 'cover' | 'contain'; radius?: number }
   scenes: TemplateScene[]
 }

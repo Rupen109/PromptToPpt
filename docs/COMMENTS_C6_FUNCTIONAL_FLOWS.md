@@ -44,7 +44,7 @@ Status values: ✅ passed in the real run · ❌ failed.
 | ID | Flow | Must be true | Proven by | Status |
 |---|---|---|---|---|
 | C1 | Type `@` | A list of the owner and active collaborators (names only); arrow keys + Enter pick one | real browser | ✅ 28 |
-| C2 | Send a comment with a mention | The mention is highlighted; the mentioned person gets ONE email with the excerpt (plain text) and a link to the deck | real browser + server mail log | ✅ 28 (real mail log) + unit |
+| C2 | Send a comment with a mention | The mention is highlighted; the mentioned person gets ONE email (the branded HTML template, with a plain-text version) with the excerpt and a link to the deck | real browser + server mail log | ✅ 28 (real mail log) + unit |
 | C3 | Mention yourself, a stranger's id, a removed collaborator | No email; a made-up id is refused or shown as plain text | API | ✅ unit |
 | C4 | Many mentions of the same person within 10 minutes | Still one email | API | ✅ unit |
 | C5 | An email body with HTML / script in the comment | Sent as plain text; nothing executes | unit | ✅ unit (plain text only) |
@@ -100,7 +100,7 @@ Status values: ✅ passed in the real run · ❌ failed.
 
 ## What these tests could not prove (honest limits)
 - **People with only a view-only link cannot comment** (by design in this version — anonymous comments need a name step and spam control).
-- **Real e-mail delivery:** the mention email is proven as the server's real message (read from its mail log, plain text, one per person per 10 minutes); delivery through the production provider (Resend) was not exercised.
+- **Real e-mail delivery:** the mention email is proven as the server's real message (read from its mail log; branded HTML with a plain-text version; one per person per 10 minutes); delivery through the production provider (Resend) was not exercised.
 - **Production live updates** use Postgres LISTEN/NOTIFY (`LIVE_BUS=pg`); this run used the single-process bus. A minute-level refresh covers a dropped connection.
 - A pin stays at its position on the slide; it does not follow an element that is later moved or deleted. Comments are plain text (links are not clickable). There is no comment search and no email for replies.
 - Resolved/deleted threads and the 3,000-comment cap mean a very busy deck needs housekeeping; there is no automatic archive.

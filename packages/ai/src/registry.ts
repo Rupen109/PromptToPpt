@@ -65,11 +65,25 @@ export const DEFAULT_ROUTING: RoutingConfig = {
 
 export class ModelRegistry {
   private readonly byModel = new Map<string, ModelDefinition>()
+  /**
+   * `backups`: the same model on a BACKUP provider, by the main model's id (Gemini direct → the same Gemini through OpenRouter). A backup is never listed or picked by
+   * anyone; it is only tried after every main model of a chain, so the person gets the same model, through another door, when the main provider refuses.
+   */
   constructor(
     models: ModelDefinition[] = GEMINI_MODELS,
     private readonly routing: RoutingConfig = DEFAULT_ROUTING,
+    private readonly backups: ReadonlyMap<string, ModelDefinition> = new Map(),
   ) {
     for (const m of models) this.byModel.set(m.id ?? m.model, m)
+  }
+  /** the chain's models, then the backup of each in the same order (a model without a backup adds nothing) */
+  private withBackups(list: ModelDefinition[]): ModelDefinition[] {
+    const twins = list.map((m) => this.backups.get(m.id ?? m.model)).filter((m): m is ModelDefinition => !!m)
+    return [...list, ...twins.filter((t, i) => twins.indexOf(t) === i)]
+  }
+  /** the backup of one main model, if the deployment has one */
+  backupOf(modelId: string): ModelDefinition | undefined {
+    return this.backups.get(modelId)
   }
   /**
    * Chain for a model the user picked: that model first, then other text models of the SAME access tier.
@@ -79,14 +93,14 @@ export class ModelRegistry {
     const picked = this.get(modelId)
     if (!picked || picked.tier === 'image') return []
     const same = [...this.byModel.values()].filter((m) => m !== picked && m.accessTier === picked.accessTier && m.tier !== 'image' && m.capabilities.text)
-    return [picked, ...same].slice(0, max)
+    return this.withBackups([picked, ...same].slice(0, max))
   }
   /** Same idea for pictures: the picked image model, then other image models of the SAME access tier (never a cheaper tier). */
   imageChainFor(modelId: string, max = 2): ModelDefinition[] {
     const picked = this.get(modelId)
     if (!picked || picked.tier !== 'image') return []
     const same = [...this.byModel.values()].filter((m) => m !== picked && m.tier === 'image' && m.accessTier === picked.accessTier)
-    return [picked, ...same].slice(0, max)
+    return this.withBackups([picked, ...same].slice(0, max))
   }
   get(model: string): ModelDefinition | undefined {
     return this.byModel.get(model) ?? [...this.byModel.values()].find((m) => m.id === model)
@@ -96,7 +110,7 @@ export class ModelRegistry {
   }
   /** Ordered chain for a route class; models not in the registry are skipped (can't price → can't bill). */
   chain(route: RouteClass): ModelDefinition[] {
-    return this.routing.chains[route].map((m) => this.get(m)).filter((m): m is ModelDefinition => !!m)
+    return this.withBackups(this.routing.chains[route].map((m) => this.get(m)).filter((m): m is ModelDefinition => !!m))
   }
 }
 

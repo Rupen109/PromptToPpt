@@ -104,10 +104,18 @@ export function sanitizeMorphPlan(raw: MorphPlan, n: number, r: MorphRules): Mor
 
 export interface HeroPicture { url: string; alt: string; attribution?: { source: string; license: string; url?: string } }
 
+/** The deck's hand: which side the picture takes in the scenes that pair it with text or cards. Worked out from the deck's title, so the same request gives the same deck, and decks differ from each other. */
+export function handOf(title: string): boolean {
+  let h = 0
+  for (const ch of title.trim().toLowerCase()) h = (h * 31 + ch.charCodeAt(0)) >>> 0
+  return h % 2 === 1
+}
+
 /** The slides' content: the same concepts (cards) on every slide, and the deck's one picture. */
 export function morphContents(plan: MorphPlan, hero?: HeroPicture | null): SlideContent[] {
+  const flip = handOf(plan.title)
   return plan.scenes.map((s) => ({
-    layout: 'morph', scene: s.scene, title: s.title,
+    layout: 'morph', scene: s.scene, title: s.title, ...(flip ? { flip: true } : {}),
     ...(s.kicker ? { kicker: s.kicker } : {}), ...(s.subtitle ? { subtitle: s.subtitle } : {}),
     items: plan.concepts.map((c) => ({ heading: c.heading, text: c.text })),
     ...(s.focus !== undefined ? { focus: s.focus } : {}), ...(s.stat ? { stat: s.stat } : {}),

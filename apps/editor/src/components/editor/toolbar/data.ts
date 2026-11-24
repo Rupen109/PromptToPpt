@@ -1,3 +1,4 @@
+import { gradientCss } from '@prompttoppt/validation'
 export interface GradientPreset { id: string; name: string; from: string; to: string; angle: number }
 
 /** Built-in gradients: free, instant, no photo search. Used as slide backgrounds, or turned into a picture when inserted as media. */
@@ -40,7 +41,7 @@ export const MEDIA_CATEGORIES = [
   { id: 'city', label: 'City', query: 'city skyline' },
 ] as const
 
-export const cssGradient = (g: { from: string; to: string; angle: number }) => `linear-gradient(${g.angle}deg, ${g.from}, ${g.to})`
+export const cssGradient = (g: { from: string; to: string; angle: number; kind?: 'linear' | 'radial' | undefined }) => gradientCss(g)
 
 /** Draws a gradient to a PNG file (so a gradient can be placed on a slide like any other picture). */
 export async function gradientToFile(g: GradientPreset, width = 1600, height = 900): Promise<File> {

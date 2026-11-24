@@ -8,8 +8,17 @@ import { assetIdFromUrl, assetUrl, checkRaster, deleteAsset, ownedAsset, storeAs
 import { getStorage } from '../storage/index.ts'
 import { imageSize } from '../export/png.ts'
 
-/** How many brand kits a plan may keep (business decision: Pro 1, Gold 5; Starter none). */
-export const MAX_KITS: Record<string, number> = { starter: 0, pro: 1, gold: 5, premium: 5 }
+/**
+ * THE rule for everything brand (owner decision 2026-11-21: Starter and Pro cannot use brand kits): the plan's `brandKit` feature. It decides the kits, a brand read from a website or a file,
+ * starting a deck with a kit, and the assistant's brand answers. Every check goes through `brandAllowed` / `assertBrand`, never a plan name. `MAX_KITS` only says how many kits an allowed plan keeps.
+ */
+export const MAX_KITS: Record<string, number> = { gold: 5, premium: 5 }
+export const BRAND_LOCKED = 'Brand kits are available on Gold and Premium.'
+export const brandAllowed = (ent: { features: { brandKit: boolean } }): boolean => ent.features.brandKit === true
+export const kitLimit = (ent: { plan: { id: string }; features: { brandKit: boolean } }): number => (brandAllowed(ent) ? (MAX_KITS[ent.plan.id] ?? 5) : 0)
+export function assertBrand(ent: { features: { brandKit: boolean } }, message = BRAND_LOCKED): void {
+  if (!brandAllowed(ent)) throw new GateError('UPGRADE_REQUIRED', message, 403, { feature: 'brand' })
+}
 export const MAX_IMAGES_PER_KIT = 20
 export const MAX_LOGO_BYTES = 2 * 1024 * 1024
 export const MAX_IMAGE_BYTES = 3 * 1024 * 1024
@@ -78,9 +87,9 @@ async function logoFromUrl(userId: string, url: string): Promise<{ assetId: stri
   return { assetId, aspect: Math.round((size.w / size.h) * 1000) / 1000 }
 }
 
-export async function createKit(userId: string, planId: string, input: KitInput): Promise<KitView> {
-  const cap = MAX_KITS[planId] ?? 0
-  if (cap === 0) throw new GateError('UPGRADE_REQUIRED', 'Brand kits are available on Pro, Gold and Premium.', 403, { feature: 'brand' })
+export async function createKit(userId: string, ent: { plan: { id: string }; features: { brandKit: boolean } }, input: KitInput): Promise<KitView> {
+  assertBrand(ent)
+  const cap = kitLimit(ent)
   const logo = input.logoUrl ? await logoFromUrl(userId, input.logoUrl) : null
   const id = nanoid(16)
   await db.transaction(async (tx) => {

@@ -60,7 +60,7 @@ async function usageFor(userId: string, presentationId: string, periodStart: Dat
 /** How many pictures this deck / this month may still get, plus what one costs — so the UI can show it BEFORE the user clicks. */
 images.get('/presentations/:id/images/usage', requireAuth, async (c) => {
   const id = c.req.param('id')
-  const access = await resolveAccess(id, c.get('session')!.user.id)
+  const access = await resolveAccess(id, c.get('session')!.user.id, 'view')
   if (!access) return err(c, 404, 'NOT_FOUND', 'Presentation not found')
   const userId = access.ownerId // pictures count against, and are paid by, the deck's owner
   const [p] = await db.select({ id: presentation.id }).from(presentation).where(and(eq(presentation.id, id), eq(presentation.userId, userId), isNull(presentation.deletedAt)))
@@ -130,6 +130,8 @@ images.post('/presentations/:id/images', requireAuth, rateLimit({ windowMs: 60_0
 
   const { rows } = await catalog()
   const imageRows = rows.filter((r) => r.kind === 'image')
+  // no picture model on this server (a free-tier key, local dev and QA: Google's free tier makes no pictures): say so plainly, nothing is charged
+  if (imageRows.length === 0) return err(c, 503, 'AI_NOT_CONFIGURED', 'AI pictures are not available on this server.')
   const allowedRows = imageRows.filter((r) => ent.features.modelTiers.includes(r.accessTier as AccessTier))
   const picked = input.model ? imageRows.find((r) => r.id === input.model) : allowedRows[0]
   if (!picked) return err(c, 400, 'INVALID_MODEL', 'That image model is not available.')

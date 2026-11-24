@@ -7,6 +7,8 @@ import { contrastRatio, hexToHsl, mix, readableOn } from '../color'
 
 type C<L extends SlideContent['layout']> = Extract<SlideContent, { layout: L }>
 const inner = (c: Ctx) => c.W - 2 * c.M
+/** A tall canvas (the vertical 9:16 format): what a landscape slide puts side by side is stacked, and lists run in one column so they fill the height. */
+const portrait = (c: Ctx) => c.H >= c.W * 1.4
 
 /** Text colour for content sitting on a card (tinted cards change the background). */
 const cardText = (c: Ctx, tone: 'primary' | 'accent' | 'secondary' = 'primary') => readableOn(cardBgHex(c, tone), [pal(c).textPrimary, '#FFFFFF', '#111111'], 4.5)
@@ -99,13 +101,16 @@ export function titleBody(c: Ctx, s: C<'title-body'>) {
 }
 
 export function splitImageText(c: Ctx, s: C<'split-image-text'>) {
+  const tall = portrait(c)
   const gap = 64
-  const colW = (inner(c) - gap) / 2
+  const colW = tall ? inner(c) : (inner(c) - gap) / 2
   const y = header(c, s.title, { width: colW })
-  text(c, 'body', s.bullets.map((b) => para(b, 'bullet')), c.M, y, colW, c.bottom - y, 32, { min: 20, byParagraph: true })
+  // a tall slide: the title, then the picture across the width, then the words under it
+  const picH = tall ? Math.round((c.bottom - y) * 0.42) : 0
+  text(c, 'body', s.bullets.map((b) => para(b, 'bullet')), c.M, tall ? y + picH + 40 : y, colW, tall ? c.bottom - (y + picH + 40) : c.bottom - y, 32, { min: 20, byParagraph: true })
   const anim = animationFor(c, 'image')
   const photoStyled = c.style.photo !== 'none' && !!s.imageUrl
-  c.els.push({ type: 'image', id: c.id(), x: c.M + colW + gap, y: c.M, width: colW, height: c.bottom - c.M, rotation: 0, locked: false, zIndex: c.z++, opacity: 1, alt: s.imageAlt, fit: 'cover', clip: photoStyled ? clipFor(c.style.photo) : 'none', prompt: s.imagePrompt, ...(photoStyled ? { radius: Math.min(c.theme.radius, 28) } : {}), ...(s.imageUrl ? { src: s.imageUrl } : {}), ...(s.imageAttribution ? { attribution: s.imageAttribution } : {}), ...(photoStyled ? { animation: { type: 'kenburns' as const, delay: 0, duration: 24000 } } : anim ? { animation: anim } : {}) })
+  c.els.push({ type: 'image', id: c.id(), x: tall ? c.M : c.M + colW + gap, y: tall ? y : c.M, width: colW, height: tall ? picH : c.bottom - c.M, rotation: 0, locked: false, zIndex: c.z++, opacity: 1, alt: s.imageAlt, fit: 'cover', clip: photoStyled ? clipFor(c.style.photo) : 'none', prompt: s.imagePrompt, ...(photoStyled ? { radius: Math.min(c.theme.radius, 28) } : {}), ...(s.imageUrl ? { src: s.imageUrl } : {}), ...(s.imageAttribution ? { attribution: s.imageAttribution } : {}), ...(photoStyled ? { animation: { type: 'kenburns' as const, delay: 0, duration: 24000 } } : anim ? { animation: anim } : {}) })
 }
 
 export function quote(c: Ctx, s: C<'quote'>) {
@@ -119,7 +124,7 @@ export function quote(c: Ctx, s: C<'quote'>) {
 
 export function metrics(c: Ctx, s: C<'metrics'>) {
   const y = header(c, s.title)
-  const g = grid(c, s.metrics.length, y, 360, 40, 440)
+  const g = grid(c, s.metrics.length, y, portrait(c) ? inner(c) : 360, portrait(c) ? 32 : 40, portrait(c) ? 520 : 440)
   s.metrics.forEach((m, i) => {
     const { x, y: cy } = g.pos(i)
     const tone = tones[i % 2]!
@@ -134,7 +139,7 @@ export function metrics(c: Ctx, s: C<'metrics'>) {
 export function steps(c: Ctx, s: C<'process'> | C<'timeline'>) {
   const y = header(c, s.title)
   const n = s.steps.length
-  const g = grid(c, n, s.layout === 'timeline' ? y + 70 : y, 300, 32, 520)
+  const g = grid(c, n, s.layout === 'timeline' && !portrait(c) ? y + 70 : y, portrait(c) ? inner(c) : 300, 32, 520)
   const line = s.layout === 'timeline' && g.rows === 1
   const k = pal(c)
   // one row of cards hugs its text (the tallest step decides); a grid of several rows keeps its even cells
@@ -172,6 +177,7 @@ export function steps(c: Ctx, s: C<'process'> | C<'timeline'>) {
 
 export function comparison(c: Ctx, s: C<'comparison'>) {
   const y = header(c, s.title)
+  if (portrait(c)) return comparisonStacked(c, s, y)
   const gap = 48
   const cw = (inner(c) - gap) / 2
   const tw = cw - 2 * 36 - 8
@@ -188,11 +194,34 @@ export function comparison(c: Ctx, s: C<'comparison'>) {
   })
 }
 
+/** A tall slide: the two sides one above the other, each as wide as the slide, so the bullets are not squeezed into half a column. */
+function comparisonStacked(c: Ctx, s: C<'comparison'>, y: number) {
+  const gap = 32
+  const ch = Math.round((c.bottom - y - gap) / 2)
+  ;([['primary', s.left], ['accent', s.right]] as const).forEach(([tone, col], i) => {
+    const top = y + i * (ch + gap)
+    const pad = card(c, c.M, top, inner(c), ch, { tone })
+    if (c.style.card === 'flat' || c.style.card === 'outline' || c.style.card === 'tint') rect(c, pal(c)[tone], c.M, top, inner(c), 12, { radius: 6 })
+    const headH = 70
+    text(c, 'heading', [para(col.heading)], c.M + pad + 4, top + 32, inner(c) - 2 * pad - 8, headH, 40, { color: 'primary', min: 24, animate: false })
+    text(c, 'body', col.bullets.map((b) => para(b, 'bullet')), c.M + pad + 4, top + 32 + headH + 8, inner(c) - 2 * pad - 8, ch - (32 + headH + 8) - 28, 30, { min: 18, color: cardText(c, tone), byParagraph: true })
+  })
+}
+
 export function chart(c: Ctx, s: C<'chart'>) {
   const y = header(c, s.title)
-  const cw = inner(c) * 0.62
+  const tall = portrait(c)
+  const cw = tall ? inner(c) : inner(c) * 0.62
+  const chartH = tall ? Math.round((c.bottom - y) * 0.62) : c.bottom - y
   const anim = animationFor(c, 'image')
-  c.els.push({ type: 'chart', id: c.id(), x: c.M, y, width: cw, height: c.bottom - y, rotation: 0, locked: false, zIndex: c.z++, opacity: 1, chartType: s.chartType, labels: s.labels, series: s.series, ...(s.unit ? { unit: s.unit } : {}), ...(anim ? { animation: anim } : {}) })
+  c.els.push({ type: 'chart', id: c.id(), x: c.M, y, width: cw, height: chartH, rotation: 0, locked: false, zIndex: c.z++, opacity: 1, chartType: s.chartType, labels: s.labels, series: s.series, ...(s.unit ? { unit: s.unit } : {}), ...(anim ? { animation: anim } : {}) })
+  if (tall) {
+    // the takeaway in a card under the chart, as wide as the slide
+    const top = y + chartH + 32, h = c.bottom - top
+    const pad = card(c, c.M, top, inner(c), h)
+    text(c, 'body', [para(s.takeaway)], c.M + pad, top + 32, inner(c) - 2 * pad, h - 64, 36, { min: 22, color: cardText(c), valign: 'middle' })
+    return
+  }
   const pad = card(c, c.M + cw + 40, y, inner(c) - cw - 40, c.bottom - y)
   text(c, 'body', [para(s.takeaway)], c.M + cw + 40 + pad, y + 36, inner(c) - cw - 40 - 2 * pad, c.bottom - y - 72, 32, { min: 20, color: cardText(c) })
 }
@@ -200,7 +229,21 @@ export function chart(c: Ctx, s: C<'chart'>) {
 export function table(c: Ctx, s: C<'table'>) {
   const y = header(c, s.title)
   const anim = animationFor(c, 'card')
-  c.els.push({ type: 'table', id: c.id(), x: c.M, y, width: inner(c), height: c.bottom - y, rotation: 0, locked: false, zIndex: c.z++, opacity: 1, header: s.header, rows: s.rows, ...(anim ? { animation: anim } : {}) })
+  // A tall slide has far more room than a short table needs: the text grows to use it (as long as the longest cell still sits on a line or two and the rows fit).
+  let fontSize: number | undefined
+  if (portrait(c)) {
+    const rows = s.rows.length + 1
+    const cols = s.header.length
+    const longest = Math.max(1, ...s.header.map((h) => h.length), ...s.rows.flat().map((v) => v.length))
+    const byHeight = (c.bottom - y) / (2.3 * rows)
+    const byWidth = (inner(c) / cols - 40) / (0.56 * Math.min(longest, 22))
+    fontSize = Math.round(Math.max(30, Math.min(54, byHeight, byWidth)))
+    if (fontSize <= 30) fontSize = undefined
+  }
+  // a short table sits a little below the title, in the room, rather than hanging from it with the rest of the page empty
+  const est = Math.round(2.3 * (fontSize ?? 30) * (s.rows.length + 1))
+  const top = portrait(c) && est < c.bottom - y ? y + Math.round((c.bottom - y - est) * 0.25) : y
+  c.els.push({ type: 'table', id: c.id(), x: c.M, y: top, width: inner(c), height: portrait(c) && est < c.bottom - y ? est : c.bottom - y, rotation: 0, locked: false, zIndex: c.z++, opacity: 1, header: s.header, rows: s.rows, ...(fontSize ? { fontSize } : {}), ...(anim ? { animation: anim } : {}) })
 }
 
 // ── new layouts ──────────────────────────────────────────────────────────────
@@ -208,7 +251,7 @@ export function table(c: Ctx, s: C<'table'>) {
 export function agenda(c: Ctx, s: C<'agenda'>) {
   const y0 = header(c, s.title)
   const n = s.items.length
-  const cols = n > 5 ? 2 : 1
+  const cols = n > 5 && !portrait(c) ? 2 : 1
   const per = Math.ceil(n / cols)
   const gap = 28
   const colW = (inner(c) - gap * (cols - 1)) / cols
@@ -292,12 +335,21 @@ export function bigNumber(c: Ctx, s: C<'big-number'>) {
   const k = pal(c)
   const hasTitle = !!s.title
   const y = hasTitle ? header(c, s.title!, { size: 44 }) : M
-  const leftW = s.context.length ? inner(c) * 0.52 : inner(c)
-  const size = s.value.length <= 4 ? 260 : s.value.length <= 7 ? 200 : 150
+  const tall = portrait(c)
+  const leftW = s.context.length && !tall ? inner(c) * 0.52 : inner(c)
+  // a long figure must fit its line: about 0.62 of the size per character
+  const size = Math.min(s.value.length <= 4 ? 260 : s.value.length <= 7 ? 200 : 150, Math.floor(leftW / (Math.max(1, s.value.length) * 0.62)))
   text(c, 'metric', [para(s.value)], M, y, leftW, Math.min(340, (c.bottom - y) * 0.65), size, { color: 'primary', valign: 'bottom', min: 60, weight: 900 })
   rect(c, k.accent, M, y + Math.min(340, (c.bottom - y) * 0.65) + 18, 110, 10, { radius: 5, animate: 'accent' })
   text(c, 'heading', [para(s.label)], M, y + Math.min(340, (c.bottom - y) * 0.65) + 48, leftW, 140, 40, { min: 22, animate: 'body' })
-  if (s.context.length) {
+  if (s.context.length && tall) {
+    // under the number and its label, a card as wide as the slide
+    const top = y + Math.min(340, (c.bottom - y) * 0.65) + 48 + 160, h = c.bottom - top
+    if (h > 160) {
+      const pad = card(c, M, top, inner(c), h, { tone: 'accent' })
+      text(c, 'body', s.context.map((b) => para(b, 'bullet')), M + pad, top + 32, inner(c) - 2 * pad, h - 64, 30, { min: 18, color: cardText(c, 'accent'), byParagraph: true, valign: 'middle' })
+    }
+  } else if (s.context.length) {
     const x = M + leftW + 56
     const w = inner(c) - leftW - 56
     const ch = Math.min(c.bottom - y, H * 0.7)
@@ -354,12 +406,55 @@ export function roadmap(c: Ctx, s: C<'roadmap'>) {
   })
 }
 
+/** Tall slide: each layer is a band with its name as a strip on top and its items below in rows of up to two, instead of a narrow label column beside a row of squeezed chips. */
+function architectureStacked(c: Ctx, s: C<'architecture'>, y: number, k: ReturnType<typeof pal>, noteH: number) {
+  const n = s.layers.length
+  const gap = 24
+  const strip = 76
+  const pad = 20
+  const cg = 16
+  const perRow = 2
+  const rowsOf = (items: number) => Math.ceil(items / perRow)
+  const chipH = 96
+  const need = s.layers.map((l) => strip + pad + rowsOf(l.items.length) * chipH + (rowsOf(l.items.length) - 1) * cg + pad)
+  const room = c.bottom - y - noteH - gap * (n - 1)
+  const total = need.reduce((a, b) => a + b, 0)
+  const grow = total < room ? Math.min(1.35, room / total) : 1
+  const scale = total > room ? room / total : 1
+  let ly = y
+  s.layers.forEach((layer, i) => {
+    const lh = Math.round(need[i]! * grow * scale)
+    const fill = stepFill(c, i, n)
+    rect(c, cardBgHex(c), c.M, ly, inner(c), lh, { radius: c.theme.radius, animate: 'card', ...(c.style.card === 'outline' ? { stroke: mix(k.textSecondary, c.bodyBg, 0.55), strokeWidth: 3 } : {}) })
+    rect(c, fill, c.M, ly, inner(c), strip, { radius: c.theme.radius })
+    text(c, 'heading', [para(layer.name)], c.M + 28, ly, inner(c) - 56, strip, 34, { color: onBg(c, fill), valign: 'middle', min: 18, animate: false })
+    const rows = rowsOf(layer.items.length)
+    const areaH = lh - strip - 2 * pad
+    const ch = Math.min(130, (areaH - cg * (rows - 1)) / rows)
+    const cwid = (inner(c) - 2 * pad - cg * (perRow - 1)) / perRow
+    layer.items.forEach((it, j) => {
+      const row = Math.floor(j / perRow)
+      const inRow = Math.min(perRow, layer.items.length - row * perRow)
+      // a lone item in the last row spans the width instead of leaving a hole
+      const w = inRow === 1 ? inner(c) - 2 * pad : cwid
+      const cx = c.M + pad + (inRow === 1 ? 0 : (j % perRow) * (cwid + cg))
+      const cy = ly + strip + pad + row * (ch + cg)
+      const chipBg = mix(fill, cardBgHex(c), 0.82)
+      rect(c, chipBg, cx, cy, w, ch, { radius: Math.max(8, c.theme.radius * 0.6), animate: 'card' })
+      text(c, 'body', [para(it)], cx + 16, cy, w - 32, ch, 28, { color: readableOn(chipBg, [k.textPrimary, '#FFFFFF', '#111111']), align: 'center', valign: 'middle', min: 14, animate: false, weight: 600 })
+    })
+    ly += lh + gap
+  })
+  if (s.note) text(c, 'caption', [para(s.note)], c.M, c.bottom - noteH + 16, inner(c), noteH - 16, 26, { color: 'textSecondary', min: 16, animate: 'body' })
+}
+
 export function architecture(c: Ctx, s: C<'architecture'>) {
   const y = header(c, s.title)
   const k = pal(c)
   const n = s.layers.length
   const noteH = s.note ? 80 : 0
   const gap = 20
+  if (portrait(c)) return architectureStacked(c, s, y, k, noteH)
   const lh = Math.min(190, (c.bottom - y - noteH - gap * (n - 1)) / n)
   const labelW = Math.min(360, inner(c) * 0.24)
   s.layers.forEach((layer, i) => {
@@ -387,6 +482,7 @@ export function architecture(c: Ctx, s: C<'architecture'>) {
 export function caseStudy(c: Ctx, s: C<'case-study'>) {
   const y = header(c, s.title)
   const k = pal(c)
+  if (portrait(c)) return caseStudyStacked(c, s, y)
   const gap = 32
   const colW = (inner(c) - gap * 2) / 3
   const h = c.bottom - y
@@ -406,6 +502,28 @@ export function caseStudy(c: Ctx, s: C<'case-study'>) {
   text(c, 'caption', [para(s.headline.label)], x3 + 32, y + 180, colW - 64, 70, 26, { color: fg, min: 14, animate: false, weight: 600 })
   rect(c, k.secondary, x3 + 32, y + 262, 80, 8, { radius: 4 })
   text(c, 'body', s.results.map((b) => para(b, 'bullet')), x3 + 32, y + 296, colW - 64, h - 326, 24, { color: fg, min: 14, byParagraph: true })
+}
+
+/** A tall slide: the challenge, the approach and the result one above the other, each as wide as the slide. */
+function caseStudyStacked(c: Ctx, s: C<'case-study'>, y: number) {
+  const k = pal(c)
+  const gap = 28, w = inner(c), total = c.bottom - y - 2 * gap
+  const h1 = Math.round(total * 0.27), h2 = Math.round(total * 0.33), h3 = total - h1 - h2
+  const headC = (tone: 'primary' | 'accent') => readableOn(cardBgHex(c, tone), [k.primary, k.textPrimary, '#FFFFFF', '#111111'], 4.5)
+  const pad1 = card(c, c.M, y, w, h1, { tone: 'primary' })
+  text(c, 'heading', [para(s.client ? `Challenge · ${s.client}` : 'Challenge')], c.M + pad1, y + 24, w - 2 * pad1, 56, 30, { color: headC('primary'), min: 18, animate: false, uppercase: true, tracking: 1 })
+  text(c, 'body', [para(s.challenge)], c.M + pad1, y + 90, w - 2 * pad1, h1 - 110, 28, { min: 16, color: cardText(c) })
+  const y2 = y + h1 + gap
+  const pad2 = card(c, c.M, y2, w, h2, { tone: 'accent' })
+  text(c, 'heading', [para('Approach')], c.M + pad2, y2 + 24, w - 2 * pad2, 56, 30, { color: headC('accent'), min: 18, animate: false, uppercase: true, tracking: 1 })
+  text(c, 'body', s.approach.map((b) => para(b, 'bullet')), c.M + pad2, y2 + 90, w - 2 * pad2, h2 - 110, 28, { min: 16, color: cardText(c, 'accent'), byParagraph: true })
+  const y3 = y2 + h2 + gap
+  rect(c, k.primary, c.M, y3, w, h3, { radius: c.theme.radius, animate: 'card' })
+  const fg = onBg(c, [k.primary])
+  const half = Math.round(w * 0.42)
+  text(c, 'metric', [para(s.headline.value)], c.M + 32, y3 + 24, half - 48, Math.round(h3 * 0.5), 110, { color: fg, valign: 'middle', min: 40, weight: 900 })
+  text(c, 'caption', [para(s.headline.label)], c.M + 32, y3 + 24 + Math.round(h3 * 0.5) + 6, half - 48, Math.round(h3 * 0.3), 26, { color: fg, min: 14, animate: false, weight: 600 })
+  text(c, 'body', s.results.map((b) => para(b, 'bullet')), c.M + half + 16, y3 + 28, w - half - 48, h3 - 56, 28, { color: fg, min: 14, byParagraph: true, valign: 'middle' })
 }
 
 export { decor, deco }

@@ -4,17 +4,14 @@ import { Check, PencilRuler } from '@prompttoppt/ui/icons'
 import { ApiError, isGateError } from '@prompttoppt/api-client'
 import { CATEGORIES, DESIGNS, isDark } from '@prompttoppt/theme'
 import { SlideCanvas } from '@prompttoppt/ui'
-import { CANVAS, type AspectRatio, type Slide, type Theme } from '@prompttoppt/validation'
+import { ASPECT_RATIOS, CANVAS, type AspectRatio, type Slide, type Theme } from '@prompttoppt/validation'
+import { FORMATS } from '@/components/FormatPicker'
 import { Sidebar } from '@/components/Sidebar'
 import { api } from '@/lib/api'
 import { useEntitlements } from '@/lib/entitlements'
 import { makeElement } from '@/editor/commands'
 
-const SIZES: { id: AspectRatio; name: string; hint: string; box: string }[] = [
-  { id: '16:9', name: 'Widescreen', hint: 'Screens and projectors', box: 'w-9 h-5' },
-  { id: '4:3', name: 'Standard', hint: 'Classic slides and print', box: 'w-8 h-6' },
-  { id: '1:1', name: 'Square', hint: 'Social posts', box: 'w-6 h-6' },
-]
+const SIZES = ASPECT_RATIOS.map((id) => ({ id, ...FORMATS[id] }))
 
 /** The look the page opens on: the simple white Classroom design. */
 const DEFAULT_LOOK = 'Classroom'
@@ -89,7 +86,7 @@ export function ScratchPage() {
 
             <section aria-labelledby="size-label">
               <div className="text-sm font-semibold mb-2" id="size-label">Slide size</div>
-              <div role="radiogroup" aria-labelledby="size-label" className="grid grid-cols-3 gap-3">
+              <div role="radiogroup" aria-labelledby="size-label" className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {SIZES.map((s) => {
                   const on = aspect === s.id
                   return (
@@ -137,7 +134,7 @@ export function ScratchPage() {
               <span className="text-xs text-slate-500">{chosen?.name} · {SIZES.find((s) => s.id === aspect)?.name}</span>
             </div>
             <div className="rounded-xl border border-border overflow-hidden bg-slate-100 grid place-items-center py-4 px-3" style={{ minHeight: 200 }}>
-              {preview && chosen && <div className="rounded-md overflow-hidden shadow-md"><SlideCanvas slide={preview} theme={chosen.theme} aspect={aspect} width={aspect === '16:9' ? 320 : aspect === '4:3' ? 270 : 210} /></div>}
+              {preview && chosen && <div className="rounded-md overflow-hidden shadow-md"><SlideCanvas slide={preview} theme={chosen.theme} aspect={aspect} width={aspect === '16:9' ? 320 : aspect === '4:3' ? 270 : aspect === '1:1' ? 210 : 150} /></div>}
             </div>
             <p className="text-xs text-slate-500 mt-3">Your deck opens with one empty slide in this look, ready for you to fill.</p>
             {error && <p role="alert" className="mt-3 text-sm text-red-700">{error}</p>}

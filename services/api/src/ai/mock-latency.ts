@@ -10,7 +10,7 @@ import { ProviderError, type AIProvider, type ImageRequest, type TextRequest, ty
 export interface LatencyProfile { capacity: number; refuseRate: number; scale?: number }
 
 /** measured times in ms: analysis 1.8 s, outline about 4 s on the Flash models every plan now uses (the strong models took up to 10 s), a batch of slides about 2.5 s + 1 s a slide, critic and picture steps a few seconds */
-const BASE_MS: Record<string, number> = { analyze: 1800, directions: 2500, design_pick: 1500, outline: 4000, critic: 4000, picture_query: 1200, picture_verify: 1500, aiedit: 3000, assist_understand: 1500, assist_write: 3500, askdeck: 3000, enrich: 2500 }
+const BASE_MS: Record<string, number> = { analyze: 1800, directions: 2500, design_pick: 1500, morph_match: 1500, outline: 4000, critic: 4000, picture_query: 1200, picture_verify: 1500, aiedit: 3000, assist_understand: 1500, assist_write: 3500, askdeck: 3000, enrich: 2500 }
 
 export function slidesMs(prompt: string): number {
   let n = 4

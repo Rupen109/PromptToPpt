@@ -6,6 +6,7 @@ import { livePlanFor } from '../billing/entitlements.ts'
 import { db } from '../db/index.ts'
 import { featureFlag } from '../db/schema.ts'
 import { env } from '../env.ts'
+import { activeBackgroundProvider } from '../media/bg-providers.ts'
 import { FLAGS, FLAG_KEYS, type FlagKey } from './registry.ts'
 
 export type FlagRow = typeof featureFlag.$inferSelect
@@ -37,6 +38,9 @@ export function bucketOf(userId: string, key: string): number {
   return createHash('sha256').update(`${userId}:${key}`).digest().readUInt32BE(0) % 100
 }
 
+/** Background removal needs a provider that may run in this environment: in production only one in the approved allow-list (media/bg-providers.ts), whatever the flag or the environment says. */
+export const backgroundRemovalBlocked = (nodeEnv: string, selectedProvider: string | undefined) => activeBackgroundProvider(nodeEnv, selectedProvider) === null
+
 /** Pure resolution: state → rollout → plan restriction. */
 export function resolveFlag(key: FlagKey, row: FlagRow | undefined, ctx: FlagCtx = {}): boolean {
   let on = row ? row.enabled : FLAGS[key].default
@@ -50,6 +54,8 @@ export function resolveFlag(key: FlagKey, row: FlagRow | undefined, ctx: FlagCtx
   }
   // the env switch is a hard kill for images, on top of the flag
   if (key === 'image_generation' && !env.IMAGES_ENABLED) return false
+  // background removal cannot be switched on by the flag alone: a provider must be allowed to run here (in production: approved in code)
+  if (key === 'background_removal' && backgroundRemovalBlocked(env.NODE_ENV, env.BACKGROUND_REMOVAL_PROVIDER)) return false
   return on
 }
 
@@ -73,6 +79,7 @@ const MESSAGES: Record<FlagKey, { status: 403 | 503; code: string; message: stri
   assistant_v2: { status: 403, code: 'FEATURE_DISABLED', message: 'The AI assistant is switched off right now.' },
   image_generation: { status: 403, code: 'FEATURE_DISABLED', message: 'Image generation is switched off right now.' },
   exports: { status: 403, code: 'FEATURE_DISABLED', message: 'Exporting is switched off right now.' },
+  background_removal: { status: 403, code: 'FEATURE_DISABLED', message: 'Background removal is not available yet.' },
 }
 
 /**

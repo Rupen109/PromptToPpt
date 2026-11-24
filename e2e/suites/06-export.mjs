@@ -1,13 +1,20 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { unzipSync, strFromU8 } from 'fflate'
-import { API, EDITOR, PASSWORD, RESULTS, expect, launch, suite, uniqueEmail, WEB } from '../lib.mjs'
-import { STATE } from './02-auth.mjs'
+import { API, EDITOR, PASSWORD, RESULTS, expect, launch, signUpAndEnter, suite, uniqueEmail, WEB } from '../lib.mjs'
+import { execSync } from 'node:child_process'
+import { ACCOUNT, STATE } from './02-auth.mjs'
+
+/** the plan this suite tests on, set here (not left to whichever suite ran before: suite 04 leaves the account on Pro, which has no PNG / JPG / HTML) */
+const grant = (plan) => execSync(`pnpm --filter @prompttoppt/api exec tsx --env-file-if-exists=.env scripts/qa-grant-plan.ts ${JSON.parse(readFileSync(ACCOUNT, 'utf8')).email} ${plan}`, { cwd: new URL('../..', import.meta.url).pathname, stdio: 'pipe' })
 
 const OUT = join(RESULTS, 'exports')
+/** the names the Export menu gives the formats */
+const LABEL = { pptx: 'PPTX', pdf: 'PDF', png: 'PNG', jpg: 'JPG', html: 'HTML' }
 
 export default async function () {
   const s = suite('06-export')
+  grant('gold') // every export format
   mkdirSync(OUT, { recursive: true })
   const b = await launch()
   const ctx = await b.newContext({ viewport: { width: 1600, height: 1000 }, storageState: STATE, acceptDownloads: true })
@@ -19,15 +26,15 @@ export default async function () {
   const deck = await create('pitch-launchpad', '16:9', 'QA Export Deck')
   const open = async (id) => { await p.goto(`${EDITOR}/edit/${id}`, { waitUntil: 'networkidle' }); await p.locator('[data-testid="stage"]').waitFor({ timeout: 15000 }); await settle(800) }
   const exportAs = async (fmt, timeout = 120000) => {
-    const [dl] = await Promise.all([p.waitForEvent('download', { timeout }), (async () => { await p.getByRole('button', { name: /^Export/ }).click(); await p.getByRole('menuitem', { name: new RegExp(`^${fmt.toUpperCase()}`) }).click() })()])
+    const [dl] = await Promise.all([p.waitForEvent('download', { timeout }), (async () => { await p.getByRole('button', { name: /^Export/ }).click(); await p.getByRole('menuitem', { name: new RegExp(`^${LABEL[fmt]}`) }).click() })()])
     const path = join(OUT, `${fmt}-${Date.now()}-${dl.suggestedFilename()}`); await dl.saveAs(path); return { path, name: dl.suggestedFilename(), buf: readFileSync(path) }
   }
 
   await open(deck)
-  await s.check('menu: Export lists PPTX, PDF, PNG, JPG, HTML (Pro: no PRO badges)', p, async () => {
+  await s.check('menu: Export lists PPTX, PDF, PNG, JPG, HTML (Gold: every format, no PRO badges)', p, async () => {
     await p.getByRole('button', { name: /^Export/ }).click()
     const items = await p.getByRole('menuitem').allInnerTexts(); expect(items.length === 5, `items: ${items.join(',')}`)
-    expect(!items.some((t) => /PRO/.test(t)), 'Pro user sees PRO badges')
+    expect(!items.some((t) => /PRO/.test(t)), 'a Gold user sees PRO badges')
     await p.keyboard.press('Escape'); await settle(200)
     expect(await p.getByRole('menuitem').count() === 0, 'export menu did not close on Escape')
   })
@@ -86,6 +93,16 @@ export default async function () {
     const hud = () => page.locator('#hud').innerText(); expect((await hud()).startsWith('1 / 11'), await hud())
     await page.keyboard.press('ArrowRight'); expect((await hud()).startsWith('2 / 11'), 'arrow right'); await page.screenshot({ path: join(OUT, 'html-slide2.png') }); await page.close()
   })
+  await s.check('a part of the deck: "This slide" as PowerPoint is a one-slide file named after it; "1-3, 5" as PDF has 4 pages', p, async () => {
+    await p.locator('nav[aria-label="Slides"] [data-testid^="thumb-"]').nth(3).click(); await settle(300)
+    const grab = async (pick) => { const [dl] = await Promise.all([p.waitForEvent('download', { timeout: 120000 }), (async () => { await p.getByRole('button', { name: /^Export/ }).click(); await pick() })()]); const path = join(OUT, `part-${Date.now()}-${dl.suggestedFilename()}`); await dl.saveAs(path); return { name: dl.suggestedFilename(), buf: readFileSync(path) } }
+    const one = await grab(async () => { await p.getByRole('radio', { name: /This slide/ }).check(); await p.getByRole('menuitem', { name: /^PPTX/ }).click() })
+    expect(one.name === 'QA-Export-Deck-slide-4.pptx', `name ${one.name}`)
+    expect(Object.keys(unzipSync(new Uint8Array(one.buf))).filter((k) => /^ppt\/slides\/slide\d+\.xml$/.test(k)).length === 1, 'not one slide')
+    const part = await grab(async () => { await p.getByTestId('export-range').fill('1-3, 5'); await p.getByRole('menuitem', { name: /^PDF/ }).click() })
+    expect(part.name === 'QA-Export-Deck-slides-1-3_5.pdf', `name ${part.name}`)
+    expect((part.buf.toString('latin1').match(/\/Type\s*\/Page[^s]/g) ?? []).length === 4, 'not 4 pages')
+  })
   await s.check('export keeps the latest edits (unsaved changes are flushed first)', p, async () => {
     await open(deck); const marker = `EXPORTED-${Date.now() % 1e5}`
     await p.locator('[data-testid="stage"] [data-testid="el-text"]').first().dblclick(); await p.getByLabel('Edit text').waitFor()
@@ -98,9 +115,7 @@ export default async function () {
   const c2 = await b.newContext({ viewport: { width: 1600, height: 1000 } }); const q = await c2.newPage()
   await s.check('starter: every format is refused by the SERVER (403 UPGRADE_REQUIRED) and the UI shows the upgrade prompt', q, async () => {
     const email = uniqueEmail('starter')
-    await q.goto(WEB + '/signup', { waitUntil: 'networkidle' })
-    await q.locator('input[name=name]').fill('Starter QA'); await q.locator('input[name=email]').fill(email); await q.locator('input[name=password]').fill(PASSWORD)
-    await q.getByRole('button', { name: 'Sign up free' }).click(); await q.waitForURL(/localhost:3001/, { timeout: 20000 })
+    await signUpAndEnter(q, { name: 'Starter QA', email })
     const id = await q.evaluate(async () => { const r = await fetch('http://localhost:4000/api/v1/presentations', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ templateId: 'pitch-launchpad' }) }); return (await r.json()).data.id })
     for (const fmt of ['pptx', 'pdf', 'png', 'jpg', 'html']) {
       const code = await q.evaluate(async ([id, fmt]) => (await fetch('http://localhost:4000/api/v1/exports', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ presentationId: id, format: fmt }) })).status, [id, fmt])

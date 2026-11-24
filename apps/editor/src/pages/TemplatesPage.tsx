@@ -58,7 +58,7 @@ function LazyThumb({ design }: { design: TemplateDesign }) {
 
 function PreviewDialog({ design, locked, onClose }: { design: TemplateDesign; locked: boolean; onClose: () => void }) {
   const navigate = useNavigate()
-  const { upgrade, refresh } = useEntitlements()
+  const { upgrade, refresh, ent } = useEntitlements()
   const ref = useDialog<HTMLDivElement>(true, onClose)
   const [aspect, setAspect] = useState<AspectRatio>('16:9')
   const [i, setI] = useState(0)
@@ -67,6 +67,8 @@ function PreviewDialog({ design, locked, onClose }: { design: TemplateDesign; lo
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const slides = useMemo(() => slidesOf(design, aspect), [design, aspect])
+  // the plan's slide limit: a longer story starts with its first slides (the server keeps the same ones); said here, BEFORE the deck is made, never found out later
+  const keep = Math.min(slides.length, ent?.limits.maxSlides ?? slides.length)
   const motion = design.theme.motion
 
   useEffect(() => {
@@ -116,7 +118,10 @@ function PreviewDialog({ design, locked, onClose }: { design: TemplateDesign; lo
           <div className="flex gap-2 overflow-x-auto py-3" role="tablist" aria-label="Slides in this template">
             {slides.map((s, k) => (
               <button key={s.id + k} role="tab" aria-selected={k === i} aria-label={`Slide ${k + 1}`} onClick={() => setI(k)} className={`shrink-0 w-32 rounded-md overflow-hidden border-2 ${k === i ? 'border-primary' : 'border-transparent'}`}>
-                <FitSlide slide={s} theme={design.theme} aspect={aspect} />
+                <span className="relative block">
+                  <FitSlide slide={s} theme={design.theme} aspect={aspect} />
+                  {k >= keep && <span className="absolute inset-0 grid place-items-center bg-white/75 text-[10px] font-semibold text-slate-700 text-center px-1">Not on your plan</span>}
+                </span>
               </button>
             ))}
           </div>
@@ -128,10 +133,16 @@ function PreviewDialog({ design, locked, onClose }: { design: TemplateDesign; lo
             </label>
             <div className="text-sm font-medium">Shape
               <div className="mt-1 flex gap-1.5" role="group" aria-label="Aspect ratio">
-                {(['16:9', '4:3', '1:1'] as const).map((a) => <button key={a} aria-pressed={aspect === a} onClick={() => setAspect(a)} className={`px-3 py-2 rounded-lg border text-sm ${aspect === a ? 'bg-primary text-white border-primary' : 'border-border'}`}>{a}</button>)}
+                {(['16:9', '4:3', '1:1', '9:16'] as const).map((a) => <button key={a} aria-pressed={aspect === a} onClick={() => setAspect(a)} className={`px-3 py-2 rounded-lg border text-sm ${aspect === a ? 'bg-primary text-white border-primary' : 'border-border'}`}>{a}</button>)}
               </div>
             </div>
-            <p className="sm:col-span-2 text-xs text-slate-600">Starts with a ready-made {slides.length}-slide {CATEGORIES.find((c) => c.id === design.category)?.name.toLowerCase()} story in this design{motion && motion.entrance !== 'none' ? `, animated (${motion.entrance.replace('-', ' ')} entrances, ${motion.transition} transitions)` : ''}. The text and numbers are samples — edit them, or ask the AI assistant to rewrite the whole deck for your topic.</p>
+            {keep < slides.length && (
+              <p role="note" data-testid="template-slide-limit" className="sm:col-span-2 text-xs rounded-lg bg-amber-50 border border-amber-200 text-amber-900 px-3 py-2">
+                This story has {slides.length} slides. Your {ent?.plan.name ?? 'current'} plan holds {keep} slides per presentation, so your deck starts with the first {keep}.{' '}
+                <button type="button" className="font-semibold underline" onClick={() => upgrade.show(`The ${ent?.plan.name ?? 'current'} plan holds ${keep} slides per presentation.`)}>See plans with more slides</button>
+              </p>
+            )}
+            <p className="sm:col-span-2 text-xs text-slate-600">Starts with a ready-made {keep}-slide {CATEGORIES.find((c) => c.id === design.category)?.name.toLowerCase()} story in this design{motion && motion.entrance !== 'none' ? `, animated (${motion.entrance.replace('-', ' ')} entrances, ${motion.transition} transitions)` : ''}. The text and numbers are samples — edit them, or ask the AI assistant to rewrite the whole deck for your topic.</p>
           </div>
           <div className="flex flex-col items-stretch gap-2">
             {error && <p role="alert" className="text-sm text-red-700">{error}</p>}

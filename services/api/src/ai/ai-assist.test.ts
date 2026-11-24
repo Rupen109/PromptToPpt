@@ -412,6 +412,14 @@ describe('compileAssist (the trust boundary between model output and the deck)',
     const t = { layout: 'title-body', title: 'T', bullets: ['a', 'b'], speakerNotes: '', sources: [] } as SlideContent
     expect(keepShape(t, { layout: 'title-body', title: 'T2', bullets: ['a', 'b', 'c', 'd'], speakerNotes: '', sources: [] } as SlideContent)).toMatchObject({ bullets: ['a', 'b', 'c', 'd'] })
   })
+  it('a list the request\'s goal is about ("5 points in the timeline") may change length; every other list still keeps its own', () => {
+    const prev = { layout: 'process', title: 'How it works', steps: [{ label: 'One', detail: 'a' }, { label: 'Two', detail: 'b' }, { label: 'Three', detail: 'c' }], speakerNotes: '', sources: [] } as unknown as SlideContent
+    const model = { ...prev, steps: [...(prev as unknown as { steps: object[] }).steps, { label: 'Four', detail: 'd' }] } as unknown as SlideContent
+    expect((keepShape(prev, model, new Set(['steps'])) as unknown as { steps: unknown[] }).steps).toHaveLength(4)
+    expect((keepShape(prev, model, new Set(['left.bullets'])) as unknown as { steps: unknown[] }).steps).toHaveLength(3) // permission for another list does not leak
+    const cmp = { layout: 'comparison', title: 'T', left: { heading: 'L', bullets: ['a'] }, right: { heading: 'R', bullets: ['b'] }, speakerNotes: '', sources: [] } as unknown as SlideContent
+    expect(keepShape(cmp, { ...cmp, left: { heading: 'L', bullets: ['a', 'a2'] }, right: { heading: 'R', bullets: ['b', 'b2'] } } as unknown as SlideContent, new Set(['left.bullets']))).toMatchObject({ left: { bullets: ['a', 'a2'] }, right: { bullets: ['b', 'b2'] } }) // (bullets are free lists anyway)
+  })
 
   it('the recent conversation reaches the model as data, in order, and is absent when there is none', () => {
     const d = withSlides([{ id: 's1', layoutId: 'title-body', locked: false, manual: false, content }])

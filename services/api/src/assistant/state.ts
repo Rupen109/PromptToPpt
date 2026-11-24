@@ -10,6 +10,8 @@ export interface SlideRow {
   n: number
   id: string
   layout: string
+  /** a copy of a slide of the person's own uploaded template */
+  fromFile: boolean
   title: string
   /** what is behind the slide: a hex colour, "picture", "gradient" or "theme" (the deck's own background) */
   background: string
@@ -38,6 +40,8 @@ export interface DeckState {
   hasSources: boolean
   /** what the assistant changed earlier in this session, newest first (needed by undo) */
   recent: RecentChange[]
+  /** what the person has selected in the editor (slides and elements): the objects "this" and "it" mean */
+  selection: { slideIds: string[]; elementIds: string[] }
 }
 
 export interface DeckLook {
@@ -66,9 +70,9 @@ export function deckLook(doc: Presentation): DeckLook {
   }
 }
 
-export function buildState(doc: Presentation, o: { activeSlideId?: string | undefined; onlySlideId?: string | undefined; recent?: RecentChange[] | undefined; hasSources?: boolean | undefined }): DeckState {
+export function buildState(doc: Presentation, o: { activeSlideId?: string | undefined; onlySlideId?: string | undefined; recent?: RecentChange[] | undefined; hasSources?: boolean | undefined; selection?: { slideIds?: string[] | undefined; elementIds?: string[] | undefined } | undefined }): DeckState {
   const slides = doc.slides.map((s, i): SlideRow => ({
-    n: i + 1, id: s.id, layout: s.layoutId, title: slideTitle(s.content),
+    n: i + 1, id: s.id, layout: s.layoutId, fromFile: !!s.fromFile, title: slideTitle(s.content),
     background: s.background?.type === 'color' ? s.background.value.toUpperCase() : s.background?.type === 'image' ? 'picture' : s.background?.type === 'gradient' ? 'gradient' : 'theme',
     locked: s.locked, handEdited: !!s.manual,
     pictures: Array.isArray(s.elements) ? s.elements.filter((e) => e.type === 'image' && !e.decorative).length : 0,
@@ -90,6 +94,7 @@ export function buildState(doc: Presentation, o: { activeSlideId?: string | unde
     onlySlideId: exists(o.onlySlideId) ? o.onlySlideId! : null,
     hasSources: !!o.hasSources || doc.sources.length > 0,
     recent,
+    selection: { slideIds: (o.selection?.slideIds ?? []).filter(exists), elementIds: (o.selection?.elementIds ?? []).slice(0, 200) },
   }
 }
 

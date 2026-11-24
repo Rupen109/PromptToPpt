@@ -122,7 +122,7 @@ SAMPLE.forEach((s, i) => {
 
 export const MKT_MOODBOARD = authored(
   {
-    id: 'mkt-moodboard', category: 'marketing', name: 'Brand Moodboard', tagline: 'A brand book told as a photo shuffle',
+    id: 'mkt-moodboard', category: 'marketing', fillPictures: true, name: 'Brand Moodboard', tagline: 'A brand book told as a photo shuffle',
     description: 'A warm, editorial brand-identity deck where nine photographs shuffle on a loose collage: one tile zooms to full-bleed for the brand story, the tiles line up as a film strip, become a three by three photography grid and three application tiles, while colour swatches regroup into a palette and then the dots of a type scale.',
     audience: 'The Brand Moodboard template suits brand identity and brand guidelines presentations, rebrand pitches, moodboards and visual direction decks, lookbooks, creative portfolios and agency credentials for fashion, lifestyle, interiors, food and craft brands.',
     topics: ['brand identity', 'brand guidelines', 'brand book', 'moodboard', 'mood board', 'brand strategy', 'lookbook', 'creative portfolio', 'rebrand', 'visual identity', 'fashion', 'lifestyle', 'photography', 'interiors', 'candles', 'ceramics', 'coffee', 'packaging', 'tone of voice', 'colour palette', 'typography', 'creative brief', 'marketing', 'branding agency', 'art direction'],

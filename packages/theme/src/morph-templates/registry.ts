@@ -21,12 +21,18 @@ import { EDU_CHALK } from './templates/edu-chalk'
 import { EDU_LAB } from './templates/edu-lab'
 import { EDU_ATLAS } from './templates/edu-atlas'
 import { SPACE_TEMPLATE } from './templates/space'
+import { BIZ_SALES } from './templates/biz-sales'
+import { BIZ_CASESTUDY } from './templates/biz-casestudy'
+import { BIZ_TEAM } from './templates/biz-team'
+import { EDU_HEALTH } from './templates/edu-health'
+import { BIZ_FINANCE } from './templates/biz-finance'
 import { registerMorphTemplates } from './lookup'
 import type { MorphTemplate } from './types'
 
 /** Every Morph template, in the order they are shown. More are added here. */
 export const MORPH_TEMPLATES: MorphTemplate[] = [SPACE_TEMPLATE, LAUNCH_TEMPLATE, EDU_TEMPLATE, COOL_TEMPLATE, BIZ_TEMPLATE, PITCH_ORBIT,
   BIZ_MATRIX, BIZ_ROADMAP, BIZ_ANNUAL, PITCH_MARKET, PITCH_CARDS, MKT_BILLBOARD, MKT_FEED, MKT_MOODBOARD, LAUNCH_UNBOX, LAUNCH_SPOTLIGHT, LAUNCH_COUNTDOWN, TECH_NEURAL, TECH_DASHBOARD, TECH_CIRCUIT, EDU_CHALK, EDU_LAB, EDU_ATLAS,
+  BIZ_SALES, BIZ_CASESTUDY, BIZ_TEAM, EDU_HEALTH, BIZ_FINANCE,
 ]
 export const getMorphTemplate = (id: string): MorphTemplate | undefined => MORPH_TEMPLATES.find((t) => t.id === id)
 

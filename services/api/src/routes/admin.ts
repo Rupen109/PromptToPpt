@@ -3,10 +3,12 @@ import { zValidator } from '@hono/zod-validator'
 import { nanoid } from 'nanoid'
 import { ipOf } from '../lib/audit.ts'
 import { z } from 'zod'
+import { honestyReport } from '../assistant/honesty-report.ts'
 import { bucketSchema, breakdown, dimensionSchema, filtersSchema, summary, timeseries } from '../admin/usage.ts'
 import { salesRoutes } from '../admin/routes/sales.ts'
 import { subscriptionsRoutes } from '../admin/routes/subscriptions.ts'
 import { imagesRoutes } from '../admin/routes/images.ts'
+import { morphRoutes } from '../admin/routes/morph.ts'
 import { marginRoutes } from '../admin/routes/margin.ts'
 import { presentationsRoutes } from '../admin/routes/presentations.ts'
 import { exportsRoutes } from '../admin/routes/exports.ts'
@@ -57,6 +59,7 @@ admin.route('/support', supportRoutes)
 admin.route('/sales', salesRoutes)
 admin.route('/subscriptions', subscriptionsRoutes)
 admin.route('/images', imagesRoutes)
+admin.route('/morph', morphRoutes)
 admin.route('/margin', marginRoutes)
 admin.route('/presentations', presentationsRoutes)
 admin.route('/exports', exportsRoutes)
@@ -68,4 +71,7 @@ admin.route('/flags', flagsRoutes)
 admin.route('/cloud', cloudRoutes)
 
 /** Display settings for the owner UI: provider costs are stored in USD; the dashboard shows INR by default using this rate. */
+/** claimed versus verified, per kind of change the assistant promised (settlement records of the last N days) */
+admin.get('/ai-honesty', zValidator('query', z.object({ days: z.coerce.number().int().min(1).max(90).default(7) })), async (c) => c.json({ success: true, data: await honestyReport(c.req.valid('query').days) }))
+
 admin.get('/config', (c) => c.json({ success: true, data: { inrPerUsd: env.INR_PER_USD, defaultCurrency: 'INR' } }))

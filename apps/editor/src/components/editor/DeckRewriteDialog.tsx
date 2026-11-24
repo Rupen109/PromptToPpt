@@ -20,7 +20,7 @@ const STAGES: Record<string, string> = { queued: 'Waiting for a free slot…', a
  * INTO THIS DECK (same design, new story, pictures) and the editor loads the result. The old version stays in Version history.
  * `autoBrief` starts immediately (used when the AI assistant decided the whole deck must be rewritten).
  */
-export function DeckRewriteDialog({ presentationId, autoBrief, picturesOnly, slideCount, onDone, onClose }: { presentationId: string; autoBrief?: string | undefined; picturesOnly?: boolean | undefined; slideCount: number; onDone: (doc: Presentation, revision: number) => void; onClose: () => void }) {
+export function DeckRewriteDialog({ presentationId, autoBrief, picturesOnly, slideCount, onDone, onClose }: { presentationId: string; autoBrief?: string | undefined; picturesOnly?: boolean | undefined; slideCount: number; onDone: (doc: Presentation, revision: number, /** a pictures-only refresh: slides that kept their own picture */ picturesKept: number[]) => void; onClose: () => void }) {
   const { upgrade, refresh } = useEntitlements()
   const [brief, setBrief] = useState(autoBrief ?? '')
   const [job, setJob] = useState<JobView | null>(null)
@@ -67,7 +67,7 @@ export function DeckRewriteDialog({ presentationId, autoBrief, picturesOnly, sli
           const p = await api.getPresentation(presentationId)
           if (stop) return
           void refresh()
-          onDone(p.document, p.revision)
+          onDone(p.document, p.revision, j.quality?.picturesKept ?? [])
         } else if (j.status === 'failed' || j.status === 'cancelled') {
           setError(j.error ?? 'It was cancelled. You were not charged.'); setPhase('error')
         }

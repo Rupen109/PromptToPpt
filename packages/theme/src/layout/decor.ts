@@ -63,7 +63,7 @@ export function decor(c: Ctx, dark: boolean, kind = c.style.decor, tone?: string
     case 'blueprint': {
       // fine engineering grid with corner ticks
       const line = dark ? k.onPrimary : k.primary
-      const step = Math.round(W / 24)
+      const step = Math.round(Math.max(W, H) / 24) // by the longer side, so a tall slide does not get twice the lines
       for (let x = step; x < W; x += step) deco(c, line, x, 0, 1, H, { opacity: (x / step) % 4 === 0 ? 0.18 : 0.08 })
       for (let y = step; y < H; y += step) deco(c, line, 0, y, W, 1, { opacity: (y / step) % 4 === 0 ? 0.18 : 0.08 })
       for (const [x, y] of [[M * 0.5, M * 0.5], [W - M * 1.5, M * 0.5], [M * 0.5, H - M * 1.5], [W - M * 1.5, H - M * 1.5]] as const) { deco(c, b, x, y + M * 0.5 - 1, M, 3, { opacity: 0.6 }); deco(c, b, x + M * 0.5 - 1, y, 3, M, { opacity: 0.6 }) }

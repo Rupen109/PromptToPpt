@@ -137,6 +137,15 @@ describe('groups, rotation and flips', () => {
   })
 })
 
+describe('dashed and dotted lines from a PowerPoint template', () => {
+  it('stay dashed / dotted (they came in solid); a dash-dot line comes in dashed and is flagged', async () => {
+    const t = await imp(miniPptx({ size: wide, slides: [cxn(2, b(100, 100, 200, 0), '000000', 25400, { dash: 'dash' }) + cxn(3, b(100, 300, 200, 0), '000000', 25400, { dash: 'sysDot' }) + cxn(4, b(100, 500, 200, 0), '000000', 25400, { dash: 'lgDashDot' }) + cxn(5, b(400, 40, 200, 0), '000000', 25400)] }))
+    const lines = els(t).filter((e) => e.type === 'shape') as { strokeDash?: string }[]
+    expect(lines.map((l) => l.strokeDash ?? 'solid')).toEqual(['dash', 'dot', 'dash', 'solid'])
+    expect(JSON.stringify(t)).toMatch(/Dash-dot lines are drawn as plain dashes/)
+  })
+})
+
 describe('shapes', () => {
   it('maps preset shapes, rounded corners, arrows and custom outlines into the editor shape model', () => {
     expect(presetGeometry('roundRect', { adj: 50000 }, 200, 100)).toEqual({ kind: 'basic', shape: 'rect', radius: 50 })
@@ -298,6 +307,37 @@ describe('tables, charts, SmartArt', () => {
     const t = await imp(miniPptx({ size: wide, slides: [wideTbl] }))
     expect((els(t)[0] as { header: string[] }).header).toHaveLength(8)
     expect(t.slides[0]!.warnings.join(' ')).toMatch(/cut to 8/)
+  })
+  it('keeps merged cells (gridSpan / rowSpan): the areas round-trip through our own PowerPoint file; a header cell merged into the body is kept apart, with a note', async () => {
+    const { buildPptx } = await import('../export/pptx.ts')
+    const { elementSchema } = await import('@prompttoppt/validation')
+    const merges = [{ row: -1, column: 1, rows: 1, columns: 2 }, { row: 0, column: 0, rows: 2, columns: 1 }, { row: 2, column: 1, rows: 1, columns: 2 }]
+    const aligns = [{ row: 0, column: 2, h: 'right', v: 'bottom' }, { row: 1, column: 1, h: 'center' }]
+    const table = elementSchema.parse({ type: 'table', id: 't', x: 100, y: 100, width: 1400, height: 500, header: ['Plan', 'H1', ''], rows: [['Basic', '1', '2'], ['', '3', '4'], ['Team', 'All', '']], merges, aligns })
+    const deck = { schemaVersion: 1, id: 'p', title: 'T', aspectRatio: '16:9', language: 'en', theme: (await import('@prompttoppt/theme')).getTheme('cobalt'), sources: [], slides: [{ id: 's', layout: 'blank', elements: [table] }] } as never
+    const t = await imp(new Uint8Array(await buildPptx(deck, async () => null)))
+    const back = els(t).find((e) => e.type === 'table') as { merges?: unknown; header: string[] }
+    expect(back.merges).toEqual(merges)
+    // cell alignment comes back too
+    const al = (back as { aligns?: { row: number; column: number; h?: string; v?: string }[] }).aligns ?? []
+    expect(al.find((a) => a.row === 0 && a.column === 2)).toMatchObject({ h: 'right', v: 'bottom' })
+    expect(al.find((a) => a.row === 1 && a.column === 1)).toMatchObject({ h: 'center' })
+    expect(back.header).toEqual(['Plan', 'H1', ''])
+    const down = tbl.replace('<a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang="en-US"/><a:t>Plan</a:t>', '<a:tc rowSpan="2"><a:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang="en-US"/><a:t>Plan</a:t>')
+    const t2 = await imp(miniPptx({ size: wide, slides: [down] }))
+    expect((els(t2)[0] as { merges?: unknown }).merges).toBeUndefined()
+    expect(t2.slides[0]!.warnings.join(' ')).toMatch(/header cell merged with the rows below/)
+  })
+  it('area and scatter charts round-trip through our own PowerPoint file: their type, the scatter\'s x values and its trend line come back', async () => {
+    const { buildPptx } = await import('../export/pptx.ts')
+    const { elementSchema } = await import('@prompttoppt/validation')
+    const ch = (id: string, y: number, o: object) => elementSchema.parse({ type: 'chart', id, x: 100, y, width: 900, height: 300, series: [{ name: 'Sales', values: [10, 20, 30] }], ...o })
+    const deck = { schemaVersion: 1, id: 'p', title: 'T', aspectRatio: '16:9', language: 'en', theme: (await import('@prompttoppt/theme')).getTheme('cobalt'), sources: [], slides: [{ id: 's', layout: 'blank', elements: [ch('a', 100, { chartType: 'area', labels: ['Q1', 'Q2', 'Q3'] }), ch('b', 500, { chartType: 'scatter', labels: ['1.5', '3', '7'], trendline: true })] }] } as never
+    const t = await imp(new Uint8Array(await buildPptx(deck, async () => null)))
+    const charts = els(t).filter((e) => e.type === 'chart') as { chartType: string; labels: string[]; trendline?: boolean }[]
+    expect(charts.map((c) => c.chartType).sort()).toEqual(['area', 'scatter'])
+    const sc = charts.find((c) => c.chartType === 'scatter')!
+    expect(sc.labels).toEqual(['1.5', '3', '7']); expect(sc.trendline).toBe(true)
   })
   it('imports a bar chart as a chart element', async () => {
     const chart = `<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart><c:plotArea><c:barChart><c:ser><c:tx><c:strRef><c:strCache><c:pt idx="0"><c:v>Revenue</c:v></c:pt></c:strCache></c:strRef></c:tx><c:cat><c:strRef><c:strCache><c:pt idx="0"><c:v>Q1</c:v></c:pt><c:pt idx="1"><c:v>Q2</c:v></c:pt></c:strCache></c:strRef></c:cat><c:val><c:numRef><c:numCache><c:pt idx="0"><c:v>10</c:v></c:pt><c:pt idx="1"><c:v>25</c:v></c:pt></c:numCache></c:numRef></c:val></c:ser></c:barChart></c:plotArea></c:chart></c:chartSpace>`

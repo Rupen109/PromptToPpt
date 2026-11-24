@@ -1,4 +1,4 @@
-import { EDITOR, PASSWORD, WEB, expect, launch, suite, uniqueEmail } from '../lib.mjs'
+import { EDITOR, PASSWORD, WEB, expect, launch, signUpAndEnter, suite, uniqueEmail } from '../lib.mjs'
 
 export default async function () {
   const s = suite('07-billing')
@@ -9,9 +9,7 @@ export default async function () {
   p.on('dialog', (d) => void d.dismiss())
 
   await s.check('new Starter user: billing page shows plan, credits, empty payment history, upgrade button', p, async () => {
-    await p.goto(WEB + '/signup', { waitUntil: 'networkidle' })
-    await p.locator('input[name=name]').fill('Billing QA'); await p.locator('input[name=email]').fill(uniqueEmail('bill')); await p.locator('input[name=password]').fill(PASSWORD)
-    await p.getByRole('button', { name: 'Sign up free' }).click(); await p.waitForURL(/localhost:3001/, { timeout: 20000 })
+    await signUpAndEnter(p, { name: 'Billing QA', email: uniqueEmail('bill') })
     await p.goto(EDITOR + '/billing', { waitUntil: 'networkidle' })
     const cur = p.getByLabel('Current plan'); await cur.waitFor({ timeout: 8000 })
     expect(/Starter/.test(await cur.innerText()), 'not Starter'); expect(await p.getByLabel('Payment history').isVisible(), 'history missing')

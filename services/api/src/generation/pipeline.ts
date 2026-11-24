@@ -1,9 +1,10 @@
 import { and, eq, ne, sql } from 'drizzle-orm'
+import { existingPicture, keepExistingPictures } from './keep-pictures.ts'
 import { nanoid } from 'nanoid'
 import { applyValidation, composeDeck, composeSlide, designById, pickDesign, type Photo } from '@prompttoppt/theme'
 import { getMorphTemplate, templateTheme } from '@prompttoppt/theme/morph-templates'
 import {
-  SCHEMA_VERSION, SOURCE_TYPES, accessTierSchema, deckLanguage, directionSchema, morphPlanSchema, outlineSchema, promptAnalysisSchema, slideContentSchema,
+  SCHEMA_VERSION, SOURCE_TYPES, accessTierSchema, aspectRatioSchema, deckLanguage, directionSchema, morphPlanSchema, outlineSchema, promptAnalysisSchema, slideContentSchema,
   presentationSchema, type Direction, type MorphPlan, type Outline, type Presentation, type PromptAnalysis, type Slide, type SlideContent,
 } from '@prompttoppt/validation'
 import { z } from 'zod'
@@ -14,6 +15,7 @@ import { INSTRUCTIONS_VERSION } from '../ai/instructions/index.ts'
 import { openPictureSession, type PictureRequest, type PictureSession } from '../pictures/pick.ts'
 import { themeForAnalysis } from './theming.ts'
 import { getKit } from '../brand/kits.ts'
+import { getBrandTheme } from '../brand/themes.ts'
 import { remixPrompt } from '../remix/prompt.ts'
 import { themeWithKit } from '../brand/apply.ts'
 import { allowedNumbers, checkContents, repairRequests, stripInventedNumbers, textOf, type QualityIssue } from './quality.ts'
@@ -22,13 +24,13 @@ import { generationJob, presentation, presentationVersion, type JobStatus } from
 import { env } from '../env.ts'
 import { publishRevision } from '../live/bus.ts'
 import { condense, hasNumbers, resolveSlideCount, sanitizeContent, sanitizeOutline } from './policy.ts'
-import { loadSources } from './sources.ts'
+import { loadSources, productPictures } from './sources.ts'
 import { chooseDesign } from './design-pick.ts'
 import { DeckWriteCancelled, placeholderSlide, stableElementIds, writeDeck } from './progress.ts'
 import { morphContents, sanitizeMorphPlan } from './morph-plan.ts'
 import { runFileTemplateDeck } from './from-template.ts'
 import type { UploadedFill } from './uploaded-template.ts'
-import { sanitizeChrome, sanitizeFill, stopgap, templateChrome, templateFillSchema, templateSlots, tooLong, type TemplateFill } from './template-deck.ts'
+import { blankLeftovers, carryAcrossScenes, productSwap, sanitizeChrome, sanitizeFill, stopgap, templateChrome, templateFillSchema, templateSlots, tooLong, type TemplateFill } from './template-deck.ts'
 
 const BATCH = 4
 /** the first batch is small so real text lands within seconds; the rest run in bigger batches side by side */
@@ -55,11 +57,14 @@ const optionsSchema = z.object({
   premiumTemplates: z.boolean().default(false),
   /** remix THIS deck of the user's into a new deck: its theme (look) is kept exactly; its text arrives as a source */
   remixOf: z.string().max(64).optional(),
+  /** remix the attached PowerPoint file (its title): its slide text arrives as a source, the look is a fresh design; the model stays inside its content */
+  remixFile: z.string().max(200).optional(),
   /** build a NEW deck in this brand kit's colours, fonts and logo (validated against the user + plan when the job was created) */
   brandKitId: z.string().max(32).optional(),
+  brandThemeId: z.string().max(32).optional(),
   /** rewrite THIS existing deck (keeps its id, title history and versions) instead of creating a new one */
   targetPresentationId: z.string().optional(),
-  aspectRatio: z.enum(['16:9', '4:3', '1:1']).default('16:9'),
+  aspectRatio: aspectRatioSchema.default('16:9'),
   /** keep every word of the existing deck and only replace its pictures (assistant "fix the pictures") */
   picturesOnly: z.boolean().default(false),
   sourceIds: z.array(z.string()).max(10).default([]),
@@ -69,6 +74,8 @@ const optionsSchema = z.object({
   morph: z.boolean().default(false),
   /** build the deck from this Morph template (its layout, pictures and movement; the model writes only the words). Implies `morph`. */
   morphTemplate: z.string().max(40).optional(),
+  /** the scenes of that template this deck shows (decided when the job started: the ones the request can fill, at the length asked for) */
+  morphScenes: z.array(z.string().max(8)).max(40).optional(),
   /** build the deck in the look of this uploaded design of the person's (checked against the person and the plan when the job was created) */
   fromTemplateId: z.string().max(40).optional(),
   templateMode: z.enum(['ai', 'manual']).default('ai'),
@@ -150,7 +157,7 @@ async function generate(jobId: string, hold: { pictures?: PictureSession }): Pro
     const [t] = await db.select({ doc: presentationVersion.document }).from(presentation).innerJoin(presentationVersion, and(eq(presentationVersion.presentationId, presentation.id), eq(presentationVersion.version, presentation.latestVersion))).where(and(eq(presentation.id, opts.remixOf), eq(presentation.userId, job.userId)))
     remixDoc = t?.doc as Presentation | undefined
   }
-  const prompt = remixDoc ? remixPrompt(job.prompt, remixDoc.title, remixDoc.language, opts.slideCount) : job.prompt
+  let prompt = remixDoc ? remixPrompt(job.prompt, remixDoc.title, remixDoc.language, opts.slideCount) : job.prompt
 
   // The existing deck (rewrite / pictures-only jobs): its theme is kept EXACTLY, and for pictures-only its content is kept word for word.
   let existingDoc: Presentation | undefined
@@ -163,6 +170,8 @@ async function generate(jobId: string, hold: { pictures?: PictureSession }): Pro
   let outline: Outline
   let contents: SlideContent[]
   const sources = await loadSources(job.userId, opts.sourceIds)
+  // a remix of a PowerPoint file: the file's slide text is the content; its own first words tell the model which language to write in
+  if (!remixDoc && opts.remixFile) prompt = remixPrompt(job.prompt, opts.remixFile, undefined, opts.slideCount, (sources[0]?.text ?? '').replace(/\[[^\]\n]{0,40}\]\s*/g, ''))
   // a remix cites nothing: its working source is temporary, so no slide may point to it (the citations would dangle)
   const knownIds = new Set(remixDoc ? [] : sources.map((s) => s.id))
   const userTexts = [prompt, ...sources.map((s) => s.text)]
@@ -184,6 +193,8 @@ async function generate(jobId: string, hold: { pictures?: PictureSession }): Pro
     if (remixDoc?.theme) design = { ...((remixDoc.theme.templateId ? designById(remixDoc.theme.templateId) : undefined) ?? design), theme: remixDoc.theme } // a remix keeps the original's look exactly (colours, fonts, brand logo)
     else if (!existingDoc?.theme) design = { ...design, theme: themeForAnalysis(design.theme, analysis, design.look) }
     // a NEW deck can be built in the user's brand kit (its own colours, fonts and logo replace the topic palette); a rewrite keeps the deck's look
+    // a NEW deck in one of the person's brand themes: that design, mode and kit exactly (worked out from the kit as it is now), not the topic's colours
+    if (!existingDoc?.theme && !remixDoc?.theme && opts.brandThemeId) { const t = await getBrandTheme(job.userId, opts.brandThemeId); const d = t ? designById(t.designId) : undefined; if (t && d) return { ...d, theme: t.theme } }
     if (!existingDoc?.theme && !remixDoc?.theme && opts.brandKitId) { const kit = await getKit(job.userId, opts.brandKitId); if (kit) design = { ...design, theme: themeWithKit(design.theme, kit) } }
     return design
   }
@@ -222,7 +233,14 @@ async function generate(jobId: string, hold: { pictures?: PictureSession }): Pro
     analysis = cp.analysis
     const tpl = opts.morphTemplate ? getMorphTemplate(opts.morphTemplate) : undefined
     if (opts.morphTemplate && !tpl) throw new Error(`unknown Morph template "${opts.morphTemplate}"`)
-    const slideCount = tpl ? tpl.scenes.length : resolveSlideCount(analysis, opts.direction as Direction | undefined, opts.slideCount)
+    // a template deck shows the scenes chosen when the job started (a list in the template's own order that keeps its first and last scene); anything else means all of them
+    const sceneIds = tpl ? ((): string[] => {
+      const all = tpl.scenes.map((s) => s.id)
+      const w = opts.morphScenes
+      const ok = !!w && w.length >= 2 && w.every((id, i) => all.includes(id) && (i === 0 || all.indexOf(id) > all.indexOf(w[i - 1]!))) && w[0] === all[0] && w.at(-1) === all.at(-1)
+      return ok ? w : all
+    })() : []
+    const slideCount = tpl ? sceneIds.length : resolveSlideCount(analysis, opts.direction as Direction | undefined, opts.slideCount)
 
     // The deck is already on screen. Its slide ids are fixed now, so every later write (placeholders, batches, the finished deck) addresses the same slides.
     if (deckId) { while (slideIds.length < slideCount) slideIds.push(nanoid(12)); await saveCheckpoint(jobId, cp) }
@@ -240,7 +258,7 @@ async function generate(jobId: string, hold: { pictures?: PictureSession }): Pro
       await stage(jobId, 'outlining', 15)
       const theme = templateTheme(tpl)
       if (cp.marks?.['skeleton'] === undefined) { current = skeleton(theme, analysis.topic, []); await write(current); mark('skeleton'); await saveCheckpoint(jobId, cp) }
-      const scenes = templateSlots(tpl)
+      const scenes = templateSlots(tpl, sceneIds)
       const tplAbout = `${tpl.tagline}. ${tpl.description}`.slice(0, 400)
       const chrome = templateChrome(tpl)
       const base = { analysis, templateName: tpl.name, templateAbout: tplAbout, scenes, chrome, figuresAllowed: allowNumeric, quotesAllowed: hasQuotation(userTexts), sources, userPrompt: prompt }
@@ -263,9 +281,12 @@ async function generate(jobId: string, hold: { pictures?: PictureSession }): Pro
       const { fields, missing } = sanitizeFill(fill, scenes, rules)
       const branding = sanitizeChrome(fill, chrome, rules)
       const title = (fill.title.trim() || analysis.topic).slice(0, 100)
-      for (const m of missing) { const slot = scenes.find((x) => x.scene === m.scene)?.slots.find((x) => x.id === m.id); if (slot) fields[m.scene]![m.id] = stopgap(slot, title) }
+      for (const m of missing) { const slot = scenes.find((x) => x.scene === m.scene)?.slots.find((x) => x.id === m.id); if (slot) fields[m.scene]![m.id] = slot.spec ? '' : stopgap(slot, title) }
+      carryAcrossScenes(tpl, scenes.map((x) => x.scene), fields) // the same object says the same thing on every scene
+      blankLeftovers(tpl, scenes.map((x) => x.scene), fields, branding) // whatever is still only the sample deck's words is left out
+      const swap = productSwap(tpl, await productPictures(job.userId, opts.sourceIds)) // the person's own product picture, when they attached one
       const contents: SlideContent[] = scenes.map((sc) => ({
-        layout: 'morph-template', template: tpl.id, scene: sc.scene, fields: { ...branding, ...(fields[sc.scene] ?? {}) }, images: {},
+        layout: 'morph-template', template: tpl.id, scene: sc.scene, fields: { ...branding, ...(fields[sc.scene] ?? {}) }, images: swap.images[sc.scene] ?? {}, ...(swap.swapped ? { swapped: true } : {}),
         speakerNotes: (fill.scenes.find((x) => x.scene === sc.scene)?.notes ?? '').slice(0, 1500), sources: [],
       }) as SlideContent)
       const composed = contents.map((c) => composeSlide(c, theme, opts.aspectRatio, () => nanoid(10), { assetBase: env.WEB_URL }))
@@ -419,6 +440,9 @@ async function generate(jobId: string, hold: { pictures?: PictureSession }): Pro
     cp.report = { ...(cp.report as object), pictures: { slots: 1, placed: hero ? 1 : 0, stockBlocked: hold.pictures.blocked() } }
   } else {
     const wanted = pictureRequests(contents, outline, analysis)
+    // "replace the pictures": each slide's lookup skips the picture it shows now, so a refresh finds a DIFFERENT one (the same search used to return the same photo)
+    const showing = opts.picturesOnly && existingDoc ? existingDoc.slides.filter((sl) => sl.content && !sl.manual).map(existingPicture) : []
+    for (const w of wanted) { const old = showing[w.index]; if (old) w.req.avoid = [old.src] }
     // pictures-only jobs have no writing phase, so their session opens here; for new decks it has been running since the outline
     hold.pictures ??= await openPictureSession({ userId: job.userId, jobId })
     // A slide whose text did not change since its lookup started keeps that lookup (nothing is repeated); one the repair pass rewrote is looked up again against its new text.
@@ -426,9 +450,18 @@ async function generate(jobId: string, hold: { pictures?: PictureSession }): Pro
     const picked = await Promise.all(wanted.map((w) => hold.pictures!.result(w.index)))
     picks = contents.map(() => undefined)
     wanted.forEach((w, k) => { const p = picked[k]; picks[w.index] = p ? { src: p.src, alt: p.alt, ...(p.attribution ? { attribution: p.attribution } : {}) } : null })
+    // refreshing pictures never LOSES one: a slide that showed a picture keeps it unless a DIFFERENT one was found (keep-pictures.ts); the kept slides go into the report
+    let keptPictures: number[] = [], keptSlides: number[] = []
+    if (opts.picturesOnly && existingDoc) {
+      const designed = existingDoc.slides.filter((sl) => sl.content && !sl.manual)
+      const r = keepExistingPictures(picks, designed.map(existingPicture))
+      picks = r.picks as typeof picks; keptPictures = r.kept
+      // the slide NUMBERS the person sees (a pictures-only refresh keeps every slide in its place)
+      keptSlides = r.kept.map((i) => existingDoc.slides.indexOf(designed[i]!) + 1).filter((n) => n > 0)
+    }
     // a picture+text slide with no picture becomes a plain text slide (never an empty frame)
     contents = contents.map((c, i) => (c.layout === 'split-image-text' && picks[i] === null ? ({ layout: 'title-body', title: c.title, bullets: c.bullets, speakerNotes: c.speakerNotes, sources: c.sources } as SlideContent) : c))
-    cp.report = { ...(cp.report as object), pictures: { slots: wanted.length, placed: picks.filter(Boolean).length, missing: wanted.filter((w) => !picks[w.index]).map((w) => w.index), stockBlocked: hold.pictures.blocked(), unsplashRequests: hold.pictures.stats() } }
+    cp.report = { ...(cp.report as object), pictures: { slots: wanted.length, placed: picks.filter(Boolean).length, missing: wanted.filter((w) => !picks[w.index]).map((w) => w.index), ...(keptPictures.length ? { kept: keptPictures, keptSlides } : {}), stockBlocked: hold.pictures.blocked(), unsplashRequests: hold.pictures.stats() } }
   }
 
   // 5 ─ layout (deterministic) in the design, then validation (+ one condense-and-retry pass for overflow)

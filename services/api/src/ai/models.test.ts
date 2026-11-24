@@ -163,3 +163,50 @@ describe('choosing a model', () => {
     }
   })
 })
+
+describe('Gemini direct first, the same Gemini through OpenRouter as the backup (owner 2026-11-24)', () => {
+  it('production serves Gemini models only: the direct ones as the main route and their OpenRouter twins; every other maker is switched off', async () => {
+    const { CATALOG_SEED } = await import('./catalog-seed.ts')
+    const prod = CATALOG_SEED.filter((r) => r.enabled !== false && r.environments.includes('production'))
+    expect(prod.every((r) => r.vendor === 'Google')).toBe(true)
+    const main = prod.filter((r) => r.provider === 'vertex'), backup = prod.filter((r) => r.provider === 'openrouter')
+    expect(main.map((r) => r.modelId).sort()).toEqual(backup.map((r) => r.modelId.split('/').pop()).sort()) // every main model has its twin, and no twin is without one
+    expect(main.some((r) => r.routeQuality === 0) && main.some((r) => r.routeFast === 0)).toBe(true)
+    const pro = main.find((r) => r.modelId === 'gemini-3.1-pro-preview')!
+    expect(pro.accessTier).toBe('premium'); expect(pro.minThinkingBudget).toBe(128)
+  })
+
+  it('backup rows are never shown or picked: the registry keeps them as twins of the main models, matched by model name and kind, in the main model\'s credit class', async () => {
+    const { buildRegistry } = await import('./registry-db.ts')
+    const row = (id: string, o: Record<string, unknown> = {}) => ({ id, provider: id.split(':')[0]!, modelId: id.split(':')[1]!, displayName: id, vendor: 'Google', description: '', accessTier: 'starter', kind: 'text', contextWindow: 1, inputPerMTokUsd: '1', outputPerMTokUsd: '1', cachedInputPerMTokUsd: null, perImageUsd: null, pricingSourceUrl: 'x', pricingVerifiedOn: 'x', pricingNote: null, enabled: true, environments: ['production'], routeFast: null, routeQuality: null, minThinkingBudget: null, sortOrder: 1, updatedAt: new Date(), ...o }) as any
+    const rows = [row('vertex:gemini-3.6-flash', { routeQuality: 0 }), row('vertex:gemini-3.1-pro-preview', { accessTier: 'premium' }), row('openrouter:google/gemini-3.6-flash', { routeQuality: 0 }), row('openrouter:google/gemini-3.1-pro-preview', { accessTier: 'frontier' }), row('openrouter:anthropic/claude-opus-5.5')]
+    const reg = buildRegistry(rows, 'openrouter')
+    expect(reg.chain('quality').map((m) => m.id)).toEqual(['vertex:gemini-3.6-flash', 'openrouter:google/gemini-3.6-flash'])
+    expect(reg.chainFor('vertex:gemini-3.1-pro-preview').map((m) => m.id)).toEqual(['vertex:gemini-3.1-pro-preview', 'openrouter:google/gemini-3.1-pro-preview'])
+    expect(reg.backupOf('vertex:gemini-3.1-pro-preview')!.accessTier).toBe('premium') // charged as the model the person picked
+    expect(reg.get('openrouter:google/gemini-3.6-flash')).toBeUndefined() // not a model anyone can name
+    expect(reg.all().map((m) => m.id)).not.toContain('openrouter:anthropic/claude-opus-5.5')
+    // no backup configured: the same rows are all main models (AI_PROVIDER=openrouter deployments keep working)
+    expect(buildRegistry(rows).chain('quality').map((m) => m.id)).toEqual(['vertex:gemini-3.6-flash', 'openrouter:google/gemini-3.6-flash'])
+  })
+
+  it('a free-tier key (local dev and QA): only the models Google serves free are seeded as such, and each route ends with the other route\'s models, so a busy or used-up model never stops a deck', async () => {
+    const { CATALOG_SEED } = await import('./catalog-seed.ts')
+    const free = CATALOG_SEED.filter((r) => r.freeTier).map((r) => r.id).sort()
+    expect(free).toEqual(['vertex:gemini-3.1-flash-lite', 'vertex:gemini-3.6-flash', 'vertex:gemini-3.8-flash'])
+    const { buildRegistry } = await import('./registry-db.ts')
+    const row = (id: string, o: Record<string, unknown> = {}) => ({ id, provider: 'vertex', modelId: id.split(':')[1]!, displayName: id, vendor: 'Google', description: '', accessTier: 'starter', kind: 'text', contextWindow: 1, inputPerMTokUsd: '1', outputPerMTokUsd: '1', cachedInputPerMTokUsd: null, perImageUsd: null, pricingSourceUrl: 'x', pricingVerifiedOn: 'x', pricingNote: null, enabled: true, environments: ['development'], routeFast: null, routeQuality: null, minThinkingBudget: null, freeTier: true, sortOrder: 1, updatedAt: new Date(), ...o }) as any
+    const rows = [row('vertex:gemini-3.1-flash-lite', { routeFast: 0 }), row('vertex:gemini-3.6-flash', { routeQuality: 0 }), row('vertex:gemini-3.8-flash', { routeQuality: 1 })]
+    expect(buildRegistry(rows, undefined, 'free').chain('quality').map((m) => m.id)).toEqual(['vertex:gemini-3.6-flash', 'vertex:gemini-3.8-flash', 'vertex:gemini-3.1-flash-lite'])
+    expect(buildRegistry(rows, undefined, 'free').chain('fast').map((m) => m.id)).toEqual(['vertex:gemini-3.1-flash-lite', 'vertex:gemini-3.6-flash', 'vertex:gemini-3.8-flash'])
+    expect(buildRegistry(rows).chain('quality').map((m) => m.id)).toEqual(['vertex:gemini-3.6-flash', 'vertex:gemini-3.8-flash']) // a paid key: unchanged
+  })
+
+  it('Premium writes with Gemini 3.6 Flash unless the person picks Gemini 3.1 Pro, which costs the premium credit class', async () => {
+    const { PLAN_SEED, CREDIT_COST_SEED } = await import('../billing/seed.ts')
+    const premium = PLAN_SEED.find((p) => p.id === 'premium')!
+    expect(premium.features.fixedModels[0]).toBe('gemini-3.6-flash'); expect(premium.features.modelChoice).toBe(true)
+    const slide = (tier: string) => CREDIT_COST_SEED.find((c) => c.action === 'generate_slide' && c.tier === tier)!.credits
+    expect(slide('premium') / slide('starter')).toBe(2.5)
+  })
+})

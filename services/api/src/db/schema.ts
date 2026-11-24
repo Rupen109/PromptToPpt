@@ -244,6 +244,10 @@ export const modelCatalog = pgTable(
     /** position in the internal "fast" (analysis/directions) / "quality" chains; null = not part of it */
     routeFast: integer('route_fast'),
     routeQuality: integer('route_quality'),
+    /** the least hidden thinking this model accepts (Gemini 3.1 Pro refuses 0: "only works in thinking mode"); null = it can think 0, our default */
+    minThinkingBudget: integer('min_thinking_budget'),
+    /** Google serves this model on a FREE-tier key (a project with no billing: local dev and QA, AI_KEY_TIER=free); only these are offered there */
+    freeTier: boolean('free_tier').notNull().default(false),
     sortOrder: integer('sort_order').notNull().default(100),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
   },
@@ -505,6 +509,35 @@ export const creditLedger = pgTable(
   (t) => [index('credit_ledger_user_idx').on(t.userId, t.createdAt)],
 )
 
+/**
+ * One row per AI assistant request that promised changes to a deck (docs/AI_EDIT_HONESTY_AND_SCENARIOS.md). It holds what the answer PROMISED (`expectations`) and which credit reservations
+ * paid for it, so the server can check the SAVED deck itself and settle the money by what is really there: the client's own report only triggers settlement and is never used to decide it.
+ * `id` is the client's unique request id (so everything is idempotent by it).
+ */
+export const aiAssistRequest = pgTable(
+  'ai_assist_request',
+  {
+    id: text('id').primaryKey(),
+    /** who paid (the deck's owner) */
+    userId: text('user_id').notNull(),
+    presentationId: text('presentation_id').notNull(),
+    status: text('status').notNull().default('reserved'), // reserved | settling | settled
+    expectations: jsonb('expectations').$type<unknown[]>().notNull(),
+    reservations: jsonb('reservations').$type<{ ref: string; units: number; kind: 'base' | 'more' | 'enrich' | 'external'; refType?: string; forKey?: string }[]>().notNull(),
+    baseVersion: integer('base_version').notNull(),
+    /** the server's own verification against the saved deck, and what was refunded */
+    results: jsonb('results').$type<unknown>(),
+    refundedRefs: jsonb('refunded_refs').$type<string[]>(),
+    /** what the browser said happened (kept to see how often it disagrees with the server; never used for money) */
+    clientReport: jsonb('client_report').$type<unknown>(),
+    mismatches: integer('mismatches').notNull().default(0),
+    trigger: text('trigger'), // client | sweeper
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    settledAt: timestamp('settled_at'),
+  },
+  (t) => [index('ai_assist_request_status_idx').on(t.status, t.createdAt), index('ai_assist_request_pres_idx').on(t.presentationId)],
+)
+
 /** Customer-facing credit price per action × model tier (spec: configurable; separate from raw provider cost). */
 export const creditCost = pgTable(
   'credit_cost',
@@ -683,7 +716,8 @@ export const presentationMember = pgTable(
     email: text('email').notNull(),
     emailCanonical: text('email_canonical').notNull(),
     userId: text('user_id').references(() => user.id, { onDelete: 'cascade' }),
-    role: text('role').$type<'editor'>().notNull().default('editor'),
+    /** editor = changes the deck with the owner's plan; viewer = looks, presents and comments only (collab/access.ts) */
+    role: text('role').$type<'editor' | 'viewer'>().notNull().default('editor'),
     status: text('status').$type<'pending' | 'active'>().notNull().default('pending'),
     token: text('token').notNull().unique(),
     invitedBy: text('invited_by').notNull().references(() => user.id, { onDelete: 'cascade' }),
@@ -698,6 +732,35 @@ export const presentationMember = pgTable(
  * A company's brand kit (Pro: 1, Gold: 5): the colours, fonts and logo that "Apply brand" puts on a deck and that new decks can be
  * built in. One kit per user is the default. Pictures (logo, extra brand images) are generated_asset rows of kind logo / brand.
  */
+/**
+ * Every Morph match decision (generation/morph-match.ts): what was recommended for which topic, and what the person finally used. The owner reads it to see which topics have no
+ * designed template (the "custom" decisions) and how often the recommendation is followed. Only the analysed topic is kept (not the whole prompt); deleted with the account.
+ */
+export const morphMatchLog = pgTable(
+  'morph_match_log',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    /** a short hash of the prompt, to find this row again when the deck is started */
+    promptHash: text('prompt_hash').notNull(),
+    topic: text('topic').notNull(),
+    category: text('category'),
+    language: text('language').notNull().default('en'),
+    /** template | custom */
+    mode: text('mode').notNull(),
+    templateId: text('template_id'),
+    confidence: numeric('confidence', { precision: 4, scale: 2 }).notNull(),
+    reason: text('reason').notNull(),
+    candidates: jsonb('candidates').$type<{ id: string; name: string; slides: number; score: number }[]>().notNull().default([]),
+    excluded: jsonb('excluded').$type<Record<string, number>>().notNull().default({}),
+    /** what the deck was started with: a template id, or null for the AI-planned deck; unset until a deck is started */
+    usedTemplate: text('used_template'),
+    usedAt: timestamp('used_at'),
+  },
+  (t) => [index('morph_match_log_created_idx').on(t.createdAt), index('morph_match_log_user_hash_idx').on(t.userId, t.promptHash, t.createdAt)],
+)
+
 export const brandKit = pgTable(
   'brand_kit',
   {
@@ -719,6 +782,21 @@ export const brandKit = pgTable(
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
   },
   (t) => [index('brand_kit_user_idx').on(t.userId), uniqueIndex('brand_kit_default_uq').on(t.userId).where(sql`${t.isDefault}`)],
+)
+
+/** A theme made from a brand kit: only its inputs (the kit, a design, light or dark); the theme itself is worked out when used (packages/theme brand-theme.ts). */
+export const brandTheme = pgTable(
+  'brand_theme',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+    kitId: text('kit_id').notNull().references(() => brandKit.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    designId: text('design_id').notNull(),
+    mode: text('mode').$type<'light' | 'dark'>().notNull(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [index('brand_theme_user_idx').on(t.userId, t.createdAt), check('brand_theme_mode_ok', sql`${t.mode} IN ('light','dark')`)],
 )
 
 /** Extra brand pictures in a kit (illustrations, icons, product shots) that can be dropped onto any slide. */
@@ -750,6 +828,8 @@ export const commentThread = pgTable(
     /** pin position as a fraction of the slide (both set or both null) */
     x: numeric('x', { precision: 6, scale: 5 }),
     y: numeric('y', { precision: 6, scale: 5 }),
+    /** the OBJECT the comment is on (an element id of the slide): its pin follows the object; x/y keep where it was, for when the object is removed */
+    elementId: text('element_id'),
     status: text('status').$type<'open' | 'resolved'>().notNull().default('open'),
     createdBy: text('created_by').notNull().references(() => user.id, { onDelete: 'cascade' }),
     createdAt: timestamp('created_at').notNull().defaultNow(),

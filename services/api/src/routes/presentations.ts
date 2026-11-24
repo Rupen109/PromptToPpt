@@ -1,12 +1,13 @@
 import { Hono } from 'hono'
+import { nothingChangedReply } from '../assistant/replies.ts'
 import { bodyLimit } from 'hono/body-limit'
 import { zValidator } from '@hono/zod-validator'
 import { and, desc, eq, gte, isNull, notInArray, sql } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { z } from 'zod'
 import { AIUnavailableError } from '@prompttoppt/ai'
-import { PREMIUM_THEME_IDS, composeSlide, designById, getTheme, templateSlides } from '@prompttoppt/theme'
-import { findUrls, presentationSchema, type AccessTier, type Presentation, type SlideContent } from '@prompttoppt/validation'
+import { PREMIUM_THEME_IDS, composeSlide, designById, expectationsFromChanges, getTheme, templateSlides } from '@prompttoppt/theme'
+import { aspectRatioSchema, compactSlides, findUrls, presentationSchema, type AccessTier, type Presentation, type SlideContent } from '@prompttoppt/validation'
 import { aiAssistInput, aiAssistOutput, aiAssistPrompt, compileAssist, isSmallTalk, LIST_SHORTFALL, morePointsAsked, aimsAtOneSlide, namesOneSlide, needsSlideChoice, photoApplied } from '../ai/ai-assist.ts'
 import { resolvePhoto } from '../ai/photo-resolve.ts'
 import { readLinkedPages } from '../ai/linked-pages.ts'
@@ -24,7 +25,14 @@ import { db } from '../db/index.ts'
 import { env } from '../env.ts'
 import { isFlagOn, refuseIfOff, refuseIfOn } from '../flags/flags.ts'
 import { audit, ipOf } from '../lib/audit.ts'
-import { aiChatMessage, creditLedger, generationJob, presentation, presentationVersion, project } from '../db/schema.ts'
+import { aiAssistRequest, aiChatMessage, creditLedger, generationJob, presentation, presentationVersion, project } from '../db/schema.ts'
+import { settleAssistRequest } from '../assistant/settle.ts'
+import { buildAnswer, changesTheDeck } from '../assistant/answer.ts'
+import { capabilitiesGreeting, quickActions } from '../assistant/registry.ts'
+import { readSiteBrandForAssist } from '../assistant/site-brand.ts'
+import { loadBrand, loadBrandKits, loadUploads } from '../assistant/loaders.ts'
+import { createBrandTheme, listBrandThemes } from '../brand/themes.ts'
+import { brandAllowed, createKit, deleteKit, updateKit } from '../brand/kits.ts'
 import { hasNumbers, sanitizeContent } from '../generation/policy.ts'
 import { loadSources } from '../generation/sources.ts'
 import { describeDeck } from '../remix/describe.ts'
@@ -33,8 +41,15 @@ import { enrichSlides, loadChunks } from '../ai/enrich.ts'
 import { byUser, rateLimit } from '../middleware/rate-limit.ts'
 import { requireAuth, type AppEnv } from '../middleware/session.ts'
 import { chooseModel } from './models.ts'
-import { intentSchema } from '../assistant/understand.ts'
+import { elementOpsAnswer, intentSchema } from '../assistant/understand.ts'
 import { runAssistant } from '../assistant/pipeline.ts'
+import { readLogo } from '../media/logo-colours.ts'
+import { pictureBytes } from '../media/cutout-picture.ts'
+import { storedPicture } from '../media/deck-picture.ts'
+import { addThread, deckThreads, resolveThreads } from './comments.ts'
+import { cleanBox, subjectBoxOutput, subjectBoxPrompt } from '../assistant/vision.ts'
+import { cutOutPicture, CutoutBusyError } from '../media/cutout-picture.ts'
+import { CutoutError } from '../media/cutout.ts'
 import { insertDeck } from '../decks/create.ts'
 import { safeJobError } from '../generation/view.ts'
 
@@ -67,7 +82,7 @@ presentations.get('/', async (c) => {
 presentations.post('/', rateLimit({ windowMs: 60_000, max: 20, key: (c) => `create:${(c.get('session') as { user: { id: string } }).user.id}` }), zValidator('json', z.object({
   templateId: z.string().max(80).optional(),
   title: z.string().trim().min(1).max(200).optional(),
-  aspectRatio: z.enum(['16:9', '4:3', '1:1']).default('16:9'),
+  aspectRatio: aspectRatioSchema.default('16:9'),
   projectId: z.string().max(40).optional(),
   /** "Create from scratch": one empty slide in the chosen look (templateId then only supplies the colours and fonts) */
   blank: z.boolean().default(false),
@@ -157,7 +172,7 @@ presentations.put('/:id/project', zValidator('json', z.object({ projectId: z.str
 })
 
 presentations.get('/:id', async (c) => {
-  const access = await resolveAccess(c.req.param('id'), c.get('session')!.user.id)
+  const access = await resolveAccess(c.req.param('id'), c.get('session')!.user.id, 'view')
   if (!access) return notFound(c)
   const [p] = await db.select().from(presentation).where(mine(c.req.param('id'), access.ownerId))
   if (!p) return notFound(c)
@@ -236,14 +251,14 @@ presentations.put(
 
 /** How the writing of this deck is going (the editor follows it while slides are still being written); null when no job wrote it. */
 presentations.get('/:id/build', async (c) => {
-  const access = await resolveAccess(c.req.param('id'), c.get('session')!.user.id)
+  const access = await resolveAccess(c.req.param('id'), c.get('session')!.user.id, 'view')
   if (!access) return notFound(c)
   const [job] = await db.select().from(generationJob).where(eq(generationJob.presentationId, c.req.param('id'))).orderBy(desc(generationJob.createdAt)).limit(1)
   return c.json({ success: true, data: job ? { jobId: job.id, status: job.status, progress: job.progress, error: safeJobError(job.error) } : null })
 })
 
 presentations.get('/:id/versions', async (c) => {
-  const access = await resolveAccess(c.req.param('id'), c.get('session')!.user.id)
+  const access = await resolveAccess(c.req.param('id'), c.get('session')!.user.id, 'view')
   if (!access) return notFound(c)
   const userId = access.ownerId
   const [p] = await db.select({ id: presentation.id }).from(presentation).where(mine(c.req.param('id'), userId))
@@ -335,6 +350,8 @@ presentations.post('/:id/ask', rateLimit({ windowMs: 60_000, max: 20, key: byUse
       schema: askDeckOutput, ctx: { userId, presentationId: id },
     })
     const slides = [...new Set(out.slides)].filter((n) => n >= 1 && n <= doc.slides.length).map((n) => ({ n, id: doc.slides[n - 1]!.id }))
+    // an edit typed into Ask: not answered here (Ask never changes the deck), so nothing is charged; the panel offers to do it in Edit with the same words
+    if (out.isEdit) { await refundCredits(userId, 'ask_deck', input.requestId); return c.json({ success: true, data: { answer: "That's a change to your presentation: the Edit tab makes changes. Do it there?", slides: [], creditsCharged: 0, model: picked.id, editRequest: input.question } }) }
     return c.json({ success: true, data: { answer: out.answer, slides, creditsCharged: price, model: picked.id } })
   } catch (e) {
     await refundCredits(userId, 'ask_deck', input.requestId)
@@ -388,7 +405,10 @@ presentations.post('/:id/ai-edit', rateLimit({ windowMs: 60_000, max: 20, key: b
     if (out.slide.layout !== slide.layoutId) throw new Error('model changed the layout')
     const known = new Set(doc.sources.map((s) => s.id))
     const content = sanitizeContent(out.slide, known, hasNumbers('', [JSON.stringify(slide.content ?? texts), ...deckSources.map((x) => x.text)]), slide.content as SlideContent | null | undefined)
-    return c.json({ success: true, data: { content, creditsCharged: price, model: picked.id } })
+    // the answer's promise as a checkable fact; the server checks the SAVED deck for it when the credits are settled (assistant/settle.ts)
+    const expect = expectationsFromChanges(doc, { theme: null, edits: [{ slideId: slide.id, content }] })
+    await db.insert(aiAssistRequest).values({ id: input.requestId, userId, presentationId: id, expectations: expect, reservations: [{ ref: input.requestId, units: price, kind: 'base', refType: 'ai_edit' }], baseVersion: p.latestVersion }).onConflictDoNothing()
+    return c.json({ success: true, data: { content, creditsCharged: price, model: picked.id, requestId: input.requestId, expect } })
   } catch (e) {
     await refundCredits(userId, 'ai_edit', input.requestId)
     if (e instanceof AIUnavailableError) return c.json({ success: false, error: { code: 'AI_UNAVAILABLE', message: 'The AI service is busy or unavailable. You were not charged — please try again.' } }, 503)
@@ -408,7 +428,36 @@ const replyFor = (changes: number, pictures: number, done: string[] = []) =>
   [changes > 0 ? (changes === 1 && done.length === 1 ? `Done — ${done[0]!.charAt(0).toLowerCase()}${done[0]!.slice(1).replace(/\.$/, '')}.` : `Done — ${changes === 1 ? 'one change' : `${changes} changes`} applied to your deck.`) : '', pictures > 0 ? (changes > 0 ? 'I also prepared' : 'I prepared') + ` ${pictures === 1 ? 'a picture' : `${pictures} pictures`} for you to confirm below.` : ''].filter(Boolean).join(' ')
 
 /** Shown when no operation applied: lists what the assistant CAN do, so a greeting, a question or an unsupported ask is never met with a bare refusal. */
-export const CAPABILITIES_REPLY = 'Hey! Tell me what to update — slide text, add a slide, pictures, theme, colours, fonts or animation.\nFor example: "make slide 3 shorter".'
+export const CAPABILITIES_REPLY = capabilitiesGreeting() // generated from the capability registry: never typed by hand
+/** the Comments panel's own code, as the person (their name on what is added, with an AI label in the words) */
+function assistantComments(deckId: string, ownerId: string, actor: { id: string; name: string }) {
+  return {
+    list: async () => (await deckThreads(deckId, ownerId, actor.id)).map((t) => ({ id: t.id, slideId: t.slideId, status: t.status, comments: t.comments.map((m) => ({ authorName: m.authorName, body: m.body })) })),
+    add: async (slideId: string, pin: { x?: number; y?: number; elementId?: string }, body: string) => { const r = await addThread(deckId, ownerId, actor, { slideId, ...pin, body }); return r.ok ? { ok: true as const } : { ok: false as const, why: r.why } },
+    resolve: (ids: string[]) => resolveThreads(deckId, actor, ids),
+  }
+}
+
+/** the deck as it was in its previous saved version (the one before the newest), and how long ago */
+async function previousVersionOf(deckId: string): Promise<{ doc: Presentation; when: string } | null> {
+  const rows = await db.select({ document: presentationVersion.document, createdAt: presentationVersion.createdAt }).from(presentationVersion).where(eq(presentationVersion.presentationId, deckId)).orderBy(desc(presentationVersion.version)).limit(2)
+  const prev = rows[1]
+  if (!prev) return null
+  const mins = Math.max(1, Math.round((Date.now() - prev.createdAt.getTime()) / 60000))
+  return { doc: prev.document as Presentation, when: mins < 60 ? `${mins} minute${mins === 1 ? '' : 's'} ago` : mins < 60 * 48 ? `${Math.round(mins / 60)} hours ago` : `${Math.round(mins / 1440)} days ago` }
+}
+
+/** the kit actions the assistant may take AFTER the person confirmed: the very functions (and plan rules) of the Brand tab; their own errors are said plainly */
+function kitActions(userId: string, ent: Awaited<ReturnType<typeof getEntitlements>>) {
+  const run = async (f: () => Promise<unknown>): Promise<{ ok: true } | { ok: false; why: string }> => { try { await f(); return { ok: true } } catch (e) { return { ok: false, why: e instanceof Error ? e.message : 'the brand kit could not be saved.' } } }
+  return {
+    create: (i: Record<string, string>) => run(() => createKit(userId, ent as never, i)),
+    update: (id: string, p: Record<string, unknown>) => run(() => updateKit(userId, id, p as never)),
+    remove: (id: string) => run(() => deleteKit(userId, id)),
+    createTheme: (i: { kitId: string; designId: string; mode: 'light' | 'dark'; name?: string | undefined }) => run(() => createBrandTheme(userId, ent, i)),
+  }
+}
+
 const nothingAppliedReply = (notes: string[]) => (notes.length ? "I couldn't do that — see the note below." : CAPABILITIES_REPLY)
 
 presentations.post('/:id/ai-assist', rateLimit({ windowMs: 60_000, max: 15, key: (c) => `assist:${(c.get('session') as { user: { id: string } }).user.id}` }), zValidator('json', aiAssistInput), async (c) => {
@@ -434,7 +483,7 @@ presentations.post('/:id/ai-assist', rateLimit({ windowMs: 60_000, max: 15, key:
     if (s.locked) return c.json({ success: false, error: { code: 'SLIDE_LOCKED', message: 'This slide is locked. Unlock it to use AI.' } }, 409)
   }
 
-  if (await isFlagOn('assistant_v2', { userId })) return assistV2(c, { id, userId, isOwner, input, ent, doc })
+  if (await isFlagOn('assistant_v2', { userId })) return assistV2(c, { id, userId, isOwner, input, ent, doc, baseVersion: p.latestVersion })
 
   // A request about ONE slide that does not say which: ask before anything is read, charged or guessed (see needsSlideChoice)
   if (needsSlideChoice(input.instruction, input.scope, Boolean(input.activeSlideId))) {
@@ -522,8 +571,8 @@ presentations.post('/:id/ai-assist', rateLimit({ windowMs: 60_000, max: 15, key:
  * Credits: one AI-edit unit (plus one per link read) is reserved before anything runs; a second unit is reserved before any writing call when
  * more than one slide will be written. Nothing applied, a question back, or putting back the assistant's own change = refunded.
  */
-async function assistV2(c: any, o: { id: string; userId: string; isOwner: boolean; input: z.infer<typeof aiAssistInput>; ent: Awaited<ReturnType<typeof getEntitlements>>; doc: Presentation }) {
-  const { id, userId, isOwner, input, ent, doc } = o
+async function assistV2(c: any, o: { id: string; userId: string; isOwner: boolean; input: z.infer<typeof aiAssistInput>; ent: Awaited<ReturnType<typeof getEntitlements>>; doc: Presentation; baseVersion: number }) {
+  const { id, userId, isOwner, input, ent, doc, baseVersion } = o
   const empty = { theme: null, edits: [], additions: [], reverts: [], images: [], applied: [], notes: [], rewrite: null, creditsCharged: 0, sources: [] as unknown[] }
   const { rows } = await catalog()
   const picked = chooseModel(ent, rows, input.model)
@@ -533,10 +582,16 @@ async function assistV2(c: any, o: { id: string; userId: string; isOwner: boolea
   const pages = await readLinkedPages(findUrls(input.instruction))
   const readCount = pages.filter((p) => p.status === 'read').length
   const unit = await creditPrice('ai_edit', tier)
-  const base = unit * (1 + readCount)
+  const base = unit
   await reserveCredits(userId, base, 'ai_assist', input.requestId, { strict: true })
+  // reading the pages in the message is charged on its own (one unit each) and given back when the page's words were never used: a link that was not needed costs nothing
+  let pagesKept = unit * readCount
+  if (pagesKept) { try { await reserveCredits(userId, pagesKept, 'ai_assist', `${input.requestId}:pages`, { strict: true }) } catch (e) { await refundCredits(userId, 'ai_assist', input.requestId); throw e } }
+  const dropPages = async () => { if (pagesKept) { await refundCredits(userId, 'ai_assist', `${input.requestId}:pages`); pagesKept = 0 } }
+  let materialSeen = false
   let extra = 0
-  const refundAll = async () => { await refundPlanning(userId, input.requestId); if (extra) await refundCredits(userId, 'ai_assist', `${input.requestId}:more`) }
+  /** gives the credits back for a reply that changed nothing; returns what to tell the person when it could not (the daily allowance of free checks is used up), so a charge is never silent */
+  const refundAll = async (): Promise<{ creditsCharged?: number; charged?: string }> => { const free = await refundPlanning(userId, input.requestId); if (extra) await refundCredits(userId, 'ai_assist', `${input.requestId}:more`); if (free) { await dropPages(); return {} } const total = base + pagesKept; return { creditsCharged: total, charged: `You have used today's ${MAX_FREE_PLANNING_PER_DAY} free checks and answers, so this reply used ${total} credits.` } }
   try {
     const deckIds = (doc.sources ?? []).map((x) => x.id)
     const sources = await loadSources(userId, [...new Set([...deckIds, ...input.sourceIds])])
@@ -544,37 +599,63 @@ async function assistV2(c: any, o: { id: string; userId: string; isOwner: boolea
     const material = [...pages.filter((p) => p.status === 'read').map((p) => ({ id: p.id, title: p.title, text: p.text })), ...trimSources(sources, 10_000).map((x) => ({ id: x.id, title: `DECK SOURCE: ${x.title}`, text: x.text }))]
     const ctx = { userId, presentationId: id }
     const outcome = await runAssistant(
-      { doc: { ...doc, sources: [...(doc.sources ?? []), ...added] }, ent, instruction: input.instruction, conversation: input.conversation, activeSlideId: input.activeSlideId, onlySlideId: input.scope === 'slide' ? input.slideId : undefined, recent: input.recent, material, hasSources: sources.length > 0 },
+      { doc: { ...doc, sources: [...(doc.sources ?? []), ...added] }, ent, instruction: input.instruction, conversation: input.conversation, activeSlideId: input.activeSlideId, onlySlideId: input.scope === 'slide' ? input.slideId : undefined, recent: input.recent, material, hasSources: sources.length > 0, selection: input.selection, uploads: await loadUploads(userId), confirm: input.confirm, brand: brandAllowed(ent) ? await loadBrand(userId) : null, brandKits: brandAllowed(ent) ? await loadBrandKits(userId) : [], brandThemeList: brandAllowed(ent) ? await listBrandThemes(userId) : [], comments: assistantComments(id, userId, c.get('session')!.user), previousVersion: () => previousVersionOf(id), kits: brandAllowed(ent) && isOwner ? kitActions(userId, ent) : undefined, siteBrand: brandAllowed(ent) ? (u: string) => readSiteBrandForAssist(userId, u) : undefined, picture: (u: string) => storedPicture(userId, u), findSubject: async (pic, subject) => cleanBox(await gateway.run({ route: 'fast', requestType: 'assist_vision', ...subjectBoxPrompt(subject), images: [{ mimeType: pic.mime, data: pic.bytes }], schema: subjectBoxOutput, ctx, maxOutputTokens: 200, thinkingBudget: 0 })), logoBrand: brandAllowed(ent) ? async (u: string) => { const bytes = await pictureBytes(userId, u); return bytes ? readLogo(bytes) : { ok: false as const, say: 'I can only use one of your own uploaded pictures as the logo.' } } : undefined, isOwner, planName: ent.plan?.name, flags: { background_removal: await isFlagOn('background_removal', { userId }), image_generation: await isFlagOn('image_generation', { userId }) } },
       {
         understand: (p) => gateway.run({ route: 'fast', requestType: 'assist_understand', ...p, schema: intentSchema, ctx, maxOutputTokens: 900, thinkingBudget: 0 }),
-        write: (p, schema, route) => gateway.run({ route, ...(route === 'quality' ? { model: picked.id } : {}), requestType: 'assist_write', ...p, schema, ctx, maxOutputTokens: 8000 }),
+        understandOps: (p) => gateway.run({ route: 'fast', requestType: 'assist_understand', ...p, schema: elementOpsAnswer, ctx, maxOutputTokens: 1200, thinkingBudget: 0 }),
+        write: (p, schema, route) => { if (p.prompt.includes('<source')) materialSeen = true; return gateway.run({ route, ...(route === 'quality' ? { model: picked.id } : {}), requestType: 'assist_write', ...p, schema, ctx, maxOutputTokens: 8000 }) },
         authorize: async (units) => { if (units > 1) { extra = unit * (units - 1); await reserveCredits(userId, extra, 'ai_assist', `${input.requestId}:more`, { strict: true }) } },
       },
     )
     const reply = (data: Record<string, unknown>) => c.json({ success: true, data: { ...empty, model: picked.id, sources: added, ...data } })
+    if (pagesKept && !materialSeen) { await dropPages(); if (outcome.kind === 'done') outcome.notes.push('I did not need the page you linked for this, so reading it was not charged.') }
     if (outcome.kind !== 'done') {
-      await refundAll()
-      if (outcome.kind === 'ask') return reply({ reply: outcome.question.text, ask: true, options: outcome.question.options })
-      if (outcome.kind === 'answer') return reply({ reply: outcome.text })
-      return reply({ reply: CAPABILITIES_REPLY })
+      const paid = await refundAll()
+      const told = paid.charged ? { creditsCharged: paid.creditsCharged, notes: [paid.charged] } : {}
+      if (outcome.kind === 'ask') return reply({ reply: outcome.question.text, ask: true, options: outcome.question.options, ...told })
+      if (outcome.kind === 'answer') return reply({ reply: outcome.text, ...told })
+      return reply({ reply: CAPABILITIES_REPLY, ...told })
     }
     const result = outcome.compiled
     if (!isOwner && result.rewrite) { await refundAll(); return reply({ reply: 'Only the owner can rebuild the whole presentation. I can still change individual slides, colours and fonts for you.' }) }
     const enrichCharged = result.enrich ? await enrichFromSources(result, { doc, userId, requestId: input.requestId, tier, model: picked.id, onlySlideId: input.scope === 'slide' ? input.slideId : undefined, instruction: input.instruction, sourceIds: [...new Set([...deckIds, ...input.sourceIds])], known: new Set([...(doc.sources ?? []).map((x) => x.id), ...added.map((x) => x.id)]), allTexts: sources.map((x) => x.text) }) : 0
-    for (const p of pages) if (p.status === 'failed') outcome.notes.push(`Couldn't read ${p.url} — ${p.reason ?? 'unknown problem'}`)
-    const pictures = await placePhotos(result, c.get('session')!.user.id, userId)
+    for (const p of pages) if (p.status === 'failed') { const t = `Couldn't read ${p.url} — ${p.reason ?? 'unknown problem'}`; outcome.notes.push(t); outcome.refused.push(t) }
+    const photoSwaps: { slideId: string; elementId: string; url: string; alt: string; source: 'photo' }[] = []
+    const pictures = await placePhotos(result, c.get('session')!.user.id, userId, photoSwaps)
+    pictures.push(...outcome.slideOps.uploads.map((u) => ({ ...u, source: 'upload' as const }))) // (the person's own uploads, put on slides that had no picture)
+    outcome.slideOps.swaps.push(...photoSwaps) // (verified and worded like the person's own pictures: a replacement)
+    const pictureSwaps = await cutOutPictures(outcome, userId)
     const allApplied = [...result.applied, ...outcome.applied]
     const notes = [...new Set([...outcome.notes, ...result.notes])]
-    if (allApplied.length === 0) { await refundAll(); return reply({ reply: notes.length ? "I couldn't do that — see the note below." : CAPABILITIES_REPLY, notes }) }
+    // each note's kind travels with it: the editor builds "Done" / "Partly done" / "Nothing needed changing" from these, never from the wording
+    const refused = [...new Set([...outcome.refused, ...result.refused])].filter((t) => notes.includes(t)), already = [...new Set([...outcome.already, ...result.already])].filter((t) => notes.includes(t) && !refused.includes(t))
+    // an answer built by code (comment summaries, what changed since the last version): nothing changed, nothing charged
+    if (allApplied.length === 0 && outcome.answers?.length && !outcome.outside?.length) { const paid = await refundAll(); return reply({ reply: outcome.answers.join('\n\n'), notes, refused, already, ...(paid.charged ? { creditsCharged: paid.creditsCharged } : {}) }) }
+    // done OUTSIDE the deck after the person confirmed (a brand kit saved, a comment added or resolved): their account or the comments changed, not the deck; nothing is charged
+    if (allApplied.length === 0 && outcome.outside?.length) { const paid = await refundAll(); return reply({ reply: `Done — ${outcome.outside.join('; ').replace(/^./, (x) => x.toLowerCase())}.`, applied: outcome.outside, notes, refused, already, outsideChanged: true, ...(paid.charged ? { creditsCharged: paid.creditsCharged } : {}) }) }
+    // present / export / share: prepared, never done by the assistant: the chat shows ONE button, the person's click is the confirmation; nothing in the deck changes, so nothing is charged
+    if (allApplied.length === 0 && outcome.ui) { const paid = await refundAll(); return reply({ reply: outcome.ui.kind === 'present' ? `Ready to present from slide ${outcome.ui.fromSlide}.` : outcome.ui.kind === 'export' ? `Ready to export ${outcome.ui.slides ? `${outcome.ui.slides.length === 1 ? 'slide' : 'slides'} ${compactSlides(outcome.ui.slides)} ` : ''}as ${outcome.ui.format.toUpperCase()}.` : 'Ready to open Share.', uiAction: outcome.ui, notes, refused, already, ...(paid.charged ? { creditsCharged: paid.creditsCharged } : {}) }) }
+    // "select …": the editor selects the objects found; nothing in the deck changes, so nothing is charged
+    if (allApplied.length === 0 && outcome.slideOps.select.length) { const paid = await refundAll(); const sel = outcome.slideOps.select[0]!; return reply({ reply: sel.say, selectObjects: { slideId: sel.slideId, elementIds: sel.elementIds }, notes, refused, already, ...(paid.charged ? { creditsCharged: paid.creditsCharged } : {}) }) }
+    if (allApplied.length === 0) { const paid = await refundAll(); return reply({ reply: nothingChangedReply(notes, already, CAPABILITIES_REPLY), refused, already, notes: paid.charged ? [...notes, paid.charged] : notes, ...(paid.charged ? { creditsCharged: paid.creditsCharged } : {}), ...(outcome.upgrade ? { upgrade: outcome.upgrade } : {}), ...(outcome.later?.length ? { continueWith: outcome.later.join('. ') } : {}) }) }
     if (outcome.units === 0 || (result.reverts.length > 0 && allApplied.length === result.reverts.length)) { await refundAll(); return reply({ reply: "Sorry about that — I've put it back the way it was.", reverts: result.reverts, applied: allApplied, notes }) }
     if (result.rewrite && allApplied.length === 1) { await refundAll(); return reply({ reply: result.rewrite.picturesOnly ? "On it — I'll pick new pictures that match each slide and keep your text." : "Got it — I'll rebuild every slide from your details, keeping this design.", rewrite: result.rewrite, applied: allApplied, notes }) }
+    // What this answer PROMISES, as checkable facts about the deck (packages/theme/src/assist). The editor checks them on its live deck after applying, and the SERVER checks them again on the
+    // saved deck when it settles the credits; the chat's wording is built from those checks, never from the plan.
+    const { changes, expect } = buildAnswer(doc, { compiled: result, slideOps: outcome.slideOps, pictures, pictureSwaps, newId: () => nanoid(12) })
+    const additions = changes.additions ?? []
+    const reservations = [{ ref: input.requestId, units: base, kind: 'base' as const }, ...(pagesKept ? [{ ref: `${input.requestId}:pages`, units: pagesKept, kind: 'enrich' as const }] : []), ...(extra ? [{ ref: `${input.requestId}:more`, units: extra, kind: 'more' as const }] : []), ...(enrichCharged ? [{ ref: `${input.requestId}:enrich`, units: enrichCharged, kind: 'enrich' as const }] : [])]
+    const judged = changesTheDeck(expect)
+    if (judged) await db.insert(aiAssistRequest).values({ id: input.requestId, userId, presentationId: id, expectations: expect, reservations, baseVersion }).onConflictDoNothing()
     return reply({
       reply: replyFor(allApplied.length - result.images.length, result.images.length, allApplied.filter((a) => !a.startsWith('Proposed a picture'))),
-      theme: result.theme, edits: result.edits, additions: result.additions, reverts: result.reverts, backgrounds: result.backgrounds, readability: result.readability, pictures, images: result.images, rewrite: result.rewrite,
-      ...outcome.slideOps, applied: allApplied, notes, creditsCharged: base + extra + enrichCharged,
+      theme: changes.theme, edits: result.edits, additions, reverts: result.reverts, backgrounds: result.backgrounds, readability: result.readability, pictures, images: result.images, rewrite: result.rewrite,
+      ...outcome.slideOps, pictureSwaps: changes.pictureSwaps ?? [], elementChanges: changes.elementChanges ?? [], applied: allApplied, notes, refused, already, creditsCharged: base + pagesKept + extra + enrichCharged, ...(outcome.upgrade ? { upgrade: outcome.upgrade } : {}), ...(outcome.later?.length ? { continueWith: outcome.later.join('. ') } : {}),
+      ...(judged ? { requestId: input.requestId, expect } : {}),
     })
   } catch (e) {
     await refundAll().catch(() => {})
+    await dropPages().catch(() => {})
     await refundCredits(userId, 'ai_assist', `${input.requestId}:enrich`).catch(() => {}) // a no-op unless the enrichment had already reserved its credits
     if (e instanceof BillingError || e instanceof GateError) throw e
     if (e instanceof AIUnavailableError) {
@@ -588,16 +669,24 @@ async function assistV2(c: any, o: { id: string; userId: string; isOwner: boolea
 }
 
 type Compiled = ReturnType<typeof compileAssist>
-type PlacedPicture = { slideId: string; placement: 'background' | 'beside' | 'floating'; url: string; alt: string; source: 'stock' | 'library'; credit?: string }
+type PlacedPicture = { slideId: string; placement: 'background' | 'beside' | 'floating'; url: string; alt: string; source: 'stock' | 'library' | 'upload'; credit?: string }
 
 /** Free photos the answer asked for, looked up and copied into our storage now; if none can be found, say so and propose a generated one instead. */
-async function placePhotos(result: Compiled, sessionUserId: string, ownerId: string): Promise<PlacedPicture[]> {
+async function placePhotos(result: Compiled, sessionUserId: string, ownerId: string, swaps?: { slideId: string; elementId: string; url: string; alt: string; source: 'photo' }[]): Promise<PlacedPicture[]> {
   const pictures: PlacedPicture[] = []
   if (result.photos.length === 0) return pictures
   const found = await Promise.all(result.photos.map((ph) => resolvePhoto(ph.query, { userId: sessionUserId, ownerId })))
   result.photos.forEach((ph, i) => {
     const r = found[i]!
     const line = photoApplied(ph)
+    if (ph.placement === 'replace') {
+      // "replace this picture": the found photo takes that picture's place (verified as a replacement); without a photo nothing changes and the person is told
+      if (r.ok && swaps && ph.elementId) { swaps.push({ slideId: ph.slideId, elementId: ph.elementId, url: r.photo.url, alt: r.photo.alt || ph.alt, source: 'photo' }); return }
+      result.applied = result.applied.filter((a) => a !== line)
+      const t = `I couldn't find a free photo of "${ph.query}", so the picture on slide ${ph.slideNumber} is unchanged. Say what the photo should show, or ask me to generate one.`
+      result.notes.push(t); result.refused.push(t)
+      return
+    }
     if (r.ok) { pictures.push({ slideId: ph.slideId, placement: ph.placement, url: r.photo.url, alt: r.photo.alt || ph.alt, source: r.photo.source, ...(r.photo.credit ? { credit: r.photo.credit } : {}) }); return }
     result.applied = result.applied.filter((a) => a !== line)
     result.notes.push(`I couldn't find a free photo for "${ph.query}", so I prepared a generated picture for slide ${ph.slideNumber} instead (it uses credits, confirm below).`)
@@ -607,11 +696,34 @@ async function placePhotos(result: Compiled, sessionUserId: string, ownerId: str
   return pictures
 }
 
+/**
+ * "Remove the background of this picture": each requested picture is cut out now (an open model on this server, one at a time) and kept as a new picture of the owner's. What worked is returned
+ * as a swap for the editor to apply; what did not is said in a note and never reported as done.
+ */
+async function cutOutPictures(outcome: Extract<Awaited<ReturnType<typeof runAssistant>>, { kind: 'done' }>, ownerId: string): Promise<{ slideId: string; elementId: string; url: string; alt: string; transparentShare: number }[]> {
+  const swaps: { slideId: string; elementId: string; url: string; alt: string; transparentShare: number }[] = []
+  const done = new Set<string>()
+  if (outcome.slideOps.cutouts.length > 0 && !(await isFlagOn('background_removal', { userId: ownerId }))) { outcome.refused.push('Removing a picture\'s background is not available yet, so the picture was not changed.'); outcome.notes.push('Removing a picture\'s background is not available yet, so the picture was not changed.'); return swaps }
+  for (const req of outcome.slideOps.cutouts) {
+    try {
+      const r = await cutOutPicture(ownerId, req.url)
+      swaps.push({ slideId: req.slideId, elementId: req.elementId, url: r.url, alt: r.name, transparentShare: r.transparentShare }) // (cutOutPicture refuses a result that is not really see-through)
+      done.add(req.line)
+    } catch (e) {
+      const t = e instanceof CutoutBusyError || e instanceof CutoutError ? `Slide ${/slide (\d+)/.exec(req.line)?.[1] ?? ''}: ${e.message}` : 'Removing the background is not available right now. The picture was not changed.'
+      if (!(e instanceof CutoutBusyError || e instanceof CutoutError)) console.error('[assist cutout]', e)
+      outcome.notes.push(t); outcome.refused.push(t)
+    }
+  }
+  for (const line of done) outcome.applied.push(line)
+  return swaps
+}
+
 /** "Add more content from my document": each slide expanded from its own excerpts (retrieval), charged separately, refunded when nothing changed. Returns the credits charged. */
 async function enrichFromSources(result: Compiled, o: { doc: Presentation; userId: string; requestId: string; tier: AccessTier; model: string; onlySlideId: string | undefined; instruction: string; sourceIds: string[]; known: Set<string>; allTexts: string[] }): Promise<number> {
   result.applied = result.applied.filter((a) => a !== 'Adding detail from your attached sources')
   const chunks = await loadChunks(o.sourceIds, o.userId)
-  if (chunks.length === 0) { result.notes.push('There is no attached document to take content from — attach a PDF or link with the 📎 button, then ask again.'); return 0 }
+  if (chunks.length === 0) { const t = 'There is no attached document to take content from — attach a PDF or link with the 📎 button, then ask again.'; result.notes.push(t); result.refused.push(t); return 0 }
   const slidesN = o.onlySlideId ? 1 : o.doc.slides.length
   const extra = (await creditPrice('ai_edit', o.tier)) * Math.max(1, Math.ceil(slidesN / 3))
   await reserveCredits(o.userId, extra, 'ai_assist', `${o.requestId}:enrich`, { strict: true }) // throws INSUFFICIENT_CREDITS (402) → the caller refunds the planning charge and passes it on
@@ -629,6 +741,22 @@ function trimSources(list: { id: string; title: string; text: string }[], budget
   return list.map((x) => ({ id: x.id, title: x.title, text: x.text.slice(0, each) }))
 }
 
+/**
+ * The browser says it applied an answer and saved. This only TRIGGERS the settlement: the server checks the saved deck itself and decides the money from that (assistant/settle.ts); what the
+ * browser claims is stored for comparison and never used. Safe to call again: a settled request answers with its stored result.
+ */
+const outcomeBody = z.object({ results: z.array(z.object({ key: z.string().max(60), status: z.string().max(20) })).max(300).optional(), savedRevision: z.number().int().optional() })
+presentations.post('/:id/ai-assist/:requestId/outcome', rateLimit({ windowMs: 60_000, max: 60, key: (c) => `assistoutcome:${(c.get('session') as { user: { id: string } }).user.id}` }), zValidator('json', outcomeBody), async (c) => {
+  const access = await resolveAccess(c.req.param('id'), c.get('session')!.user.id)
+  if (!access) return notFound(c)
+  const requestId = c.req.param('requestId')
+  const [row] = await db.select({ presentationId: aiAssistRequest.presentationId, userId: aiAssistRequest.userId }).from(aiAssistRequest).where(eq(aiAssistRequest.id, requestId))
+  if (!row || row.presentationId !== c.req.param('id') || row.userId !== access.ownerId) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'No such request.' } }, 404)
+  const settled = await settleAssistRequest(requestId, { trigger: 'client', report: { ...(c.req.valid('json').results ? { results: c.req.valid('json').results } : {}) } })
+  if (!settled) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'No such request.' } }, 404)
+  return c.json({ success: true, data: { settled: true, verified: settled.plan.verified, judged: settled.plan.judged, refunded: settled.refunded.length > 0, reason: settled.plan.reason, already: settled.already } })
+})
+
 // ─── AI assistant conversation (persisted per presentation) ──────────────────────────────────────────────
 const chatBody = z.object({ role: z.enum(['user', 'ai', 'error']), text: z.string().max(4000).optional(), reply: z.string().max(4000).optional(), applied: z.array(z.string().max(300)).max(30).optional(), notes: z.array(z.string().max(400)).max(20).optional(), credits: z.number().optional(), undo: z.string().max(100_000).optional(), revertedUndo: z.array(z.string().max(64)).max(10).optional(), images: z.array(z.record(z.string().max(40), z.union([z.string().max(600), z.number(), z.boolean(), z.null()])).refine((o) => Object.keys(o).length <= 12, 'too many fields')).max(6).optional() })
 const MAX_CHAT = 200
@@ -638,10 +766,12 @@ const MAX_FREE_PLANNING_PER_DAY = 25
  * The planning call of an assist request is refunded when it changed nothing or only proposed a rewrite (the rewrite job is charged separately).
  * That is fair for honest use, but unlimited it is a free model call per request: past a daily allowance the planning call is simply charged.
  */
-async function refundPlanning(userId: string, requestId: string): Promise<void> {
+async function refundPlanning(userId: string, requestId: string): Promise<boolean> {
   const since = new Date(Date.now() - 24 * 3600_000)
   const [{ n } = { n: 0 }] = await db.select({ n: sql<number>`count(*)::int` }).from(creditLedger).where(and(eq(creditLedger.userId, userId), eq(creditLedger.reason, 'refund'), eq(creditLedger.refType, 'ai_assist'), gte(creditLedger.createdAt, since)))
-  if (n < MAX_FREE_PLANNING_PER_DAY) await refundCredits(userId, 'ai_assist', requestId)
+  if (n >= MAX_FREE_PLANNING_PER_DAY) return false
+  await refundCredits(userId, 'ai_assist', requestId)
+  return true
 }
 const snapshotHits = new Map<string, number[]>()
 function allowSnapshot(userId: string): boolean {
@@ -653,6 +783,25 @@ function allowSnapshot(userId: string): boolean {
   if (snapshotHits.size > 5000) snapshotHits.clear()
   return true
 }
+
+/** The quick-action chips of the assistant panel, generated from the capability registry for THIS person, deck and slide (never a typed list). */
+presentations.get('/:id/assistant/chips', async (c) => {
+  const userId = c.get('session')!.user.id
+  const access = await resolveAccess(c.req.param('id'), userId)
+  if (!access) return notFound(c)
+  const ent = await getEntitlements(access.ownerId)
+  const [p] = await db.select().from(presentation).where(mine(c.req.param('id'), access.ownerId))
+  if (!p) return notFound(c)
+  const [v] = await db.select().from(presentationVersion).where(and(eq(presentationVersion.presentationId, p.id), eq(presentationVersion.version, p.latestVersion)))
+  const doc = v!.document as Presentation
+  const sl = doc.slides.find((x) => x.id === c.req.query('slideId'))
+  const chips = quickActions({
+    features: ent.features as never, isOwner: access.role === 'owner', hasSources: (doc.sources ?? []).length > 0, planName: ent.plan?.name,
+    flags: { background_removal: await isFlagOn('background_removal', { userId: access.ownerId }), image_generation: await isFlagOn('image_generation', { userId: access.ownerId }) },
+    slide: sl ? { n: doc.slides.indexOf(sl) + 1, layout: sl.layoutId, fromFile: !!sl.fromFile, locked: !!sl.locked } : null,
+  })
+  return c.json({ success: true, data: chips })
+})
 
 presentations.get('/:id/chat', async (c) => {
   const userId = c.get('session')!.user.id // each person keeps their OWN assistant conversation, even on a shared deck

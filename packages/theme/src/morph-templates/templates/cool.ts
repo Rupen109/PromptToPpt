@@ -31,7 +31,7 @@ const BY_HASH: Record<string, TemplatePicture> = {
  */
 export const COOL_TEMPLATE: MorphTemplate = {
   id: 'cool',
-  category: 'marketing',
+  category: 'marketing', fillPictures: true,
   audience: "The Cool Morph template suits design and creative studios, portfolios, agencies, fashion and photography, brand and marketing presentations, and any talk that should feel calm, modern and minimal.",
   name: 'Cool Morph',
   tagline: 'Soft light, big words',

@@ -7,7 +7,7 @@ import { presentationSchema, type Presentation } from '@prompttoppt/validation'
 import { GateError } from '../billing/errors.ts'
 import { assertLivePreview, getEntitlements, livePlanFor } from '../billing/entitlements.ts'
 import { COLLABORATOR_LIMITS } from '../collab/access.ts'
-import { kickUser } from '../live/bus.ts'
+import { kickUser, publishAccess } from '../live/bus.ts'
 import { db } from '../db/index.ts'
 import { presentation, presentationMember, presentationVersion, shareLink, shareView, user } from '../db/schema.ts'
 import { env } from '../env.ts'
@@ -145,7 +145,9 @@ sharing.get('/:id/members', async (c) => {
   return c.json({ success: true, data: { members: rows.map(memberView), limit: plan.features.advancedSharing ? (COLLABORATOR_LIMITS[plan.id] ?? 0) : 0 } })
 })
 
-sharing.post('/:id/members', rateLimit({ windowMs: 3600_000, max: 20, key: byUser('invite') }), zValidator('json', z.object({ email: z.email().max(254) })), async (c) => {
+/** what an invited person may do: change the deck (editor) or only view, present and comment (viewer; collab/access.ts) */
+const memberRole = z.enum(['editor', 'viewer'])
+sharing.post('/:id/members', rateLimit({ windowMs: 3600_000, max: 20, key: byUser('invite') }), zValidator('json', z.object({ email: z.email().max(254), role: memberRole.default('editor') })), async (c) => {
   const userId = c.get('session')!.user.id
   const id = c.req.param('id')
   const deck = await ownDeck(id, userId)
@@ -154,6 +156,7 @@ sharing.post('/:id/members', rateLimit({ windowMs: 3600_000, max: 20, key: byUse
   if (!ent.features.advancedSharing) throw new GateError('UPGRADE_REQUIRED', 'Inviting people to edit together is available on Pro, Gold and Premium.', 403, { feature: 'collaboration' })
   const limit = COLLABORATOR_LIMITS[ent.plan.id] ?? 0
   const email = c.req.valid('json').email.trim()
+  const role = c.req.valid('json').role
   const canon = canonicalEmail(email)
   const me = c.get('session')!.user
   if (canon === canonicalEmail(me.email)) return c.json({ success: false, error: { code: 'INVALID_INVITE', message: "That's your own email — you already own this presentation." } }, 400)
@@ -167,21 +170,33 @@ sharing.post('/:id/members', rateLimit({ windowMs: 3600_000, max: 20, key: byUse
     const token = nanoid(32)
     const expiresAt = new Date(Date.now() + INVITE_TTL_MS)
     if (existing) { // re-inviting a pending address refreshes the link (the old one stops working)
-      const [m] = await tx.update(presentationMember).set({ token, expiresAt, email }).where(eq(presentationMember.id, existing.id)).returning()
+      const [m] = await tx.update(presentationMember).set({ token, expiresAt, email, role }).where(eq(presentationMember.id, existing.id)).returning()
       return { member: m! }
     }
-    const [m] = await tx.insert(presentationMember).values({ id: nanoid(), presentationId: id, email, emailCanonical: canon, token, invitedBy: userId, expiresAt }).returning()
+    const [m] = await tx.insert(presentationMember).values({ id: nanoid(), presentationId: id, email, emailCanonical: canon, role, token, invitedBy: userId, expiresAt }).returning()
     return { member: m! }
   })
   if ('error' in out) {
     return out.error === 'ALREADY_MEMBER'
-      ? c.json({ success: false, error: { code: 'ALREADY_MEMBER', message: 'That person can already edit this presentation.' } }, 409)
+      ? c.json({ success: false, error: { code: 'ALREADY_MEMBER', message: 'That person is already on this presentation. Change what they can do in the list below.' } }, 409)
       : c.json({ success: false, error: { code: 'LIMIT_REACHED', message: `Your ${ent.plan.name} plan allows up to ${limit} collaborators per presentation.` } }, 429)
   }
   const m = out.member
   await sendMail({ to: m.email, ...mail.invitation({ ownerName: me.name, deckTitle: deck.title, email: m.email, url: inviteUrl(m.token) }) }).catch((e) => console.error('[invite mail]', e))
   void audit(userId, 'collab.invited', { presentationId: id }, ipOf(c.req.raw.headers))
   return c.json({ success: true, data: memberView(m) }, 201)
+})
+
+/** the owner changes what a collaborator may do (edit ↔ view); it takes effect on their next request, and their open editor turns read-only (or editable) on the live update */
+sharing.patch('/:id/members/:memberId', rateLimit({ windowMs: 60_000, max: 30, key: byUser('member-role') }), zValidator('json', z.object({ role: memberRole })), async (c) => {
+  const userId = c.get('session')!.user.id
+  const id = c.req.param('id')
+  if (!(await ownDeck(id, userId))) return notFound(c)
+  const [m] = await db.update(presentationMember).set({ role: c.req.valid('json').role }).where(and(eq(presentationMember.presentationId, id), eq(presentationMember.id, c.req.param('memberId')))).returning()
+  if (!m) return notFound(c)
+  void audit(userId, 'collab.role_changed', { presentationId: id, role: m.role }, ipOf(c.req.raw.headers))
+  if (m.userId) publishAccess(id, m.userId) // their open editor turns read-only (or editable) at once
+  return c.json({ success: true, data: memberView(m) })
 })
 
 sharing.delete('/:id/members/:memberId', async (c) => {

@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { DESIGNS, FONT_PAIRS, MAX_WEIGHT, MOTIONS, PREMIUM_THEME_IDS, THEMES, designById, isDark, makeColors, slideTitle, validateSlide, type FontKey, type MotionKey } from '@prompttoppt/theme'
 import { slideContentSchema, themeSchema, type Entitlements, type Presentation, type SlideContent, type Theme } from '@prompttoppt/validation'
-import { hasNumbers, sanitizeContent } from '../generation/policy.ts'
+import { figuresNotInSources, hasNumbers, sanitizeContent } from '../generation/policy.ts'
 import { textOf } from '../generation/quality.ts'
 import { changedMaterially } from './enrich.ts'
 import type { LinkedPage } from './linked-pages.ts'
@@ -19,10 +19,14 @@ export const aiAssistInput = z.object({
   requestId: z.string().min(8).max(64),
   /** sources (PDF, link, text) attached to THIS message; the deck's earlier sources are always included server-side */
   sourceIds: z.array(z.string().max(64)).max(10).default([]),
+  /** a deck-level plan the person confirmed (delete these slides / use this order): checked against the deck again before anything happens */
+  confirm: z.discriminatedUnion('kind', [z.object({ kind: z.literal('remove'), slideIds: z.array(z.string().max(64)).min(1).max(60) }), z.object({ kind: z.literal('reorder'), order: z.array(z.string().max(64)).min(2).max(60) }), z.object({ kind: z.literal('refresh_pictures') }), z.object({ kind: z.literal('clear_pictures') }), z.object({ kind: z.literal('clear_animations') }), z.object({ kind: z.literal('add_bulk'), about: z.string().max(400).optional(), count: z.number().int().min(4).max(15), where: z.enum(['end', 'start', 'spread']), layout: z.string().max(40).optional() }), z.object({ kind: z.literal('text_bulk'), request: z.string().min(2).max(400), addPoints: z.number().int().min(1).max(6).optional(), totalPoints: z.number().int().min(1).max(12).optional(), length: z.enum(['longer', 'shorter']).optional(), notesOnly: z.boolean().optional(), notesSeconds: z.number().int().min(10).max(1800).optional(), slideIds: z.array(z.string().max(64)).min(1).max(60) }), z.object({ kind: z.literal('rewrite'), brief: z.string().min(10).max(3000) }), z.object({ kind: z.literal('sections'), items: z.array(z.object({ title: z.string().min(1).max(60), beforeSlideId: z.string().max(64) })).min(1).max(8) }), /** "do the rest": the very tasks the person was asked about, sent back; the pipeline checks every task again as if it were new (taskSchema): nothing here is trusted */ z.object({ kind: z.literal('proceed'), tasks: z.array(z.object({ family: z.string().max(40), targets: z.array(z.unknown()).max(20), values: z.record(z.string(), z.unknown()), phrase: z.string().max(160).optional() })).min(1).max(4), /** the parts of a long message left for the next step (the person's words): still offered after "Go ahead" */ later: z.array(z.string().max(160)).max(12).optional() })]).optional(),
   /** what the assistant changed earlier in THIS editing session (newest first); the editor still holds the "before" of each, so it can be put back */
   /** the last few turns of this chat (what the user asked, what was done), so follow-ups like "revert it" or "again" can be understood */
   conversation: z.array(z.object({ role: z.enum(['user', 'assistant']), text: z.string().max(600) })).max(8).default([]),
   recent: z.array(z.object({ theme: z.boolean(), slideIds: z.array(z.string().max(64)).max(40), summary: z.array(z.string().max(160)).max(8) })).max(5).default([]),
+  /** what is selected in the editor right now (the objects "this" and "it" mean); ids are checked against the deck, never trusted */
+  selection: z.object({ slideIds: z.array(z.string().max(64)).max(50).default([]), elementIds: z.array(z.string().max(64)).max(200).default([]) }).optional(),
 })
 export type RecentChange = AiAssistInput['recent'][number]
 export type ConversationTurn = AiAssistInput['conversation'][number]
@@ -47,7 +51,8 @@ export const assistOperation = z.discriminatedUnion('op', [
   z.object({ op: z.literal('enrich_deck') }),
   /** keep every word; choose new, relevant pictures for every picture slide */
   z.object({ op: z.literal('refresh_images') }),
-  z.object({ op: z.literal('edit_slide'), slideId: z.string().max(64), content: slideContentSchema }),
+  /** `lists`: the point lists this edit may grow or shrink (paths such as "steps", "left.bullets": the request's goal, set by code, never by a model); every other list keeps its length */
+  z.object({ op: z.literal('edit_slide'), slideId: z.string().max(64), content: slideContentSchema, lists: z.array(z.string().max(80)).max(20).optional() }),
   /** the same slide in a DIFFERENT layout ("change the format / layout of slides 7-10"): the model re-fits the slide's own words into the new layout's fields, the server validates, the editor lays it out */
   z.object({ op: z.literal('restructure_slide'), slideId: z.string().max(64), content: slideContentSchema }),
   /** put back something the assistant changed earlier (`change` 0 = the newest entry of <params>.recentChanges): all of it, only the theme/colours, or only one slide */
@@ -60,7 +65,7 @@ export const assistOperation = z.discriminatedUnion('op', [
   z.object({ op: z.literal('add_slide'), afterSlideId: z.string().max(64).nullish(), content: slideContentSchema, id: z.string().max(64).optional(), atStart: z.boolean().optional() }),
   /** a PROPOSAL: the user confirms (and pays for) the actual picture separately, so the assistant can never run up image costs */
   /** a FREE, INSTANT photo from the photo library (not generated, no credits) on ONE slide: behind it, beside the text, or floating on it ("change the background image", "add a picture of a city", "use a photo of X as the background") */
-  z.object({ op: z.literal('add_photo'), slideId: z.string().max(64), placement: z.enum(['background', 'beside', 'floating']), query: z.string().min(2).max(120), alt: z.string().max(140).optional() }),
+  z.object({ op: z.literal('add_photo'), slideId: z.string().max(64), placement: z.enum(['background', 'beside', 'floating', 'replace']), /** placement "replace": the picture (selected by the person) the photo takes the place of, in its own frame */ elementId: z.string().max(64).optional(), query: z.string().min(2).max(120), alt: z.string().max(140).optional() }),
   z.object({ op: z.literal('add_image'), slideId: z.string().max(64), placement: z.enum(['background', 'beside', 'floating']), prompt: z.string().min(3).max(400), alt: z.string().max(140).optional() }),
 ])
 export type AssistOperation = z.infer<typeof assistOperation>
@@ -261,8 +266,12 @@ export interface CompiledAssist {
   additions: { afterSlideId: string | null; content: SlideContent; id?: string; atStart?: boolean }[]
   /** human-readable list of what was applied */
   applied: string[]
-  /** what was refused or could not be done (plan gates, unknown ids, locked slides…) */
+  /** everything to tell the person, in order (refused + already + info) */
   notes: string[]
+  /** the notes that are a part of the request NOT done (plan gates, unknown ids, locked slides…) */
+  refused: string[]
+  /** the notes that say a part needed nothing (already so) */
+  already: string[]
   /** pictures the user may now confirm (generation is a separate, explicitly-paid step) */
   images: ImageProposal[]
   /** set when the user wants the whole deck's content rebuilt: the editor starts the generation job with this brief */
@@ -279,25 +288,27 @@ export interface CompiledAssist {
   photos: PhotoRequest[]
 }
 
-export interface PhotoRequest { slideId: string; slideNumber: number; placement: 'background' | 'beside' | 'floating'; query: string; alt: string }
+export interface PhotoRequest { slideId: string; slideNumber: number; placement: 'background' | 'beside' | 'floating' | 'replace'; query: string; alt: string; /** placement "replace": the picture the photo takes the place of */ elementId?: string | undefined }
 
 /** The line shown to the person when the photo is placed (the route removes it again when no photo can be found). */
-export const photoApplied = (p: Pick<PhotoRequest, 'slideNumber' | 'placement' | 'query'>) => `Put a ${p.query} photo ${p.placement === 'background' ? `behind slide ${p.slideNumber}` : p.placement === 'beside' ? `beside the text on slide ${p.slideNumber}` : `on slide ${p.slideNumber}`}`
+export const photoApplied = (p: Pick<PhotoRequest, 'slideNumber' | 'placement' | 'query'>) => p.placement === 'replace' ? `Replaced the picture on slide ${p.slideNumber} with a ${p.query} photo` : `Put a ${p.query} photo ${p.placement === 'background' ? `behind slide ${p.slideNumber}` : p.placement === 'beside' ? `beside the text on slide ${p.slideNumber}` : `on slide ${p.slideNumber}`}`
 
 /**
  * "Edit the content" must not change the slide's design. The model may reword every text, but the slide keeps its structure:
  * optional blocks that existed stay (a subtitle can't vanish), blocks that did not exist are not invented (no new subtitle),
  * lists of cards / steps / rows / metrics keep their length, and non-text fields (chart type, picture) stay as they were.
- * Plain bullet lists (bullets, context, approach, results) may grow or shrink — they compose the same way.
+ * Plain bullet lists (bullets, context, approach, results) may grow or shrink — they compose the same way — and so may the lists in `lists` (paths such as "steps" or
+ * "left.bullets"): the ones the person asked to have more or fewer points (the request's goal, packages/validation capacity.ts).
  */
 const FREE_LISTS = new Set(['bullets', 'context', 'approach', 'results'])
 const LOCKED_KEYS = new Set(['layout', 'chartType', 'imageUrl', 'imageAttribution'])
 const FREE_KEYS = new Set(['speakerNotes', 'sources'])
-export function keepShape<T>(prev: T, next: T): T {
+export function keepShape<T>(prev: T, next: T, lists: ReadonlySet<string> = new Set(), path = ''): T {
   if (Array.isArray(prev) && Array.isArray(next)) {
+    if (lists.has(path)) return next.map((x, i) => (i < prev.length ? keepShape(prev[i], x, lists, `${path}[${i}]`) : x)) as T // a list the goal is about takes the new length
     const n = next.slice(0, prev.length)
     for (let i = n.length; i < prev.length; i++) n.push(prev[i])
-    return n.map((x, i) => keepShape(prev[i], x)) as T
+    return n.map((x, i) => keepShape(prev[i], x, lists, `${path}[${i}]`)) as T
   }
   if (prev && next && typeof prev === 'object' && typeof next === 'object' && !Array.isArray(prev) && !Array.isArray(next)) {
     const p = prev as Record<string, unknown>, o: Record<string, unknown> = {}
@@ -306,7 +317,7 @@ export function keepShape<T>(prev: T, next: T): T {
       else if (!(k in p)) continue
       else if (LOCKED_KEYS.has(k)) o[k] = p[k]
       else if (FREE_LISTS.has(k) && Array.isArray(v)) o[k] = v
-      else o[k] = keepShape(p[k], v)
+      else o[k] = keepShape(p[k], v, lists, path ? `${path}.${k}` : k)
     }
     for (const k of Object.keys(p)) if (!(k in o)) o[k] = p[k]
     return o as T
@@ -338,14 +349,23 @@ export const LAYOUT_MAX_POINTS: Record<string, number> = { 'title-body': 6, 'spl
  * must exist, premium looks are gated by plan, colours go through the accessible palette generator, edits must keep their
  * layout, respect locks, and pass the same content sanitiser as generation.
  */
-export function compileAssist(doc: Presentation, out: AiAssistOutput, ent: Pick<Entitlements, 'features'>, scope: 'deck' | 'slide', focusSlideId?: string, pageTexts: string[] = [], recent: RecentChange[] = [], instruction?: string): CompiledAssist {
+export function compileAssist(doc: Presentation, out: AiAssistOutput, ent: Pick<Entitlements, 'features'>, scope: 'deck' | 'slide', focusSlideId?: string, pageTexts: string[] = [], recent: RecentChange[] = [], instruction?: string, trace: { doc?: Presentation; words?: string } = {}): CompiledAssist {
+  // everything a figure may be traced to: the person's own words, the deck AS THE PERSON HAS IT (never a deck that already holds what is being checked), the attached sources and pages
+  const corpus = [instruction ?? '', trace.words ?? '', JSON.stringify((trace.doc ?? doc).slides.map((x) => x.content ?? (Array.isArray(x.elements) ? x.elements : []).map((e) => (e.type === 'text' ? e.paragraphs.map((p) => p.runs.map((r) => r.text).join('')).join(' ') : '')))), ...pageTexts].join('\n')
+  const untraced = (c: SlideContent, n: number | null): string | null => { const bad = figuresNotInSources(c, corpus); return bad.length ? `${n ? `Slide ${n}: I` : 'I'} did not use that ${n ? 'rewrite' : 'slide'}: its figures (${bad.slice(0, 5).join(', ')}) are not in your message, your deck or your sources, and I never make up numbers. Tell me the figures and I will use them.` : null }
   let theme: Theme = structuredClone(doc.theme)
   let themeChanged = false
   const applied: string[] = []
-  const notes = [...out.unsupported]
+  const notes: string[] = [], refused: string[] = [], already: string[] = []
+  // every note has a kind, decided where it is written: a part NOT done (refuse), a part already so (sameAs), or something to know (notes.push)
+  const refuse = (t: string) => { notes.push(t); refused.push(t) }
+  const sameAs = (t: string) => { notes.push(t); already.push(t) }
+  out.unsupported.forEach(refuse)
   const edits = new Map<string, SlideContent>()
   const images: ImageProposal[] = []
   const additions: CompiledAssist['additions'] = []
+  /** new slides that were withheld, and the place they would have had (the slides chained after them take it) */
+  const withheldAt = new Map<string, string | null>()
   const reverts: CompiledAssist['reverts'] = []
   const backgrounds: CompiledAssist['backgrounds'] = []
   const readability: string[] = []
@@ -356,7 +376,7 @@ export function compileAssist(doc: Presentation, out: AiAssistOutput, ent: Pick<
 
   for (const op of out.operations) {
     if (scope === 'slide' && !((op.op === 'enrich_deck' || op.op === 'add_slide' || op.op === 'revert' || ((op.op === 'edit_slide' || op.op === 'restructure_slide' || op.op === 'add_image' || op.op === 'add_photo' || op.op === 'set_slide_background' || op.op === 'fix_readability') && (op.slideId ?? focusSlideId) === focusSlideId)))) {
-      notes.push('Only the selected slide can be changed here — switch to "Whole deck" for theme and animation changes.')
+      refuse('Only the selected slide can be changed here — switch to "Whole deck" for theme and animation changes.')
       continue
     }
     switch (op.op) {
@@ -364,9 +384,9 @@ export function compileAssist(doc: Presentation, out: AiAssistOutput, ent: Pick<
         const design = designById(op.id)
         const builtin = THEMES.find((t) => t.id === op.id)
         const next = design?.theme ?? builtin
-        if (!next) { notes.push(`There is no template called "${op.id}".`); break }
+        if (!next) { refuse(`There is no template called "${op.id}".`); break }
         if (((design?.premium ?? false) || PREMIUM_THEME_IDS.includes(op.id)) && !ent.features.premiumTemplates) {
-          notes.push(`"${next.name}" is a Pro template — upgrade to use it.`)
+          refuse(`"${next.name}" is a Pro template — upgrade to use it.`)
           break
         }
         theme = structuredClone(next)
@@ -415,9 +435,9 @@ export function compileAssist(doc: Presentation, out: AiAssistOutput, ent: Pick<
       case 'add_image': {
         const slide = doc.slides.find((s) => s.id === op.slideId)
         const n = slide ? doc.slides.indexOf(slide) + 1 : 0
-        if (!slide) { notes.push('The AI referred to a slide that does not exist; no picture was proposed.'); break }
-        if (slide.locked) { notes.push(`Slide ${n} is locked; no picture was proposed for it.`); break }
-        if (images.length >= 3) { notes.push('At most 3 pictures can be proposed at once.'); break }
+        if (!slide) { refuse('The AI referred to a slide that does not exist; no picture was proposed.'); break }
+        if (slide.locked) { refuse(`Slide ${n} is locked; no picture was proposed for it.`); break }
+        if (images.length >= 3) { refuse('At most 3 pictures can be proposed at once.'); break }
         const allowed = allowedPlacements(slide)
         // the words decide: "background" only when the person asked for the background (the model sometimes picks it for a plain "add an image")
         const wanted = op.placement === 'background' && instruction !== undefined && !ASKS_FOR_BACKGROUND.test(instruction) ? (allowed.includes('beside') ? 'beside' : 'floating') : op.placement
@@ -429,9 +449,9 @@ export function compileAssist(doc: Presentation, out: AiAssistOutput, ent: Pick<
       }
       case 'revert': {
         const r = recent[op.change]
-        if (!r) { notes.push('There is no earlier change of mine to put back.'); break }
+        if (!r) { refuse('There is no earlier change of mine to put back.'); break }
         const part = op.part === 'theme' && !r.theme ? 'all' : op.part
-        if (part === 'slide' && !(op.slideId && r.slideIds.includes(op.slideId))) { notes.push('I did not change that slide, so there is nothing to put back there.'); break }
+        if (part === 'slide' && !(op.slideId && r.slideIds.includes(op.slideId))) { refuse('I did not change that slide, so there is nothing to put back there.'); break }
         if (reverts.some((x) => x.change === op.change && (x.part === 'all' || x.part === part && x.slideId === op.slideId))) break
         const n = op.slideId ? doc.slides.findIndex((x) => x.id === op.slideId) + 1 : 0
         reverts.push({ change: op.change, part, ...(part === 'slide' ? { slideId: op.slideId! } : {}) })
@@ -441,11 +461,11 @@ export function compileAssist(doc: Presentation, out: AiAssistOutput, ent: Pick<
       case 'set_slide_background': {
         const slide = doc.slides.find((s) => s.id === op.slideId)
         const n = slide ? doc.slides.indexOf(slide) + 1 : 0
-        if (!slide) { notes.push('The AI referred to a slide that does not exist; skipped.'); break }
-        if (slide.locked) { notes.push(`Slide ${n} is locked; skipped.`); break }
+        if (!slide) { refuse('The AI referred to a slide that does not exist; skipped.'); break }
+        if (slide.locked) { refuse(`Slide ${n} is locked; skipped.`); break }
         const color = op.color === 'deck' ? commonBackground(doc, slide.id) : op.color.toUpperCase()
         if (backgrounds.some((b) => b.slideId === slide.id)) break
-        if (slide.background?.type === 'color' && slide.background.value.toUpperCase() === color.toUpperCase() && !slide.themeOverrides) { notes.push(`Slide ${n} already has that background.`); break }
+        if (slide.background?.type === 'color' && slide.background.value.toUpperCase() === color.toUpperCase() && !slide.themeOverrides) { sameAs(`Slide ${n} already has that background.`); break }
         backgrounds.push({ slideId: slide.id, color })
         applied.push(op.color === 'deck' ? `Slide ${n} now has the same background as the other slides` : `Changed the background of slide ${n}`)
         break
@@ -453,10 +473,19 @@ export function compileAssist(doc: Presentation, out: AiAssistOutput, ent: Pick<
       case 'add_photo': {
         const slide = doc.slides.find((s) => s.id === op.slideId)
         const n = slide ? doc.slides.indexOf(slide) + 1 : 0
-        if (!slide) { notes.push('The AI referred to a slide that does not exist; skipped.'); break }
-        if (slide.locked) { notes.push(`Slide ${n} is locked; skipped.`); break }
+        if (!slide) { refuse('The AI referred to a slide that does not exist; skipped.'); break }
+        if (slide.locked) { refuse(`Slide ${n} is locked; skipped.`); break }
         if (photos.some((x) => x.slideId === slide.id)) break
-        if (photos.length >= 2) { notes.push('At most 2 photos can be added at once.'); break }
+        if (photos.length >= 2) { refuse('At most 2 photos can be added at once.'); break }
+        // "replace this picture": the photo goes INTO the picture the person selected (its own frame), checked here: it must still be there, a picture, and not locked
+        if (op.placement === 'replace') {
+          const el = op.elementId ? slide.elements.find((e) => e.id === op.elementId) : undefined
+          if (!el || el.type !== 'image' || el.locked) { refuse(`Slide ${n}: the picture to replace is ${!el ? 'no longer there' : el.locked ? 'locked' : 'not a picture'}, so nothing was changed.`); break }
+          const req: PhotoRequest = { slideId: slide.id, slideNumber: n, placement: 'replace', elementId: el.id, query: op.query.trim(), alt: (op.alt ?? op.query).trim().slice(0, 140) }
+          photos.push(req)
+          applied.push(photoApplied(req))
+          break
+        }
         const allowed = allowedPlacements(slide)
         // the words decide: behind the slide only when the person asked for the background
         const wanted = op.placement === 'background' && instruction !== undefined && !ASKS_FOR_BACKGROUND.test(instruction) ? (allowed.includes('beside') ? 'beside' : 'floating') : op.placement
@@ -469,17 +498,22 @@ export function compileAssist(doc: Presentation, out: AiAssistOutput, ent: Pick<
       }
       case 'fix_readability': {
         const targets = op.slideId ? doc.slides.filter((x) => x.id === op.slideId) : doc.slides
-        if (op.slideId && targets.length === 0) { notes.push('The AI referred to a slide that does not exist; skipped.'); break }
+        if (op.slideId && targets.length === 0) { refuse('The AI referred to a slide that does not exist; skipped.'); break }
         const open = targets.filter((x) => !x.locked && !readability.includes(x.id))
-        if (open.length === 0) { notes.push(op.slideId ? 'That slide is locked; skipped.' : 'Every slide is locked; skipped.'); break }
+        if (open.length === 0) { refuse(op.slideId ? 'That slide is locked; skipped.' : 'Every slide is locked; skipped.'); break }
         readability.push(...open.map((x) => x.id))
         applied.push(op.slideId ? `Made the text on slide ${doc.slides.findIndex((x) => x.id === op.slideId) + 1} readable on its background` : 'Made the text on every slide readable on its background')
         break
       }
       case 'add_slide': {
-        if (additions.length >= 5) { notes.push('At most 5 slides can be added at once.'); break }
-        const after = op.afterSlideId ? doc.slides.find((x) => x.id === op.afterSlideId) : undefined
-        if (op.afterSlideId && !after) { notes.push('The AI referred to a slide that does not exist; the new slide goes at the end.') }
+        // a new slide that is withheld hands its place to the new slides chained after it ("4 slides after slide 6" with one refused: the other three still go after slide 6, never to the end)
+        let anchorId = op.afterSlideId ?? null
+        while (anchorId && withheldAt.has(anchorId)) anchorId = withheldAt.get(anchorId)!
+        if (additions.length >= 5) { refuse('At most 5 slides can be added at once.'); if (op.id) withheldAt.set(op.id, anchorId); break }
+        const after = anchorId ? doc.slides.find((x) => x.id === anchorId) : undefined
+        if (anchorId && !after) { notes.push('The AI referred to a slide that does not exist; the new slide goes at the end.') }
+        const invented = untraced(op.content, null)
+        if (invented) { refuse(invented); if (op.id) withheldAt.set(op.id, anchorId); break }
         const content = sanitizeContent(op.content, known, hasNumbers('', [JSON.stringify(doc.slides.map((x) => x.content ?? {})), ...pageTexts]), null)
         const n = (after ? doc.slides.indexOf(after) + 1 : doc.slides.length) + 1
         additions.push({ afterSlideId: after?.id ?? null, content, ...(op.id ? { id: op.id } : {}), ...(op.atStart ? { atStart: true } : {}) })
@@ -489,11 +523,13 @@ export function compileAssist(doc: Presentation, out: AiAssistOutput, ent: Pick<
       case 'restructure_slide': {
         const slide = doc.slides.find((s) => s.id === op.slideId)
         const n = slide ? doc.slides.indexOf(slide) + 1 : 0
-        if (!slide) { notes.push('The AI referred to a slide that does not exist; skipped.'); break }
-        if (slide.locked) { notes.push(`Slide ${n} is locked; skipped.`); break }
-        if (slide.manual) { notes.push(`Slide ${n} was edited by hand, so the AI left it alone.`); break }
-        if (op.content.layout === slide.layoutId) { notes.push(`Slide ${n} already uses that layout.`); break }
-        if (edits.size >= 20) { notes.push('Too many slides in one request; the rest were skipped.'); break }
+        if (!slide) { refuse('The AI referred to a slide that does not exist; skipped.'); break }
+        if (slide.locked) { refuse(`Slide ${n} is locked; skipped.`); break }
+        if (slide.manual) { refuse(`Slide ${n} was edited by hand, so the AI left it alone.`); break }
+        if (op.content.layout === slide.layoutId) { sameAs(`Slide ${n} already uses that layout.`); break }
+        if (edits.size >= 20) { refuse('Too many slides in one request; the rest were skipped.'); break }
+        const inventedRe = untraced(op.content, n)
+        if (inventedRe) { refuse(inventedRe); break }
         edits.set(slide.id, sanitizeContent(op.content, known, hasNumbers('', [JSON.stringify(slide.content ?? {}), ...pageTexts]), slide.content as SlideContent | null | undefined))
         applied.push(`Changed slide ${n} to the ${op.content.layout.replace(/-/g, ' ')} layout`)
         break
@@ -501,14 +537,16 @@ export function compileAssist(doc: Presentation, out: AiAssistOutput, ent: Pick<
       case 'edit_slide': {
         const slide = doc.slides.find((s) => s.id === op.slideId)
         const n = slide ? doc.slides.indexOf(slide) + 1 : 0
-        if (!slide) { notes.push('The AI referred to a slide that does not exist; skipped.'); break }
-        if (slide.locked) { notes.push(`Slide ${n} is locked; skipped.`); break }
-        if (slide.manual) { notes.push(`Slide ${n} was edited by hand, so the AI left it alone.`); break }
-        if (op.content.layout !== slide.layoutId) { notes.push(`Slide ${n}: the AI tried to change its layout; skipped.`); break }
-        if (edits.size >= 20) { notes.push('Too many slides in one request; the rest were skipped.'); break }
-        const proposed = slide.content ? keepShape(slide.content as SlideContent, op.content) : op.content
+        if (!slide) { refuse('The AI referred to a slide that does not exist; skipped.'); break }
+        if (slide.locked) { refuse(`Slide ${n} is locked; skipped.`); break }
+        if (slide.manual) { refuse(`Slide ${n} was edited by hand, so the AI left it alone.`); break }
+        if (op.content.layout !== slide.layoutId) { refuse(`Slide ${n}: the AI tried to change its layout; skipped.`); break }
+        if (edits.size >= 20) { refuse('Too many slides in one request; the rest were skipped.'); break }
+        const proposed = slide.content ? keepShape(slide.content as SlideContent, op.content, new Set(op.lists ?? [])) : op.content
+        const inventedEdit = untraced(proposed, n)
+        if (inventedEdit) { refuse(inventedEdit); break }
         const next = sanitizeContent(proposed, known, hasNumbers('', [JSON.stringify(slide.content ?? {}), ...pageTexts]), slide.content as SlideContent | null | undefined)
-        if (slide.content && !changedMaterially(slide.content as SlideContent, next) && JSON.stringify(textOf(slide.content as SlideContent)) === JSON.stringify(textOf(next))) { notes.push(`Slide ${n}: the AI returned the same text, so nothing was changed.`); break }
+        if (slide.content && !changedMaterially(slide.content as SlideContent, next) && JSON.stringify(textOf(slide.content as SlideContent)) === JSON.stringify(textOf(next))) { refuse(`Slide ${n}: the AI returned the same text, so nothing was changed.`); break }
         edits.set(slide.id, next)
         applied.push(`Rewrote slide ${n}`)
         // "add 2 more bullet points": if the lists did not grow by that much, say so plainly instead of a bare "Done" (the model may have only reworded, or the layout is full)
@@ -517,7 +555,7 @@ export function compileAssist(doc: Presentation, out: AiAssistOutput, ent: Pick<
           const was = listLengths(slide.content), now = listLengths(next)
           if (was.length && was.length === now.length && now.some((len, i) => len - was[i]! < more)) {
             const max = LAYOUT_MAX_POINTS[slide.layoutId]
-            notes.push(max && now.every((len) => len >= max) ? `Slide ${n} is already full: this layout holds at most ${max} points.` : `Slide ${n}: you asked for ${more} more point${more > 1 ? 's' : ''}, but ${now.every((len, i) => len === was[i]) ? 'nothing was added' : 'not every list grew that much'}${max ? ` (this layout holds at most ${max})` : ''}. Tell me which list to add to, or ask again.`)
+            refuse(max && now.every((len) => len >= max) ? `Slide ${n} is already full: this layout holds at most ${max} points.` : `Slide ${n}: you asked for ${more} more point${more > 1 ? 's' : ''}, but ${now.every((len, i) => len === was[i]) ? 'nothing was added' : 'not every list grew that much'}${max ? ` (this layout holds at most ${max})` : ''}. Tell me which list to add to, or ask again.`)
           }
         }
         break
@@ -525,5 +563,5 @@ export function compileAssist(doc: Presentation, out: AiAssistOutput, ent: Pick<
     }
   }
   if (themeChanged) themeSchema.parse(theme)
-  return { theme: themeChanged ? theme : null, edits: [...edits].map(([slideId, content]) => ({ slideId, content })), additions, applied, notes, images, reverts, rewrite, enrich, backgrounds, readability, photos }
+  return { theme: themeChanged ? theme : null, edits: [...edits].map(([slideId, content]) => ({ slideId, content })), additions, applied, notes, refused, already, images, reverts, rewrite, enrich, backgrounds, readability, photos }
 }

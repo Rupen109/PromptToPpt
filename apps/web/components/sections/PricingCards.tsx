@@ -21,7 +21,7 @@ const CARD: Record<'starter' | 'pro' | 'gold' | 'premium', { label: string; tone
   starter: { label: 'Free explorer', tone: 'cream', labelColor: 'text-[#475569]', desc: 'Try the AI presentation engine with 100 free credits.' },
   pro: { label: 'For founders & teams', tone: 'peach', labelColor: 'text-[#b02f00]', desc: 'Premium models, export and no watermark — for anyone who presents often.' },
   gold: { label: 'Power users & firms', tone: 'lavender', labelColor: 'text-primary', desc: 'High-quality generation, brand control and every export format.' },
-  premium: { label: 'Studios & heavy users', tone: 'cream', labelColor: 'text-[#475569]', desc: 'Pick any advanced model, with no slide limit beyond your credits.' },
+  premium: { label: 'Studios & heavy users', tone: 'cream', labelColor: 'text-[#475569]', desc: 'Pro AI models, with no slide limit beyond your credits.' },
 }
 
 /**

@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { catalog } from '../ai/gateway.ts'
-import type { CatalogRow } from '../ai/registry-db.ts'
+import { modelStem, type CatalogRow } from '../ai/registry-db.ts'
 import { creditPrice } from '../billing/credits.ts'
 import { getEntitlements } from '../billing/entitlements.ts'
 import { requireAuth, type AppEnv } from '../middleware/session.ts'
@@ -16,8 +16,6 @@ export function defaultModel(ent: Pick<Entitlements, 'features'>, rows: CatalogR
   return [...text].sort((a, b) => rank(a.accessTier) - rank(b.accessTier) || (a.routeQuality ?? 99) - (b.routeQuality ?? 99) || a.sortOrder - b.sortOrder)[0]
 }
 
-/** A model's name without its provider: "google/gemini-3.6-flash" and "gemini-3.6-flash" are the same model on OpenRouter and on Vertex. */
-const stemOf = (r: CatalogRow) => r.modelId.split('/').pop()
 
 /**
  * The model a request runs on: ONE rule for every place that writes or edits with a model.
@@ -29,7 +27,7 @@ export function chooseModel(ent: Pick<Entitlements, 'features'>, rows: CatalogRo
   if (requestedId && ent.features.modelChoice) return rows.find((r) => r.id === requestedId && r.kind === 'text')
   const text = rows.filter((r) => r.kind === 'text' && ent.features.modelTiers.includes(r.accessTier as AccessTier))
   for (const stem of ent.features.fixedModels) {
-    const hit = text.find((r) => stemOf(r) === stem)
+    const hit = text.find((r) => modelStem(r) === stem)
     if (hit) return hit
   }
   return defaultModel(ent, rows)

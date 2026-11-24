@@ -1,6 +1,7 @@
 /**
  * End-to-end smoke test of a LIVE environment through a real browser (no database access, no plan changes).
  *   LIVE_EMAIL=... LIVE_PASSWORD=... node live-smoke.mjs        (defaults to https://slidesdone.app, app., api.)
+ *   QA: LIVE_WEB=https://qa.slidesdone.app LIVE_APP=https://app.qa.slidesdone.app LIVE_API=https://api.qa.slidesdone.app (an invited, confirmed account)
  * The account must already exist and be verified. It tests what a Starter (free) person can do; paid-only features are listed as skipped.
  */
 import { mkdirSync, readFileSync } from 'node:fs'
@@ -92,8 +93,13 @@ await check('pictures: upload to storage (S3) and the picture is served back fro
   const url = (await r.json()).data.url
   const g = await ctx.request.get(url); need(g.ok() && /image\//.test(g.headers()['content-type'] ?? ''), `picture not served: ${g.status()}`)
 })
-await check('adding objects (text, shapes) is gated for Starter with the upgrade message', async () => {
-  await p.getByTestId('tb-text').click(); await p.getByText(/Advanced editor/).first().waitFor({ timeout: 6000 }); await p.keyboard.press('Escape')
+// what this account's plan allows, from the server (plans are data and change: Starter got the advanced editor later, sharing stays paid)
+const features = async () => (await (await ctx.request.get(`${API}/api/v1/me/entitlements`)).json()).data.features
+await check('adding objects (text, shapes) follows the plan: a text box when the plan has the advanced editor, else the upgrade message', async () => {
+  const f = await features()
+  await p.getByTestId('tb-text').click()
+  if (f.advancedEditor) { await p.locator('[contenteditable="true"]').first().waitFor({ timeout: 6000 }); await p.keyboard.press('Escape'); await p.keyboard.press('Escape') }
+  else { await p.getByText(/Advanced editor/).first().waitFor({ timeout: 6000 }); await p.keyboard.press('Escape') }
 })
 await check('template deck: create from a free template, editor opens with slides', async () => {
   const r = await ctx.request.post(`${API}/api/v1/presentations`, { headers: { Origin: APP }, data: { templateId: 'pitch-seed-round' } })
@@ -104,8 +110,9 @@ await check('Created by me lists the decks; open one; delete the smoke deck clea
   await p.goto(APP + '/created', { waitUntil: 'networkidle' }); await settle()
   need(/Live smoke deck|Untitled|Seed/.test(await bodyText()), 'created decks missing in the list')
 })
-await check('share link: owner creates one, an anonymous browser can open it', async () => {
+await check('share link follows the plan: a paid plan creates one an anonymous browser can open; Starter is told sharing is a paid feature', async () => {
   const r = await ctx.request.post(`${API}/api/v1/presentations/${deckId}/share`, { headers: { Origin: APP } })
+  if (!(await features()).livePreview) { const e = await r.json(); need(r.status() === 403 && e.error?.code === 'UPGRADE_REQUIRED', `Starter share answered ${r.status()} ${JSON.stringify(e).slice(0, 120)}`); return }
   need(r.ok(), `share answered ${r.status()}`)
   const link = (await r.json()).data.url
   const anon = await (await b.newContext()).newPage(); const rr = await anon.goto(link, { waitUntil: 'networkidle', timeout: 40000 }); need(rr.status() < 400, `share page ${rr.status()}`)
@@ -119,7 +126,8 @@ await check('support form: a message can be sent', async () => {
   const r = await sent; need(r.status() === 201, `support answered ${r.status()}`)
 })
 await check('AI deck generation: a prompt reaches the model and comes back', async () => {
-  const r = await ctx.request.post(`${API}/api/v1/generation/analyze`, { headers: { Origin: APP }, data: { prompt: 'A short deck about tea', language: 'en' } })
+  // QA runs a free-tier key: slower answers and an occasional "high demand" retry, so allow two minutes
+  const r = await ctx.request.post(`${API}/api/v1/generation/analyze`, { headers: { Origin: APP }, data: { prompt: 'A short deck about tea', language: 'en' }, timeout: 120000 })
   need(r.ok(), `analyze answered ${r.status()}: ${(await r.text()).slice(0, 200)}`)
 })
 await check('log out ends the session', async () => {

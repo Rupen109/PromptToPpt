@@ -3,7 +3,7 @@ import { Lock, MessageSquare } from '@prompttoppt/ui/icons'
 import { useEffect, useMemo, useState } from 'react'
 import type { Slide, Theme } from '@prompttoppt/validation'
 import { api } from '@/lib/api'
-import type { LayoutId, Presentation, SlideElement } from '@prompttoppt/validation'
+import type { LayoutId, Presentation } from '@prompttoppt/validation'
 import { SlideCanvas } from '@prompttoppt/ui'
 import { PLACEHOLDER_KINDS, PLACEHOLDER_LABEL, type PlaceholderKind } from '@prompttoppt/theme'
 import { othersOf, useLive } from '@/editor/live'
@@ -15,7 +15,6 @@ import { ContextMenu, type MenuItem } from './ContextMenu'
 
 /** the designed layouts the PowerPoint set already covers (they would only be listed twice) */
 const PLACEHOLDER_ALREADY = new Set<LayoutId>(['title', 'section-divider', 'comparison'])
-const STICKERS = ['⭐', '✅', '💡', '🚀', '⚠️', '❤️', '🎯', '📈']
 const LAYOUT_LABEL: Partial<Record<LayoutId, string>> = { 'title-body': 'Designed bullets', 'split-image-text': 'Image + text', comparison: 'Comparison', process: 'Process', timeline: 'Timeline', quote: 'Quote', table: 'Table', 'section-divider': 'Section divider', title: 'Title', 'thank-you': 'Thank you', agenda: 'Agenda', team: 'Team', matrix: '2×2 matrix', roadmap: 'Roadmap', architecture: 'Architecture', 'case-study': 'Case study', 'big-number': 'Big number' }
 
 /** A small speech bubble with the number of open comment threads on this slide (a red dot when some are unread). */
@@ -97,8 +96,8 @@ export function SlideRail({ doc, watermark }: { doc: Presentation; watermark: bo
       { label: 'Move down', disabled: i === doc.slides.length - 1, onClick: () => apply('Move slide', (d) => C.moveSlide(d, i, i + 1)) },
       { type: 'divider' },
       { type: 'swatches', label: 'Slide colors', options: Object.entries(doc.theme.colors).filter(([k]) => k !== 'onPrimary').map(([k, v]) => ({ value: v, css: v, title: k })), onPick: (v) => apply('Slide colour', (d) => C.setSlideBackground(d, slideId, v)) },
-      { type: 'emoji', label: 'Add sticker', options: STICKERS, onPick: (emoji) => { const el: SlideElement = C.makeElement({ type: 'icon', id: crypto.randomUUID(), x: 1500, y: 120, width: 220, height: 220, name: emoji, color: 'primary' }); apply('Add sticker', (d) => C.addElement(d, slideId, el)); setActiveSlide(slideId) } },
       { label: 'Speaker notes', onClick: () => { setActiveSlide(slideId); toggleNotes(true) } },
+      ...(useUi.getState().canExport ? [{ label: 'Download this slide…', onClick: () => { setActiveSlide(slideId); useUi.getState().openExport('current') } }] : []),
       { label: slide.locked ? 'Unlock slide' : 'Lock slide', onClick: () => apply('Lock slide', (d) => C.setSlideLocked(d, slideId, !slide.locked)) },
       { type: 'divider' },
       { label: 'Delete slide', danger: true, disabled: doc.slides.length <= 1, onClick: () => { apply('Delete slide', (d) => C.deleteSlide(d, slideId)); if (activeSlideId === slideId) setActiveSlide(doc.slides[Math.max(0, i - 1)]?.id ?? null); select([]) } },
@@ -164,7 +163,7 @@ export function SlideRail({ doc, watermark }: { doc: Presentation; watermark: bo
             <Here slideId={s.id} />
             <Bubble slideId={s.id} index={i} />
             {s.locked && <span aria-label="Locked" className="absolute right-1.5 top-1.5 z-10 text-[11px] inline-flex"><Lock aria-hidden size={12} /></span>}
-            <SlideCanvas slide={s} theme={doc.theme} aspect={doc.aspectRatio} width={172} watermark={watermark} />
+            <SlideCanvas slide={s} theme={doc.theme} aspect={doc.aspectRatio} width={172} watermark={watermark} footer={{ index: i, total: doc.slides.length, title: doc.title }} />
           </button>
           <button aria-label={`Slide ${i + 1} options`} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setActiveSlide(s.id); setMenu({ x: r.right + 4, y: r.top, slideId: s.id }) }} className="absolute right-1 bottom-1 z-10 w-6 h-6 rounded bg-white/90 border border-border text-xs hover:bg-white grid place-items-center"><MoreHorizontal aria-hidden size={14} /></button>
         </div>

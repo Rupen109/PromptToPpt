@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import type { SlideElement } from '@prompttoppt/validation'
+import { PPT_SINGLE_LINE, areaProblem, dashFromPpt, scatterXs, validMerges, type CellAlign, type CellArea, type ChartType, type SlideElement, type StrokeDash } from '@prompttoppt/validation'
 import { colourIn, colourOf, isDark, mix, type Colour, type ColourContext } from './color.ts'
 import { apply, groupMap, IDENT, mul, place, readXfrm, type Aff, type Placed, type Xfrm } from './geom.ts'
 import { mapFont, weightHint } from './fonts.ts'
@@ -102,7 +102,7 @@ function styleFill(style: XNode | undefined, c: Ctx): Fill {
   const f = holder ? fillFrom({ n: 'x', a: {}, c: [holder], t: '' }, c, ph?.hex) : null
   return f ?? (ph ? { k: 'solid', c: ph } : null)
 }
-interface Line { color: Colour | null; widthPx: number }
+interface Line { color: Colour | null; widthPx: number; /** dashed / dotted (PowerPoint's preset, as ours) */ dash?: StrokeDash | undefined }
 function lineOf(spPr: XNode | undefined, style: XNode | undefined, c: Ctx): Line | null {
   const ln = kid(spPr, 'ln')
   const ref = kid(style, 'lnRef')
@@ -115,7 +115,10 @@ function lineOf(spPr: XNode | undefined, style: XNode | undefined, c: Ctx): Line
     const w = ln.a['w'] !== undefined ? num(ln.a['w']) : refW || 9525
     const f = fillFrom(ln, c, phc?.hex)
     const col = f?.k === 'solid' ? f.c : f?.k === 'grad' ? f.from : phc
-    return col ? { color: col, widthPx: px(w) } : null
+    // a dashed or dotted line stays so (dash-dot kinds come in as dashes and are flagged)
+    const d = dashFromPpt(kid(ln, 'prstDash')?.a['val'])
+    if (!d.exact) c.flags.add('dashes')
+    return col ? { color: col, widthPx: px(w), ...(d.dash ? { dash: d.dash } : {}) } : null
   }
   if (ref && refIdx > 0 && phc) return { color: phc, widthPx: px(refW) }
   return null
@@ -165,7 +168,7 @@ function shapeElement(sp: XNode, pl: Placed, fill: Fill, line: Line | null, c: C
   else if (visibleFill && fill!.k === 'grad') opacity = fill!.from.alpha
   if (opacity < 0.02 && !line) return null // an invisible glow
   const gradient = visibleFill && fill!.k === 'grad' ? { from: hexOf(fill!.from), to: hexOf(fill!.to), angle: fill!.angle } : undefined
-  const common = { type: 'shape' as const, id: id(c), ...box, opacity: clampN(opacity, 0, 1), fill: fillHex, ...(gradient ? { gradient } : {}), ...(line ? { stroke: hexOf(line.color!), strokeWidth: clampN(line.widthPx, 0, 80) } : {}) }
+  const common = { type: 'shape' as const, id: id(c), ...box, opacity: clampN(opacity, 0, 1), fill: fillHex, ...(gradient ? { gradient } : {}), ...(line ? { stroke: hexOf(line.color!), strokeWidth: clampN(line.widthPx, 0, 80), ...(line.dash ? { strokeDash: line.dash } : {}) } : {}) }
   if (geo.kind === 'basic') return { geo, el: { ...common, shape: geo.shape, radius: geo.shape === 'rect' ? Math.round(geo.radius ?? 0) : 0 } as SlideElement }
   if (geo.kind === 'triangle') { if (flipV) return { geo, el: { ...common, shape: 'polygon', points: [[0.5, 1], [1, 0], [0, 0]], radius: 0 } as SlideElement }; return { geo, el: { ...common, shape: 'triangle', radius: 0 } as SlideElement } }
   if (geo.kind === 'ring') return { geo, el: { ...common, shape: 'ring', fill: 'none', stroke: fillHex === 'none' ? (line ? hexOf(line.color!) : '#000000') : fillHex, strokeWidth: clampN(geo.width, 1, 80), radius: 0 } as SlideElement }
@@ -224,7 +227,7 @@ function textFrom(paras: TextPara[], body: BodyProps, box: Placed, c: Ctx, o: { 
   const heading = twoFonts ? (dom.font === c.theme.major || (mine === mj && dom.font !== c.theme.minor)) : o.role === 'title'
   const isTitle = o.role === 'title'
   const lineSpacing = domPara.lineSpacing ?? 1
-  const lineHeight = domPara.lnSpcPts ? clampN((domPara.lnSpcPts * pxPt) / fontPx, 0.7, 2.2) : clampN(1.2 * Math.max(0.5, lineSpacing - body.lnSpcReduction), 0.7, 2.2)
+  const lineHeight = domPara.lnSpcPts ? clampN((domPara.lnSpcPts * pxPt) / fontPx, 0.7, 2.2) : clampN(PPT_SINGLE_LINE * Math.max(0.5, lineSpacing - body.lnSpcReduction), 0.7, 2.2)
   const gap = (p: TextPara, q: TextPara) => {
     const of = (v: number, p0: TextPara) => (v > 0 ? v * pxPt : v < 0 ? -v * 1.2 * (p0.runs[0]?.sz ?? dom.sz) * fontScale * pxPt : 0)
     return of(p.spaceAfter, p) + of(q.spaceBefore, q)
@@ -234,7 +237,7 @@ function textFrom(paras: TextPara[], body: BodyProps, box: Placed, c: Ctx, o: { 
   const alignCount = new Map<string, number>()
   for (const p of ps) alignCount.set(p.algn, (alignCount.get(p.algn) ?? 0) + chars(p))
   const algn = [...alignCount.entries()].sort((x, y) => y[1] - x[1])[0]![0]
-  const align = algn === 'ctr' ? 'center' : algn === 'r' ? 'right' : 'left'
+  const align = algn === 'ctr' ? 'center' : algn === 'r' ? 'right' : algn === 'just' || algn === 'dist' || algn === 'thaiDist' || algn === 'justLow' ? 'justify' : 'left' // (justified text stays justified)
   if (alignCount.size > 1 && ps.length > 1) c.flags.add('mixed-align')
   const firstBullet = ps.find((p) => p.bullet.kind === 'char')?.bullet
   const glyph = firstBullet && firstBullet.kind === 'char' ? bulletGlyph(firstBullet.char, firstBullet.font) : '•'
@@ -365,9 +368,30 @@ function tableElement(tbl: XNode, pl: Placed, c: Ctx): Emitted | null {
   let headerColor = runCol(0)
   if (headerFill === undefined && styled && accent && tblPr?.a['firstRow'] !== '0') { headerFill = accent; headerColor ??= isDark(accent) ? '#FFFFFF' : '#000000'; rowFill ??= mix(accent, '#FFFFFF', 0.82); alt ??= mix(accent, '#FFFFFF', 0.9) }
   const textColor = rows.length > 1 ? runCol(1) : undefined
+  // merged cells: PowerPoint marks the top-left cell with gridSpan (across) / rowSpan (down) and keeps the covered cells (hMerge / vMerge), so the grid above is whole.
+  // Kept as areas of the table (packages/validation table-merge.ts; the file's first row is the header, row -1); an area cut by the 8-column / 21-row limit keeps the part
+  // that is left, and a header area reaching into the body (a table can't keep that) is left unmerged with a note.
+  const merges: CellArea[] = []
+  rows.slice(0, grid.length).forEach((tr, r) => kids(tr, 'tc').slice(0, cols).forEach((tc, col) => {
+    const across = Math.max(1, num(tc.a['gridSpan'], 1)), down = Math.max(1, num(tc.a['rowSpan'], 1))
+    if (across === 1 && down === 1) return
+    const area = { row: r - 1, column: col, rows: Math.min(down, grid.length - r), columns: Math.min(across, cols - col) }
+    if (area.row === -1 && area.rows > 1) { c.warn('A header cell merged with the rows below it was kept as separate cells'); return }
+    if (!areaProblem({ header, rows: body }, area)) merges.push(area)
+  }))
+  // each cell's own alignment: the first paragraph's algn (across) and the cell's anchor (up and down); PowerPoint's defaults (left, top) are not stored
+  const H = { ctr: 'center', r: 'right' } as const, V = { ctr: 'middle', b: 'bottom' } as const
+  const aligns: CellAlign[] = []
+  rows.slice(0, grid.length).forEach((tr, r) => kids(tr, 'tc').slice(0, cols).forEach((tc, col) => {
+    const algn = kid(kids(txBodyOf(tc), 'p')[0], 'pPr')?.a['algn'], anchor = kid(tc, 'tcPr')?.a['anchor']
+    const h = H[algn as keyof typeof H], v = V[anchor as keyof typeof V] ?? (anchor === 't' ? 'top' as const : undefined)
+    if (h || v) aligns.push({ row: r - 1, column: col, ...(h ? { h } : {}), ...(v ? { v } : {}) })
+  }))
   const box = baseBox(pl)
   const el = {
+    ...(aligns.length ? { aligns: aligns.slice(0, 200) } : {}),
     type: 'table' as const, id: id(c), ...box, header, rows: body, ...(headerFill ? { headerFill } : {}), ...(headerColor ? { headerColor } : {}), ...(rowFill ? { rowFill } : {}), ...(alt ? { altRowFill: alt } : {}), ...(textColor ? { textColor } : {}),
+    ...(merges.length ? { merges: validMerges({ header, rows: body, merges }) } : {}),
   } as SlideElement
   c.flags.add('table')
   return { el, origin: c.origin, kind: 'table' }
@@ -375,12 +399,14 @@ function tableElement(tbl: XNode, pl: Placed, c: Ctx): Emitted | null {
 
 function chartElement(chartRoot: XNode, pl: Placed, c: Ctx): Emitted | null {
   const plot = at(kid(chartRoot, 'chart'), 'plotArea')
-  const kinds: [string, 'bar' | 'line' | 'pie' | 'doughnut'][] = [['barChart', 'bar'], ['bar3DChart', 'bar'], ['lineChart', 'line'], ['line3DChart', 'line'], ['pieChart', 'pie'], ['pie3DChart', 'pie'], ['doughnutChart', 'doughnut'], ['areaChart', 'line'], ['area3DChart', 'line']]
+  const kinds: [string, ChartType][] = [['barChart', 'bar'], ['bar3DChart', 'bar'], ['lineChart', 'line'], ['line3DChart', 'line'], ['pieChart', 'pie'], ['pie3DChart', 'pie'], ['doughnutChart', 'doughnut'], ['areaChart', 'area'], ['area3DChart', 'area'], ['scatterChart', 'scatter']]
   const found = kinds.map(([n, t]) => ({ node: kid(plot, n), t, n })).find((x) => x.node)
   if (!found?.node) return null
-  if (found.n.startsWith('area')) c.warn('An area chart was imported as a line chart')
   const sers = kids(found.node, 'ser').slice(0, 6)
+  // a scatter keeps its x values in xVal and its y values in yVal (read as the labels and the figures; chart-style.ts scatterXs reads the labels back as numbers)
+  const scatter = found.t === 'scatter'
   const valuesOf = (ser: XNode, path: 'val' | 'cat') => {
+    if (scatter) path = path === 'cat' ? ('xVal' as never) : ('yVal' as never)
     const cache = findAll(kid(ser, path), 'pt').map((p) => ({ idx: num(p.a['idx']), v: kid(p, 'v')?.t ?? '' }))
     return cache
   }
@@ -395,7 +421,10 @@ function chartElement(chartRoot: XNode, pl: Placed, c: Ctx): Emitted | null {
   if (!series.length) return null
   const box = baseBox(pl)
   c.warn('A chart was imported with the deck\'s own colours (its original chart styling is not kept)')
-  return { el: { type: 'chart' as const, id: id(c), ...box, chartType: found.t, labels, series } as SlideElement, origin: c.origin, kind: 'chart' }
+  // labels that are not numbers cannot be a scatter's x values: it comes in as a line chart (the screen and the file would draw it so anyway)
+  const chartType: ChartType = scatter && !scatterXs(labels) ? 'line' : found.t
+  const trendline = sers.some((x) => !!kid(x, 'trendline'))
+  return { el: { type: 'chart' as const, id: id(c), ...box, chartType, labels, series, ...(trendline ? { trendline: true } : {}) } as SlideElement, origin: c.origin, kind: 'chart' }
 }
 
 /** The editor element(s) for one shape-tree child (and, recursively, a group's children). */
@@ -465,8 +494,7 @@ function shape(sp: XNode, m: Aff, c: Ctx, out: Emitted[]) {
     const cx = (x1 + x2) / 2, cy = (y1 + y2) / 2
     if (prst && /^(bent|curved)/.test(prst)) c.warn('An elbow or curved connector was drawn as a straight line')
     if (kid(kid(spPr, 'ln'), 'headEnd') || kid(kid(spPr, 'ln'), 'tailEnd')) c.flags.add('arrowheads')
-    if (kid(kid(spPr, 'ln'), 'prstDash')) c.flags.add('dashes')
-    const el = { type: 'shape' as const, id: id(c), x: r1(cx - len / 2), y: r1(cy - th / 2), width: r1(len), height: r1(th), rotation: r1(ang), locked: false, zIndex: 0, opacity: line.color!.alpha, shape: 'line' as const, fill: hexOf(line.color!), radius: 0, strokeWidth: th } as SlideElement
+    const el = { type: 'shape' as const, id: id(c), x: r1(cx - len / 2), y: r1(cy - th / 2), width: r1(len), height: r1(th), rotation: r1(ang), locked: false, zIndex: 0, opacity: line.color!.alpha, shape: 'line' as const, fill: hexOf(line.color!), radius: 0, strokeWidth: th, ...(line.dash ? { strokeDash: line.dash } : {}) } as SlideElement
     out.push({ el, origin: c.origin, kind: 'shape' })
     return
   }

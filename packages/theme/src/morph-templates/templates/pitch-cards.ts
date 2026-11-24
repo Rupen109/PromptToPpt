@@ -158,7 +158,7 @@ void W
 
 export const PITCH_CARDS = authored(
   {
-    id: 'pitch-cards', category: 'pitch', name: 'Story Cards', tagline: 'Tell your founder story one card at a time',
+    id: 'pitch-cards', category: 'pitch', fillPictures: true, name: 'Story Cards', tagline: 'Tell your founder story one card at a time',
     description: 'A founder-story pitch told with a deck of oversized, colourful cards: the top card flies off to reveal the next, the deck fans out for the contents, six cards become a grid of proof points and a rail of tabs tracks the story from why to the ask.',
     audience: 'The Story Cards template suits founder stories, seed and pre-seed pitch decks, investor updates, demo days, consumer and marketplace startups, and any talk that is easier to follow as a short sequence of chapters.',
     topics: ['pitch', 'pitch deck', 'founder story', 'startup', 'investor', 'investors', 'fundraising', 'seed', 'seed round', 'pre-seed', 'marketplace', 'consumer', 'consumer app', 'storytelling', 'our story', 'demo day', 'venture', 'brand story', 'e-commerce', 'local business'],

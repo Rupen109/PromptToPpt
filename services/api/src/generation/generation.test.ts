@@ -308,7 +308,7 @@ describe('a deck built from a Morph template (Gold and Premium)', () => {
     const { getMorphTemplate } = await import('@prompttoppt/theme/morph-templates')
     const tpl = getMorphTemplate('pitch-orbit')!
     const u = await signUp(); await setPlan(u.id, 'gold')
-    const created = await post('/jobs', u.cookie, tplReq())
+    const created = await post('/jobs', u.cookie, tplReq({ prompt: 'Create a pitch for our new neighbourhood bakery delivery service, with our founding team' })) // a team is mentioned: every scene can be filled
     expect(created.status).toBe(201)
     const jobId = (await j(created)).data.id
     expect((await drain(jobId)).status).toBe('completed')
@@ -342,5 +342,36 @@ describe('a deck built from a Morph template (Gold and Premium)', () => {
     // saved again by the real save route: accepted
     const put = await app.request(`/api/v1/presentations/${deck.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', Cookie: u.cookie, Origin: origin }, body: JSON.stringify({ baseRevision: deck.revision, document: doc }) })
     expect(put.status).toBe(200)
+  })
+
+  it('a request that names no team gets the deck without the Team scene (the model is told never to invent people), and the slide count says so', async () => {
+    const u = await signUp(); await setPlan(u.id, 'gold')
+    const created = await post('/jobs', u.cookie, tplReq())
+    expect(created.status).toBe(201)
+    const jobId = (await j(created)).data.id
+    expect((await drain(jobId)).status).toBe('completed')
+    const doc = (await open(u.cookie, jobId)).document
+    const scenes = doc.slides.map((s: any) => s.content.scene)
+    expect(scenes).toHaveLength(10); expect(scenes).not.toContain('s8') // pitch-orbit's Team
+    expect(scenes[0]).toBe('s1'); expect(scenes.at(-1)).toBe('s11')
+    const [job] = await db.select().from(generationJob).where(eq(generationJob.id, jobId))
+    expect((job!.options as any).slideCount).toBe(10); expect((job!.options as any).morphScenes).toEqual(scenes)
+  })
+
+  it('a shorter deck from the same template: only the scenes the template can lose, the cover first and the closing last, and fewer credits reserved', async () => {
+    const u = await signUp(); await setPlan(u.id, 'gold')
+    const full = await post('/jobs', u.cookie, tplReq({ prompt: 'Create a pitch for our bakery delivery service, with our founding team' }))
+    const short = await post('/jobs', u.cookie, tplReq({ prompt: 'Create a pitch for our bakery delivery service, with our founding team', slideCount: 8 }))
+    expect(short.status).toBe(201)
+    const jobOf = async (r: Response) => { const id = (await j(r)).data.id; return (await db.select().from(generationJob).where(eq(generationJob.id, id)))[0]! }
+    const jf = await jobOf(full), js = await jobOf(short)
+    expect((jf.options as any).slideCount).toBe(11)
+    expect((js.options as any).slideCount).toBe(8)
+    const scenes = (js.options as any).morphScenes as string[]
+    expect(scenes).toHaveLength(8); expect(scenes[0]).toBe('s1'); expect(scenes.at(-1)).toBe('s11')
+    expect((js.options as any).creditsReserved).toBeLessThan((jf.options as any).creditsReserved)
+    expect((await drain(js.id)).status).toBe('completed')
+    const doc = (await open(u.cookie, js.id)).document
+    expect(doc.slides.map((s: any) => s.content.scene)).toEqual(scenes)
   })
 })

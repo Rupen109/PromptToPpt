@@ -36,6 +36,44 @@ const NUMERIC_LAYOUTS = new Set(['chart', 'metrics', 'big-number', 'case-study']
 const stripInstructionNumbers = (t: string) => t.replace(/\b\d+\s*(?:-|–)?\s*(?:slides?|pages?|minutes?|mins?|hours?|words?|bullets?|points?)\b/gi, ' ').replace(/\b(?:slide|page)s?\s*\d+\b/gi, ' ')
 export const hasNumbers = (userPrompt: string, sourceTexts: string[]) => /\d/.test(stripInstructionNumbers(userPrompt)) || sourceTexts.some((t) => /\d/.test(t))
 
+/**
+ * "Never invent data": every FIGURE a model writes must be traceable to the person's message, the deck's own text or the attached sources.
+ * Data layouts (chart, table, metrics, big number, case study) are checked strictly (every number in their data fields); other layouts only for clearly invented statistics (a percentage, a
+ * decimal, or a number of three digits or more, not a year), so ordinary wording ("3 steps", "24/7") is never refused. Digits of other scripts count as the same number (a Hindi translation of
+ * "15%" is still 15). Returns the figures that cannot be traced.
+ */
+const DIGITS: Record<string, string> = Object.fromEntries([...'०१२३४५६७८९'].map((d, i) => [d, String(i)]).concat([...'٠١٢٣٤٥٦٧٨٩'].map((d, i) => [d, String(i)])))
+const asciiDigits = (t: string) => t.replace(/[०-९٠-٩]/g, (d) => DIGITS[d] ?? d)
+const tokensOf = (t: string): string[] => (asciiDigits(t).replace(/(\d),(\d{3})/g, '$1$2').match(/\d+(?:\.\d+)?%?/g) ?? []).map((x) => x.replace(/%$/, '')).map((x) => (x.includes('.') ? x.replace(/0+$/, '').replace(/\.$/, '') : x.replace(/^0+(?=\d)/, '')))
+const DATA_LAYOUTS = new Set(['chart', 'table', 'metrics', 'big-number', 'case-study'])
+const SKIP_KEYS = new Set(['layout', 'title', 'speakerNotes', 'sources', 'imageUrl', 'imageAlt', 'imagePrompt', 'imageAttribution', 'unit', 'chartType'])
+const leaves = (v: unknown, key = ''): string[] => (SKIP_KEYS.has(key) ? [] : typeof v === 'number' ? [String(v)] : typeof v === 'string' ? [v] : Array.isArray(v) ? v.flatMap((x) => leaves(x, key)) : v && typeof v === 'object' ? Object.entries(v as Record<string, unknown>).flatMap(([k, x]) => leaves(x, k)) : [])
+/** The figures a text contains, in the same form `figuresNotInSources` compares them (so "what was kept / dropped" is judged the same way "what was invented" is), limited to figures worth reporting. */
+export const figuresOf = (text: string): string[] => {
+  // a figure a person would notice: two or more digits, a decimal, or a percentage (a lone digit is usually a step number or a list count)
+  const pct = asciiDigits(text).match(/\d+(?:\.\d+)?\s*%/g) ?? []
+  return [...new Set([...tokensOf(text).filter((t) => t.includes('.') || t.length >= 2), ...tokensOf(pct.join(' '))])]
+}
+
+/** Every number in a short text (a table cell, a chart figure) that is not in the corpus: the person's words, the deck, the sources. Strict: a value typed into data must be traceable. */
+export function figuresInTextNotIn(text: string, corpus: string): string[] {
+  const known = new Set(tokensOf(corpus))
+  return [...new Set(tokensOf(text).filter((t) => !known.has(t)))]
+}
+export function figuresNotInSources(c: SlideContent, corpus: string): string[] {
+  const known = new Set(tokensOf(corpus))
+  const strict = DATA_LAYOUTS.has(c.layout)
+  const wanted = leaves(c).flatMap((t) => {
+    const raw = asciiDigits(t)
+    return tokensOf(t).filter((tok) => {
+      if (strict) return true
+      const year = /^(19|20|21)\d{2}$/.test(tok)
+      return !year && (tok.includes('.') || tok.length >= 3 || new RegExp(`${tok}\\s*%`).test(raw))
+    })
+  })
+  return [...new Set(wanted.filter((t) => !known.has(t)))]
+}
+
 /** Make the model's outline obey product rules regardless of what it returned. */
 export function sanitizeOutline(o: Outline, slideCount: number, allowNumeric: boolean): Outline {
   let slides = o.slides.slice(0, slideCount).map((s) => ({

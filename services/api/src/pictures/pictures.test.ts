@@ -105,6 +105,12 @@ describe('picking pictures', () => {
   beforeEach(() => clearPictureCache()) // searches are cached in memory
 
   describe('stock search', () => {
+    it('"replace the pictures": a lookup skips the picture the slide shows now (even with other size settings in its address) and takes the next one', async () => {
+      const h = setup({ pexels: [1, 2, 3] })
+      const [p] = await pickPictures([req({ avoid: ['https://images.pexels.com/photos/1/x.jpeg?w=1920&q=80'] })], ctx, h.deps)
+      expect(p?.src).toBe('https://images.pexels.com/photos/2/x.jpeg')
+    })
+
     it('takes the best Pexels result straight away: nothing is downloaded and no model is asked', async () => {
       const h = setup({ pexels: [1, 2, 3] })
       const [p] = await pickPictures([req()], ctx, h.deps)

@@ -93,6 +93,11 @@ export class ProviderError extends Error {
     public readonly status?: number,
     /** how long the provider asked us to wait (Retry-After), when it said */
     public readonly retryAfterMs?: number,
+    /**
+     * The model's quota for a LONG window is used up (a daily cap, e.g. the Gemini free tier's requests per day, or a model the key's tier may not use at all):
+     * asking again in seconds cannot help, so the gateway passes this model over for this long and lets the next one answer.
+     */
+    public readonly exhaustedForMs?: number,
   ) {
     super(message)
   }
@@ -129,6 +134,8 @@ export interface ModelDefinition {
   tier: ModelTier
   capabilities: { text: boolean; vision: boolean; structuredOutput: boolean; toolUse: boolean; imageGeneration: boolean; contextWindow: number }
   pricing: ModelPricing
+  /** the least hidden thinking the model accepts (some refuse 0); every call sends at least this */
+  minThinkingBudget?: number | undefined
 }
 
 /** What a task needs; the router maps it to an ordered chain of models (primary → fallbacks). */

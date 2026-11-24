@@ -11,7 +11,7 @@ Source of truth for *what must be true* is `docs/PRODUCTION_RELEASE_CHECKLIST.md
 6. **Go-live** → marketing (Product Hunt, Reddit, directories, YouTube) and the SEO pages.
 
 ## Truth in advertising (must fix before any pricing page goes live)
-- Gold "advanced brand customization" and "shared knowledge base" are **not built**: build or remove the promise.
+- Gold "advanced brand customization" and "shared knowledge base" are **not built and not advertised** (checked 2026-11-18: the pricing highlights list only the brand kits that exist). Only build them if you want them as new Gold features.
 - Free plan: today a watermark, **no export**, login needed. The most common searches ask for "without watermark / without login".
 - Credits do not roll over: say so on the page and in checkout.
 

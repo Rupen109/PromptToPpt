@@ -1,9 +1,14 @@
 name: CI
-# PAUSED (2026-10-31): it ran on every push and failed. It now only runs when started by hand (Actions -> CI -> Run workflow).
-# To switch it back on, replace `workflow_dispatch:` with the two lines below.
-#   push: { branches: [master] }
-#   pull_request:
+# The checks every change must pass (docs/RELEASES.md): type check, lint, unit tests, build, dependency audit, secret scan.
+#   · every pull request into qa or master, and every push to qa (qa deploys nothing: the owner tests it on their own machine)
+#   · every push to master: the deploy workflow runs this first and deploys only when it passes (workflow_call)
+#   · by hand (Actions -> CI -> Run workflow), with the legal release check as an option
 on:
+  pull_request:
+    branches: [qa, master]
+  push:
+    branches: [qa]
+  workflow_call:
   workflow_dispatch:
     inputs:
       release:
@@ -16,7 +21,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  # a newer push to the same branch replaces a run still going (a deploy's own CI is part of the deploy's group instead)
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

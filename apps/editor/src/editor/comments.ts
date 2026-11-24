@@ -9,7 +9,8 @@ import { api } from '@/lib/api'
 export const MAX_BODY = 2000
 export const SIZE = { open: 'open', resolved: 'resolved' } as const
 
-interface Pending { slideId: string; x: number; y: number }
+/** where a new comment goes: a spot on a slide, or an OBJECT (its pin follows the object; x/y = where the object is now, kept for if it is removed) */
+interface Pending { slideId: string; x: number; y: number; elementId?: string | undefined }
 interface CommentsState {
   deckId: string | null
   threads: CommentThread[]

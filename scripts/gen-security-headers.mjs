@@ -1,6 +1,6 @@
 // Writes the editor's response headers for the static host:  API_URL=… WEB_URL=… EDITOR_URL=… [OUT_DIR=…] node scripts/gen-security-headers.mjs
-// Output (apps/editor/security/, or OUT_DIR): nginx.conf (include inside the server block), _headers (Netlify / Cloudflare Pages), cloudfront-response-headers-policy.json
-// Production (read by infra/prod/tofu):  API_URL=https://api.slidesdone.app WEB_URL=https://slidesdone.app EDITOR_URL=https://app.slidesdone.app OUT_DIR=infra/prod/tofu/generated node scripts/gen-security-headers.mjs
+// Output (apps/editor/security/, or OUT_DIR): editor-headers.caddy (the live server's Caddy imports it: infra/scripts/deploy.sh writes it for the site's own addresses),
+// nginx.conf (include inside the server block), _headers (Netlify / Cloudflare Pages), cloudfront-response-headers-policy.json
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { securityHeaders } from './csp.mjs'
 
@@ -8,6 +8,7 @@ const o = { app: 'editor', apiUrl: process.env.API_URL ?? 'http://localhost:4000
 const h = securityHeaders(o)
 const dir = process.env.OUT_DIR ? `${process.env.OUT_DIR.replace(/\/+$/, '')}/` : new URL('../apps/editor/security/', import.meta.url).pathname
 mkdirSync(dir, { recursive: true })
+writeFileSync(dir + 'editor-headers.caddy', `header {\n${h.map(([k, v]) => `\t${k} "${v.replace(/"/g, '\\"')}"`).join('\n')}\n}\n`)
 writeFileSync(dir + 'nginx.conf', h.map(([k, v]) => `add_header ${k} "${v.replace(/"/g, '\\"')}" always;`).join('\n') + '\n')
 writeFileSync(dir + '_headers', '/*\n' + h.map(([k, v]) => `  ${k}: ${v}`).join('\n') + '\n')
 const find = (k) => h.find(([n]) => n === k)?.[1] ?? ''

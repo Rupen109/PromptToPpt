@@ -55,3 +55,19 @@ describe('the gateway repairs a bad detail with the exact reason (the animation 
     expect(t.ledger[0]!.errorDetail).toMatch(/tasks\.0\.values\.preset/)
   })
 })
+
+describe('a model that writes an object reference where the slide references go is repaired in code, not failed', () => {
+  it('moves selected / role / type / all_text out of targets into values.elements, keeps real slide references, and the task then validates', async () => {
+    const { intentSchema, placeElementRefs } = await import('./understand.ts')
+    const raw = { family: 'element', targets: [{ by: 'selected' }, { by: 'number', n: 2 }], values: { ops: [{ op: 'resize', scale: 1.3 }] } }
+    expect(placeElementRefs(raw)).toEqual({ family: 'element', targets: [{ by: 'number', n: 2 }], values: { ops: [{ op: 'resize', scale: 1.3 }], elements: [{ by: 'selected' }] } })
+    const parsed = intentSchema.parse({ kind: 'edit', tasks: [raw] })
+    expect(parsed.tasks[0]).toMatchObject({ family: 'element', targets: [{ by: 'number', n: 2 }], values: { elements: [{ by: 'selected' }], ops: [{ op: 'resize', scale: 1.3 }] } })
+    const onlyObject = intentSchema.parse({ kind: 'edit', tasks: [{ family: 'element', targets: [{ by: 'role', role: 'title' }], values: { ops: [{ op: 'font_size', size: 40 }] } }] })
+    expect(onlyObject.tasks[0]).toMatchObject({ targets: [], values: { elements: [{ by: 'role', role: 'title' }] } })
+    // other families and well-placed references are left exactly as they are
+    expect(placeElementRefs({ family: 'text', targets: [{ by: 'selected' }], values: {} })).toEqual({ family: 'text', targets: [{ by: 'selected' }], values: {} })
+    const fine = { family: 'element', targets: [{ by: 'current' }], values: { elements: [{ by: 'selected' }], ops: [{ op: 'delete' }] } }
+    expect(placeElementRefs(fine)).toBe(fine)
+  })
+})

@@ -38,7 +38,7 @@ for (const [hash, file] of Object.entries(BIZ_DATA.media)) { const p = BY_FILE[f
  */
 export const BIZ_TEMPLATE: MorphTemplate = {
   id: 'biz',
-  category: 'business',
+  category: 'business', fillPictures: true,
   audience: "The Business Plan template suits business plans, pitch decks, product series, proposals, marketing and sales presentations, agency and consulting decks.",
   name: 'Business Plan',
   tagline: 'Pitch it like a brand',

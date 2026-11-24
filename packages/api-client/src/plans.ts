@@ -35,7 +35,7 @@ const FORMATS: Record<string, string> = { pptx: 'PPTX', pdf: 'PDF', png: 'PNG', 
 export function planHighlights(plan: PlanView, previous?: PlanView): { lead: string | null; items: string[] } {
   const f = plan.features
   const items: string[] = [`${plan.monthlyCredits.toLocaleString('en-US')} credits / month`]
-  items.push(f.modelChoice ? 'Choose your AI model: Claude Sonnet and Opus, GLM, Haiku and more' : f.modelTiers.includes('premium') ? 'Premium AI models' : 'Fast, high-quality AI models picked for you')
+  items.push(f.modelChoice ? 'Pro AI models: pick fast or most capable for each deck' : f.modelTiers.includes('premium') ? 'Premium AI models' : 'Fast, high-quality AI models picked for you')
   items.push(plan.maxPresentationsPerMonth ? `${plan.maxPresentationsPerMonth} presentations / month` : `Up to ${plan.maxSlides} slides per presentation`)
   if (plan.maxPresentationsPerMonth) items.push(`Up to ${plan.maxSlides} slides per presentation`)
   if (f.premiumTemplates) items.push('Premium templates')

@@ -24,7 +24,8 @@ const PAID_MODELS = ['gemini-3.6-flash', 'gemini-3.8-flash']
  * these values from migration 0037 (seeds never overwrite).
  *  · Starter is free and not shown on the pricing page: it can build a deck and watch it being written, and build or edit one in the editor, but cannot present or share it
  *    ("live preview"), has no AI edits, and cannot export (asking shows the upgrade prompt); the watermark stays.
- *  · Pro, Gold and Premium are paid. Pro and Gold write with fixed Gemini models and are never asked which model; Premium chooses from the OpenRouter models.
+ *  · Pro, Gold and Premium are paid. Pro and Gold write with fixed Gemini models and are never asked which model; Premium writes with Gemini 3.6 Flash unless the person
+ *    picks another Gemini model (Gemini 3.1 Pro: the "Pro AI models"). Customers get Gemini models only (owner 2026-11-24; migration 0048).
  *  · Google Slides export and Clone Slide (image → editable slide, counted per month) are decided but deferred: not in the data until they exist.
  *  · `maxSlides` for Premium is the system's per-deck ceiling (60): credits are what really limit it.
  */
@@ -40,7 +41,7 @@ export const PLAN_SEED = [
   },
   {
     id: 'premium', name: 'Premium', sortOrder: 3, monthlyCredits: 3700, maxSlides: 60, maxPresentationsPerMonth: 50, maxImagesPerPresentation: 20, maxImagesPerMonth: 100,
-    features: { ...base, watermark: false, exportFormats: [...ALL_EXPORTS], aiEdits: true, premiumTemplates: true, advancedSharing: true, modelTiers: ['starter', 'premium', 'frontier'], brandKit: true, knowledgeBase: true, support: 'whatsapp', speed: 'ultra', projects: true, askDeck: true, webData: 'web', livePreview: true, modelChoice: true, morph: true, morphDecksPerMonth: MORPH_DECKS.premium, templateFromFile: true },
+    features: { ...base, watermark: false, exportFormats: [...ALL_EXPORTS], aiEdits: true, premiumTemplates: true, advancedSharing: true, modelTiers: ['starter', 'premium', 'frontier'], brandKit: true, knowledgeBase: true, support: 'whatsapp', speed: 'ultra', projects: true, askDeck: true, webData: 'web', livePreview: true, modelChoice: true, fixedModels: PAID_MODELS, morph: true, morphDecksPerMonth: MORPH_DECKS.premium, templateFromFile: true },
   },
 ] as const
 
@@ -68,12 +69,12 @@ export const PRICE_SEED = [
 ] as const
 
 /**
- * Credits per action × model tier. The tier is the model's CREDIT CLASS (docs/PLANS_AND_FEATURES_V5.md, section 5): starter = the Gemini Flash models (2 a slide), premium = Haiku 4.5 and
- * GLM-5.2 (3 a slide), frontier = Sonnet 4.6 and Opus (12 a slide: Sonnet is slightly over its cost, Opus slightly under; both inside the margin).
+ * Credits per action × model tier. The tier is the model's CREDIT CLASS (docs/PLANS_AND_FEATURES_V5.md, section 5): starter = the Gemini Flash models (2 a slide), premium = Gemini 3.1 Pro
+ * (5 a slide), frontier = no text model now (Sonnet/Opus switched off 2026-11-24; 12 a slide kept for the Studio picture model's class).
  */
 export const CREDIT_COST_SEED = [
   { action: 'generate_slide', tier: 'starter', credits: 2 },
-  { action: 'generate_slide', tier: 'premium', credits: 3 },
+  { action: 'generate_slide', tier: 'premium', credits: 5 }, // Gemini 3.1 Pro: 2.5x Flash (it costs about 3x per token); was 3 for Haiku/GLM (migration 0048)
   { action: 'generate_slide', tier: 'frontier', credits: 12 },
   { action: 'ai_edit', tier: 'starter', credits: 2 },
   { action: 'ai_edit', tier: 'premium', credits: 4 },

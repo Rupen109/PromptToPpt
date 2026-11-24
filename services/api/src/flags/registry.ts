@@ -11,6 +11,8 @@ export const FLAGS = {
   assistant_v2: { description: 'The AI assistant runs the v2 pipeline (understand, resolve, do, check). Off = the old single-prompt assistant (fallback until v2 is signed off).', default: true },
   image_generation: { description: 'AI picture generation (also needs IMAGES_ENABLED in the server environment).', default: true },
   exports: { description: 'Exporting presentations (PPTX, PDF, images, HTML).', default: true },
+  /** DEVELOPMENT ONLY: on by default outside production, off in production (and kept off there until a provider is APPROVED in code, media/bg-providers.ts, even if this is turned on) until a commercially approved model or provider is chosen. */
+  background_removal: { description: 'Background removal editor (DEVELOPMENT ONLY: not available in production until a commercially approved model or provider is chosen).', default: process.env['NODE_ENV'] !== 'production' },
 } as const satisfies Record<string, FlagDef>
 
 export type FlagKey = keyof typeof FLAGS

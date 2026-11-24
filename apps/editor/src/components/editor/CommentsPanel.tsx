@@ -2,6 +2,8 @@ import { MapPin, X } from '@prompttoppt/ui/icons'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CommentItem, CommentPerson, CommentThread } from '@prompttoppt/api-client'
 import type { Presentation } from '@prompttoppt/validation'
+import { describeElement } from '@prompttoppt/theme'
+import { useDoc } from '@/editor/store'
 import { encodeMentions, isUnread, MAX_BODY, messageOf, prunePicks, showMentions, useComments } from '@/editor/comments'
 import { useLive } from '@/editor/live'
 import { useUi } from '@/editor/ui'
@@ -137,6 +139,18 @@ function Item({ deckId, c, people, owner, onChange, first, threadId, canDeleteAn
   )
 }
 
+/** which object a comment is on, by name; clicking it selects the object on the slide. An object that was removed is said as such (the comment stays). */
+function OnObject({ slideId, elementId }: { slideId: string; elementId: string }) {
+  const el = useDoc((s) => s.doc?.slides.find((x) => x.id === slideId)?.elements.find((e) => e.id === elementId))
+  if (!el) return <span data-comment-object="gone">On an object that was removed</span>
+  return <button type="button" data-comment-object={elementId} onClick={(e) => { e.stopPropagation(); useUi.getState().setActiveSlide(slideId); useUi.getState().select([elementId]) }} className="underline decoration-dotted hover:text-primary">On {describeElement(el)}</button>
+}
+
+function PendingObject({ slideId, elementId, n }: { slideId: string; elementId: string; n: number | null }) {
+  const el = useDoc((s) => s.doc?.slides.find((x) => x.id === slideId)?.elements.find((e) => e.id === elementId))
+  return <>On {el ? describeElement(el) : 'an object'} on slide {n}</>
+}
+
 function Thread({ deckId, t, pinNo, slideNo, people, owner, seenAt, focused, onChange }: { deckId: string; t: CommentThread; pinNo: number | null; slideNo: number | null; people: CommentPerson[]; owner: boolean; seenAt: string; focused: boolean; onChange: () => void }) {
   const setActive = useUi((s) => s.setActiveSlide)
   const [replying, setReplying] = useState(false)
@@ -149,7 +163,8 @@ function Thread({ deckId, t, pinNo, slideNo, people, owner, seenAt, focused, onC
     <article ref={ref} data-thread-id={t.id} data-status={t.status} aria-label={`Comment thread${pinNo ? ` ${pinNo}` : ''}`} className={`rounded-xl border p-3 space-y-2 ${focused ? 'border-primary ring-2 ring-primary/30' : 'border-border'} ${t.status === 'resolved' ? 'bg-slate-50' : 'bg-white'}`}
       onClick={() => { if (slideNo !== null) setActive(t.slideId); useComments.getState().setFocus(t.id) }}>
       <div className="flex items-center gap-2 text-[11px] text-slate-500">
-        {pinNo !== null ? <span className="w-5 h-5 rounded-full bg-primary text-white grid place-items-center font-bold" title="Pinned on the slide">{pinNo}</span> : <span>On the slide</span>}
+        {pinNo !== null ? <span className="w-5 h-5 rounded-full bg-primary text-white grid place-items-center font-bold" title={t.elementId ? 'On an object' : 'Pinned on the slide'}>{pinNo}</span> : <span>On the slide</span>}
+        {t.elementId && <OnObject slideId={t.slideId} elementId={t.elementId} />}
         {unread && <span aria-label="Unread" className="w-2 h-2 rounded-full bg-red-500" />}
         {t.status === 'resolved' && <span className="font-semibold text-green-700">Resolved{t.resolvedByName ? ` by ${t.resolvedByName}` : ''}</span>}
       </div>
@@ -170,7 +185,7 @@ function Thread({ deckId, t, pinNo, slideNo, people, owner, seenAt, focused, onC
 }
 
 type Filter = 'open' | 'resolved' | 'all'
-export function CommentsPanel({ doc, slideId, deckId, role, onClose }: { doc: Presentation; slideId: string; deckId: string; role: 'owner' | 'editor'; onClose: () => void }) {
+export function CommentsPanel({ doc, slideId, deckId, role, onClose }: { doc: Presentation; slideId: string; deckId: string; role: 'owner' | 'viewer' | 'editor'; onClose: () => void }) {
   const { threads, people, seenAt, loaded, error, placing, pending, focus, setPlacing, setPending, refresh, markSeen } = useComments()
   const setActive = useUi((s) => s.setActiveSlide)
   const connected = useLive((s) => s.connected)
@@ -207,10 +222,10 @@ export function CommentsPanel({ doc, slideId, deckId, role, onClose }: { doc: Pr
         <div className="flex items-center gap-2 text-xs">
           <button onClick={() => setPlacing(!placing)} aria-pressed={placing} className={`rounded-full border px-2.5 py-1 font-medium ${placing ? 'border-primary bg-primary/10 text-primary' : 'border-border hover:bg-slate-50'} inline-flex items-center gap-1`}><MapPin aria-hidden size={14} />{pending ? 'Move pin' : 'Pin to a spot'}</button>
           {placing && <span role="status" className="text-primary font-medium">Click the slide where it belongs · Esc cancels</span>}
-          {pending && !placing && <><span role="status" className="text-slate-600">Pinned on slide {slideNo(pending.slideId)}</span><button onClick={() => setPending(null)} className="underline text-slate-500">Remove pin</button></>}
+          {pending && !placing && <><span role="status" className="text-slate-600">{pending.elementId ? <PendingObject slideId={pending.slideId} elementId={pending.elementId} n={slideNo(pending.slideId)} /> : `Pinned on slide ${slideNo(pending.slideId)}`}</span><button onClick={() => setPending(null)} className="underline text-slate-500">Remove pin</button></>}
         </div>
         <Composer key={`${slideId}`} label="Write a comment" placeholder={people.length > 1 ? 'Add a comment… use @ to mention someone' : 'Add a comment…'} submitLabel="Comment" people={people}
-          onSubmit={async (text) => { const p = pending && pending.slideId === slideId ? pending : null; const r = await api.addComment(deckId, { slideId, ...(p ? { x: p.x, y: p.y } : {}), body: text }); setPending(null); useComments.getState().setFocus(r.threadId); change() }} />
+          onSubmit={async (text) => { const p = pending && pending.slideId === slideId ? pending : null; const r = await api.addComment(deckId, { slideId, ...(p ? { x: p.x, y: p.y, ...(p.elementId ? { elementId: p.elementId } : {}) } : {}), body: text }); setPending(null); useComments.getState().setFocus(r.threadId); change() }} />
       </div>
       <div className="px-4 py-2 flex flex-wrap items-center gap-1.5 border-b border-border">
         {(['open', 'resolved', 'all'] as const).map((f) => (

@@ -37,7 +37,7 @@ live.get('/:id/live', async (c) => {
   const actor = c.get('session')!.user as { id: string; name: string }
   const clientId = c.req.query('client') ?? ''
   if (!CLIENT_ID.test(clientId)) return c.json({ success: false, error: { code: 'BAD_REQUEST', message: 'client id required' } }, 400)
-  const access = await resolveAccess(id, actor.id).catch(() => null)
+  const access = await resolveAccess(id, actor.id, 'view').catch(() => null)
   if (!access) return notFound(c)
   const ukey = `${id}:${actor.id}`
   if ((perUser.get(ukey) ?? 0) >= MAX_PER_USER_DECK || deckListeners(id) >= MAX_PER_DECK || totalListeners() >= MAX_PER_PROCESS) {
@@ -59,6 +59,7 @@ live.get('/:id/live', async (c) => {
         }
         return
       }
+      if (e.t === 'access') { if (e.userId === actor.id) send('access', e); return } // (only the person whose access changed hears it)
       if (e.t === 'presence' && e.peer.userId === actor.id && e.peer.clientId === clientId) return
       if (e.t === 'leave' && e.clientId === clientId) return
       send(e.t, e)
@@ -81,7 +82,7 @@ live.get('/:id/live', async (c) => {
       if (me) void bus().publish({ t: 'presence', deck: id, peer: { ...me, at: Date.now() } }).catch(() => {})
       if (Date.now() - since >= RECHECK_MS) {
         since = Date.now()
-        const still = await resolveAccess(id, actor.id).catch(() => null)
+        const still = await resolveAccess(id, actor.id, 'view').catch(() => null)
         if (!still) { await stream.writeSSE({ event: 'kick', data: JSON.stringify({ t: 'kick', deck: id, userId: actor.id }) }).catch(() => {}); open = false; await stream.close() }
       }
     }
@@ -101,7 +102,7 @@ live.post('/:id/live/presence', rateLimit({ windowMs: 1000, max: 25, key: byUser
   startHub()
   const id = c.req.param('id')
   const actor = c.get('session')!.user as { id: string; name: string }
-  const access = await resolveAccess(id, actor.id).catch(() => null)
+  const access = await resolveAccess(id, actor.id, 'view').catch(() => null)
   if (!access) return notFound(c)
   const b = c.req.valid('json')
   await bus().publish({ t: 'presence', deck: id, peer: { clientId: b.clientId, userId: actor.id, name: actor.name.slice(0, 40), color: colorFor(actor.id), slideId: b.slideId, selection: b.selection, editing: b.editing, cursor: b.cursor, at: Date.now() } })

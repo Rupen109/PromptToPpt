@@ -118,7 +118,7 @@ export function SharedViewPage() {
       </header>
       <main className="flex-1 min-h-0 grid place-items-center p-2" aria-label="Slide">
         <div key={slide.id} ref={rootRef} onClick={(e) => { const trig = (e.target as HTMLElement).closest?.('[data-pt-el]')?.getAttribute('data-pt-el'); if (trig) playerRef.current?.trigger(trig) }} style={Object.keys(transitionStyle(slide, doc.theme.motion?.transition)).length ? transitionStyle(slide, doc.theme.motion?.transition) : { animation: 'deckFade 300ms ease' }}>
-          <SlideCanvas slide={slide} theme={doc.theme} aspect={doc.aspectRatio} width={width} play effects watermark={deck.watermark} />
+          <SlideCanvas slide={slide} theme={doc.theme} aspect={doc.aspectRatio} width={width} play effects watermark={deck.watermark} footer={{ index: doc.slides.indexOf(slide), total: doc.slides.length, title: doc.title }} />
         </div>
       </main>
       <footer className="h-[84px] shrink-0 flex items-center justify-center gap-4">

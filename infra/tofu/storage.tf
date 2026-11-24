@@ -60,7 +60,7 @@ resource "aws_cloudfront_distribution" "editor" {
   count               = var.use_cloudfront ? 1 : 0
   enabled             = true
   default_root_object = "index.html"
-  aliases             = ["app.${var.domain}"]
+  aliases             = ["app.${local.site}"]
   price_class         = "PriceClass_100"
   comment             = "SlidesDone ${var.env} editor"
 

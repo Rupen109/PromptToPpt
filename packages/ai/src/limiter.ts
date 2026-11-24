@@ -171,6 +171,22 @@ export class ProviderLimiter {
     return s ? Math.max(0, s.coolUntil - this.now()) : 0
   }
 
+  /**
+   * About how long a NEW call of `tokens` would wait for its turn now (0 = it would go at once): the pause, plus the calls already waiting, against the per-minute buckets.
+   * With no buckets set, a full house (every slot busy and as many again waiting) counts as a long wait. Used to send overflow to a backup BEFORE the provider refuses.
+   */
+  waitFor(key: string, tokens = 0): number {
+    const s = this.keys.get(key)
+    if (!s) return 0
+    const c = this.cfg(key)
+    this.refill(s, c)
+    const queued = s.queue.length + 1
+    const queuedTokens = s.queue.reduce((a, q) => a + q.tokens, 0) + tokens
+    const rpmWait = c.rpm ? Math.max(0, ((queued - s.rpmTokens) / c.rpm) * 60_000) : 0
+    const tpmWait = c.tpm ? Math.max(0, ((queuedTokens - s.tpmTokens) / c.tpm) * 60_000) : 0
+    const full = s.inflight >= Math.floor(s.cap) && s.queue.length >= Math.max(1, Math.floor(s.cap)) ? 10_000 : 0
+    return Math.max(this.pausedFor(key), rpmWait, tpmWait, full)
+  }
   stats(key: string) {
     const s = this.state(key)
     return { inflight: s.inflight, cap: Math.floor(s.cap), waiting: s.queue.length, pausedMs: this.pausedFor(key), calls: s.calls, retries: s.retries }

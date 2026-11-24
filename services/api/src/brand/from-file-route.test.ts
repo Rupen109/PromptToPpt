@@ -15,13 +15,15 @@ const post = (cookie: string, bytes: Uint8Array | null, name: string) => {
   if (bytes) f.append('file', new File([new Uint8Array(bytes)], name))
   return app.request('/api/v1/brand/from-file', { method: 'POST', headers: { Cookie: cookie, Origin: origin }, body: f })
 }
-const pro = async () => { const u = await signUp('bf'); await setPlan(u.id, 'pro'); return u }
+const pro = async () => { const u = await signUp('bf'); await setPlan(u.id, 'gold'); return u } // a plan with brand kits
 
 describe('POST /brand/from-file (read in the parse worker)', () => {
-  it('Starter is refused before the file is read; signed-out is refused', async () => {
-    const free = await signUp('bf')
-    const r = await post(free.cookie, pdf(), 'a.pdf')
-    expect(r.status).toBe(403); expect((await json(r)).error).toMatchObject({ code: 'UPGRADE_REQUIRED' })
+  it('Starter and Pro are refused before the file is read; signed-out is refused', async () => {
+    const free = await signUp('bf'), proUser = await signUp('bf'); await setPlan(proUser.id, 'pro')
+    for (const who of [free, proUser]) {
+      const r = await post(who.cookie, pdf(), 'a.pdf')
+      expect(r.status).toBe(403); expect((await json(r)).error).toMatchObject({ code: 'UPGRADE_REQUIRED' })
+    }
     expect((await app.request('/api/v1/brand/from-file', { method: 'POST', headers: { Origin: origin }, body: new FormData() })).status).toBe(401)
   })
   it('a PDF gives colours, fonts, a stored logo and the layouts answer', async () => {

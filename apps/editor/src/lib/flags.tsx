@@ -2,7 +2,7 @@ import { createContext, use, useEffect, useState, type ReactNode } from 'react'
 import { api } from './api'
 
 /** Before the first response (or if it fails) assume the code defaults; the server enforces every flag regardless. */
-const DEFAULTS: Record<string, boolean> = { maintenance_mode: false, ai_assistant: true, image_generation: true, exports: true }
+const DEFAULTS: Record<string, boolean> = { maintenance_mode: false, ai_assistant: true, image_generation: true, exports: true, background_removal: false }
 const FlagsContext = createContext<Record<string, boolean>>(DEFAULTS)
 
 /** Loads GET /api/v1/flags once after login. UI-only convenience — never a security boundary. */

@@ -21,12 +21,14 @@ export interface MetricOpts {
   /** letter-spacing in px */
   tracking?: number | undefined
   lineHeight?: number | undefined
+  /** the gap between paragraphs, in multiples of the size (the slide draws `paraGap ?? 0.5`) */
+  paraGap?: number | undefined
 }
 
 const HEADING_ROLES = new Set<TextElement['role']>(['title', 'heading', 'metric', 'subtitle'])
 /** Metric options for an element, derived the same way the renderer picks fonts — so estimator and renderer agree. */
-export function metricOptsFor(el: Pick<TextElement, 'role' | 'uppercase' | 'letterSpacing' | 'lineHeight'>, theme: Pick<Theme, 'fonts'>): MetricOpts {
-  return { font: HEADING_ROLES.has(el.role) ? theme.fonts.heading : theme.fonts.body, uppercase: el.uppercase, tracking: el.letterSpacing, lineHeight: el.lineHeight }
+export function metricOptsFor(el: Pick<TextElement, 'role' | 'uppercase' | 'letterSpacing' | 'lineHeight'> & { paraGap?: number | undefined }, theme: Pick<Theme, 'fonts'>): MetricOpts {
+  return { font: HEADING_ROLES.has(el.role) ? theme.fonts.heading : theme.fonts.body, uppercase: el.uppercase, tracking: el.letterSpacing, lineHeight: el.lineHeight, paraGap: el.paraGap }
 }
 
 const charW = (fontSize: number, o: MetricOpts) => fontSize * ((FONT_WIDTH[o.font ?? ''] ?? DEFAULT_WIDTH) * (o.uppercase ? 1.14 : 1)) + (o.tracking ?? 0)
@@ -63,7 +65,7 @@ export function estimateTextHeight(paragraphs: TextElement['paragraphs'], fontSi
     const text = p.runs.map((r) => r.text).join('')
     const w = p.list ? width - fontSize * LIST_INDENT : width
     h += estimateLines(text, fontSize, w, o) * fontSize * lh
-    if (i < paragraphs.length - 1) h += fontSize * 0.5
+    if (i < paragraphs.length - 1) h += fontSize * (o.paraGap ?? 0.5) // the box's own gap, as the slide draws it
   })
   return h
 }

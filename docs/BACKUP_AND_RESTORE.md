@@ -1,5 +1,7 @@
 # Backup and restore
 
+> **2026-11-24: the separate production server (`infra/prod`, CloudFront, WAL-G) was dropped by the owner to keep AWS to one server.** The live site https://slidesdone.app runs on the former QA server (`infra/tofu`, `infra/compose`, `infra/scripts/deploy.sh`); branches and releases: `docs/RELEASES.md`. The `infra/prod` parts below are kept as history only.
+
 Three layers protect the data. Each covers a different failure.
 
 | layer | what | covers | restore window |

@@ -1,0 +1,2 @@
+/** Nothing changed: the headline follows the KIND of the notes (decided where each was written). Everything asked already was so = "Nothing needed changing" (never "I couldn't"); a part refused = "I couldn't do that"; no note at all = the list of what I can do. */
+export const nothingChangedReply = (notes: string[], already: string[], none: string): string => (!notes.length ? none : notes.every((t) => already.includes(t)) ? 'Nothing needed changing — it was already like that.' : `I couldn't do that — see the note${notes.length === 1 ? '' : 's'} below.`)

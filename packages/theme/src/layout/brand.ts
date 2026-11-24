@@ -14,7 +14,7 @@ export function brandLogo(c: Ctx, onDark: boolean): void {
   let h = maxH
   let w = Math.round(h * logo.aspect)
   if (w > maxW) { w = maxW; h = Math.round(w / logo.aspect) }
-  const x = c.M
+  const x = logo.align === 'right' ? c.W - c.M - w : logo.align === 'center' ? Math.round((c.W - w) / 2) : c.M
   const y = c.H - c.M + Math.round((c.M - h) / 2)
   if (onDark) {
     const pad = Math.round(c.M * 0.1)

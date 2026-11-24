@@ -31,6 +31,48 @@ async function accepted() {
   return s
 }
 
+describe('a collaborator who can VIEW and comment only (collab/access.ts)', () => {
+  it('invited as a viewer: opens the deck, sees live history and comments, comments; every change and every AI or picture request is refused (VIEW_ONLY, nothing changes)', async () => {
+    const s = await setup()
+    expect((await api(s.owner.cookie, 'POST', `/presentations/${s.deck.id}/members`, { email: s.friendEmail, role: 'viewer' })).status).toBe(201)
+    expect((await api(s.friend.cookie, 'POST', `/invites/${await inviteToken(s.deck.id, s.friendEmail)}/accept`)).status).toBe(200)
+    const f = (m: string, path: string, body?: unknown) => api(s.friend.cookie, m, `/presentations/${s.deck.id}${path}`, body)
+    const open = await json(await f('GET', ''))
+    expect(open.data.role).toBe('viewer')
+    expect((await f('GET', '/versions')).status).toBe(200)
+    expect((await f('POST', '/comments', { slideId: s.deck.doc.slides[0]!.id, body: 'Looks good' })).status).toBe(201)
+    const before = open.data.revision
+    const refused = [
+      await f('PUT', '', { baseRevision: before, document: { ...s.deck.doc, title: 'Changed by a viewer' } }),
+      await f('POST', '/ai-assist', { instruction: 'make it shorter', requestId: rid() }),
+      await f('POST', '/ask', { question: 'what is this about?', requestId: rid() }),
+      await f('POST', '/images', { prompt: 'a cat on a chair', aspect: '16:9', requestId: rid() }),
+      await f('POST', '/versions/1/restore', { baseRevision: before }),
+    ]
+    for (const r of refused) {
+      expect(r.status, await r.clone().text()).toBe(403)
+      expect((await json(r)).error.code).toBe('VIEW_ONLY')
+    }
+    expect((await json(await f('GET', ''))).data.revision).toBe(before) // nothing changed
+    // the owner's view of the people: the viewer is listed as such
+    const members = (await json(await api(s.owner.cookie, 'GET', `/presentations/${s.deck.id}/members`))).data.members
+    expect(members[0].role).toBe('viewer')
+  })
+
+  it('the owner changes a viewer to an editor (and back); a collaborator cannot change roles', async () => {
+    const s = await accepted()
+    const memberId = (await json(await api(s.owner.cookie, 'GET', `/presentations/${s.deck.id}/members`))).data.members[0].id
+    const set = (who: { cookie: string }, role: string) => api(who.cookie, 'PATCH', `/presentations/${s.deck.id}/members/${memberId}`, { role })
+    expect((await set(s.owner, 'viewer')).status).toBe(200)
+    const doc = (await json(await api(s.friend.cookie, 'GET', `/presentations/${s.deck.id}`))).data
+    expect((await api(s.friend.cookie, 'PUT', `/presentations/${s.deck.id}`, { baseRevision: doc.revision, document: doc.document })).status).toBe(403)
+    expect((await set(s.friend, 'editor')).status).toBe(404) // only the owner manages people (and a stranger learns nothing)
+    expect((await set(s.owner, 'editor')).status).toBe(200)
+    expect((await api(s.friend.cookie, 'PUT', `/presentations/${s.deck.id}`, { baseRevision: doc.revision, document: { ...doc.document, title: 'Edited' } })).status).toBe(200)
+    expect((await set(s.owner, 'admin')).status).toBe(400)
+  })
+})
+
 describe('view-only share links (level 1)', () => {
   it('owner shares, anyone can view without login, notes and sources are not exposed, revoke kills the link at once', async () => {
     const owner = await signUp('sh'); await setPlan(owner.id, 'pro') // share links need live preview (not Starter)

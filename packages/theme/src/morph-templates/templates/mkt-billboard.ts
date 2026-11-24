@@ -62,6 +62,7 @@ export const MKT_BILLBOARD = authored(
     fonts: { heading: 'Anton', body: 'DM Sans' },
     colors: { background: '#FFD60A', surface: '#FFFFFF', textPrimary: '#0D0D0D', textSecondary: '#3A3A3A', primary: '#FF2E93', secondary: '#2D5BFF', accent: '#FF4B2B', onPrimary: '#0D0D0D' },
     background: '#FFD60A',
+    swap: { pictures: ['can', 'can2', 'bottle', 'cup'], hide: ['tp1', 'tp2'], fit: 'contain', radius: 24 },
   },
   {
     objects: {

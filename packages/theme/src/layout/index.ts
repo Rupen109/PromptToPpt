@@ -30,6 +30,11 @@ export interface ComposeOptions {
   variant?: number | undefined
   /** where a Morph template's own pictures are served from (the web app's address) */
   assetBase?: string | undefined
+  /**
+   * `photo` is a picture the slide ALREADY shows (a re-composition after a design change or a layout change), not a catalogue suggestion: it is kept even when the
+   * new design has no photo style, in the neutral "split" composition. A design change never takes a person's picture away.
+   */
+  keepPhoto?: boolean | undefined
 }
 
 /** The background of a plain content slide in the design's body style (a quote sits on the surface colour). Sets `c.bodyBg`, which cards and text pick their contrast from. */
@@ -70,6 +75,7 @@ export function composeSlide(content: SlideContent, theme: Theme, aspect: Aspect
       ...(tr !== 'none' && theme.motion ? { transition: { type: tr, duration: 500 } } : {}),
     }
   }
+  if (opts.photo && opts.keepPhoto && c.style.photo === 'none' && (PHOTO_LAYOUTS as readonly string[]).includes(content.layout)) c.style = { ...c.style, photo: 'split' } // (this slide only: c is made for this one call)
   if (opts.photo && c.style.photo !== 'none' && (PHOTO_LAYOUTS as readonly string[]).includes(content.layout)) {
     if (!['wash', 'banner', 'hex'].includes(c.style.photo)) decor(c, isDark(groundOf(c))) // the design's signature motif sits behind the photograph composition too (the cover styles place it themselves, above the picture)
     const bg = content.layout === 'quote' ? photoQuote(c, content, opts.photo) : content.layout === 'big-number' ? photoNumber(c, content, opts.photo) : photoTitle(c, content as { title: string; subtitle?: string }, content.layout as 'title' | 'section-divider' | 'thank-you', opts.photo)

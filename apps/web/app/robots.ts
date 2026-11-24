@@ -1,5 +1,5 @@
 import type { MetadataRoute } from 'next'
-import { SITE_URL } from '@/lib/env'
+import { IS_PUBLIC_SITE, SITE_URL } from '@/lib/env'
 
 /** Pages that are only for signed-in people or are internal: never useful in search results. */
 const PRIVATE = ['/api/', '/login', '/signup', '/forgot-password', '/reset-password', '/editor/']
@@ -17,6 +17,8 @@ const AI_CRAWLERS = [
 ]
 
 export default function robots(): MetadataRoute.Robots {
+  // QA and every other non-public build: no crawler anywhere (it would list a test site and its test content)
+  if (!IS_PUBLIC_SITE) return { rules: [{ userAgent: '*', disallow: '/' }] }
   return {
     rules: [
       { userAgent: '*', allow: '/', disallow: PRIVATE },

@@ -31,7 +31,7 @@ for (const [hash, file] of Object.entries(LAUNCH_DATA.media)) { const p = BY_FIL
  */
 export const LAUNCH_TEMPLATE: MorphTemplate = {
   id: 'launch',
-  category: 'launch',
+  category: 'launch', fillPictures: true, fillRadius: 32, textAboveOwn: true,
   audience: "The Product Launch template suits new products, consumer brands, campaigns, startup pitches, sales presentations and business proposals: any talk where one product or idea should stay in view while the story changes around it.",
   name: 'Product Launch',
   tagline: 'Your product does the talking',

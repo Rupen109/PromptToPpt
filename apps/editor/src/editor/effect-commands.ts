@@ -80,6 +80,17 @@ export function copyEffects(effects: Effect[] | undefined, elementIds: Map<strin
   return out.length ? out : undefined
 }
 
+/**
+ * The effects of elements that are being copied (Ctrl+D, Copy and Paste), pointing at the copies (`map`: each source element's id → its copy's id). An effect whose click trigger is
+ * another element follows that element's copy when it was copied too; otherwise it loses its trigger and plays in the click sequence (the trigger would point at nothing on another slide).
+ */
+export function effectsForCopies(effects: Effect[] | undefined, map: Map<string, string>, gen: IdGen): Effect[] {
+  return (effects ?? []).filter((e) => map.has(e.elementId)).map((e) => {
+    const { trigger, ...rest } = e
+    return { ...rest, id: gen(), elementId: map.get(e.elementId)!, ...(trigger && map.has(trigger) ? { trigger: map.get(trigger)! } : {}) }
+  })
+}
+
 const categoryOf = (type: Effect['type']): EffectCategory => (Object.keys(EFFECTS) as EffectCategory[]).find((c) => (EFFECTS[c] as readonly string[]).includes(type))!
 
 /** The options a freshly chosen effect type starts with (its catalogue defaults), and for a path its points. */

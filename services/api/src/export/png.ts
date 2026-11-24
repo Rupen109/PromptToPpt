@@ -22,7 +22,8 @@ export function parseColor(hex: string): Rgba {
 }
 
 /** A small RGBA linear-gradient picture (CSS angle convention: 180° = top→bottom). PowerPoint stretches it, which is smooth for a linear ramp. `opacity` multiplies the alpha. */
-export function gradientPng(from: string, to: string, angle: number, opacity = 1, size = 96): string {
+/** a two-colour gradient picture (stretched to its frame): linear along `angle`, or `radial` from the middle out to the corners (CSS's radial-gradient, the screen's) */
+export function gradientPng(from: string, to: string, angle: number, opacity = 1, size = 96, kind: 'linear' | 'radial' = 'linear'): string {
   const a = parseColor(from), b = parseColor(to)
   const rad = ((angle - 90) * Math.PI) / 180 // CSS angle → direction vector
   const dx = Math.cos(rad), dy = Math.sin(rad)
@@ -30,7 +31,7 @@ export function gradientPng(from: string, to: string, angle: number, opacity = 1
   const px = new Uint8Array(size * size * 4)
   for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
     const nx = (x + 0.5) / size - 0.5, ny = (y + 0.5) / size - 0.5
-    const t = Math.min(1, Math.max(0, (nx * dx + ny * dy) / (2 * half) + 0.5))
+    const t = kind === 'radial' ? Math.min(1, Math.hypot(nx, ny) / Math.SQRT1_2) : Math.min(1, Math.max(0, (nx * dx + ny * dy) / (2 * half) + 0.5))
     const i = (y * size + x) * 4
     px[i] = Math.round(a.r + (b.r - a.r) * t); px[i + 1] = Math.round(a.g + (b.g - a.g) * t); px[i + 2] = Math.round(a.b + (b.b - a.b) * t)
     px[i + 3] = Math.round((a.a + (b.a - a.a) * t) * opacity * 255)

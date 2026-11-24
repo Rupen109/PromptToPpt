@@ -116,7 +116,11 @@ function textElement(tpl: MorphTemplate, o: TemplateObject, z: number, override:
     color, valign: o.anchor === 'ctr' ? 'middle' : o.anchor === 'b' ? 'bottom' : 'top', bullet: '•', weight, lineHeight, paraGap: 0,
     ...(r0.cap === 'all' ? { uppercase: true } : {}), ...(tracking ? { letterSpacing: tracking } : {}),
   } as TextEl
-  if (o.exact) return el
+  if (o.exact) {
+    // an authored band of one repeated phrase takes the deck's phrase, repeated as many times as the template repeated its own (its position and size are the author's)
+    if (ticker && override !== undefined) el.paragraphs = [{ runs: [{ text: Array.from({ length: times }, () => override.trim()).join('   ') }] }]
+    return el
+  }
   if (ticker && phrase !== undefined) layOutTicker(el, o, phrase, times, display)
   else if (!isHeading && !r0.cap && px >= 16 && px < 40 && o.w < WIDE_BOX && o.y > 110 && o.y < 1000) liftBodyCopy(el, o, tpl, px)
   if (!ticker && el.paragraphs.length === 1 && o.h < px * 1.7) keepOnOneLine(el, o, tpl, r0)
@@ -133,9 +137,13 @@ function imageElement(tpl: MorphTemplate, o: TemplateObject, z: number, base: st
   const invisible = (o.alpha ?? 1) < 0.05
   const fallback = tpl.pictures['void'] // a parked, invisible copy shows nothing
   const use = override ? { src: override.url, alt: override.alt, ...(override.attribution ? { attribution: override.attribution } : {}) } : pic ?? (invisible ? fallback : undefined)
+  const product = !!override && !!tpl.swap?.pictures.includes(o.id) // the person's own picture of their product: shown filled and softly rounded, whatever shape the template's picture had
   if (!use) return null
   const full = o.w >= SLIDE_W - EDGE && o.h >= SLIDE_H - EDGE
   let { x, y, w, h, rot } = { x: o.x, y: o.y, w: o.w, h: o.h, rot: o.rot }
+  const frame = override && !product ? tpl.fillFrame?.[o.id] : undefined
+  const inset = frame?.inset ?? tpl.fillInset
+  if (override && !product && inset && !o.radius && !(o.clip ?? pic?.clip) && !full) { x += w * inset / 2; y += h * inset / 2; w *= 1 - inset; h *= 1 - inset }
   if (pic?.tilt && pic.aspect && !override) {
     // the box is the bounding box of a tilted picture: find the angle that makes an upright one of this shape fill it, then draw the upright one turned by that angle about the same centre
     const a = pic.aspect, ratio = o.w / o.h
@@ -148,7 +156,7 @@ function imageElement(tpl: MorphTemplate, o: TemplateObject, z: number, base: st
   }
   return {
     type: 'image', id: o.id, x, y, width: w, height: h, rotation: rot, locked: invisible || full, zIndex: z, opacity: o.alpha ?? 1,
-    src: urlOf(use.src, base), alt: invisible ? '' : use.alt, fit: o.fit ?? (full || pic?.clip === 'circle' || (o.crop && tpl.coverCrops) ? 'cover' : 'contain'), clip: o.clip ?? pic?.clip ?? 'none', radius: o.radius ?? 0,
+    src: urlOf(use.src, base), alt: invisible ? '' : use.alt, fit: override ? (product ? (tpl.swap!.fit ?? 'cover') : 'cover') : o.fit ?? (full || pic?.clip === 'circle' || (o.crop && tpl.coverCrops) ? 'cover' : 'contain'), clip: product ? 'none' : o.clip ?? pic?.clip ?? frame?.clip ?? 'none', radius: product ? (tpl.swap!.radius ?? 36) : override && !full && !o.radius && !(o.clip ?? pic?.clip) && !frame?.clip ? frame?.radius ?? tpl.fillRadius ?? 0 : o.radius ?? 0,
     ...('attribution' in use && use.attribution ? { attribution: use.attribution } : {}),
     ...(invisible ? { decorative: true } : {}),
   } as SlideElement
@@ -164,13 +172,15 @@ export function composeTemplateScene(tpl: MorphTemplate, content: Content, opts:
   if (!slide) throw new Error(`Morph template "${tpl.id}" has no scene "${content.scene}"`)
   const elements: SlideElement[] = []
   const replaced = tpl.replace
+  const hidden = new Set(content.swapped ? tpl.swap?.hide ?? [] : [])
   slide.objects.forEach((o, z) => {
+    if (hidden.has(o.id) && o.kind !== 'text') return // only on the original product: nothing for it to point at
     if (o.kind === 'image') { const el = imageElement(tpl, o, z, base, content.images[o.id]); if (el) elements.push(el) }
     else if (o.kind === 'text') {
       if (!(o.paras ?? []).some(Boolean)) return
       if (content.fields[o.id] === '') return // a detail the deck has no words for (an address, a handle): the object is left out rather than showing a placeholder
       const own = replaced[norm(objectText(o))]
-      elements.push(textElement(tpl, o, tpl.textOnTop ? z + 1000 : z, content.fields[o.id] ?? own))
+      elements.push(textElement(tpl, o, tpl.textOnTop || content.swapped || (tpl.textAboveOwn && Object.keys(content.images).length > 0) ? z + 1000 : z, content.fields[o.id] ?? own)) // the person's photo is a picture with its own background, not a cut-out: words are always drawn above it
     } else if (o.fill || o.gradient || o.stroke) {
       elements.push({
         type: 'shape', id: o.id, x: o.x, y: o.y, width: o.w, height: o.h, rotation: o.rot, locked: false, zIndex: z, opacity: o.alpha ?? 1,

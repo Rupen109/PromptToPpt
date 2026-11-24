@@ -80,7 +80,7 @@ const SHOE = { hero: 'count-hero.webp', blue: 'count-blue.webp', violet: 'count-
 
 export const LAUNCH_COUNTDOWN = authored(
   {
-    id: 'launch-countdown', category: 'launch', name: 'Countdown', tagline: 'Five, four, three, two, one: launch',
+    id: 'launch-countdown', category: 'launch', fillPictures: ['hero', 'pic2', 'pic3'], fillRadius: 44, fillInset: 0.04, name: 'Countdown', tagline: 'Five, four, three, two, one: launch',
     description: 'A product launch event deck built around one giant numeral. It counts down from five to one with confetti bursting and falling around it, then breaks into the product name with a shockwave and a hero shoe, and goes on to the date and place, three highlights, a pre-order offer on a sliding ticker band and a closing call to action.',
     audience: 'The Countdown template suits product launches and launch events, product announcements and coming-soon teasers, pre-order and new-release campaigns, grand openings, festival and event presentations, launch-week plans and any talk that builds up to one big reveal.',
     topics: ['product launch', 'launch', 'launch event', 'countdown', 'product announcement', 'announcement', 'coming soon', 'new release', 'release', 'pre-order', 'preorder', 'grand opening', 'opening', 'event', 'event presentation', 'reveal', 'teaser', 'festival', 'drop', 'sneaker', 'fashion', 'retail', 'marketing', 'campaign', 'unveiling'],

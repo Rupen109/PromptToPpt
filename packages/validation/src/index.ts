@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { aspectRatioSchema } from './presentation'
 
 // ---- Auth ----
 
@@ -64,7 +65,7 @@ export type UpdateSlideInput = z.infer<typeof updateSlideSchema>
 
 export const createPresentationSchema = z.object({
   title: z.string().min(1).max(200),
-  aspectRatio: z.enum(['16:9', '4:3', '1:1']).default('16:9'),
+  aspectRatio: aspectRatioSchema.default('16:9'),
   themeId: z.string().optional(),
   language: z.string().default('en'),
 })
@@ -132,3 +133,19 @@ export * from './shapes'
 export * from './plans'
 export * from './languages'
 export * from './docdiff'
+export * from './morph-match'
+export * from './assist-types'
+export * from './picture'
+export * from './chart-style'
+export * from './group'
+export * from './table-style'
+export * from './table-merge'
+export * from './comment-pin'
+export * from './sections'
+export * from './capacity'
+export * from './text-style'
+export * from './rotation'
+export * from './slide-range'
+export * from './stroke'
+export * from './text-effects'
+export * from './background-pattern'

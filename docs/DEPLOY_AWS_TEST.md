@@ -1,6 +1,8 @@
-# Test environment on AWS (Sydney): how it is built and run
+# QA environment on AWS (Sydney): how it is built and run
 
-Built 2026-10-31. Domain `slidesdone.app` (bought at Hostinger, 1 year, renews 2027-10-31 at ₹1,939). DNS lives in **Route 53**.
+**Since 2026-11-24 (evening) this server is THE live site**: https://slidesdone.app (`www.` sends on to it, `app.`, `api.`), t4g.small, deployed from `master` after the owner's approval, the paid Gemini key, Razorpay test keys and invite-only sign-up until the public launch. There is no QA server any more. Branches, releases and the launch steps: `docs/RELEASES.md`. (The QA-era notes below are history.)
+
+Built 2026-10-31 as the test environment. Domain `slidesdone.app` (bought at Hostinger, 1 year, renews 2027-10-31 at ₹1,939). DNS lives in **Route 53**.
 
 **Why Sydney:** the AWS *Free plan* account (461415799262) is locked by AWS to `ap-southeast-2`; EC2, RDS and secrets calls in other regions are refused ("explicit deny in a service control policy"). Certificates for CloudFront must be in us-east-1 and are allowed there. Credits: $100 until 2027-04-28 (+$20 per console task). Budget `slidesdone-monthly` ($80) mails rupenbhimani109@gmail.com at $20/$50/$80 actual and $50 forecast, counting spend before credits.
 
@@ -10,7 +12,7 @@ Built 2026-10-31. Domain `slidesdone.app` (bought at Hostinger, 1 year, renews 2
 | Server | EC2 `t4g.micro` (1 GB, ARM) + 2 GB swap, 20 GB disk, fixed IP; ports 80/443 only; **no SSH** (AWS Session Manager); CPU credits mode `standard` |
 | Runs (Docker Compose, `infra/compose`) | Caddy (HTTPS via Let's Encrypt), Postgres 16 (own container, nightly dump to S3 kept 30 days), API, website; memory limits 64/256/420/256 MB |
 | Editor | static files in an S3 bucket behind CloudFront at `app.slidesdone.app` (created when `delegated = true`) |
-| Hosts | `slidesdone.app` and `www` (website), `api.slidesdone.app` (API) point at the server IP; `app.` points at CloudFront |
+| Hosts | `qa.slidesdone.app` (website), `api.qa.slidesdone.app` (API) and `app.qa.slidesdone.app` (editor, served by Caddy while `use_cloudfront = false`) point at the server IP. Until 2026-11-24 it used the bare domain, `www`, `api.` and `app.`, which are production's now |
 | Pictures | S3 assets bucket (`ASSET_STORAGE=s3`) |
 | Secrets | Parameter Store `/prompttoppt/test/*` (written by `infra/scripts/put-secrets.sh`, read by the server into `/opt/slidesdone/.env`) |
 | Mail | MX to ImprovMX (free forwarding of support@ and similar), SPF and DMARC records; Brevo records through `extra_dns_records` |
@@ -23,11 +25,11 @@ Built 2026-10-31. Domain `slidesdone.app` (bought at Hostinger, 1 year, renews 2
 5. Reach the server: `aws ssm start-session --target <instance id> --profile goldenhour --region ap-southeast-2`.
 
 ## Deploying
-- **From GitHub (manual):** Actions -> "Deploy (test environment)" -> Run workflow (choose everything, api, web, editor or config). Uses repository secrets `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` of the limited IAM user `slidesdone-test-github-deploy` (this Free-plan account blocks the passwordless OIDC login; rotate the key from `infra/tofu`: `tofu apply -replace=aws_iam_access_key.github_deploy`, then update the two secrets). Builds on a GitHub ARM runner, about 10-15 minutes.
+- **From GitHub:** every push to the `qa` branch (CI first), or by hand: Actions -> "Deploy (QA)" -> Run workflow (choose everything, api, web, editor or config). Uses repository secrets `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` of the limited IAM user `slidesdone-test-github-deploy` (this Free-plan account blocks the passwordless OIDC login; rotate the key from `infra/tofu`: `tofu apply -replace=aws_iam_access_key.github_deploy`, then update the two secrets). Builds on a GitHub ARM runner, about 10-15 minutes.
 - **From the Mac:** `colima start`, then `infra/scripts/deploy.sh [api] [web] [editor] [config]`.
 - First live deploy: 2026-10-31. Checked in a real browser: home, pricing, login, signup and the editor's login redirect load over HTTPS; containers up, 417 of 910 MB used.
 
-- **AI on the test server:** Gemini through AI Studio (`AI_PROVIDER=gemini`, same as local dev, key `GEMINI_API_KEY` in Parameter Store). To switch to OpenRouter later, store `AI_PROVIDER=openrouter` and a real `OPENROUTER_API_KEY` there (they override the default) and run a `config` deploy.
+- **AI on QA:** a FREE-tier Gemini key (`AI_KEY_TIER=free`, key `GEMINI_API_KEY` in Parameter Store = the "SlidesDone QA" key from a Google project with no billing). The paid OpenRouter backup is always off on QA (`render-env.sh` writes `AI_BACKUP_PROVIDER=none`). What the free tier allows and what is switched off: `docs/QA_AND_RELEASES.md`.
 - **Live check after a deploy:** `LIVE_EMAIL=<verified account> LIVE_PASSWORD=... node e2e/live-smoke.mjs` runs 16 checks through a real browser (pages, login, scratch editor, pictures in S3, share link, support form, AI). It tests what a free-plan person can do.
 
 ## Lessons (deploy)

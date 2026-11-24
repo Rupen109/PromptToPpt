@@ -6,7 +6,7 @@ import { CurrencyProvider, CurrencyToggle } from './currency'
 const NAV = [
   ['Usage', [['/admin', 'Overview'], ['/admin/tokens', 'Tokens'], ['/admin/models', 'Models'], ['/admin/providers', 'Providers'], ['/admin/cloud', 'Google Cloud'], ['/admin/performance', 'Performance'], ['/admin/errors', 'Errors']]],
   ['Business', [['/admin/sales', 'Sales & revenue'], ['/admin/subscriptions', 'Subscriptions'], ['/admin/margin', 'Cost & margin'], ['/admin/users', 'Users'], ['/admin/countries', 'Countries']]],
-  ['Product', [['/admin/presentations', 'Presentations'], ['/admin/prompts', 'Prompts / use cases'], ['/admin/images', 'Images'], ['/admin/exports', 'Exports']]],
+  ['Product', [['/admin/presentations', 'Presentations'], ['/admin/prompts', 'Prompts / use cases'], ['/admin/images', 'Images'], ['/admin/morph', 'Morph matches'], ['/admin/exports', 'Exports']]],
   ['Content', [['/admin/posts', 'Blog, news & guides']]],
   ['Control', [['/admin/support', 'Support'], ['/admin/reviews', 'Reviews'], ['/admin/flags', 'Feature flags'], ['/admin/audit', 'Audit logs']]],
 ] as const

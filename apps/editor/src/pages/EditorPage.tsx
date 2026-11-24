@@ -1,11 +1,13 @@
 import { AlertTriangle, Ban, ChevronDown, ChevronRight, Home, Lock, MessageSquare, MoreVertical, Palette, Play, Sparkles, Users } from '@prompttoppt/ui/icons'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { ApiError, isGateError } from '@prompttoppt/api-client'
-import type { ExportFormat, SlideElement } from '@prompttoppt/validation'
+import { describeSlides, type ExportFormat } from '@prompttoppt/validation'
+import { ExportMenu } from '@/components/editor/ExportMenu'
 import { AiPanel } from '@/components/editor/AiPanel'
 import { CommentsPanel } from '@/components/editor/CommentsPanel'
 import { ImageDialog } from '@/components/editor/ImageDialog'
+import { backgroundRemovalProvider } from '@/lib/bgremoval/providers'
 import { ContextMenu, type MenuItem } from '@/components/editor/ContextMenu'
 import { DeckRewriteDialog } from '@/components/editor/DeckRewriteDialog'
 import { EditorCanvas } from '@/components/editor/EditorCanvas'
@@ -24,12 +26,16 @@ import { VersionsDialog } from '@/components/editor/VersionsDialog'
 import { TopToolbar } from '@/components/editor/toolbar/TopToolbar'
 import { TableDialog } from '@/components/editor/toolbar/TableDialog'
 import { ChartDialog } from '@/components/editor/toolbar/ChartDialog'
+import { CropDialog } from '@/components/editor/toolbar/CropDialog'
 import { readBackup, useAutosave, type SaveStatus } from '@/editor/autosave'
 import * as C from '@/editor/commands'
+import * as T from '@/editor/toolbar-commands'
+import * as A from '@/editor/object-actions'
 import { openCount, unreadCount, useComments } from '@/editor/comments'
 import { useLive, useLiveSync } from '@/editor/live'
 import { useDoc } from '@/editor/store'
 import { useUi } from '@/editor/ui'
+import { useGrid } from '@/editor/grid'
 import { api } from '@/lib/api'
 import { useDeckBuild } from '@/lib/useDeckBuild'
 import { PRESENT_LOCKED, useEntitlements } from '@/lib/entitlements'
@@ -37,7 +43,9 @@ import { useFlag } from '@/lib/flags'
 import { download, exportClient, type ClientFormat } from '@/lib/export'
 import { SlideLoader } from '../components/SlideLoader'
 
-const STICKERS = ['⭐', '✅', '💡', '🚀', '⚠️', '❤️', '🎯', '📈']
+/** Development only: the background removal dialog is not even part of a production build (`import.meta.env.DEV` is false there and the branch is dropped). */
+const BackgroundRemovalDialog = import.meta.env.DEV ? lazy(() => import('@/components/editor/bgremoval/BackgroundRemovalDialog').then((m) => ({ default: m.BackgroundRemovalDialog }))) : null
+
 const STATUS: Record<SaveStatus, { text: string; cls: string }> = {
   saved: { text: 'Saved', cls: 'text-green-700' }, dirty: { text: 'Unsaved changes…', cls: 'text-slate-500' }, saving: { text: 'Saving…', cls: 'text-slate-500' },
   offline: { text: 'Offline — will sync', cls: 'text-amber-700' }, conflict: { text: 'Conflict', cls: 'text-red-700' }, error: { text: 'Could not save', cls: 'text-red-700' },
@@ -54,15 +62,19 @@ export function EditorPage() {
   const doc = useDoc((s) => s.doc)
   const revision = useDoc((s) => s.revision)
   const apply = useDoc((s) => s.apply)
-  const { activeSlideId, setActiveSlide, select, edit, drawer, ribbon, setDrawer, notesOpen, toggleNotes, setClipboard, imageDialog, openImageDialog, closeImageDialog, tableEditId, editTable, chartEditId, editChart } = useUi()
+  const { activeSlideId, setActiveSlide, select, edit, drawer, ribbon, setDrawer, notesOpen, toggleNotes, imageDialog, openImageDialog, closeImageDialog, bgRemoval, closeBgRemoval, tableEditId, editTable, chartEditId, editChart, cropId, openCrop } = useUi()
   const [load, setLoad] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading')
   const [toast, setToast] = useState<string | null>(null)
   const [menu, setMenu] = useState<{ x: number; y: number; kind: 'insert' | 'more' } | null>(null)
   const [remix, setRemix] = useState(false)
   const [versions, setVersions] = useState(false)
-  const [exportMenu, setExportMenu] = useState(false)
-  const [role, setRole] = useState<'owner' | 'editor'>('owner')
+  const exportMenu = useUi((u) => u.exportMenu)
+  const setExportMenu = (open: boolean) => useUi.getState().openExport(open ? 'all' : null)
+  const [role, setRole] = useState<'owner' | 'editor' | 'viewer'>('owner')
+  const viewer = role === 'viewer'
   const [shareOpen, setShareOpen] = useState(false)
+  const [shareEmail, setShareEmail] = useState<string | undefined>(undefined)
+  const [shareRole, setShareRole] = useState<'editor' | 'viewer'>('editor')
   const [searchParams, setSearchParams] = useSearchParams()
   // `?new=1` (just created from a template) opens the "tell me what to put in your slides" dialog once; the assistant can also request a full rewrite
   const [rewrite, setRewrite] = useState<{ brief?: string; picturesOnly?: boolean } | null>(() => (searchParams.get('new') === '1' ? {} : null))
@@ -71,8 +83,9 @@ export function EditorPage() {
   // the export menu closes on Escape and on any click outside it
   useEffect(() => {
     if (!exportMenu) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setExportMenu(false) }
-    const onDown = (e: PointerEvent) => { if (!(e.target as HTMLElement).closest?.('[data-export-menu]')) setExportMenu(false) }
+    const close = () => useUi.getState().openExport(null)
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close() }
+    const onDown = (e: PointerEvent) => { if (!(e.target as HTMLElement).closest?.('[data-export-menu]')) close() }
     window.addEventListener('keydown', onKey)
     window.addEventListener('pointerdown', onDown)
     return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('pointerdown', onDown) }
@@ -95,14 +108,32 @@ export function EditorPage() {
     })
   }, [flash])
 
+  // ── the owner changed what I may do (edit ↔ view and comment): read my access again. Becoming a viewer drops unsaved changes (the server would refuse them) and says so.
+  const accessSeq = useLive((s) => s.accessSeq)
+  useEffect(() => {
+    if (!accessSeq) return
+    let off = false
+    api.getPresentation(id).then((p) => {
+      if (off) return
+      const nowViewer = p.role === 'viewer'
+      setRole(p.role ?? 'owner')
+      if (nowViewer) { useDoc.getState().setReadOnly(true); useDoc.getState().adoptRemote(p.document, p.revision); flash('The owner changed your access: you can now view and comment. Changes you had not saved yet were not kept.') }
+      else { useDoc.getState().setReadOnly(false); flash('The owner gave you edit access: you can now change this presentation.') }
+    }).catch(() => {})
+    return () => { off = true }
+  }, [accessSeq, id, flash])
+
   // ── load (+ recover unsaved edits from a previous session if they're based on the current server revision)
   useEffect(() => {
     let off = false
     api.getPresentation(id).then((p) => {
       if (off) return
       setRole(p.role ?? 'owner')
+      useUi.setState({ canExport: (p.role ?? 'owner') === 'owner' }) // only the owner exports (the slide menu offers "Download this slide" to the owner only)
       useDoc.getState().load(p.document, p.revision)
-      const backup = readBackup(id)
+      // a viewer's copy refuses every change (the server refuses their saves too); they look, present and comment
+      useDoc.getState().setReadOnly(p.role === 'viewer')
+      const backup = p.role === 'viewer' ? null : readBackup(id)
       if (backup && backup.revision === p.revision && JSON.stringify(backup.doc) !== JSON.stringify(p.document)) {
         useDoc.getState().replaceDoc(backup.doc, p.revision)
         flash('Recovered unsaved changes from your last session.')
@@ -168,6 +199,8 @@ export function EditorPage() {
       const mod = e.metaKey || e.ctrlKey
       const k = e.key.toLowerCase()
       if (mod && k === 's') { e.preventDefault(); void autosave.saveNow(true); flash('Version saved.'); return }
+      // the grid on / off (PowerPoint's Shift+F9)
+      if (e.shiftKey && e.key === 'F9') { e.preventDefault(); const g = useGrid.getState(); g.set({ show: !g.show }); return }
       // the Animation pane, Selection pane and effect gallery use the arrow and Delete keys themselves; only undo and redo still reach the deck from there
       const own = e.target instanceof HTMLElement && !!e.target.closest('[data-own-keys]')
       if (own && !(mod && (k === 'z' || k === 'y'))) return
@@ -179,10 +212,18 @@ export function EditorPage() {
       const els = sl.elements.filter((x) => ui.selection.includes(x.id))
       if (mod && k === 'z') { e.preventDefault(); if (e.shiftKey) st.redo(); else st.undo(); return }
       if (mod && k === 'y') { e.preventDefault(); st.redo(); return }
-      if (mod && k === 'c' && els.length) { e.preventDefault(); setClipboard(structuredClone(els) as SlideElement[]); return }
-      if (mod && k === 'v' && ui.clipboard.length) { e.preventDefault(); if (!requireAdvanced()) return; let ids: string[] = []; st.apply('Paste', (d) => { ids = C.pasteElements(d, sl.id, ui.clipboard) }); select(ids); return }
-      if (mod && k === 'd' && els.length) { e.preventDefault(); if (!requireAdvanced()) return; let ids: string[] = []; st.apply('Duplicate', (d) => { ids = C.duplicateElements(d, sl.id, els.map((x) => x.id)) }); select(ids); return }
-      if ((e.key === 'Delete' || e.key === 'Backspace') && els.length) { e.preventDefault(); if (!requireAdvanced()) return; st.apply('Delete', (d) => C.deleteElements(d, sl.id, els.map((x) => x.id))); select([]); return }
+      // the same actions as the right-click menu (editor/object-actions.ts): one implementation each
+      if (mod && k === 'c' && els.length) { e.preventDefault(); A.copySelection(); return }
+      if (mod && k === 'x' && els.length) { e.preventDefault(); A.cut(requireAdvanced); return }
+      if (mod && k === 'v' && ui.clipboard.length) { e.preventDefault(); A.paste(requireAdvanced); return }
+      if (mod && k === 'd' && els.length) { e.preventDefault(); A.duplicate(requireAdvanced); return }
+      if (mod && k === 'a') { e.preventDefault(); A.selectAll(); return }
+      if (mod && k === 'g' && els.length) { e.preventDefault(); if (e.shiftKey) A.ungroup(requireAdvanced); else A.group(requireAdvanced); return }
+      if ((e.key === 'Delete' || e.key === 'Backspace') && els.length) { e.preventDefault(); A.remove(requireAdvanced); return }
+      // order: Ctrl+] / Ctrl+[ one step, with Shift all the way (PowerPoint's keys; e.code, so Shift turning ] into } does not matter)
+      if (mod && (e.code === 'BracketRight' || e.code === 'BracketLeft') && els.length) { e.preventDefault(); A.layer(e.code === 'BracketRight' ? (e.shiftKey ? 'front' : 'up') : (e.shiftKey ? 'back' : 'down'), requireAdvanced); return }
+      // turn: Alt+Left / Alt+Right by 15°, with Shift by 1° (PowerPoint's keys)
+      if (e.altKey && !mod && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && els.length) { e.preventDefault(); const r = A.rotate({ by: (e.key === 'ArrowLeft' ? -1 : 1) * (e.shiftKey ? 1 : 15) }, requireAdvanced); if (!r.ok && r.why) flash(r.why); return }
       if (e.key.startsWith('Arrow') && els.length) {
         e.preventDefault()
         if (!requireAdvanced()) return
@@ -201,22 +242,21 @@ export function EditorPage() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [load, autosave, requireAdvanced, select, edit, setClipboard, setActiveSlide, flash])
+  }, [load, autosave, requireAdvanced, select, edit, setActiveSlide, flash])
 
   if (load === 'loading') return <SlideLoader fullScreen size="lg" label="Opening your presentation" />
   if (load !== 'ready' || !doc || !slide) {
     return <div className="min-h-screen grid place-items-center text-center"><div><p className="font-bold mb-3">{load === 'missing' ? 'Presentation not found.' : 'Could not load the presentation.'}</p><Link to="/" className="text-primary font-semibold">Back to home</Link></div></div>
   }
 
-  const addEl = (partial: Record<string, unknown>) => { if (!requireAdvanced()) return; const el = C.makeElement(partial); apply('Insert', (d) => C.addElement(d, slide.id, el)); select([el.id]) }
-  const base = { id: '', rotation: 0, locked: false, zIndex: 0 }
+  // the same commands as the top toolbar (one way to insert: the free spot nearest the middle, an empty text box with an editor-only prompt)
+  const insert = (label: string, make: (d: C.D) => string | null, thenEdit = false) => { if (!requireAdvanced()) return; let id: string | null = null; apply(label, (d) => { id = make(d) }); if (id) { select([id]); if (thenEdit) edit(id) } }
   const insertItems: MenuItem[] = [
-    { label: 'Text box', onClick: () => addEl({ ...base, id: crypto.randomUUID(), type: 'text', x: 200, y: 400, width: 700, height: 120, role: 'body', paragraphs: [{ runs: [{ text: 'Type here' }] }], fontSize: 44, align: 'left', color: 'textPrimary', valign: 'top' }) },
-    { label: 'Rectangle', onClick: () => addEl({ ...base, id: crypto.randomUUID(), type: 'shape', shape: 'rect', x: 300, y: 300, width: 500, height: 300, fill: 'accent', radius: doc.theme.radius }) },
-    { label: 'Circle', onClick: () => addEl({ ...base, id: crypto.randomUUID(), type: 'shape', shape: 'ellipse', x: 400, y: 300, width: 320, height: 320, fill: 'secondary', radius: 0 }) },
+    { label: 'Text box', onClick: () => insert('Add text', (d) => T.addTextBox(d, slide.id), true) },
+    { label: 'Rectangle', onClick: () => insert('Add shape', (d) => T.addShape(d, slide.id, 'rect')) },
+    { label: 'Circle', onClick: () => insert('Add shape', (d) => T.addShape(d, slide.id, 'ellipse')) },
     { label: 'AI image…', onClick: () => openImageDialog() },
-    { label: 'Image (set URL after)', onClick: () => addEl({ ...base, id: crypto.randomUUID(), type: 'image', x: 300, y: 250, width: 800, height: 450, alt: 'Image', fit: 'cover' }) },
-    { type: 'emoji', label: 'Sticker', options: STICKERS, onPick: (emoji) => addEl({ ...base, id: crypto.randomUUID(), type: 'icon', x: 800, y: 300, width: 240, height: 240, name: emoji, color: 'primary' }) },
+    { label: 'Image (set URL after)', onClick: () => insert('Insert', (d) => T.addImageFrame(d, slide.id)) },
   ]
   const moreItems: MenuItem[] = [
     { label: slide.locked ? 'Unlock slide' : 'Lock slide', onClick: () => apply('Lock slide', (d) => C.setSlideLocked(d, slide.id, !slide.locked)) },
@@ -234,21 +274,27 @@ export function EditorPage() {
   // Present mode belongs to the paid plans, like export (the Starter plan has no export formats)
   const canPresent = !ent || ent.features.livePreview
 
-  async function doExport(format: ExportFormat) {
+  /** `slideIds`: only these slides ("This slide", "1-3, 5", or the slides the assistant prepared); absent = the whole deck */
+  async function doExport(format: ExportFormat, slideIds?: string[]) {
     setExportMenu(false)
-    setExporting(`Preparing ${format.toUpperCase()}…`)
+    const d0 = useDoc.getState().doc
+    // the slides chosen must still be there (the assistant's button may be pressed after slides were deleted): never a silently smaller file
+    if (slideIds && d0 && slideIds.some((sid) => !d0.slides.some((s) => s.id === sid))) { flash('One of those slides is no longer in the presentation. Choose the slides again.'); return }
+    const part = slideIds && d0 && slideIds.length < d0.slides.length ? ` (${describeSlides(slideIds.map((sid) => d0.slides.findIndex((s) => s.id === sid) + 1), d0.slides.length)})` : ''
+    setExporting(`Preparing ${format.toUpperCase()}${part}…`)
     try {
       await autosave.saveNow(false) // export what the user sees, not the last autosave
-      const r = await api.requestExport(id, format) // the SERVER decides whether the plan allows it (and builds the PPTX)
+      const r = await api.requestExport(id, format, slideIds) // the SERVER decides whether the plan allows it (and builds the PPTX)
       if (r.mode === 'file') download(r.blob, r.filename)
       else {
         const d = useDoc.getState().doc
         if (!d) throw new Error('no document')
-        await exportClient(d, r.format as ClientFormat, (done, total) => setExporting(`Preparing ${format.toUpperCase()}… slide ${done} of ${total}`), (outcome) => void api.reportExport(r.eventId, outcome))
+        await exportClient(d, r.format as ClientFormat, (done, total) => setExporting(`Preparing ${format.toUpperCase()}${part}… slide ${done} of ${total}`), (outcome) => void api.reportExport(r.eventId, outcome), slideIds)
       }
-      flash(`${format.toUpperCase()} downloaded.`)
+      flash(`${format.toUpperCase()}${part} downloaded.`)
     } catch (e) {
       if (isGateError(e)) upgrade.show(e.message)
+      else if (e instanceof ApiError && e.code === 'SLIDES_GONE') flash(e.message)
       else flash('Export failed. Please try again.')
     } finally {
       setExporting(null)
@@ -260,21 +306,19 @@ export function EditorPage() {
     <div className="h-screen flex flex-col bg-[#eeeeee]">
       <header className="h-14 bg-white border-b border-border flex items-center gap-2 sm:gap-3 px-3 sm:px-4 shrink-0">
         <Link to="/" aria-label="Home" className="font-bold text-lg w-8 h-9 grid place-items-center shrink-0"><Home aria-hidden size={20} /></Link>
-        <input aria-label="Presentation title" defaultValue={doc.title} key={doc.title} maxLength={200} onBlur={(e) => e.target.value.trim() !== doc.title && apply('Rename', (d) => C.setTitle(d, e.target.value))} onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} style={{ width: `${Math.min(Math.max(doc.title.length, 14) + 4, 44)}ch` }} className="font-semibold min-w-0 max-w-[45vw] h-9 px-3 rounded-lg bg-slate-100 border border-transparent hover:border-slate-300 focus:bg-white focus:border-primary focus:outline focus:outline-2 focus:outline-primary/30 truncate" />
+        <input aria-label="Presentation title" readOnly={viewer} defaultValue={doc.title} key={doc.title} maxLength={200} onBlur={(e) => e.target.value.trim() !== doc.title && apply('Rename', (d) => C.setTitle(d, e.target.value))} onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} style={{ width: `${Math.min(Math.max(doc.title.length, 14) + 4, 44)}ch` }} className="font-semibold min-w-0 max-w-[45vw] h-9 px-3 rounded-lg bg-slate-100 border border-transparent hover:border-slate-300 focus:bg-white focus:border-primary focus:outline focus:outline-2 focus:outline-primary/30 truncate" />
         <span role="status" aria-live="polite" title={autosave.message ?? undefined} className={`hidden sm:inline text-xs shrink-0 ${st.cls}`}>{st.text}</span>
         <div className="ml-auto flex items-center gap-2">
           <button onClick={() => { if (!canPresent) return upgrade.show(PRESENT_LOCKED); void autosave.saveNow(); navigate(`/present/${id}`) }} className="h-9 px-3 rounded-lg text-sm border border-border hover:bg-slate-50 whitespace-nowrap inline-flex items-center gap-1.5"><Play aria-hidden size={16} /><span className="max-sm:sr-only">Present</span></button>
           <PeerAvatars />
           {role === 'owner' && <button onClick={() => setShareOpen(true)} className="h-9 px-3 rounded-lg text-sm font-semibold border border-border hover:bg-slate-50 whitespace-nowrap inline-flex items-center gap-1.5"><Users aria-hidden size={16} /><span className="max-sm:sr-only">Share</span></button>}
+          {viewer && <span data-testid="view-only" title="You were invited to view this presentation: you can look at it, present it and comment. Ask its owner for edit access." className="text-xs rounded-full bg-slate-100 text-slate-700 px-2.5 py-1 font-semibold whitespace-nowrap">View only</span>}
           {role === 'editor' && <span title="You were invited to edit this presentation. The AI uses the owner's credits; only the owner can export or share." className="hidden sm:inline text-xs rounded-full bg-amber-100 text-amber-900 px-2.5 py-1 whitespace-nowrap">Collaborating</span>}
           {role === 'owner' && <div className="relative" data-export-menu>
-            <button onClick={() => setExportMenu((v) => !v)} aria-haspopup="menu" aria-expanded={exportMenu} disabled={!!exporting} className="h-9 px-4 rounded-lg text-sm font-semibold bg-foreground text-white disabled:opacity-60">{exporting ? 'Exporting…' : 'Export'}</button>
+            <button onClick={() => setExportMenu(!exportMenu)} aria-haspopup="dialog" aria-expanded={!!exportMenu} disabled={!!exporting} className="h-9 px-4 rounded-lg text-sm font-semibold bg-foreground text-white disabled:opacity-60">{exporting ? 'Exporting…' : 'Export'}</button>
             {exportMenu && (
-              <div role="menu" className="absolute right-0 mt-2 w-44 bg-white border border-border rounded-xl shadow-lg p-1 z-30">
-                {(['pptx', 'pdf', 'png', 'jpg', 'html'] as const).map((f) => (
-                  <button key={f} role="menuitem" onClick={() => void doExport(f)} className="w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-slate-100">{f.toUpperCase()}{ent && !ent.features.exportFormats.includes(f) && <span className="ml-2 text-[10px] font-bold text-primary bg-primary/10 rounded-full px-1.5 py-0.5">PRO</span>}</button>
-                ))}
-              </div>
+              <ExportMenu key={exportMenu.scope} total={doc.slides.length} current={Math.max(1, doc.slides.findIndex((s) => s.id === slide.id) + 1)} initial={exportMenu.scope} allowed={ent ? ent.features.exportFormats : null}
+                onExport={(f, numbers) => void doExport(f, numbers ? numbers.map((n) => doc.slides[n - 1]!.id) : undefined)} />
             )}
           </div>}
         </div>
@@ -282,9 +326,9 @@ export function EditorPage() {
       {writing > 0 && (
         <div role="status" className="px-4 py-2 text-sm bg-primary/10 text-primary font-medium flex items-center gap-2"><Sparkles aria-hidden size={16} className="animate-pulse" />Writing your presentation: {doc.slides.length - writing} of {doc.slides.length} slides ready. Finished slides can be edited now.</div>
       )}
-      <TopToolbar doc={doc} slide={slide} presentationId={id} requireAdvanced={requireAdvanced} onHistory={() => setVersions(true)} flash={flash} />
-      {ribbon === 'animations' && <AnimationsRibbon doc={doc} slide={slide} />}
-      {ribbon === 'transitions' && <TransitionsRibbon doc={doc} slide={slide} />}
+      {!viewer && <TopToolbar doc={doc} slide={slide} presentationId={id} requireAdvanced={requireAdvanced} onHistory={() => setVersions(true)} flash={flash} />}
+      {!viewer && ribbon === 'animations' && <AnimationsRibbon doc={doc} slide={slide} />}
+      {!viewer && ribbon === 'transitions' && <TransitionsRibbon doc={doc} slide={slide} />}
 
       {(autosave.status === 'conflict' || autosave.status === 'error' || autosave.status === 'offline') && autosave.message && (
         <div role="alert" className={`px-4 py-2 text-sm flex items-center gap-3 ${autosave.status === 'offline' ? 'bg-amber-50 text-amber-900' : 'bg-red-50 text-red-800'}`}>
@@ -317,50 +361,63 @@ export function EditorPage() {
               <div className="mt-4">
                 <button onClick={() => toggleNotes()} aria-expanded={notesOpen} className="text-sm font-medium text-slate-600 inline-flex items-center gap-1">{notesOpen ? <ChevronDown aria-hidden size={16} /> : <ChevronRight aria-hidden size={16} />} Speaker notes</button>
                 {notesOpen && (
-                  <textarea aria-label="Speaker notes" value={slide.speakerNotes} maxLength={5000} rows={4} placeholder="What you'll say on this slide…" onChange={(e) => apply('Speaker notes', (d) => C.setSpeakerNotes(d, slide.id, e.target.value), { mergeKey: `notes:${slide.id}` })} className="mt-2 w-full bg-white border border-border rounded-xl p-3 text-sm" />
+                  <textarea aria-label="Speaker notes" readOnly={viewer} value={slide.speakerNotes} maxLength={5000} rows={4} placeholder="What you'll say on this slide…" onChange={(e) => apply('Speaker notes', (d) => C.setSpeakerNotes(d, slide.id, e.target.value), { mergeKey: `notes:${slide.id}` })} className="mt-2 w-full bg-white border border-border rounded-xl p-3 text-sm" />
                 )}
               </div>
             </div>
           </div>
-          <div role="toolbar" aria-label="Editor toolbar" className="absolute bottom-3 sm:bottom-4 left-1/2 -translate-x-1/2 max-w-[calc(100%-1rem)] overflow-x-auto flex items-center gap-0.5 sm:gap-1 bg-white border border-border rounded-2xl shadow-lg px-1.5 sm:px-2 py-1.5 z-20">
-            <button className={tb} aria-haspopup="menu" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu({ x: r.left, y: r.top - 330, kind: 'insert' }) }}>＋<span className="max-sm:sr-only"> Insert</span></button>
-            <button className={`${tb} ${drawer === 'style' ? 'bg-slate-100' : ''}`} aria-pressed={drawer === 'style'} onClick={() => setDrawer('style')}><Palette aria-hidden size={16} /><span className="max-sm:sr-only">Style</span></button>
-            <button className={`${tb} ${drawer === 'ai' ? 'bg-slate-100' : ''}`} aria-pressed={drawer === 'ai'} onClick={() => setDrawer('ai')}><Sparkles aria-hidden size={16} /><span className="max-sm:sr-only">Edit with AI</span></button>
+          <div role="toolbar" aria-label="Editor toolbar" data-floating-dock className="absolute bottom-3 sm:bottom-4 left-1/2 -translate-x-1/2 max-w-[calc(100%-1rem)] overflow-x-auto flex items-center gap-0.5 sm:gap-1 bg-white border border-border rounded-2xl shadow-lg px-1.5 sm:px-2 py-1.5 z-20">
+            {!viewer && <button className={tb} aria-haspopup="menu" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu({ x: r.left, y: r.top - 330, kind: 'insert' }) }}>＋<span className="max-sm:sr-only"> Insert</span></button>}
+            {!viewer && <button className={`${tb} ${drawer === 'style' ? 'bg-slate-100' : ''}`} aria-pressed={drawer === 'style'} onClick={() => setDrawer('style')}><Palette aria-hidden size={16} /><span className="max-sm:sr-only">Style</span></button>}
+            {!viewer && <button className={`${tb} ${drawer === 'ai' ? 'bg-slate-100' : ''}`} aria-pressed={drawer === 'ai'} onClick={() => setDrawer('ai')}><Sparkles aria-hidden size={16} /><span className="max-sm:sr-only">Edit with AI</span></button>}
             <button className={`${tb} relative ${drawer === 'comments' ? 'bg-slate-100' : ''}`} aria-pressed={drawer === 'comments'} aria-label={`Comments${openCount(cThreads) ? `, ${openCount(cThreads)} open` : ''}${unreadCount(cThreads, cSeen) ? ', unread' : ''}`} onClick={() => setDrawer('comments')}><MessageSquare aria-hidden size={16} /><span className="max-sm:sr-only">Comments</span>{openCount(cThreads) > 0 && <span data-testid="comments-count" className="ml-1 text-[11px] font-bold bg-primary text-white rounded-full px-1.5">{openCount(cThreads)}</span>}{unreadCount(cThreads, cSeen) > 0 && drawer !== 'comments' && <i data-testid="comments-unread" aria-hidden className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-500" />}</button>
             <button className={tb} aria-label="More" aria-haspopup="menu" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu({ x: r.left, y: r.top - 300, kind: 'more' }) }}><MoreVertical aria-hidden size={18} /></button>
           </div>
         </main>
         {drawer === 'comments' && <CommentsPanel doc={doc} slideId={slide.id} deckId={id} role={role} onClose={() => setDrawer('comments')} />}
-        {drawer === 'animations' && <AnimationPane doc={doc} slide={slide} onClose={() => setDrawer('animations')} />}
+        {!viewer && drawer === 'animations' && <AnimationPane doc={doc} slide={slide} onClose={() => setDrawer('animations')} />}
         {drawer === 'selection' && <SelectionPane slide={slide} onClose={() => setDrawer('selection')} />}
-        {drawer === 'morph' && <MorphPanel doc={doc} slide={slide} onClose={() => setDrawer('morph')} />}
-        {drawer === 'style' && <StyleDrawer doc={doc} slide={slide} onClose={() => setDrawer('style')} />}
-        {drawer === 'ai' && !aiAvailable && (
+        {!viewer && drawer === 'morph' && <MorphPanel doc={doc} slide={slide} onClose={() => setDrawer('morph')} />}
+        {!viewer && drawer === 'style' && <StyleDrawer doc={doc} slide={slide} onClose={() => setDrawer('style')} />}
+        {!viewer && drawer === 'ai' && !aiAvailable && (
           <aside aria-label="AI assistant" className="w-[360px] max-lg:fixed max-lg:z-40 max-lg:right-0 max-lg:top-14 max-lg:bottom-0 max-lg:shadow-2xl max-md:left-0 max-md:top-auto max-md:h-[60vh] max-md:rounded-t-2xl max-md:border-t max-lg:max-w-full shrink-0 bg-white border-l border-border p-5 text-sm">
             <h2 className="font-semibold mb-2">AI is paused</h2>
             <p className="text-slate-600">{maintenance ? "We're doing some quick maintenance, so the AI assistant is paused for a short while. Your work is safe — please try again soon." : 'The AI assistant is switched off right now. You can keep editing by hand.'}</p>
           </aside>
         )}
-        {drawer === 'ai' && aiAvailable && <AiPanel doc={doc} slide={slide} presentationId={id} onRewrite={(brief, picturesOnly) => setRewrite({ brief, ...(picturesOnly ? { picturesOnly } : {}) })} onClose={() => setDrawer('ai')} onBeforeSend={() => autosave.saveNow(false)} />}
+        {!viewer && drawer === 'ai' && aiAvailable && <AiPanel doc={doc} slide={slide} presentationId={id} onRewrite={(brief, picturesOnly) => setRewrite({ brief, ...(picturesOnly ? { picturesOnly } : {}) })} onClose={() => setDrawer('ai')} onBeforeSend={() => autosave.saveNow(false)} onUiAction={(a) => {
+          // the person pressed the button the assistant prepared: the same paths as the header's own buttons (plan and role checked again there)
+          if (a.kind === 'present') { if (!canPresent) return upgrade.show(PRESENT_LOCKED); void autosave.saveNow(); navigate(`/present/${id}?slide=${a.fromSlide}`) }
+          else if (a.kind === 'export') void doExport(a.format, a.slideIds)
+          else if (role === 'owner') { setShareEmail(a.email); setShareRole(a.role === 'viewer' ? 'viewer' : 'editor'); setShareOpen(true) }
+        }} />}
       </div>
 
-      {shareOpen && role === 'owner' && <ShareDialog deckId={id} onClose={() => setShareOpen(false)} />}
+      {shareOpen && role === 'owner' && <ShareDialog deckId={id} {...(shareEmail ? { initialEmail: shareEmail } : {})} initialRole={shareRole} onClose={() => { setShareOpen(false); setShareEmail(undefined) }} />}
       {rewrite && load === 'ready' && (
         <DeckRewriteDialog
           presentationId={id} slideCount={doc.slides.length} autoBrief={rewrite.brief} picturesOnly={rewrite.picturesOnly}
           onClose={() => { setRewrite(null); if (searchParams.has('new')) setSearchParams({}, { replace: true }) }}
-          onDone={(d, r) => {
+          onDone={(d, r, kept) => {
             useDoc.getState().load(d, r)
             setActiveSlide(d.slides[0]!.id)
             setRewrite(null); setSearchParams({}, { replace: true })
-            flash(rewrite?.picturesOnly ? 'New pictures are in. The previous version is saved in Version history.' : 'Your presentation is ready. The previous version is saved in Version history.')
+            // which slides kept their own picture (no DIFFERENT match was found) is said, never left for the person to discover
+            const keptText = kept.length ? ` ${kept.length === 1 ? `Slide ${kept[0]}` : `Slides ${kept.slice(0, -1).join(', ')} and ${kept.at(-1)}`} kept ${kept.length === 1 ? 'its' : 'their'} own picture: no different match was found.` : ''
+            flash(rewrite?.picturesOnly ? `New pictures are in.${keptText} The previous version is saved in Version history.` : 'Your presentation is ready. The previous version is saved in Version history.')
           }}
         />
       )}
       {tableEditId && <TableDialog slideId={slide.id} elementId={tableEditId} onClose={() => editTable(null)} />}
       {chartEditId && <ChartDialog slideId={slide.id} elementId={chartEditId} onClose={() => editChart(null)} />}
+      {cropId && <CropDialog slideId={slide.id} elementId={cropId} onClose={() => openCrop(null)} />}
+      {bgRemoval && (() => {
+        const provider = backgroundRemovalProvider()
+        const el = doc.slides.find((s) => s.id === bgRemoval.slideId)?.elements.find((e) => e.id === bgRemoval.elementId)
+        return BackgroundRemovalDialog && provider && el?.type === 'image' && el.src ? <Suspense fallback={null}><BackgroundRemovalDialog key={`${bgRemoval.slideId}:${bgRemoval.elementId}`} presentationId={id} slideId={bgRemoval.slideId} elementId={bgRemoval.elementId} src={el.src} alt={el.alt ?? ''} provider={provider} onClose={closeBgRemoval} /></Suspense> : null
+      })()}
       {imageDialog && <ImageDialog key={imageDialog.elementId ?? 'new'} doc={doc} slide={slide} presentationId={id} request={imageDialog} onClose={closeImageDialog} />}
-      {remix && <RemixDialog presentationId={id} title={doc.title} slideCount={doc.slides.length} handEdited={doc.slides.filter((x) => x.manual).length} beforeStart={() => autosave.saveNow(false)} onClose={() => setRemix(false)} />}
+      {remix && <RemixDialog presentationId={id} title={doc.title} slideCount={doc.slides.length} aspect={doc.aspectRatio} handEdited={doc.slides.filter((x) => x.manual).length} beforeStart={() => autosave.saveNow(false)} onClose={() => setRemix(false)} />}
       {menu && <ContextMenu x={menu.x} y={Math.max(8, menu.y)} items={menu.kind === 'insert' ? insertItems : moreItems} onClose={() => setMenu(null)} />}
       {versions && <VersionsDialog id={id} revision={revision} onClose={() => setVersions(false)} onRestored={(d, r) => { useDoc.getState().load(d, r); setActiveSlide(d.slides[0]!.id) }} />}
       {exporting && <div role="status" className="fixed bottom-6 left-6 bg-foreground text-white px-4 py-2 rounded-lg text-sm shadow-lg z-50">{exporting}</div>}

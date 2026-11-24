@@ -8,6 +8,7 @@ import { startWorker } from './generation/worker.ts'
 import { startMediaWorker } from './media/worker.ts'
 import { purgeExpiredDrafts } from './routes/drafts.ts'
 import { purgeOldShareViews } from './routes/share-analytics.ts'
+import { reclaimRefunded, settleStaleRequests } from './assistant/settle.ts'
 
 await seedBilling() // idempotent: inserts the default plan catalogue only if missing
 // A key with no models to serve (AI_PROVIDER names a backend the catalogue has no rows for) would otherwise show up only as "the AI service is busy" on every request: say it at startup
@@ -21,6 +22,9 @@ const worker = env.RUN_WORKER ? startWorker() : null
 const stopMediaWorker = env.RUN_WORKER ? startMediaWorker() : () => {}
 const purge = setInterval(() => void purgeExpiredDrafts().catch((e) => console.error('[purge]', e)), 10 * 60_000)
 purge.unref()
+// AI assistant requests whose browser never reported are settled against the saved deck (a change that was never saved is refunded)
+const settleAssist = setInterval(() => void settleStaleRequests().then(() => reclaimRefunded()).catch((e) => console.error('[assist settle]', e)), 5 * 60_000)
+settleAssist.unref()
 const purgeViews = setInterval(() => void purgeOldShareViews().catch((e) => console.error('[purge views]', e)), 6 * 3600_000)
 purgeViews.unref()
 

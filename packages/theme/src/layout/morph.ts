@@ -29,6 +29,8 @@ interface Look {
    * (a tight canvas with long words: the title and the cards matter, the extras give way). The same rule runs on every slide, so the cast stays consistent.
    */
   detail: 0 | 1 | 2
+  /** the deck's hand (see `flip` in the content): the picture is on the left in the scenes that pair it with a text column or the cards */
+  flip: boolean
 }
 
 /** Runs `draw` and gives what it put on the slide the ids `name`, `name~1`, … (the same on every slide, whatever the random id generator says). */
@@ -189,17 +191,20 @@ const SCENES: Record<Scene, SceneFn> = {
   cover(c, s, L) {
     const { W, H, M } = c
     const hh = Math.min(H, Math.round((W * 0.46) / HERO_RATIO))
-    const hw = hero(c, s, W - Math.round(hh * HERO_RATIO), H - hh, hh, 0)
-    named(c, 'm-accent-1', () => rect(c, L.accent, M, Math.round(H * 0.27), 120, 12, { radius: 6 }))
-    head(c, s, L, M, Math.round(H * 0.31), W - hw - 2 * M, { size: 80, titleRoom: Math.round(H * 0.3), subSize: 34, subRoom: Math.round(H * 0.17) })
+    const hw0 = Math.round(hh * HERO_RATIO)
+    const hw = hero(c, s, L.flip ? 0 : W - hw0, H - hh, hh, 0)
+    const tx = L.flip ? hw + M : M
+    named(c, 'm-accent-1', () => rect(c, L.accent, tx, Math.round(H * 0.27), 120, 12, { radius: 6 }))
+    head(c, s, L, tx, Math.round(H * 0.31), W - hw - 2 * M, { size: 80, titleRoom: Math.round(H * 0.3), subSize: 34, subRoom: Math.round(H * 0.17) })
   },
 
   /** A picture panel on the left; the title and the four cards on the right. */
   'hero-left'(c, s, L, T) {
     const { W, H, M } = c
     const hh = Math.min(H - 2 * M, Math.round((W * 0.31) / HERO_RATIO))
-    const hw = hero(c, s, M, Math.round((H - hh) / 2), hh)
-    const x0 = M + hw + M, w = W - x0 - M
+    const hw0 = Math.round(hh * HERO_RATIO)
+    const hw = hero(c, s, L.flip ? W - M - hw0 : M, Math.round((H - hh) / 2), hh)
+    const x0 = L.flip ? M : M + hw + M, w = W - M - hw - M - M
     const y = head(c, s, L, x0, M, w, { size: 52, titleRoom: Math.round(H * 0.17), subSize: 26, subRoom: Math.round(H * 0.09), min: 36 })
     const r = { x: x0, y: y + 8, w, h: c.bottom - y - 8 }
     gridOf(c, s, L, T, range(s.items.length), r, 2, fitK(r, 2, Math.ceil(s.items.length / 2), 18), 18)
@@ -220,9 +225,10 @@ const SCENES: Record<Scene, SceneFn> = {
     const { W, M } = c
     const { top } = standardHead(c, s, L)
     const ph = c.bottom - top
-    hero(c, s, W - M - Math.round(ph * HERO_RATIO), top, ph)
+    hero(c, s, L.flip ? M : W - M - Math.round(ph * HERO_RATIO), top, ph)
     const k = 0.85 // a list: each card is its number and heading
-    const r = { x: M, y: top, w: Math.round(BASE.w * k), h: ph }
+    const lw = Math.round(BASE.w * k)
+    const r = { x: L.flip ? W - M - lw : M, y: top, w: lw, h: ph }
     stack(c, s, L, T, range(s.items.length), r, k, 16)
   },
 
@@ -231,8 +237,9 @@ const SCENES: Record<Scene, SceneFn> = {
     const { W, M } = c
     const { top } = standardHead(c, s, L)
     const ph = c.bottom - top
-    const pw = hero(c, s, W - M - Math.round(ph * HERO_RATIO), top, ph)
-    const r = { x: M, y: top, w: W - 2 * M - pw - 40, h: ph }
+    const pw0 = Math.round(ph * HERO_RATIO)
+    const pw = hero(c, s, L.flip ? M : W - M - pw0, top, ph)
+    const r = { x: L.flip ? M + pw + 40 : M, y: top, w: W - 2 * M - pw - 40, h: ph }
     gridOf(c, s, L, T, range(s.items.length), r, 2, fitK(r, 2, Math.ceil((s.items.length || 1) / 2), 20, 1.1), 20, { centre: true })
   },
 
@@ -301,9 +308,9 @@ const SCENES: Record<Scene, SceneFn> = {
   'focus-hero'(c, s, L) {
     const { W, H, M } = c
     const hh = Math.min(H - 2 * M, Math.round((W * 0.42) / HERO_RATIO))
-    const hw = hero(c, s, W - M - Math.round(hh * HERO_RATIO), Math.round((H - hh) / 2), hh, c.theme.radius)
+    const hw = hero(c, s, L.flip ? M : W - M - Math.round(hh * HERO_RATIO), Math.round((H - hh) / 2), hh, c.theme.radius)
     const w = W - 2 * M - hw - 60
-    head(c, s, L, M, Math.round(H * 0.3), w, { size: 76, titleRoom: Math.round(H * 0.34), subSize: 32, subRoom: Math.round(H * 0.16), min: 44 })
+    head(c, s, L, L.flip ? M + hw + 60 : M, Math.round(H * 0.3), w, { size: 76, titleRoom: Math.round(H * 0.34), subSize: 32, subRoom: Math.round(H * 0.16), min: 44 })
   },
 
   /** The title is the quote; the subtitle says who. The block is centred on the slide. */
@@ -358,7 +365,7 @@ function draw(c: Ctx, s: M, detail: 0 | 1 | 2): { value: string; gradient?: { fr
   if (DRAMATIC.has(s.scene)) {
     bg = s.scene === 'focus-hero' ? { value: mix(k.primary, '#000000', 0.72) } : titleBg(c)
     const fg = s.scene === 'focus-hero' ? '#FFFFFF' : onBg(c, stopsOf(bg))
-    L = { fg, muted: s.scene === 'focus-hero' ? '#E5E7EB' : readableOn(bg.value, [mix(fg, bg.value, 0.2), fg], 4.5), accent: s.scene === 'focus-hero' ? '#FFFFFF' : readableOn(bg.value, [k.accent, fg], 3), bg: bg.value, detail }
+    L = { fg, muted: s.scene === 'focus-hero' ? '#E5E7EB' : readableOn(bg.value, [mix(fg, bg.value, 0.2), fg], 4.5), accent: s.scene === 'focus-hero' ? '#FFFFFF' : readableOn(bg.value, [k.accent, fg], 3), flip: !!s.flip, bg: bg.value, detail }
     c.bodyBg = bg.value
     named(c, 'm-decor', () => decor(c, isDark(bg.value)))
   } else {
@@ -368,7 +375,7 @@ function draw(c: Ctx, s: M, detail: 0 | 1 | 2): { value: string; gradient?: { fr
       ? { value: k.background, gradient: { from: k.background, to: mix(k.background, k.primary, 0.1), angle: 160 } }
       : { value: c.bodyBg }
     if (c.style.bodyBackground === 'gradient') c.bodyBg = mix(k.background, k.primary, 0.05)
-    L = { fg: k.textPrimary, muted: k.textSecondary, accent: readableOn(c.bodyBg, [k.accent, k.primary], 3), bg: c.bodyBg, detail }
+    L = { fg: k.textPrimary, muted: k.textSecondary, accent: readableOn(c.bodyBg, [k.accent, k.primary], 3), bg: c.bodyBg, detail, flip: !!s.flip }
     named(c, 'm-decor', () => decor(c, false, COVER_ONLY_DECOR.has(c.style.decor) ? 'none' : c.style.decor))
   }
   SCENES[s.scene](c, s, L, typo(c, s))

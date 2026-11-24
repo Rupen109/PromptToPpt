@@ -3,7 +3,6 @@ import { bodyLimit } from 'hono/body-limit'
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { getEntitlements } from '../billing/entitlements.ts'
-import { GateError } from '../billing/errors.ts'
 import { BrandReadError, findBrand } from '../brand/find.ts'
 import { brandFromFile } from '../brand/from-file.ts'
 import { MAX_BRAND_FILE_BYTES } from '../brand/file-types.ts'
@@ -11,8 +10,9 @@ import { refuseIfOn } from '../flags/flags.ts'
 import { busyAnswer, uploadGate } from '../middleware/upload-gate.ts'
 import { SourceError } from '../sources/errors.ts'
 import { BusyError } from '../sources/parse-pool.ts'
-import { MAX_IMAGE_BYTES, MAX_KITS, KitError, addKitImage, createKit, deleteKit, listKits, removeKitImage, setKitLogo, updateKit } from '../brand/kits.ts'
+import { MAX_IMAGE_BYTES, KitError, assertBrand, brandAllowed, kitLimit, addKitImage, createKit, deleteKit, listKits, removeKitImage, setKitLogo, updateKit } from '../brand/kits.ts'
 import { byUser, rateLimit } from '../middleware/rate-limit.ts'
+import { MAX_BRAND_THEMES, createBrandTheme, deleteBrandTheme, listBrandThemes } from '../brand/themes.ts'
 import { requireAuth, type AppEnv } from '../middleware/session.ts'
 import { BlockedUrlError } from '../sources/ssrf.ts'
 import type { Context } from 'hono'
@@ -22,12 +22,12 @@ brand.use('*', requireAuth)
 
 /**
  * "Use my brand": paste a company website, get its colours, fonts and logo back. No AI call and no credits (it reads the page's own
- * HTML and CSS); the cost is network + CPU, so it is rate-limited per user. Paid plans only (Pro and Gold).
+ * HTML and CSS); the cost is network + CPU, so it is rate-limited per user. Only plans with brand kits (`assertBrand`).
  */
 brand.post('/extract', rateLimit({ windowMs: 3_600_000, max: 10, message: 'You have looked up a lot of websites in the last hour. Please wait a little while and try again.', key: (c) => `brand:${(c.get('session') as { user: { id: string } }).user.id}` }), zValidator('json', z.object({ url: z.string().trim().min(3).max(2000) })), async (c) => {
   const userId = c.get('session')!.user.id
   const ent = await getEntitlements(userId)
-  if (ent.plan.id === 'starter') throw new GateError('UPGRADE_REQUIRED', 'Matching your brand from a website is available on Pro, Gold and Premium.', 403, { feature: 'brand' })
+  assertBrand(ent, 'Matching your brand from a website is available on Gold and Premium.')
   const raw = c.req.valid('json').url
   const url = /^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`
   try {
@@ -43,11 +43,11 @@ brand.post('/extract', rateLimit({ windowMs: 3_600_000, max: 10, message: 'You h
 /**
  * "Use my brand" from a file: a PowerPoint (.pptx) or a PDF gives its colours, fonts, logo and name, in the same review card as a website. No AI call and no credits;
  * the cost is CPU in the parse worker, so it is rate-limited per user, admitted by memory (uploadGate) and read under the same worker limits as every other upload.
- * Paid plans only (checked BEFORE the body is read). Nothing is saved except the logo (as the person's own asset): saving a kit is a separate, explicit step.
+ * Only plans with brand kits (checked BEFORE the body is read). Nothing is saved except the logo (as the person's own asset): saving a kit is a separate, explicit step.
  */
 brand.post('/from-file', rateLimit({ windowMs: 3_600_000, max: 20, key: byUser('brand-file'), message: 'You have read a lot of files in the last hour. Please wait a little while and try again.' }), async (c, next) => {
   const ent = await getEntitlements(c.get('session')!.user.id)
-  if (ent.plan.id === 'starter') throw new GateError('UPGRADE_REQUIRED', 'Matching your brand from a PowerPoint or PDF is available on Pro, Gold and Premium.', 403, { feature: 'brand' })
+  assertBrand(ent, 'Matching your brand from a PowerPoint or PDF is available on Gold and Premium.')
   await next()
 }, uploadGate, bodyLimit({ maxSize: MAX_BRAND_FILE_BYTES + 64 * 1024, onError: (c) => c.json({ success: false, error: { code: 'TOO_LARGE', message: 'That file is too large (up to 15 MB).' } }, 413) }), async (c) => {
   const userId = c.get('session')!.user.id
@@ -66,7 +66,7 @@ brand.post('/from-file', rateLimit({ windowMs: 3_600_000, max: 20, key: byUser('
   }
 })
 
-// ─── brand kits: saved colours, fonts, logo and pictures (Pro: 1 kit, Gold: 5) ─────────────────────────────────
+// ─── brand kits: saved colours, fonts, logo and pictures (Gold and Premium: 5) ─────────────────────────────────
 
 const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/)
 const kitBody = z.object({
@@ -79,7 +79,9 @@ const kitBody = z.object({
   sourceUrl: z.string().max(2000).nullable().optional(),
   logoUrl: z.string().max(2048).optional(),
 })
-const planOf = async (c: Context<AppEnv>) => (await getEntitlements(c.get('session')!.user.id)).plan.id
+const entOf = (c: Context<AppEnv>) => getEntitlements(c.get('session')!.user.id)
+/** every change to a kit needs a plan with brand kits (a person who moved to a plan without them keeps their kits stored, unused, until they come back) */
+const kitGate = async (c: Context<AppEnv>, next: () => Promise<void>) => { assertBrand(await entOf(c)); await next() }
 const fail = (c: Context<AppEnv>, e: unknown) => {
   if (e instanceof KitError) return c.json({ success: false, error: { code: e.code === 'NOT_FOUND' ? 'NOT_FOUND' : 'INVALID_INPUT', message: e.message } }, e.code === 'NOT_FOUND' ? 404 : 422)
   throw e
@@ -95,23 +97,36 @@ const fileOf = async (c: Context<AppEnv>): Promise<{ bytes: Buffer; name: string
 
 brand.get('/kits', async (c) => {
   const userId = c.get('session')!.user.id
-  return c.json({ success: true, data: { kits: await listKits(userId), limit: MAX_KITS[await planOf(c)] ?? 0 } })
+  const ent = await entOf(c)
+  // a plan without brand kits sees none: nothing can offer a kit it may not use (the Brand tab, a new deck, the assistant)
+  return c.json({ success: true, data: brandAllowed(ent) ? { kits: await listKits(userId), limit: kitLimit(ent) } : { kits: [], limit: 0 } })
 })
 brand.post('/kits', zValidator('json', kitBody), async (c) => {
-  try { return c.json({ success: true, data: await createKit(c.get('session')!.user.id, await planOf(c), c.req.valid('json')) }, 201) } catch (e) { return fail(c, e) }
+  try { return c.json({ success: true, data: await createKit(c.get('session')!.user.id, await entOf(c), c.req.valid('json')) }, 201) } catch (e) { return fail(c, e) }
 })
-brand.patch('/kits/:id', zValidator('json', kitBody.extend({ isDefault: z.boolean().optional(), removeLogo: z.boolean().optional() })), async (c) => {
+brand.patch('/kits/:id', kitGate, zValidator('json', kitBody.extend({ isDefault: z.boolean().optional(), removeLogo: z.boolean().optional() })), async (c) => {
   try { return c.json({ success: true, data: await updateKit(c.get('session')!.user.id, c.req.param('id'), c.req.valid('json')) }) } catch (e) { return fail(c, e) }
 })
 brand.delete('/kits/:id', async (c) => {
   try { await deleteKit(c.get('session')!.user.id, c.req.param('id')); return c.json({ success: true, data: { deleted: true } }) } catch (e) { return fail(c, e) }
 })
-brand.post('/kits/:id/logo', upload, limit, async (c) => {
+/** themes made from a kit (brand/themes.ts): a design in light or dark with the kit's colours, fonts and logo; listed with the theme worked out from the kit as it is now */
+brand.get('/themes', async (c) => {
+  const ent = await entOf(c)
+  return c.json({ success: true, data: brandAllowed(ent) ? { themes: await listBrandThemes(c.get('session')!.user.id), limit: MAX_BRAND_THEMES } : { themes: [], limit: 0 } })
+})
+brand.post('/themes', rateLimit({ windowMs: 60_000, max: 30, key: byUser('brand-theme') }), zValidator('json', z.object({ kitId: z.string().min(1).max(32), designId: z.string().min(1).max(80), mode: z.enum(['light', 'dark']), name: z.string().max(60).optional() })), async (c) => {
+  try { return c.json({ success: true, data: await createBrandTheme(c.get('session')!.user.id, await entOf(c), c.req.valid('json')) }, 201) } catch (e) { return fail(c, e) }
+})
+brand.delete('/themes/:id', async (c) => {
+  try { await deleteBrandTheme(c.get('session')!.user.id, c.req.param('id')); return c.json({ success: true, data: { deleted: true } }) } catch (e) { return fail(c, e) }
+})
+brand.post('/kits/:id/logo', kitGate, upload, limit, async (c) => {
   const f = await fileOf(c)
   if (!f) return c.json({ success: false, error: { code: 'INVALID_INPUT', message: 'Choose a PNG or JPEG file.' } }, 422)
   try { return c.json({ success: true, data: await setKitLogo(c.get('session')!.user.id, c.req.param('id'), f.bytes) }) } catch (e) { return fail(c, e) }
 })
-brand.post('/kits/:id/images', upload, limit, async (c) => {
+brand.post('/kits/:id/images', kitGate, upload, limit, async (c) => {
   const f = await fileOf(c)
   if (!f) return c.json({ success: false, error: { code: 'INVALID_INPUT', message: 'Choose a PNG or JPEG file.' } }, 422)
   try { return c.json({ success: true, data: await addKitImage(c.get('session')!.user.id, c.req.param('id'), f.label, f.bytes) }, 201) } catch (e) { return fail(c, e) }

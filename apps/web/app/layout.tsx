@@ -5,7 +5,7 @@ import '@prompttoppt/ui/prose.css'
 import { SiteTranslate } from '@/components/layout/SiteTranslate'
 import { JsonLd } from '@/components/seo/JsonLd'
 import { CookieConsent } from '@/components/legal/CookieConsent'
-import { SITE_URL } from '@/lib/env'
+import { IS_PUBLIC_SITE, SITE_URL } from '@/lib/env'
 import { siteGraph } from '@/lib/seo'
 
 // ─── Fonts ────────────────────────────────────────────────────────────────
@@ -61,11 +61,11 @@ export const metadata: Metadata = {
   creator: 'SlidesDone',
   publisher: 'SlidesDone',
   robots: {
-    index: true,
-    follow: true,
+    index: IS_PUBLIC_SITE,
+    follow: IS_PUBLIC_SITE,
     googleBot: {
-      index: true,
-      follow: true,
+      index: IS_PUBLIC_SITE,
+      follow: IS_PUBLIC_SITE,
       'max-video-preview': -1,
       'max-image-preview': 'large',
       'max-snippet': -1,

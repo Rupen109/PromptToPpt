@@ -39,3 +39,15 @@ export function isDisposableEmail(raw: string, extra: string[] = []): boolean {
   for (let i = 0; i < parts.length - 1; i++) if (blocked(parts.slice(i).join('.'))) return true
   return false
 }
+
+/**
+ * Invite-only sign-up (QA): SIGNUP_ALLOWED_EMAILS is a comma list of addresses ("a@b.com") and whole domains ("@b.com"). Empty = everyone may sign up (production).
+ * Compared on the canonical address, so "a+test@gmail.com" counts as "a@gmail.com" and dots or case cannot slip past the list.
+ */
+export function signupAllowed(email: string, list: string | undefined): boolean {
+  const entries = (list ?? '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean)
+  if (entries.length === 0) return true
+  const canon = canonicalEmail(email)
+  const domain = canon.slice(canon.lastIndexOf('@'))
+  return entries.some((e) => (e.startsWith('@') ? e === domain : canonicalEmail(e) === canon))
+}

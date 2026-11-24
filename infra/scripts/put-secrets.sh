@@ -60,7 +60,7 @@ echo "RAZORPAY_WEBHOOK_SECRET was generated: copy the SAME value into the Razorp
 echo
 echo "Typed by you (hidden as you type):"
 ask GEMINI_API_KEY "Gemini API key (Vertex AI / AI Studio key)" required "the AI of the app: without it every deck fails with 'AI service is busy or unavailable'"
-ask OPENROUTER_API_KEY "OpenRouter API key" optional "only if you later switch AI_PROVIDER to openrouter; skip for Gemini"
+ask OPENROUTER_API_KEY "OpenRouter API key" optional "the BACKUP behind Gemini (the same Gemini models when Gemini refuses or is too busy); set a credit limit on the key at openrouter.ai. Skip = Gemini only"
 ask RAZORPAY_KEY_ID "Razorpay key id (rzp_test_...)" required "TEST keys only for the test environment"
 ask RAZORPAY_KEY_SECRET "Razorpay key secret" required
 ask BREVO_API_KEY "Brevo API key" optional "mail provider option 2 (used first if both are set); skip until you have one"

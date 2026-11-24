@@ -1,8 +1,14 @@
 import { current, isDraft, type Draft } from 'immer'
-import { IMAGE_BG_LAYOUTS, PHOTO_LAYOUTS, applyBrandToTheme, brandLogoElements, commonSlideBackground, composePlaceholderSlide, composeSlide, contrastRatio, effectiveBackground, isDark, mix, readableOn, resolveColor, designById, getTheme, makeColors, recolor } from '@prompttoppt/theme'
+import { IMAGE_BG_LAYOUTS, PHOTO_LAYOUTS, applyBrandToTheme, slideBase, slideTheme, brandLogoElements, commonSlideBackground, composePlaceholderSlide, composeSlide, contrastRatio, effectiveBackground, isDark, mix, readableOn, resolveColor, designById, getTheme, makeColors, recolor } from '@prompttoppt/theme'
 import type { PlaceholderKind } from '@prompttoppt/theme'
-import { CANVAS, elementSchema, type AspectRatio, type LayoutId, type Presentation, type Slide, type SlideContent, type SlideElement, type TextElement, type Theme } from '@prompttoppt/validation'
-import { copyEffects, pruneEffects, remapEffects, snapshotElements } from './effect-commands'
+import { composeTemplateScene, getMorphTemplate, pictureSlots } from '@prompttoppt/theme/morph-templates'
+import { CANVAS, EFFECTS, elementSchema, themeStyleSchema, isRunBold, isRunItalic, type AspectRatio, type ElementChange, type Effect, type LayoutId, type Presentation, type Slide, type SlideContent, type SlideElement, type TextElement, type Theme, type Transition, type TransitionSpec } from '@prompttoppt/validation'
+import { setTransition } from './transition-commands'
+import { moveLayer, placeNextTo, renameElement, setHidden } from './selection-commands'
+import { frameForCrop, type Rect } from './crop-geometry'
+import { defaultPattern, expandToGroups, type PatternKind } from '@prompttoppt/validation'
+import { EFFECT_INFO } from '@prompttoppt/ui'
+import { applyEffect, clearEffects, copyEffects, moveEffect, effectsForCopies, pruneEffects, remapEffects, snapshotElements, setPathShape, setTrigger, updateEffect } from './effect-commands'
 
 /**
  * Document commands: small PURE mutators over an immer draft. The store turns each call into patches + inverse patches,
@@ -12,8 +18,10 @@ export type D = Draft<Presentation>
 export type IdGen = () => string
 export const newId: IdGen = () => globalThis.crypto.randomUUID()
 
-/** structuredClone throws on immer draft proxies — unwrap first. */
-const plain = <T>(x: T): T => structuredClone(isDraft(x) ? (current(x as Draft<T>) as T) : x)
+/** a draft (or anything) as a plain copy: structuredClone throws on immer draft proxies, so they are unwrapped first */
+export const plain = <T>(x: T): T => structuredClone(isDraft(x) ? (current(x as Draft<T>) as T) : x)
+/** the theme a slide is composed and its own look worked out in: the deck's, with the slide's own brand on it (theme slide-theme.ts); a plain copy, never a draft */
+export const baseOf = (d: D, s: Draft<Slide> | Slide): Theme => slideBase(plain(d.theme) as Theme, plain(s.brand) ? { brand: plain(s.brand) as Slide['brand'] } : null)
 
 const findSlide = (d: D, slideId: string) => d.slides.find((s) => s.id === slideId)
 const findEl = (s: Draft<Slide>, elId: string) => s.elements.find((e) => e.id === elId)
@@ -124,15 +132,34 @@ export function retextParagraphs(old: Paragraphs, input: (string | { text: strin
   }
 }
 
-/** Turns bold / italic / underline on or off for every run of a text box (the toolbar acts on the whole box). */
+/** Whether every word of a box is drawn bold / italic / underlined (what the toolbar button shows). */
+export function boxHasFlag(e: TextElement, flag: 'bold' | 'italic' | 'underline'): boolean {
+  return e.paragraphs.every((p) => p.runs.every((r) => (flag === 'bold' ? isRunBold(r, e) : flag === 'italic' ? isRunItalic(r, e) : !!r.underline)))
+}
+
+/** Turns bold / italic / underline on or off for every run of a text box (the toolbar acts on the whole box). Off overrides what the box's role draws (a title's weight, a quote's italic). */
 export function setRunFlag(d: D, slideId: string, elId: string, flag: 'bold' | 'italic' | 'underline', on: boolean) {
   const s = findSlide(d, slideId)
   const e = s && findEl(s, elId)
   if (!s || !e || e.type !== 'text' || e.locked) return
+  const byRole = flag === 'bold' ? isRunBold({}, e) : flag === 'italic' ? isRunItalic({}, e) : false
   for (const p of e.paragraphs) for (const r of p.runs) {
-    if (on || flag === 'bold') r[flag] = on // bold:false is kept — it overrides the weight a heading style gives
+    if (on || byRole) r[flag] = on
     else delete r[flag]
   }
+  touch(s)
+}
+
+/**
+ * The colour of a WHOLE text box: the box's colour, and every coloured part of it (an accent word in a title) takes it too, so "make the title red" makes all of it red. The one
+ * command for it: the toolbar's colour buttons and the assistant both use it.
+ */
+export function setTextColor(d: D, slideId: string, elId: string, color: TextElement['color']) {
+  const s = findSlide(d, slideId)
+  const e = s && findEl(s, elId)
+  if (!s || !e || e.type !== 'text' || e.locked) return
+  e.color = color
+  for (const p of e.paragraphs) for (const r of p.runs) delete r.color
   touch(s)
 }
 
@@ -203,6 +230,14 @@ export const slidePhoto = (s: Draft<Slide> | Slide) => {
 
 const topZ = (s: Draft<Slide> | Slide) => s.elements.reduce((m, e) => Math.max(m, e.zIndex), 0)
 
+/** A shape the assistant planned (every value already worked out): on top of the slide, or at the stacking place the plan gave (behind the object it surrounds). */
+export function addPlannedShape(d: D, slideId: string, id: string, a: NonNullable<ElementChange['add']>) {
+  const s = findSlide(d, slideId)
+  if (!s || s.elements.some((e) => e.id === id)) return
+  addElement(d, slideId, makeElement({ id, type: 'shape', shape: a.shape, x: a.x, y: a.y, width: a.width, height: a.height, rotation: 0, locked: false, zIndex: 0, opacity: a.opacity ?? 1, fill: a.fill, radius: a.radius ?? 0, ...(a.stroke ? { stroke: a.stroke } : {}), ...(a.strokeWidth !== undefined ? { strokeWidth: a.strokeWidth } : {}) }))
+  if (a.zIndex !== undefined) { const e = s.elements.find((x) => x.id === id); if (e) e.zIndex = a.zIndex }
+}
+
 export function addElement(d: D, slideId: string, element: SlideElement) {
   const s = findSlide(d, slideId)
   if (!s) return
@@ -210,30 +245,103 @@ export function addElement(d: D, slideId: string, element: SlideElement) {
   touch(s)
 }
 
-/** Clones elements with fresh IDs, nudged so the copy is visible. Returns the new ids. */
+const MAX_EFFECTS = 200 // the schema's cap
+
+/** Puts the copied elements' effects on the slide (as new effects on the copies), up to the schema's cap. */
+function addCopiedEffects(s: Draft<Slide>, source: Effect[] | undefined, map: Map<string, string>, gen: IdGen) {
+  const fx = effectsForCopies(source, map, gen).slice(0, Math.max(0, MAX_EFFECTS - (s.effects?.length ?? 0)))
+  if (fx.length) s.effects = [...(s.effects ?? []), ...fx] as Draft<Slide>['effects']
+}
+
+/** Clones elements with fresh IDs, nudged so the copy is visible. Their effects (animation) are copied with them. Returns the new ids. */
 export function duplicateElements(d: D, slideId: string, ids: string[], gen: IdGen = newId): string[] {
   const s = findSlide(d, slideId)
   if (!s) return []
   const out: string[] = []
+  const map = new Map<string, string>()
+  const fx = s.effects ? (plain(s.effects) as Effect[]) : undefined
   for (const e of s.elements.filter((x) => ids.includes(x.id))) {
     const id = gen()
     s.elements.push({ ...plain(e), id, x: e.x + 32, y: e.y + 32, locked: false, zIndex: topZ(s) + 1 })
     out.push(id)
+    map.set(e.id, id)
   }
-  if (out.length) touch(s)
+  regroupCopies(s, out, gen)
+  if (out.length) { addCopiedEffects(s, fx, map, gen); touch(s) }
   return out
 }
 
-export function pasteElements(d: D, slideId: string, elements: SlideElement[], gen: IdGen = newId): string[] {
+/** Copies of a group are a NEW group (every copy of a member gets the new group's id); a lone copy of one member of a group is not in any group. */
+function regroupCopies(s: Draft<Slide>, copyIds: string[], gen: IdGen) {
+  const copies = s.elements.filter((x) => copyIds.includes(x.id))
+  const size = new Map<string, number>() // how many copies carry each OLD group id, counted before any is changed
+  for (const c of copies) if (c.groupId) size.set(c.groupId, (size.get(c.groupId) ?? 0) + 1)
+  const fresh = new Map<string, string>()
+  for (const c of copies) {
+    if (!c.groupId) continue
+    const old = c.groupId
+    if ((size.get(old) ?? 0) < 2) { delete c.groupId; continue }
+    if (!fresh.has(old)) fresh.set(old, `g${gen()}`.slice(0, 40))
+    c.groupId = fresh.get(old)!
+  }
+}
+
+/**
+ * Makes the objects one GROUP (they are selected, moved, resized, copied and deleted together). Objects that are already in a group bring their whole group along (two groups become one). Needs two or more
+ * objects, none of them locked, on a slide that is not locked. Returns the group's id, or null when refused.
+ */
+export function groupElements(d: D, slideId: string, ids: string[], gen: IdGen = newId): string | null {
+  const s = findSlide(d, slideId)
+  if (!s || s.locked) return null
+  const all = expandToGroups(s.elements, ids)
+  const members = s.elements.filter((x) => all.includes(x.id))
+  if (members.length < 2 || members.some((x) => x.locked)) return null
+  const gid = `g${gen()}`.slice(0, 40)
+  for (const m of members) m.groupId = gid
+  touch(s)
+  return gid
+}
+
+/** Takes the objects out of their group(s): every member of a group the ids touch becomes a separate object again. Returns how many objects were freed. */
+export function ungroupElements(d: D, slideId: string, ids: string[]): number {
+  const s = findSlide(d, slideId)
+  if (!s || s.locked) return 0
+  const members = s.elements.filter((x) => x.groupId && expandToGroups(s.elements, ids).includes(x.id))
+  if (members.some((x) => x.locked)) return 0
+  for (const m of members) delete m.groupId
+  if (members.length) touch(s)
+  return members.length
+}
+
+/** Gives several objects their new boxes at once (a group resized as one); text grows or shrinks with `fontScale`. Locked objects and slides keep theirs. */
+export function setBoxes(d: D, slideId: string, boxes: Record<string, Box>, fontScale = 1) {
+  const s = findSlide(d, slideId)
+  if (!s || s.locked) return
+  let changed = false
+  for (const e of s.elements) {
+    const b = boxes[e.id]
+    if (!b || e.locked) continue
+    e.x = Math.round(b.x); e.y = Math.round(b.y); e.width = Math.max(1, Math.round(b.width)); e.height = Math.max(1, Math.round(b.height))
+    if (e.type === 'text' && fontScale !== 1) e.fontSize = Math.min(300, Math.max(10, Math.round(e.fontSize * fontScale)))
+    changed = true
+  }
+  if (changed) touch(s)
+}
+
+/** Pastes copied elements (and the effects that were copied with them) with fresh ids. Returns the new ids. */
+export function pasteElements(d: D, slideId: string, elements: SlideElement[], gen: IdGen = newId, effects: Effect[] = []): string[] {
   const s = findSlide(d, slideId)
   if (!s) return []
   const out: string[] = []
+  const map = new Map<string, string>()
   for (const e of elements) {
     const id = gen()
     s.elements.push({ ...plain(e), id, x: e.x + 32, y: e.y + 32, locked: false, zIndex: topZ(s) + 1 })
     out.push(id)
+    map.set(e.id, id)
   }
-  if (out.length) touch(s)
+  regroupCopies(s, out, gen)
+  if (out.length) { addCopiedEffects(s, effects, map, gen); touch(s) }
   return out
 }
 
@@ -364,19 +472,22 @@ export function setSpeakerNotes(d: D, slideId: string, notes: string) {
 export function setSlideBackground(d: D, slideId: string, value: string) {
   const s = findSlide(d, slideId)
   if (!s) return
-  s.background = { type: 'color', value }
+  // a pattern stays when the colour changes, re-tinted for the new colour (a faint white on dark, black on light) so it stays as quiet as it was
+  const had = s.background?.type === 'color' ? s.background.pattern : undefined
+  s.background = { type: 'color', value, ...(had && /^#[0-9a-f]{6}$/i.test(value) ? { pattern: { ...defaultPattern(had.kind, value), size: had.size } } : {}) }
   // text colours are theme tokens: on a hand-picked colour the deck's normal text can vanish (dark text on navy), so this one slide gets readable colours of its own
   const isHexColour = /^#[0-9a-f]{6}$/i.test(value)
   const light = isDark(value)
+  const own = baseOf(d, s) // (worked out against the slide's own brand, when it has one)
   const overrides: Record<string, string> = { ...s.themeOverrides }
   const setOrClear = (key: string, fix: string | null) => { if (fix) overrides[key] = fix; else delete overrides[key] }
   for (const [key, fallback] of [['textPrimary', light ? '#FFFFFF' : '#111827'], ['textSecondary', light ? '#D6D6E0' : '#4B5563']] as const) {
-    setOrClear(key, isHexColour && contrastRatio(d.theme.colors[key], value) < 4.5 ? fallback : null)
+    setOrClear(key, isHexColour && contrastRatio(own.colors[key], value) < 4.5 ? fallback : null)
   }
   // brand colours also draw text (kickers, numbers) and panels: move them toward white/black only as far as needed, and keep the text ON them readable
   let moved = false
   for (const key of ['primary', 'accent'] as const) {
-    const base = d.theme.colors[key]
+    const base = own.colors[key]
     let fix: string | null = null
     if (isHexColour && contrastRatio(base, value) < 3) {
       const toward = light ? '#FFFFFF' : '#000000'
@@ -400,8 +511,8 @@ export function setSlideBackground(d: D, slideId: string, value: string) {
 export function makeSlideReadable(d: D, slideId: string): number {
   const s = findSlide(d, slideId)
   if (!s) return 0
-  const theme = d.theme as Theme
-  const colors = { ...theme.colors, ...(s.themeOverrides ?? {}) }
+  const theme = plain(d.theme) as Theme
+  const colors = slideTheme(theme, plain(s) as Slide).colors // (the slide's own brand and own look)
   let fixed = 0
   for (const e of s.elements) {
     if (e.type !== 'text' || e.decorative) continue
@@ -414,6 +525,23 @@ export function makeSlideReadable(d: D, slideId: string): number {
     const soft = t.role === 'subtitle' || t.role === 'caption'
     const fix = readableOn(bg, soft ? [colors.textSecondary, colors.textPrimary, '#FFFFFF', '#111827'] : [colors.textPrimary, '#FFFFFF', '#111827'], Math.max(need, 4.5))
     if (fix && fix.toLowerCase() !== (fg ?? '').toLowerCase()) { t.color = fix as TextElement['color']; fixed++ }
+  }
+  // words with a colour of their own (a blue "Classical Physics" in a title): moved toward white / black only as far as needed, so they keep their colour and their
+  // emphasis and stay readable on the new background (a highlighted word sits on its own marker and is left as it is)
+  for (const e of s.elements) {
+    if (e.type !== 'text' || e.decorative) continue
+    const t = e as TextElement
+    const bg = effectiveBackground(s as Slide, theme, t)
+    const need = t.fontSize >= 32 || ((t.weight ?? 400) >= 700 && t.fontSize >= 24) ? 3 : 4.5
+    const toward = isDark(bg) ? '#FFFFFF' : '#000000'
+    for (const p of t.paragraphs) for (const r of p.runs) {
+      if (!r.color || r.highlight) continue
+      const fg = resolveColor(r.color, theme, s as Slide)
+      if (!fg || contrastRatio(fg, bg) >= need) continue
+      let fix: string | null = null
+      for (let k = 0.1; k <= 1.001 && !fix; k += 0.1) { const c = mix(fg, toward, k); if (contrastRatio(c, bg) >= need) fix = c }
+      if (fix) { r.color = fix.toUpperCase() as typeof r.color; fixed++ }
+    }
   }
   return fixed
 }
@@ -456,6 +584,15 @@ export function applyPalette(d: D, seed: { primary: string; accent: string }) {
   applyThemeObject(d, recolor(d.theme as Theme, seed))
 }
 
+/** A hand-edited slide is never redrawn from its content, so its logo is swapped directly: the old one (and its plate) out, the theme's logo in. */
+function placeLogo(s: Draft<Slide>, theme: Theme, aspect: Presentation['aspectRatio']) {
+  s.elements = s.elements.filter((e) => !e.brand) as Draft<Slide>['elements']
+  if (!theme.brand?.logo) return
+  const top = s.elements.reduce((m, e) => Math.max(m, e.zIndex), 0)
+  const dark = s.background?.type === 'image' || isDark((s.background?.value as string | undefined) ?? theme.colors.background)
+  brandLogoElements(theme, aspect, dark, newId).forEach((e, i) => s.elements.push({ ...e, zIndex: top + 1 + i } as Draft<Slide>['elements'][number]))
+}
+
 /**
  * Swaps the deck's whole design (colours, fonts, style kit, motion) and re-composes every slide that wasn't hand-edited.
  * The company brand (logo) belongs to the deck, not to a template, so it stays unless `keepBrand` is false.
@@ -468,7 +605,7 @@ export function applyThemeObject(d: D, incoming: Theme, opts: { keepBrand?: bool
   for (const s of d.slides) {
     if (!s.manual && s.content) {
       const look = ownLookOf(s)
-      const fresh = composeSlide(s.content as SlideContent, next, aspect, undefined, { backgroundImage: photoOf(s), photo: slidePhoto(s) })
+      const fresh = composeSlide(s.content as SlideContent, slideBase(next, s.brand ? { brand: plain(s.brand) as Slide['brand'] } : null), aspect, undefined, { backgroundImage: photoOf(s), photo: slidePhoto(s), keepPhoto: true }) // (a slide with its own brand keeps it)
       swapElements(s, fresh.elements)
       s.background = fresh.background
       if (!s.transition?.own) s.transition = fresh.transition as Draft<Slide>['transition'] // a transition a person chose stays
@@ -480,15 +617,26 @@ export function applyThemeObject(d: D, incoming: Theme, opts: { keepBrand?: bool
         if (k) s.background = { type: 'color', value: next.colors[k] }
       }
       // A hand-edited slide is never redrawn from its content, so its logo is swapped directly: the old one (and plate) out, the new one in.
-      s.elements = s.elements.filter((e) => !e.brand) as Draft<Slide>['elements']
-      if (next.brand?.logo) {
-        const top = s.elements.reduce((m, e) => Math.max(m, e.zIndex), 0)
-        const dark = s.background?.type === 'image' || isDark((s.background?.value as string | undefined) ?? next.colors.background)
-        brandLogoElements(next, aspect, dark, newId).forEach((e, i) => s.elements.push({ ...e, zIndex: top + 1 + i } as Draft<Slide>['elements'][number]))
-      }
+      placeLogo(s, slideBase(next, s.brand ? { brand: plain(s.brand) as Slide['brand'] } : null), aspect)
       pruneEffects(s)
     }
   }
+}
+
+/**
+ * Changes the deck's DESIGN settings (theme.style: title and heading styles, heading weight / letter spacing / capitals, cards, decorations, photo frames, bullets, diagrams,
+ * backgrounds, the footer) and draws the designed slides again in them, the same way a design swap does (hand-edited slides keep their objects). Values outside what the
+ * schema allows are refused (nothing changes). Returns whether anything changed.
+ */
+export function setDesignStyle(d: D, patch: Partial<NonNullable<Theme['style']>>): boolean {
+  const theme = plain(d.theme) as Theme
+  const now = themeStyleSchema.parse(theme.style ?? {})
+  const next = themeStyleSchema.safeParse({ ...now, ...patch })
+  if (!next.success) return false
+  if (next.data.footerText === '') delete (next.data as { footerText?: string }).footerText
+  if (JSON.stringify(next.data) === JSON.stringify(now)) return false
+  applyThemeObject(d, { ...theme, style: next.data })
+  return true
 }
 
 /** A brand to apply: what "use my brand" found on a website, or a saved brand kit. */
@@ -499,9 +647,63 @@ export interface BrandProfileLike {
   logo: { url: string; aspect: number } | null
 }
 
-/** Applies the chosen parts of a brand to the whole deck in one step: colours (mode and layout stay), fonts, and the logo on every slide. */
+/** Applies the chosen parts of a brand to the whole deck in one step: colours (mode and layout stay), fonts, and the logo on every slide. A brand some slides had of their own gives way: the whole deck is now in this one. */
 export function applyBrand(d: D, brand: BrandProfileLike, pick: { colors: boolean; fonts: boolean; logo: boolean }) {
+  for (const s of d.slides) delete s.brand
   applyThemeObject(d, applyBrandToTheme(structuredClone(plain(d.theme)) as Theme, { primary: brand.colors.primary, accent: brand.colors.accent, headingFont: brand.fonts.heading?.family, bodyFont: brand.fonts.body?.family, name: brand.name, logo: brand.logo }, pick))
+}
+
+/** A slide drawn again in the theme it now has (its own brand put on or taken off): its layout, fonts and logo; its own look is put back on top; a hand-edited slide keeps its objects and only its logo changes. */
+function redrawInOwnTheme(d: D, s: Draft<Slide>) {
+  const theme = baseOf(d, s)
+  if (!s.manual && s.content) {
+    const look = ownLookOf(s)
+    const fresh = composeSlide(s.content as SlideContent, theme, d.aspectRatio, undefined, { backgroundImage: photoOf(s), photo: slidePhoto(s), keepPhoto: true })
+    swapElements(s, fresh.elements)
+    s.background = fresh.background
+    reapplyOwnLook(d, s, look)
+  } else {
+    placeLogo(s, theme, d.aspectRatio)
+    if (s.ownLook && s.background?.type === 'color') setSlideBackground(d, s.id, s.background.value) // (its text colours worked out again against the new colours)
+    makeSlideReadable(d, s.id)
+    pruneEffects(s)
+  }
+}
+
+/**
+ * Applies the chosen parts of a brand to SOME slides only ("my brand on slides 1 to 5"): those slides get the brand's colours (worked out against the deck's design, so they
+ * stay readable), its fonts and its logo; the other slides stay as they are. Locked slides are left alone. Returns how many slides took it.
+ */
+export function applyBrandToSlides(d: D, slideIds: string[], brand: BrandProfileLike, pick: { colors: boolean; fonts: boolean; logo: boolean }): number {
+  const own: NonNullable<Slide['brand']> = {
+    ...(brand.name ? { name: brand.name } : {}),
+    ...(pick.colors && brand.colors.primary && brand.colors.accent ? { primary: brand.colors.primary.toUpperCase(), accent: brand.colors.accent.toUpperCase() } : {}),
+    ...(pick.fonts && brand.fonts.heading && brand.fonts.body ? { headingFont: brand.fonts.heading.family, bodyFont: brand.fonts.body.family } : {}),
+    ...(pick.logo && brand.logo ? { logo: { url: brand.logo.url, aspect: brand.logo.aspect } } : {}),
+  }
+  if (!own.primary && !own.headingFont && !own.logo) return 0
+  let n = 0
+  for (const id of slideIds) {
+    const s = findSlide(d, id)
+    if (!s || s.locked) continue
+    s.brand = own as Draft<Slide>['brand']
+    redrawInOwnTheme(d, s)
+    n++
+  }
+  return n
+}
+
+/** Takes a slide's own brand off (it goes back to the deck's look). Returns how many slides had one. */
+export function removeSlideBrand(d: D, slideIds: string[]): number {
+  let n = 0
+  for (const id of slideIds) {
+    const s = findSlide(d, id)
+    if (!s || s.locked || !s.brand) continue
+    delete s.brand
+    redrawInOwnTheme(d, s)
+    n++
+  }
+  return n
 }
 
 /** Drops one of the brand kit's pictures onto a slide (centred, kept in proportion). */
@@ -530,51 +732,226 @@ export interface AssistChanges {
   edits: { slideId: string; content: SlideContent }[]
   additions?: { afterSlideId: string | null; content: SlideContent; id?: string | undefined; atStart?: boolean | undefined }[] | undefined
   backgrounds?: { slideId: string; color: string }[] | undefined
-  gradients?: { slideId: string; from: string; to: string }[] | undefined
+  gradients?: { slideId: string; from: string; to: string; kind?: 'radial' | undefined }[] | undefined
+  blurs?: { slideId: string; blur: number }[] | undefined
+  patterns?: { slideId: string; kind: PatternKind | null }[] | undefined
+  /** one slide's background, as it is, on other slides */
+  backgroundCopies?: { fromSlideId: string; slideIds: string[] }[] | undefined
+  /** a brand on some slides only, or taken off them (brand null) */
+  slideBrands?: { slideIds: string[]; brand: NonNullable<Slide['brand']> | null }[] | undefined
   clearPictures?: string[] | undefined
+  pictureSwaps?: { slideId: string; elementId: string; url: string; alt: string }[] | undefined
   readability?: string[] | undefined
   pictures?: { slideId: string; url: string; alt?: string | undefined; placement?: 'background' | 'beside' | 'floating' | undefined }[] | undefined
   duplicates?: { slideId: string; newId: string }[] | undefined
   moves?: { slideId: string; afterSlideId: string | null }[] | undefined
   locks?: { slideId: string; locked: boolean }[] | undefined
+  transitions?: { slideId: string; to: TransitionSpec }[] | undefined
   removals?: string[] | undefined
+  /** objects changed in size, place, text or existence, planned into absolute values by the server */
+  elementChanges?: ElementChange[] | undefined
   sources?: { id: string; type: 'pdf' | 'url' | 'text'; title: string; url?: string }[] | undefined
 }
 
+/** One change of an assistant answer, with the key that names it (the same key its expectation carries, see packages/theme/src/assist), so it can be applied and checked on its own. */
+export interface AssistStep { key: string; apply: (d: D) => void }
+
 /**
- * Applies one assistant answer (validated server-side) as ONE undo step. New slides and copies go in first, so the other changes of the same
- * answer can target them ("add a thank you page and make it brown", "duplicate slide 3 and make the copy blue"); moves, locks and deletions go last.
+ * The changes of one assistant answer as an ordered list of steps (validated server-side). New slides and copies go in first, so the other changes of the same answer can target them ("add a
+ * thank you page and make it brown", "duplicate slide 3 and make the copy blue"); moves, locks and deletions go last. Every step uses the editor's own commands.
  */
-export function applyAssist(d: D, r: AssistChanges) {
-  if (r.theme) applyThemeObject(d, r.theme)
-  for (const a of r.additions ?? []) {
+export function assistSteps(r: AssistChanges): AssistStep[] {
+  const steps: AssistStep[] = []
+  const add = (key: string, apply: (d: D) => void) => steps.push({ key, apply })
+  if (r.theme) { const t = r.theme; add('theme', (d) => applyThemeObject(d, t)) }
+  ;(r.additions ?? []).forEach((a, i) => add(`addition:${i}`, (d) => {
     const at = a.atStart ? 0 : a.afterSlideId ? d.slides.findIndex((s) => s.id === a.afterSlideId) + 1 : d.slides.length
     const slide: Slide = { locked: false, validation: { status: 'pending', issues: [] }, ...composeSlide(a.content, d.theme as Theme, d.aspectRatio, newId), id: a.id ?? newId() }
     addSlideAt(d, at > 0 || a.atStart ? at : d.slides.length, slide)
     matchDeckBackground(d, slide.id)
-  }
-  for (const x of r.duplicates ?? []) { let first = true; duplicateSlide(d, x.slideId, () => (first ? ((first = false), x.newId) : newId())) }
-  for (const e of r.edits) replaceContent(d, e.slideId, e.content, true) // the server already checked that a layout change was asked for
-  for (const b of r.backgrounds ?? []) setSlideBackground(d, b.slideId, b.color)
-  for (const g of r.gradients ?? []) setBackgroundGradient(d, g.slideId, g.from, g.to)
-  for (const id of r.clearPictures ?? []) clearPictures(d, id)
-  for (const id of r.readability ?? []) makeSlideReadable(d, id)
-  for (const p of r.pictures ?? []) placePhoto(d, p.slideId, p.placement ?? 'background', { url: p.url, alt: p.alt ?? '', prompt: '' })
-  for (const m of r.moves ?? []) {
+  }))
+  ;(r.duplicates ?? []).forEach((x, i) => add(`duplicate:${i}`, (d) => { let first = true; duplicateSlide(d, x.slideId, () => (first ? ((first = false), x.newId) : newId())) }))
+  r.edits.forEach((e, i) => add(`edit:${i}`, (d) => replaceContent(d, e.slideId, e.content, true))) // the server already checked that a layout change was asked for
+  ;(r.backgrounds ?? []).forEach((b, i) => add(`background:${i}`, (d) => setSlideBackground(d, b.slideId, b.color)))
+  ;(r.gradients ?? []).forEach((g, i) => add(`gradient:${i}`, (d) => setBackgroundGradient(d, g.slideId, g.from, g.to, 135, g.kind ?? 'linear')))
+  ;(r.blurs ?? []).forEach((g, i) => add(`blur:${i}`, (d) => setBackgroundBlur(d, g.slideId, g.blur)))
+  ;(r.patterns ?? []).forEach((g, i) => add(`pattern:${i}`, (d) => setBackgroundPattern(d, g.slideId, g.kind)))
+  ;(r.backgroundCopies ?? []).forEach((g, i) => add(`background_copy:${i}`, (d) => { copyBackground(d, g.fromSlideId, g.slideIds) })) // the Background menu's own command
+  // a brand on some slides only: the Brand tab's own commands (its colours worked out against the deck, the slides drawn again in it)
+  ;(r.slideBrands ?? []).forEach((g, i) => add(`slide_brand:${i}`, (d) => {
+    if (!g.brand) { removeSlideBrand(d, g.slideIds); return }
+    const b = g.brand
+    applyBrandToSlides(d, g.slideIds, { name: b.name ?? null, colors: { primary: b.primary ?? null, accent: b.accent ?? null }, fonts: { heading: b.headingFont ? { family: b.headingFont } : null, body: b.bodyFont ? { family: b.bodyFont } : null }, logo: b.logo ?? null }, { colors: !!b.primary, fonts: !!b.headingFont, logo: !!b.logo })
+  }))
+  ;(r.clearPictures ?? []).forEach((id, i) => add(`clear_pictures:${i}`, (d) => clearPictures(d, id)))
+  ;(r.pictureSwaps ?? []).forEach((x, i) => add(`picture_swap:${i}`, (d) => swapPicture(d, x.slideId, x.elementId, { url: x.url, alt: x.alt, fit: 'contain' })))
+  ;(r.readability ?? []).forEach((id, i) => add(`readability:${i}`, (d) => { makeSlideReadable(d, id) }))
+  ;(r.pictures ?? []).forEach((p, i) => add(`photo:${i}`, (d) => placePhoto(d, p.slideId, p.placement ?? 'background', { url: p.url, alt: p.alt ?? '', prompt: '' })))
+  ;(r.moves ?? []).forEach((m, i) => add(`move:${i}`, (d) => {
     const from = d.slides.findIndex((s) => s.id === m.slideId)
-    if (from < 0) continue
+    if (from < 0) return
     const [s] = d.slides.splice(from, 1)
     const anchor = m.afterSlideId ? d.slides.findIndex((x) => x.id === m.afterSlideId) : -1
     d.slides.splice(m.afterSlideId && anchor < 0 ? d.slides.length : anchor + 1, 0, s!)
-  }
-  for (const l of r.locks ?? []) setSlideLocked(d, l.slideId, l.locked)
-  for (const id of r.removals ?? []) { const s = findSlide(d, id); if (s && !s.locked) deleteSlide(d, id) }
+  }))
+  ;(r.elementChanges ?? []).forEach((c, i) => add(`element:${i}`, (d) => {
+    const s = findSlide(d, c.slideId)
+    if (c.add) { if (s && !s.locked) addPlannedShape(d, c.slideId, c.elementId, c.add); return }
+    if (c.addChart) { if (s && !s.locked && !s.elements.some((e) => e.id === c.elementId)) { const a = c.addChart; addElement(d, c.slideId, makeElement({ id: c.elementId, type: 'chart', x: a.x, y: a.y, width: a.width, height: a.height, rotation: 0, locked: false, zIndex: 0, opacity: 1, chartType: a.chartType, labels: a.labels, series: a.series, ...(a.unit ? { unit: a.unit } : {}) })) } return }
+    if (c.copy) {
+      // a copy of an object of another slide (its effects are not copied)
+      const src = findSlide(d, c.copy.fromSlideId)?.elements.find((x) => x.id === c.copy!.fromElementId)
+      if (s && !s.locked && src && !s.elements.some((e) => e.id === c.elementId)) addElement(d, c.slideId, makeElement({ ...plain(src as SlideElement), id: c.elementId, locked: false, zIndex: 0 } as SlideElement))
+      return
+    }
+    const e = s && findEl(s, c.elementId)
+    if (!s || !e || s.locked) return // the element commands check the object's own lock; the slide's lock is checked here
+    if (c.remove) { if (c.patch?.locked === false) updateElement(d, c.slideId, c.elementId, { locked: false }); deleteElements(d, c.slideId, [c.elementId]); return } // (a design-locked decoration the person named is unlocked first)
+    if (c.layer) { if (c.layer === 'above' || c.layer === 'behind') { if (c.layerOf) placeNextTo(d, c.slideId, c.elementId, c.layerOf, c.layer) } else moveLayer(d, c.slideId, c.elementId, c.layer); return }
+    // lock, switch off, name: the Selection pane's own commands (a lock change is the only change a locked object accepts)
+    const { locked, hidden, label } = c.patch ?? {}
+    if (locked === false) updateElement(d, c.slideId, c.elementId, { locked }) // (unlocked first, so the rest of the change applies)
+    if (hidden !== undefined) setHidden(d, c.slideId, c.elementId, hidden)
+    if (label !== undefined) renameElement(d, c.slideId, c.elementId, label)
+    if (c.group) { if (c.group.to === 'group') groupElements(d, c.slideId, c.group.ids, () => c.group!.groupId.slice(1)); else ungroupElements(d, c.slideId, c.group.ids); return }
+    if (c.effect) {
+      // an animation: the editor's own commands (the gallery click replaces an effect of the same kind; "None" takes them all off), then the options asked for
+      if ('clear' in c.effect) {
+        // all of the object's animations, only one kind of them (entrance / emphasis / exit), or ONE animation by its id
+        const fx = c.effect, s0 = findSlide(d, c.slideId)
+        if (!fx.kind && !fx.effectId) clearEffects(d, c.slideId, [c.elementId])
+        else if (s0 && !s0.locked && s0.effects) { const kind = fx.kind ? new Set<string>(EFFECTS[fx.kind]) : null; s0.effects = s0.effects.filter((x) => !(fx.effectId ? x.id === fx.effectId : x.elementId === c.elementId && kind!.has(x.type))); if (!s0.effects.length) delete s0.effects }
+      }
+      else if ('setStart' in c.effect) { const st = c.effect.setStart; for (const x of findSlide(d, c.slideId)?.effects?.filter((e) => e.elementId === c.elementId) ?? []) updateEffect(d, c.slideId, x.id, { start: st }) }
+      else if ('sequence' in c.effect) {
+        // the slide's animations in this order of objects (each object keeps the order of its own animations; the others follow, as they were)
+        const s0 = findSlide(d, c.slideId), order = c.effect.sequence
+        if (s0 && !s0.locked && s0.effects) { const rank = (x: { elementId: string }) => { const i = order.indexOf(x.elementId); return i < 0 ? order.length : i }; s0.effects = s0.effects.map((x, i) => ({ x, i })).sort((a, b) => rank(a.x) - rank(b.x) || a.i - b.i).map((p) => p.x) }
+      }
+      else if ('paint' in c.effect) {
+        // the Animation Painter: the object's own animations are replaced by these, one by one with the editor's own commands
+        clearEffects(d, c.slideId, [c.elementId])
+        for (const p of c.effect.paint) {
+          const { type, direction, distance, ...opts } = p
+          for (const id of applyEffect(d, c.slideId, [c.elementId], type as Effect['type'], newId)) {
+            if (EFFECT_INFO[type as Effect['type']]?.path) { if (direction !== undefined || distance !== undefined) setPathShape(d, c.slideId, id, { ...(direction ? { direction: direction as NonNullable<Effect['direction']> } : {}), ...(distance !== undefined ? { distance } : {}) }) }
+            else if (direction !== undefined || distance !== undefined) updateEffect(d, c.slideId, id, { ...(direction ? { direction } : {}), ...(distance !== undefined ? { distance } : {}) } as Partial<Effect>)
+            if (Object.keys(opts).length) updateEffect(d, c.slideId, id, opts as Partial<Effect>)
+          }
+        }
+      }
+      else if ('moveTo' in c.effect) { const at = findSlide(d, c.slideId)?.effects?.findIndex((x) => x.elementId === c.elementId) ?? -1; if (at >= 0) moveEffect(d, c.slideId, at, c.effect.moveTo) }
+      else {
+        const { type, direction, distance, trigger, ...opts } = c.effect
+        for (const id of applyEffect(d, c.slideId, [c.elementId], type as Effect['type'], newId)) {
+          // a motion path stores its points: the editor's own command draws them for the asked direction and distance; other effects just take the options
+          if (EFFECT_INFO[type as Effect['type']]?.path) { if (direction !== undefined || distance !== undefined) setPathShape(d, c.slideId, id, { ...(direction ? { direction } : {}), ...(distance !== undefined ? { distance } : {}) }) }
+          else updateEffect(d, c.slideId, id, { ...(direction ? { direction } : {}), ...(distance !== undefined ? { distance } : {}) } as Partial<Effect>)
+          if (Object.keys(opts).length) updateEffect(d, c.slideId, id, opts as Partial<Effect>)
+          if (trigger) setTrigger(d, c.slideId, id, trigger) // plays when that object is clicked: the editor's own command (it checks the object is on the slide)
+        }
+      }
+      return
+    }
+    const own: Record<string, unknown> = { ...(c.patch ?? {}) }
+    for (const k of ['locked', 'hidden', 'label'] as const) delete own[k] // (applied above with their own commands)
+    if (own['overlay'] === null) own['overlay'] = undefined // (no colour wash: the field is taken off)
+    for (const k of ['textShadow', 'textOutline', 'border'] as const) if (own[k] === null) own[k] = undefined // (an effect taken off)
+    if (own['strokeDash'] === null) own['strokeDash'] = undefined // (a solid border or line again: the field is taken off)
+    if (own['legend'] === null) own['legend'] = undefined // (an automatic legend: the field is taken off)
+    if (own['stack'] === null) own['stack'] = undefined // (bars side by side again)
+    if (own['merges'] === null) own['merges'] = undefined // (a table with no merged cells left)
+    if (own['aligns'] === null) own['aligns'] = undefined // (no cell with its own alignment left)
+    if (Array.isArray(own['highlights']) && !(own['highlights'] as unknown[]).length) own['highlights'] = undefined // (no highlighted cell left)
+    if (c.crop) setPictureCrop(d, c.slideId, c.elementId, c.crop.rect, c.crop.sourceAspect) // (the Crop dialog's own command: it also sizes the frame)
+    const { x, y, width, height, ...rest } = own as NonNullable<typeof c.patch>
+    if (x !== undefined && y !== undefined && width !== undefined && height !== undefined) setGeometry(d, c.slideId, c.elementId, { x, y, width, height })
+    else if (x !== undefined || y !== undefined || width !== undefined || height !== undefined) updateElement(d, c.slideId, c.elementId, { ...(x !== undefined ? { x: Math.round(x) } : {}), ...(y !== undefined ? { y: Math.round(y) } : {}), ...(width !== undefined ? { width: Math.round(width) } : {}), ...(height !== undefined ? { height: Math.round(height) } : {}) }) // (a size alone, like a table that grew by a row, is applied too)
+    const { color, ...other } = rest
+    const left = e.type === 'text' ? other : rest
+    if (Object.keys(left).length) updateElement(d, c.slideId, c.elementId, structuredClone(left) as Partial<SlideElement>) // (a copy: the planned arrays are the answer's own and must stay plain; new words first, so a colour asked with them reaches every word)
+    if (color !== undefined && e.type === 'text') setTextColor(d, c.slideId, c.elementId, color as TextElement['color']) // (the whole text, its coloured words too)
+    if (c.bold !== undefined) setRunFlag(d, c.slideId, c.elementId, 'bold', c.bold)
+    if (c.italic !== undefined) setRunFlag(d, c.slideId, c.elementId, 'italic', c.italic)
+    if (c.underline !== undefined) setRunFlag(d, c.slideId, c.elementId, 'underline', c.underline)
+    if (locked === true) updateElement(d, c.slideId, c.elementId, { locked }) // (locked last, after everything else of the change)
+  }))
+  ;(r.transitions ?? []).forEach((t, i) => add(`transition:${i}`, (d) => { setTransition(d, t.slideId, t.to) }))
+  ;(r.locks ?? []).forEach((l, i) => add(`lock:${i}`, (d) => setSlideLocked(d, l.slideId, l.locked)))
+  ;(r.removals ?? []).forEach((id, i) => add(`removal:${i}`, (d) => { const s = findSlide(d, id); if (s && !s.locked) deleteSlide(d, id) }))
+  return steps
 }
 
-export function setBackgroundGradient(d: D, slideId: string, from: string, to: string, angle = 135) {
+/** Applies one assistant answer as the caller's ONE undo step (all the steps, no checking: see applyAssistVerified for what the assistant panel uses). */
+export function applyAssist(d: D, r: AssistChanges) {
+  for (const s of assistSteps(r)) s.apply(d)
+}
+
+/**
+ * A pattern over the slide's background colour (dots, grid, lines, diagonal), or none. On a slide whose background is a gradient or a picture, the pattern goes over
+ * the deck's background colour (the slide becomes that colour first, with readable text). `size` = the pattern's spacing (canvas units). Nothing to do records nothing.
+ */
+/** A slide back to its own designed background (the deck's, or its own brand's): a picture background a designed slide got is taken off, a colour gives way to the theme's; nothing of its own look is kept. */
+export function backToDeckBackground(d: D, slideId: string) {
   const s = findSlide(d, slideId)
   if (!s) return
-  s.background = { type: 'gradient', value: from, gradient: { from, to, angle } }
+  if (s.background?.type === 'image' && !s.manual && s.content) { clearImageBackground(d, slideId); return }
+  setSlideBackground(d, slideId, baseOf(d, s).colors.background)
+  delete s.themeOverrides
+  delete s.ownLook // back to the deck's own background: nothing of the slide's own look is kept
+}
+
+/**
+ * Gives other slides the background of one slide ("use it on this section", "on all slides"): through the background commands themselves, so each slide gets the text
+ * colours that read on it, exactly as if the background had been chosen there. Locked slides are left alone. Returns how many slides changed.
+ */
+export function copyBackground(d: D, fromSlideId: string, toSlideIds: readonly string[]): number {
+  const from = findSlide(d, fromSlideId)
+  if (!from) return 0
+  const bg = from.background ? (plain(from.background) as NonNullable<Slide['background']>) : null
+  let n = 0
+  for (const id of toSlideIds) {
+    const s = findSlide(d, id)
+    if (!s || s.locked || id === fromSlideId) continue
+    const before = JSON.stringify(s.background ?? null)
+    if (!bg || !from.ownLook) { if (s.ownLook) backToDeckBackground(d, id) } // (the source shows the deck's own background: so do they)
+    else if (bg.type === 'color') { setSlideBackground(d, id, bg.value); if (bg.pattern) setBackgroundPattern(d, id, bg.pattern.kind, bg.pattern.size) }
+    else if (bg.type === 'gradient' && bg.gradient) setBackgroundGradient(d, id, bg.gradient.from, bg.gradient.to, bg.gradient.angle, bg.gradient.kind ?? 'linear')
+    else if (bg.type === 'image') { setBackgroundPicture(d, id, bg.value); if (bg.blur) setBackgroundBlur(d, id, bg.blur) }
+    if (JSON.stringify(s.background ?? null) !== before) n++
+  }
+  return n
+}
+
+export function setBackgroundPattern(d: D, slideId: string, kind: PatternKind | null, size?: number) {
+  const s = findSlide(d, slideId)
+  if (!s || s.locked) return
+  const isColour = s.background?.type === 'color' && /^#[0-9a-f]{6}$/i.test(s.background.value)
+  if (!kind) { if (isColour && s.background?.type === 'color' && s.background.pattern) { delete s.background.pattern; s.ownLook = true } return }
+  if (!isColour) setSlideBackground(d, slideId, baseOf(d, findSlide(d, slideId)!).colors.background)
+  const bg = s.background
+  if (bg?.type !== 'color') return
+  const next = { ...defaultPattern(kind, bg.value), ...(size !== undefined ? { size: Math.round(Math.min(200, Math.max(16, size))) } : bg.pattern?.kind === kind ? { size: bg.pattern.size } : {}) }
+  if (JSON.stringify(bg.pattern) === JSON.stringify(next)) return
+  bg.pattern = next
+  s.ownLook = true
+}
+
+/** Softens the slide's background picture (canvas units; 0 = sharp). Nothing to do (no picture, or already so) records nothing. */
+export function setBackgroundBlur(d: D, slideId: string, blur: number) {
+  const s = findSlide(d, slideId)
+  if (!s || s.locked || s.background?.type !== 'image') return
+  const b = Math.round(Math.min(30, Math.max(0, blur)) * 2) / 2
+  if ((s.background.blur ?? 0) === b) return
+  if (b) s.background.blur = b; else delete s.background.blur
+  s.ownLook = true
+}
+
+/** A two-colour gradient behind the slide: linear along `angle`, or radial (from the middle out to the corners). */
+export function setBackgroundGradient(d: D, slideId: string, from: string, to: string, angle = 135, kind: 'linear' | 'radial' = 'linear') {
+  const s = findSlide(d, slideId)
+  if (!s) return
+  s.background = { type: 'gradient', value: from, gradient: { from, to, angle, ...(kind === 'radial' ? { kind } : {}) } }
   s.ownLook = true
   makeSlideReadable(d, slideId)
 }
@@ -583,7 +960,7 @@ export function setBackgroundGradient(d: D, slideId: string, from: string, to: s
 export function clearPictures(d: D, slideId: string) {
   const s = findSlide(d, slideId)
   if (!s || s.locked || s.writing) return
-  if (s.background?.type === 'image') { if (!s.manual && s.content) clearImageBackground(d, slideId); else { setSlideBackground(d, slideId, d.theme.colors.background); delete s.themeOverrides } }
+  if (s.background?.type === 'image') { if (!s.manual && s.content) clearImageBackground(d, slideId); else { setSlideBackground(d, slideId, baseOf(d, findSlide(d, slideId)!).colors.background); delete s.themeOverrides } }
   if (s.manual || !s.content) s.elements = s.elements.filter((e) => e.type !== 'image' || e.decorative || e.locked) as typeof s.elements
 }
 
@@ -615,6 +992,10 @@ export interface AssistUndo {
   moved?: string[]
   /** slides whose lock the change switched: how each one was */
   locks?: Record<string, boolean>
+  /** slides whose transition the change set: how each one arrived before (null = it had none of its own) */
+  transitions?: Record<string, Transition | null>
+  /** slides whose OBJECTS or object animations the change touched (a size, a new shape, a sorted table, an animation): how each one was, so it can be put back whole */
+  objects?: Record<string, { elements: Slide['elements']; effects: Slide['effects'] | null; manual: boolean }>
   added: string[]
   /** what the change did, in words (also shown to the model as context) */
   summary: string[]
@@ -641,6 +1022,14 @@ export function movedSlideIds(before: string[], after: string[]): string[] {
 }
 
 /** Records what an assistant answer changed (call with the deck from BEFORE and AFTER applying it). */
+/** the slides whose LOOK an answer changes (every kind of background change, a brand on some slides, pictures, readable text): ONE list for the undo record, so a new kind is never left out */
+export function lookSlideIds(r: AssistChanges): string[] {
+  return [...new Set([
+    ...(r.backgrounds ?? []).map((b) => b.slideId), ...(r.gradients ?? []).map((g) => g.slideId), ...(r.blurs ?? []).map((g) => g.slideId), ...(r.patterns ?? []).map((g) => g.slideId),
+    ...(r.backgroundCopies ?? []).flatMap((g) => g.slideIds), ...(r.slideBrands ?? []).flatMap((g) => g.slideIds), ...(r.clearPictures ?? []), ...(r.pictures ?? []).map((x) => x.slideId), ...(r.readability ?? []),
+  ])]
+}
+
 export function snapshotAssist(before: Presentation, after: Presentation, themeChanged: boolean, summary: string[], id: string = newId(), lookIds: string[] = []): AssistUndo {
   const had = new Set(before.slides.map((s) => s.id))
   const contents: Record<string, SlideContent> = {}
@@ -667,14 +1056,23 @@ export function snapshotAssist(before: Presentation, after: Presentation, themeC
   const moved = movedSlideIds(before.slides.map((x) => x.id), after.slides.map((x) => x.id))
   const locks: Record<string, boolean> = {}
   for (const s of before.slides) { const now = after.slides.find((x) => x.id === s.id); if (now && !!now.locked !== !!s.locked) locks[s.id] = !!s.locked }
+  const transitions: Record<string, Transition | null> = {}
+  for (const s of before.slides) { const now = after.slides.find((x) => x.id === s.id); if (now && JSON.stringify(now.transition ?? null) !== JSON.stringify(s.transition ?? null)) transitions[s.id] = s.transition ? (structuredClone(s.transition) as Transition) : null }
+  // a slide whose objects or object animations changed (and that was not rebuilt from its words or got a picture the placed-pictures undo already knows): the whole object list as it was
+  const objects: NonNullable<AssistUndo['objects']> = {}
+  for (const s of before.slides) {
+    const now = after.slides.find((x) => x.id === s.id)
+    if (themeChanged || !now || contents[s.id] || placed[s.id] || backgrounds[s.id]) continue // (a new design recomposes objects: that is undone with the design)
+    if (JSON.stringify(now.elements) !== JSON.stringify(s.elements) || JSON.stringify(now.effects ?? null) !== JSON.stringify(s.effects ?? null)) objects[s.id] = { elements: structuredClone(s.elements) as Slide['elements'], effects: s.effects ? (structuredClone(s.effects) as Slide['effects']) : null, manual: !!s.manual }
+  }
   return {
-    id, ...(Object.keys(placed).length ? { placed } : {}), theme: themeChanged ? (structuredClone(before.theme) as Theme) : null, contents, ...(Object.keys(backgrounds).length ? { backgrounds } : {}),
+    id, ...(Object.keys(objects).length ? { objects } : {}), ...(Object.keys(transitions).length ? { transitions } : {}), ...(Object.keys(placed).length ? { placed } : {}), theme: themeChanged ? (structuredClone(before.theme) as Theme) : null, contents, ...(Object.keys(backgrounds).length ? { backgrounds } : {}),
     ...(removed.length ? { removed } : {}), ...(moved.length ? { order: before.slides.map((s) => s.id), moved } : {}), ...(Object.keys(locks).length ? { locks } : {}),
     added: after.slides.filter((s) => !had.has(s.id)).map((s) => s.id), summary,
   }
 }
 /** Ids of every slide the change touched (rewritten or added). */
-export const undoSlideIds = (u: AssistUndo) => [...new Set([...Object.keys(u.contents), ...Object.keys(u.backgrounds ?? {}), ...Object.keys(u.placed ?? {}), ...Object.keys(u.locks ?? {}), ...(u.moved ?? []), ...(u.removed ?? []).map((r) => r.slide.id), ...u.added])]
+export const undoSlideIds = (u: AssistUndo) => [...new Set([...Object.keys(u.contents), ...Object.keys(u.backgrounds ?? {}), ...Object.keys(u.placed ?? {}), ...Object.keys(u.locks ?? {}), ...Object.keys(u.transitions ?? {}), ...Object.keys(u.objects ?? {}), ...(u.moved ?? []), ...(u.removed ?? []).map((r) => r.slide.id), ...u.added])]
 
 /** Puts back (all of, or part of) an assistant change. Slides first (added ones are removed), then the design so everything is recomposed together. */
 export function revertAssist(d: D, undo: AssistUndo, part: 'all' | 'theme' | 'slide', slideId?: string) {
@@ -688,8 +1086,16 @@ export function revertAssist(d: D, undo: AssistUndo, part: 'all' | 'theme' | 'sl
     d.slides.splice(0, d.slides.length, ...keyed.sort((a, b) => a.k - b.k).map((x) => x.s))
   }
   for (const [id, locked] of Object.entries(undo.locks ?? {})) if (ids.includes(id)) setSlideLocked(d, id, locked)
+  for (const [id, was] of Object.entries(undo.objects ?? {})) {
+    const s = ids.includes(id) ? d.slides.find((x) => x.id === id) : undefined
+    if (!s || s.locked) continue
+    s.elements = structuredClone(was.elements) as typeof s.elements
+    if (was.effects) s.effects = structuredClone(was.effects) as typeof s.effects; else delete s.effects
+    if (was.manual) s.manual = true; else delete s.manual
+  }
+  for (const [id, was] of Object.entries(undo.transitions ?? {})) { const s = ids.includes(id) ? d.slides.find((x) => x.id === id) : undefined; if (s && !s.locked) { if (was) s.transition = structuredClone(was) as typeof s.transition; else delete s.transition } }
   for (const id of ids) {
-    if (undo.removed?.some((r) => r.slide.id === id) || (undo.locks && id in undo.locks && !undo.contents[id] && !undo.backgrounds?.[id])) continue
+    if (undo.removed?.some((r) => r.slide.id === id) || (undo.locks && id in undo.locks && !undo.contents[id] && !undo.backgrounds?.[id]) || (undo.transitions && id in undo.transitions && !undo.contents[id] && !undo.backgrounds?.[id] && !undo.placed?.[id]) || (undo.objects && id in undo.objects && !undo.contents[id] && !undo.backgrounds?.[id] && !undo.placed?.[id])) continue
     if (undo.added.includes(id)) { const i = d.slides.findIndex((s) => s.id === id); if (i >= 0 && !d.slides[i]!.locked) d.slides.splice(i, 1); continue }
     const put = undo.placed?.[id]
     const target = put ? d.slides.find((x) => x.id === id) : undefined
@@ -742,7 +1148,7 @@ export function relayout(d: D, slideId: string, to: LayoutId) {
   const converted = convertContent(s.content as SlideContent, to)
   if (!converted) return
   const look = ownLookOf(s)
-  const fresh = composeSlide(converted, d.theme as Theme, d.aspectRatio)
+  const fresh = composeSlide(converted, baseOf(d, s), d.aspectRatio)
   s.layoutId = fresh.layoutId
   s.content = fresh.content
   swapElements(s, fresh.elements)
@@ -756,7 +1162,7 @@ export function replaceContent(d: D, slideId: string, content: SlideContent, all
   const s = findSlide(d, slideId)
   if (!s || s.locked || (content.layout !== s.layoutId && !allowLayoutChange)) return
   const look = ownLookOf(s)
-  const fresh = composeSlide(content, d.theme as Theme, d.aspectRatio, undefined, { backgroundImage: photoOf(s), photo: slidePhoto(s) })
+  const fresh = composeSlide(content, baseOf(d, s), d.aspectRatio, undefined, { backgroundImage: photoOf(s), photo: slidePhoto(s), keepPhoto: true })
   s.layoutId = fresh.layoutId
   s.content = fresh.content
   swapElements(s, fresh.elements)
@@ -785,7 +1191,7 @@ export function imagePlacements(slide: Slide, selectedImageId?: string | null): 
 export function setImageBackground(d: D, slideId: string, url: string) {
   const s = findSlide(d, slideId)
   if (!s || s.locked || s.manual || !s.content || !(IMAGE_BG_LAYOUTS as readonly string[]).includes(s.layoutId)) return
-  const fresh = composeSlide(s.content as SlideContent, d.theme as Theme, d.aspectRatio, undefined, { backgroundImage: url })
+  const fresh = composeSlide(s.content as SlideContent, baseOf(d, s), d.aspectRatio, undefined, { backgroundImage: url })
   swapElements(s, fresh.elements)
   s.background = fresh.background
 }
@@ -812,7 +1218,7 @@ export function placePhoto(d: D, slideId: string, placement: 'background' | 'bes
 export function clearImageBackground(d: D, slideId: string) {
   const s = findSlide(d, slideId)
   if (!s || s.background?.type !== 'image' || !s.content) return
-  const fresh = composeSlide(s.content as SlideContent, d.theme as Theme, d.aspectRatio)
+  const fresh = composeSlide(s.content as SlideContent, baseOf(d, s), d.aspectRatio)
   swapElements(s, fresh.elements)
   s.background = fresh.background
   delete s.ownLook // the person took the picture away: the layout's own background is back
@@ -826,13 +1232,30 @@ export function placeImageBeside(d: D, slideId: string, img: PlacedImage) {
   if (!converted || converted.layout !== 'split-image-text') return
   const content = { ...converted, imageUrl: img.url, imageAlt: img.alt.slice(0, 200) || converted.imageAlt, imagePrompt: img.prompt.slice(0, 300) || converted.imagePrompt }
   const look = ownLookOf(s)
-  const fresh = composeSlide(content, d.theme as Theme, d.aspectRatio)
+  const fresh = composeSlide(content, baseOf(d, s), d.aspectRatio)
   s.layoutId = fresh.layoutId
   s.content = fresh.content
   swapElements(s, fresh.elements)
   s.background = fresh.background
   s.manual = false
   reapplyOwnLook(d, s, look)
+}
+
+/**
+ * Crops a picture to a rectangle (fractions of the whole picture) and gives the frame the cut-out's shape, so nothing is stretched: the frame keeps its width and its middle (and stays inside the slide).
+ * `sourceAspect` is the whole picture's width ÷ height. No crop (or the whole picture) takes the crop off and gives the frame the whole picture's shape back. One undo step. Locked pictures and slides are refused.
+ */
+export function setPictureCrop(d: D, slideId: string, elId: string, crop: Rect | null, sourceAspect: number): boolean {
+  const s = findSlide(d, slideId)
+  const e = s && findEl(s, elId)
+  if (!s || !e || e.type !== 'image' || e.locked || s.locked || !(sourceAspect > 0)) return false
+  const whole = !crop || (crop.x <= 0.001 && crop.y <= 0.001 && crop.w >= 0.999 && crop.h >= 0.999)
+  if (whole && !e.crop) return false
+  const frame = frameForCrop(e, whole ? { x: 0, y: 0, w: 1, h: 1 } : crop!, sourceAspect, CANVAS[d.aspectRatio])
+  Object.assign(e, frame)
+  if (whole) delete e.crop; else { e.crop = { x: crop!.x, y: crop!.y, w: crop!.w, h: crop!.h }; delete e.zoom; delete e.focus } // (zoom and position are not used on a cropped picture)
+  touch(s)
+  return true
 }
 
 /** Fill an existing picture frame (placeholder or previous picture). On composed picture+text slides the content is updated too. */
@@ -848,6 +1271,68 @@ export function setImageElementSrc(d: D, slideId: string, elId: string, img: Pla
   e.alt = img.alt.slice(0, 300) || e.alt
   e.prompt = img.prompt.slice(0, 500)
   touch(s)
+}
+
+/** The template picture (one piece of the template's artwork, wherever it is used) that this element of this slide is, or null when it is an ordinary picture. */
+export function templateSlotOf(d: D | Presentation, slideId: string, elementId: string) {
+  const slide = d.slides.find((s) => s.id === slideId)
+  const content = slide?.content
+  if (content?.layout !== 'morph-template') return null
+  const tpl = getMorphTemplate(content.template)
+  return tpl ? pictureSlots(tpl).find((sl) => sl.uses.some((u) => u.scene === content.scene && u.id === elementId)) ?? null : null
+}
+
+/** Puts a new picture where one is: a picture of a Morph template on every slide it is on (the Morph moves that one picture), any other picture only on its own slide. */
+export function swapPicture(d: D, slideId: string, elementId: string, img: { url: string; alt: string; fit?: 'cover' | 'contain' }) {
+  const slot = templateSlotOf(d, slideId, elementId)
+  if (slot) { replaceTemplatePicture(d, slot.uses, img); return }
+  const s = findSlide(d, slideId)
+  const e = s && findEl(s, elementId)
+  if (!s || !e || e.type !== 'image' || s.locked) return
+  e.src = img.url
+  e.alt = img.alt.slice(0, 300) || e.alt
+  e.fit = img.fit ?? e.fit
+  touch(s)
+}
+
+/** A plain copy of a slide's content (drafts cannot be handed to the composer). */
+const plainContent = (c: unknown) => JSON.parse(JSON.stringify(isDraft(c) ? current(c as never) : c))
+
+/**
+ * A picture of a Morph template deck: one piece of the template's artwork, wherever it is used (`uses`: the scene and object of each place, the hidden copies parked off the slide too, so the
+ * Morph never brings the old picture back in). It is replaced on EVERY scene at once; the scenes remember it too, so a later re-compose keeps the person's picture. Returns how many scenes
+ * changed. Locked slides keep theirs.
+ */
+export function replaceTemplatePicture(d: D, uses: { scene: string; id: string }[], img: { url: string; alt: string; fit?: 'cover' | 'contain'; attribution?: { source: string; license: string; url?: string } }): number {
+  let n = 0
+  for (const s of d.slides) {
+    if (s.locked || s.content?.layout !== 'morph-template') continue
+    const sceneId = s.content.scene
+    const ids = new Set(uses.filter((u) => u.scene === sceneId).map((u) => u.id))
+    if (ids.size === 0) continue
+    // how the template itself places a person's picture in this spot (a rounded frame, a margin round a replaced icon): used unless the person has moved or resized the picture
+    const tpl = getMorphTemplate(s.content.template)
+    const mine = Object.fromEntries([...ids].map((id) => [id, { url: img.url, alt: img.alt.slice(0, 200) }]))
+    const plain = tpl ? composeTemplateScene(tpl, { ...(plainContent(s.content)), images: {} } as never).elements : []
+    const placed = tpl ? composeTemplateScene(tpl, { ...(plainContent(s.content)), images: mine } as never).elements : []
+    const near = (a: number, b: number) => Math.abs(a - b) <= 1
+    for (const e of s.elements) {
+      if (e.type !== 'image' || !ids.has(e.id)) continue
+      e.src = img.url
+      e.alt = img.alt.slice(0, 300) || e.alt
+      e.fit = img.fit ?? 'cover'
+      if (img.attribution) e.attribution = img.attribution; else delete (e as { attribution?: unknown }).attribution
+      const was = plain.find((x) => x.id === e.id), now = placed.find((x) => x.id === e.id)
+      if (now?.type === 'image') {
+        e.radius = now.radius; e.clip = now.clip
+        if (was && near(e.x, was.x) && near(e.y, was.y) && near(e.width, was.width) && near(e.height, was.height) && near(e.rotation, was.rotation)) { e.x = now.x; e.y = now.y; e.width = now.width; e.height = now.height; e.rotation = now.rotation }
+      }
+    }
+    s.content.images = { ...s.content.images, ...Object.fromEntries([...ids].map((id) => [id, { url: img.url, alt: img.alt.slice(0, 200), ...(img.attribution ? { attribution: img.attribution } : {}) }])) }
+    touch(s)
+    n++
+  }
+  return n
 }
 
 /** A free-floating 4:3 picture in the middle of the slide (about 45 % of the width). Returns the new element id. */

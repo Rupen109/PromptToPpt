@@ -1,5 +1,5 @@
 import { createAuthClient } from 'better-auth/react'
-import type { Direction, Entitlements, ExportFormat, PaidPlanId, PlanId, PlanView, Presentation, PromptAnalysis, Slide, SlideContent, SubscriptionSummary, Theme } from '@prompttoppt/validation'
+import type { AspectRatio, Direction, ElementChange, Entitlements, Expectation, MorphDecision, ExportFormat, PaidPlanId, PlanId, PlanView, Presentation, PromptAnalysis, Restructure, Slide, SlideContent, SubscriptionSummary, Theme } from '@prompttoppt/validation'
 
 export interface ApiClientConfig {
   /** e.g. https://api.slidesdone.app */
@@ -26,7 +26,7 @@ export interface JobView {
   presentationId: string | null
   error: string | null
   /** what the generation quality gate found (present once the deck is composed) */
-  quality?: { pictureSlots: number; picturesPlaced: number; openIssues: number } | null
+  quality?: { pictureSlots: number; picturesPlaced: number; openIssues: number; /** a pictures-only refresh: the slides (numbers) that kept their own picture because no DIFFERENT match was found */ picturesKept?: number[] } | null
 }
 export interface AnalyzeResult {
   mode: 'broad' | 'detailed'
@@ -66,12 +66,18 @@ export interface CreateJobInput {
   model?: string
   /** build a new deck in this brand kit's colours, fonts and logo (paid plans) */
   brandKitId?: string
+  /** build a new deck in one of your brand themes (its design, light or dark, and kit together) */
+  brandThemeId?: string
   /** build a Morph deck: slides made from the same elements, which move and morph into each other (Gold and Premium; a new presentation only) */
   morph?: boolean
   /** build the deck from one of the Morph templates (its layout, pictures and movement; the AI writes the words). Counts as a Morph deck: Gold and Premium. */
   morphTemplate?: string
   /** remix this deck of yours into a NEW deck with the same look (paid plans); its text comes in as `sourceIds` from remixSource() */
   remixOf?: string
+  /** remix a PowerPoint: the title of the attached .pptx source (a new deck from its slides, in a fresh design) */
+  remixFile?: string
+  /** the shape of a new deck (a remix may change it); omitted: 16:9, or the original's for a remix */
+  aspectRatio?: AspectRatio
   /** build the deck in the look of one of YOUR uploaded designs (Pro, Gold, Premium); a new presentation only */
   fromTemplateId?: string
   /** with fromTemplateId: 'ai' (default) writes the words; 'manual' makes slides with neutral placeholders to type into (no AI, no credits) */
@@ -86,15 +92,15 @@ export interface FileTemplateSummary {
   id: string
   name: string
   filename: string
-  aspect: '16:9' | '4:3' | '1:1'
+  aspect: AspectRatio
   slideCount: number
   layouts: { index: number; name: string; layoutName: string; kind: 'cover' | 'content' | 'closing' }[]
   fontsReplaced: { original: string; mapped: string }[]
   warnings: string[]
   createdAt: string
 }
-export interface FileTemplateListItem { id: string; name: string; filename: string; aspect: '16:9' | '4:3' | '1:1'; slideCount: number; createdAt: string; cover: Slide | null; theme: Theme; fontsReplaced: { original: string; mapped: string }[] }
-export interface AskDeckAnswer { answer: string; slides: { n: number; id: string }[]; creditsCharged: number; model: string }
+export interface FileTemplateListItem { id: string; name: string; filename: string; aspect: AspectRatio; slideCount: number; createdAt: string; cover: Slide | null; theme: Theme; fontsReplaced: { original: string; mapped: string }[] }
+export interface AskDeckAnswer { answer: string; slides: { n: number; id: string }[]; creditsCharged: number; model: string; /** the message asked for a CHANGE: the same words, to send to Edit when the person agrees */ editRequest?: string }
 export interface SitemapRequest { url: string; maxPages?: number; lastmod?: boolean; changefreq?: 'none' | 'always' | 'hourly' | 'daily' | 'weekly' | 'monthly' | 'yearly' | 'never'; priority?: boolean }
 export interface SitemapResponse {
   site: string
@@ -127,9 +133,9 @@ export interface LoadedPresentation {
   version: number
   document: Presentation
   /** `editor` = a collaborator on someone else's deck (no export / share / delete; AI is charged to the owner) */
-  role?: 'owner' | 'editor'
+  role?: 'owner' | 'editor' | 'viewer'
 }
-export interface MemberView { id: string; email: string; status: 'pending' | 'active'; role: 'editor'; createdAt: string; expiresAt: string | null }
+export interface MemberView { id: string; email: string; status: 'pending' | 'active'; /** editor = changes the deck; viewer = looks, presents and comments only */ role: 'editor' | 'viewer'; createdAt: string; expiresAt: string | null }
 export interface InvitePreview { title: string; from: string; status: 'pending' | 'active'; forThisAccount: boolean; presentationId: string | null }
 export interface SharedDeck { id: string; title: string; updatedAt: string; aspectRatio: string; owner: string }
 export interface LivePeer { clientId: string; userId: string; name: string; color: string; slideId: string | null; selection: string[]; editing: string | null; cursor: { x: number; y: number } | null; at: number }
@@ -163,11 +169,17 @@ export interface AiEditResult {
   content: SlideContent
   creditsCharged: number
   model: string
+  /** what the answer promises, as checkable facts about the deck (see AiAssistResult.expect) */
+  requestId?: string
+  expect?: Expectation[]
 }
 
 export type AiImageProposal = AiAssistResult['images'][number]
 export interface AiAssistResult {
   reply: string
+  /** present when the answer changes the deck: the id the server holds this request under, and what the answer PROMISES as checkable facts about the deck (@prompttoppt/theme assist). The editor checks them on its live deck after applying, and reports the outcome; the server checks them again on the saved deck when it settles the credits */
+  requestId?: string
+  expect?: Expectation[]
   /** full replacement theme (null = unchanged) */
   theme: Theme | null
   edits: { slideId: string; content: SlideContent }[]
@@ -176,20 +188,29 @@ export interface AiAssistResult {
   /** the assistant is asking which slide (or what) you mean; the reply is the question */
   ask?: boolean
   /** answers to the question, shown as buttons; each sends its `reply` as the next message (absent on the older assistant: the editor then offers its "which slide?" choices) */
-  options?: { label: string; reply: string }[]
+  options?: { label: string; reply: string; /** a plan the person confirms by choosing this option: send it back as `confirm` */ confirm?: Restructure }[]
   /** slides to delete, move (after another slide; null = to the start), duplicate (as `newId`), lock or unlock */
   removals?: string[]
   moves?: { slideId: string; afterSlideId: string | null }[]
   duplicates?: { slideId: string; newId: string }[]
   locks?: { slideId: string; locked: boolean }[]
+  transitions?: { slideId: string; to: { type: 'none' | 'fade' | 'slide' | 'zoom' | 'push' | 'wipe' | 'morph'; duration?: number; direction?: 'left' | 'right' | 'up' | 'down'; advanceAfter?: number } }[]
   /** two-colour gradient backgrounds for single slides */
-  gradients?: { slideId: string; from: string; to: string }[]
+  gradients?: { slideId: string; from: string; to: string; kind?: 'radial' }[]
+  blurs?: { slideId: string; blur: number }[]
+  patterns?: { slideId: string; kind: 'dots' | 'grid' | 'lines' | 'diagonal' | null }[]
+  /** one slide's background, as it is, put on other slides */
+  backgroundCopies?: { fromSlideId: string; slideIds: string[] }[]
   /** slides whose pictures go: the background picture and the photos placed on them */
   clearPictures?: string[]
+  /** pictures whose background was cut out: put the new picture where the old one was (on every slide it is on when it belongs to a Morph template) */
+  pictureSwaps?: { slideId: string; elementId: string; url: string; alt: string; /** share of the new picture that is see-through, measured by the server when it made it */ transparentShare?: number; /** the person's own uploaded picture put in place (not a cut-out) */ replaced?: boolean; /** where the replacing picture came from: a free stock photo (absent = the person's own upload) */ source?: 'photo' | undefined }[]
+  /** objects changed in size, place, text or existence, as absolute values (the editor applies them with its own commands) */
+  elementChanges?: ElementChange[]
   /** new background colours for single slides (applied with the editor's setSlideBackground, so the text stays readable) */
   backgrounds?: { slideId: string; color: string }[]
   /** free photos found for slides (the editor places each one: behind the slide, beside the text, or floating) */
-  pictures?: { slideId: string; placement: 'background' | 'beside' | 'floating'; url: string; alt: string; source: 'stock' | 'library'; credit?: string }[]
+  pictures?: { slideId: string; placement: 'background' | 'beside' | 'floating'; url: string; alt: string; source: 'stock' | 'library' | 'upload'; credit?: string }[]
   /** slides whose text must be made readable on what is behind it (the editor recolours only the text that does not read) */
   readability?: string[]
   /** earlier assistant changes to put back (the editor holds the "before" of each) */
@@ -204,6 +225,18 @@ export interface AiAssistResult {
   applied: string[]
   /** what was skipped or impossible (plan gates, locked slides, images…) */
   notes: string[]
+  /** present / export / share prepared by the assistant: done only when the person presses the button the chat shows */
+  uiAction?: { kind: 'present'; fromSlide: number } | { kind: 'export'; format: 'pptx' | 'pdf' | 'png' | 'jpg' | 'html'; /** only these slides (ids, and their numbers when the answer was made, for the button) */ slideIds?: string[]; slides?: number[] } | { kind: 'share'; /** invite them to view and comment only */ role?: 'viewer'; email?: string }
+  /** "select …": the objects to select in the editor (on that slide); nothing in the deck changed */
+  selectObjects?: { slideId: string; elementIds: string[] }
+  /** the notes that are a part of the request NOT done (the reply then reads "Partly done" / "I couldn't") */
+  refused?: string[]
+  /** the notes that say a part was already so ("Nothing needed changing") */
+  already?: string[]
+  /** a plan limit is why something was refused: the reason, so the panel can offer the upgrade */
+  upgrade?: string
+  /** a big message was done step by step: send this (the parts still to do, in the person's words) to continue */
+  continueWith?: string
   creditsCharged: number
   model: string
 }
@@ -240,8 +273,8 @@ export interface DraftAttachment {
 
 /** Comments on slides (C6). */
 export interface CommentItem { id: string; authorId: string; authorName: string; body: string; createdAt: string; editedAt: string | null; mine: boolean }
-export interface CommentThread { id: string; slideId: string; x: number | null; y: number | null; status: 'open' | 'resolved'; createdAt: string; resolvedAt: string | null; resolvedByName: string | null; comments: CommentItem[] }
-export interface CommentPerson { id: string; name: string; role: 'owner' | 'editor' }
+export interface CommentThread { id: string; slideId: string; x: number | null; y: number | null; /** the object it is on (its pin follows the object); null = the slide or a spot on it */ elementId: string | null; status: 'open' | 'resolved'; createdAt: string; resolvedAt: string | null; resolvedByName: string | null; comments: CommentItem[] }
+export interface CommentPerson { id: string; name: string; role: 'owner' | 'editor' | 'viewer' }
 export interface CommentsData { threads: CommentThread[]; people: CommentPerson[]; unread: number; seenAt: string }
 
 export interface SourceSummary {
@@ -249,6 +282,8 @@ export interface SourceSummary {
   type: 'text' | 'url' | 'pdf' | 'pptx' | 'docx' | 'xlsx' | 'csv' | 'email' | 'image' | 'transcript'
   title: string
   chunks: number
+  /** the file's own pieces (a PowerPoint: the slides that have text); absent on older answers */
+  parts?: number
 }
 
 export type { Entitlements, PlanView, SubscriptionSummary }
@@ -302,6 +337,18 @@ export interface BrandKit {
   sourceUrl: string | null
   isDefault: boolean
   updatedAt: string
+}
+/** A theme made from a brand kit: a design in light or dark with the kit's colours, fonts and logo. `theme` is worked out from the kit as it is now. */
+export interface BrandTheme {
+  id: string
+  name: string
+  kitId: string
+  kitName: string
+  designId: string
+  designName: string
+  mode: 'light' | 'dark'
+  theme: Theme
+  createdAt: string
 }
 export interface BrandKitInput {
   name?: string
@@ -390,6 +437,25 @@ export function createApiClient({ apiUrl, sessionUser, onSessionChanged }: ApiCl
     return body.data
   }
 
+  /** A POST that answers with a file (a picture) instead of JSON; errors still come as the usual envelope. */
+  async function postForBlob(path: string, payload: unknown, signal?: AbortSignal): Promise<{ blob: Blob; headers: Headers }> {
+    const expected = sessionUser?.() ?? null
+    const res = await fetch(`${base}${path}`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', ...(expected ? { 'X-Session-User': expected } : {}) },
+      body: JSON.stringify(payload),
+      ...(signal ? { signal } : {}),
+    })
+    if (!res.ok) {
+      const body = (await res.json().catch(() => null)) as Envelope<never> | null
+      const err = body && !body.success ? body.error : { code: 'HTTP_ERROR', message: res.statusText }
+      if (err.code === 'SESSION_CHANGED') onSessionChanged?.()
+      throw new ApiError(res.status, err.code, err.message, 'details' in err ? err.details : undefined)
+    }
+    return { blob: await res.blob(), headers: res.headers }
+  }
+
   return {
     /** Better Auth client: signIn.email, signUp.email, signIn.social, signOut, useSession */
     auth: createAuthClient({ baseURL: base }),
@@ -453,6 +519,12 @@ export function createApiClient({ apiUrl, sessionUser, onSessionChanged }: ApiCl
     addDraftLink: (url: string) => request<DraftAttachment>('/api/v1/drafts/attachments/link', { method: 'POST', body: JSON.stringify({ url }) }),
 
     /** Editor → after login, exchanges the draft id for the prompt (single use, owner-bound). */
+    /** The lengths a deck from this template can have for this request (scenes it cannot fill are left out; shorter decks drop the least important scenes). */
+    morphLengths: (templateId: string, prompt: string, analysis: PromptAnalysis) =>
+      request<{ template: string; lengths: number[]; fullLength: number; leftOut: { scene: string; title: string }[]; tooLong: boolean }>('/api/v1/generation/morph-lengths', { method: 'POST', body: JSON.stringify({ templateId, prompt, analysis }) }),
+    /** Which designed Morph template fits this request, or none (then the deck is designed from the topic). Gold and Premium. */
+    matchMorph: (prompt: string, analysis: PromptAnalysis) =>
+      request<MorphDecision>('/api/v1/generation/morph-match', { method: 'POST', body: JSON.stringify({ prompt, analysis }) }),
     analyze: (prompt: string, sourceIds: string[] = [], language?: string) =>
       request<AnalyzeResult>('/api/v1/generation/analyze', { method: 'POST', body: JSON.stringify({ prompt, sourceIds, ...(language ? { language } : {}) }) }),
     createJob: (input: CreateJobInput) => request<JobView>('/api/v1/generation/jobs', { method: 'POST', body: JSON.stringify(input) }),
@@ -462,7 +534,7 @@ export function createApiClient({ apiUrl, sessionUser, onSessionChanged }: ApiCl
     cancelJob: (id: string) => request<JobView>(`/api/v1/generation/jobs/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),
     listPresentations: (projectId?: string) => request<PresentationSummary[]>(`/api/v1/presentations${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''}`),
     /** New deck from a template design (or blank when templateId is omitted). Premium designs need Pro (server-enforced). */
-    createPresentation: (body: { templateId?: string; title?: string; aspectRatio?: '16:9' | '4:3' | '1:1'; projectId?: string; blank?: boolean }) =>
+    createPresentation: (body: { templateId?: string; title?: string; aspectRatio?: AspectRatio; projectId?: string; blank?: boolean }) =>
       request<{ id: string }>('/api/v1/presentations', { method: 'POST', body: JSON.stringify(body) }),
     moveToProject: (deckId: string, projectId: string | null) => request<{ id: string; projectId: string | null }>(`/api/v1/presentations/${encodeURIComponent(deckId)}/project`, { method: 'PUT', body: JSON.stringify({ projectId }) }),
     listProjects: () => request<ProjectSummary[]>('/api/v1/projects'),
@@ -491,7 +563,8 @@ export function createApiClient({ apiUrl, sessionUser, onSessionChanged }: ApiCl
     updateShareLink: (id: string, body: { password?: string | null; expiresInDays?: ShareExpiry }) => request<ShareLinkView>(`/api/v1/presentations/${encodeURIComponent(id)}/share`, { method: 'PATCH', body: JSON.stringify(body) }),
     revokeShareLink: (id: string) => request<ShareLinkView>(`/api/v1/presentations/${encodeURIComponent(id)}/share`, { method: 'DELETE' }),
     listMembers: (id: string) => request<{ members: MemberView[]; limit: number }>(`/api/v1/presentations/${encodeURIComponent(id)}/members`),
-    inviteMember: (id: string, email: string) => request<MemberView>(`/api/v1/presentations/${encodeURIComponent(id)}/members`, { method: 'POST', body: JSON.stringify({ email }) }),
+    inviteMember: (id: string, email: string, role: 'editor' | 'viewer' = 'editor') => request<MemberView>(`/api/v1/presentations/${encodeURIComponent(id)}/members`, { method: 'POST', body: JSON.stringify({ email, role }) }),
+    setMemberRole: (id: string, memberId: string, role: 'editor' | 'viewer') => request<MemberView>(`/api/v1/presentations/${encodeURIComponent(id)}/members/${encodeURIComponent(memberId)}`, { method: 'PATCH', body: JSON.stringify({ role }) }),
     removeMember: (id: string, memberId: string) => request<unknown>(`/api/v1/presentations/${encodeURIComponent(id)}/members/${encodeURIComponent(memberId)}`, { method: 'DELETE' }),
     leaveDeck: (id: string) => request<unknown>(`/api/v1/presentations/${encodeURIComponent(id)}/members/me`, { method: 'DELETE' }),
     getInvite: (token: string) => request<InvitePreview>(`/api/v1/invites/${encodeURIComponent(token)}`),
@@ -505,7 +578,7 @@ export function createApiClient({ apiUrl, sessionUser, onSessionChanged }: ApiCl
     getPresentationIfChanged: (id: string, since: number) => request<LoadedPresentation | { unchanged: true; revision: number }>(`/api/v1/presentations/${encodeURIComponent(id)}?since=${since}`),
 
     comments: (id: string) => request<CommentsData>(`/api/v1/presentations/${encodeURIComponent(id)}/comments`),
-    addComment: (id: string, body: { slideId: string; x?: number; y?: number; body: string }) => request<{ threadId: string; commentId: string }>(`/api/v1/presentations/${encodeURIComponent(id)}/comments`, { method: 'POST', body: JSON.stringify(body) }),
+    addComment: (id: string, body: { slideId: string; x?: number; y?: number; elementId?: string; body: string }) => request<{ threadId: string; commentId: string }>(`/api/v1/presentations/${encodeURIComponent(id)}/comments`, { method: 'POST', body: JSON.stringify(body) }),
     replyComment: (id: string, threadId: string, body: string) => request<{ commentId: string }>(`/api/v1/presentations/${encodeURIComponent(id)}/comments/${encodeURIComponent(threadId)}/replies`, { method: 'POST', body: JSON.stringify({ body }) }),
     setThreadStatus: (id: string, threadId: string, status: 'open' | 'resolved') => request<{ status: string }>(`/api/v1/presentations/${encodeURIComponent(id)}/comments/${encodeURIComponent(threadId)}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
     editComment: (id: string, commentId: string, body: string) => request<{ ok: boolean }>(`/api/v1/presentations/${encodeURIComponent(id)}/comments/items/${encodeURIComponent(commentId)}`, { method: 'PATCH', body: JSON.stringify({ body }) }),
@@ -592,6 +665,15 @@ export function createApiClient({ apiUrl, sessionUser, onSessionChanged }: ApiCl
     /** Remaining AI-picture allowance for a deck / the month — show it BEFORE the user spends anything. */
     /** "Image URL": the server downloads the picture and keeps its own copy; returns the address of that copy. */
     importImage: (deckId: string, url: string) => request<{ assetId: string; url: string; mime: string; aspect: number }>(`/api/v1/presentations/${encodeURIComponent(deckId)}/images/import`, { method: 'POST', body: JSON.stringify({ url }) }),
+    /** Remove the background of one of the person's pictures: a new transparent PNG (the original stays). Takes a few seconds; free. */
+    cutoutImage: (deckId: string, url: string) => request<{ assetId: string; url: string; mime: string; aspect: number; name: string; width: number; height: number }>(`/api/v1/presentations/${encodeURIComponent(deckId)}/images/cutout`, { method: 'POST', body: JSON.stringify({ url }) }),
+    /** Background removal dialog (development only, behind the `background_removal` flag): the model's foreground mask of one of the person's pictures, as a grey-scale PNG at the model's working size. */
+    cutoutMask: async (deckId: string, url: string, signal?: AbortSignal) => {
+      const r = await postForBlob(`/api/v1/presentations/${encodeURIComponent(deckId)}/images/cutout-mask`, { url }, signal)
+      return { blob: r.blob, width: Number(r.headers.get('X-Mask-Width') ?? 0), height: Number(r.headers.get('X-Mask-Height') ?? 0) }
+    },
+    /** The original bytes of one of the person's pictures (so the editor never needs cross-site access to where it is kept). */
+    originalPicture: async (deckId: string, url: string, signal?: AbortSignal) => (await postForBlob(`/api/v1/presentations/${encodeURIComponent(deckId)}/images/original`, { url }, signal)).blob,
     /** Add a picture from the computer (PNG or JPEG, up to 8 MB). */
     uploadImage: (deckId: string, file: File) => {
       const body = new FormData()
@@ -622,10 +704,15 @@ export function createApiClient({ apiUrl, sessionUser, onSessionChanged }: ApiCl
     askDeck: (id: string, body: { question: string; history?: { role: 'user' | 'ai'; text: string }[]; model?: string; requestId: string }) =>
       request<AskDeckAnswer>(`/api/v1/presentations/${encodeURIComponent(id)}/ask`, { method: 'POST', body: JSON.stringify(body) }),
     /** Chat-style assistant: free-form instruction → validated theme/animation/content changes to apply as ONE undoable step. */
-    aiAssist: (id: string, body: { instruction: string; scope: 'deck' | 'slide'; slideId?: string; activeSlideId?: string; model?: string; requestId: string; sourceIds?: string[]; recent?: { theme: boolean; slideIds: string[]; summary: string[] }[]; conversation?: { role: 'user' | 'assistant'; text: string }[] }) =>
+    aiAssist: (id: string, body: { instruction: string; scope: 'deck' | 'slide'; slideId?: string; activeSlideId?: string; /** what is selected in the editor right now */ selection?: { slideIds: string[]; elementIds: string[] }; model?: string; requestId: string; sourceIds?: string[]; recent?: { theme: boolean; slideIds: string[]; summary: string[] }[]; conversation?: { role: 'user' | 'assistant'; text: string }[]; /** a plan the person confirmed (from an option of the last answer); the server checks it against the deck again */ confirm?: Restructure }) =>
       request<AiAssistResult>(`/api/v1/presentations/${encodeURIComponent(id)}/ai-assist`, { method: 'POST', body: JSON.stringify(body) }),
+    /** After applying an answer and saving: triggers the server's settlement of the credits (it checks the SAVED deck itself; `results` is only compared, never trusted). */
+    aiAssistOutcome: (id: string, requestId: string, body: { results?: { key: string; status: string }[]; savedRevision?: number }) =>
+      request<{ settled: boolean; verified: number; judged: number; refunded: boolean; reason: string; already: boolean }>(`/api/v1/presentations/${encodeURIComponent(id)}/ai-assist/${encodeURIComponent(requestId)}/outcome`, { method: 'POST', body: JSON.stringify(body) }),
     /** The assistant conversation of this presentation (persisted server-side; survives reloads and devices). */
     aiChat: (id: string) => request<Record<string, unknown>[]>(`/api/v1/presentations/${encodeURIComponent(id)}/chat`),
+    /** The quick actions offered right now, generated by the server from what the assistant can really do for this person, deck and slide. */
+    aiChips: (id: string, slideId?: string) => request<{ group: 'Edit' | 'Design' | 'Create' | 'Animations'; family: string; text: string }[]>(`/api/v1/presentations/${encodeURIComponent(id)}/assistant/chips${slideId ? `?slideId=${encodeURIComponent(slideId)}` : ''}`),
     saveAiChat: (id: string, messages: Record<string, unknown>[]) => request<{ saved: boolean }>(`/api/v1/presentations/${encodeURIComponent(id)}/chat`, { method: 'POST', body: JSON.stringify({ messages }) }),
     clearAiChat: (id: string) => request<{ cleared: boolean }>(`/api/v1/presentations/${encodeURIComponent(id)}/chat`, { method: 'DELETE' }),
     plans: () => request<PlansResponse>('/api/v1/plans'),
@@ -633,8 +720,9 @@ export function createApiClient({ apiUrl, sessionUser, onSessionChanged }: ApiCl
     flags: () => request<Record<string, boolean>>('/api/v1/flags'),
     /** Server-gated: Starter gets UPGRADE_REQUIRED. Real export arrives in the export phase. */
     /** PPTX comes back as a file (`{ blob, filename }`); the other formats are rendered in the browser after the server authorises them (`{ mode: 'client' }`). */
-    async requestExport(presentationId: string, format: ExportFormat): Promise<{ mode: 'file'; blob: Blob; filename: string } | { mode: 'client'; format: ExportFormat; title: string; eventId: string }> {
-      const res = await fetch(`${base}/api/v1/exports`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ presentationId, format }) })
+    /** `slideIds`: only these slides (in deck order); absent = the whole deck */
+    async requestExport(presentationId: string, format: ExportFormat, slideIds?: string[]): Promise<{ mode: 'file'; blob: Blob; filename: string } | { mode: 'client'; format: ExportFormat; title: string; eventId: string }> {
+      const res = await fetch(`${base}/api/v1/exports`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ presentationId, format, ...(slideIds?.length ? { slideIds } : {}) }) })
       if ((res.headers.get('Content-Type') ?? '').includes('application/json')) {
         const body = (await res.json().catch(() => null)) as Envelope<{ mode: 'client'; format: ExportFormat; title: string; eventId: string }> | null
         if (!res.ok || !body || !body.success) {
@@ -674,6 +762,10 @@ export function createApiClient({ apiUrl, sessionUser, onSessionChanged }: ApiCl
     brandKitLogo: (id: string, file: File) => { const f = new FormData(); f.append('file', file); return request<BrandKit>(`/api/v1/brand/kits/${encodeURIComponent(id)}/logo`, { method: 'POST', body: f }) },
     brandKitImageAdd: (id: string, file: File, name?: string) => { const f = new FormData(); f.append('file', file); if (name) f.append('name', name); return request<BrandKit>(`/api/v1/brand/kits/${encodeURIComponent(id)}/images`, { method: 'POST', body: f }) },
     brandKitImageRemove: (id: string, imageId: string) => request<BrandKit>(`/api/v1/brand/kits/${encodeURIComponent(id)}/images/${encodeURIComponent(imageId)}`, { method: 'DELETE' }),
+    /** Your themes made from a brand kit, and how many you can keep (0 = not on your plan). */
+    brandThemes: () => request<{ themes: BrandTheme[]; limit: number }>('/api/v1/brand/themes'),
+    brandThemeCreate: (body: { kitId: string; designId: string; mode: 'light' | 'dark'; name?: string }) => request<BrandTheme>('/api/v1/brand/themes', { method: 'POST', body: JSON.stringify(body) }),
+    brandThemeDelete: (id: string) => request<{ deleted: true }>(`/api/v1/brand/themes/${encodeURIComponent(id)}`, { method: 'DELETE' }),
     brandExtract: (url: string) => request<BrandProfile>('/api/v1/brand/extract', { method: 'POST', body: JSON.stringify({ url }) }),
     /** Read the brand (colours, fonts, logo, name) of an uploaded PowerPoint (.pptx) or PDF (Pro, Gold, Premium; nothing is saved but the logo). */
     brandFromFile: (file: File) => { const body = new FormData(); body.set('file', file); return request<BrandFileProfile>('/api/v1/brand/from-file', { method: 'POST', body }) },

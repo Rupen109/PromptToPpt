@@ -1,5 +1,6 @@
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { execSync } from 'node:child_process'
 import { EDITOR, PASSWORD, RESULTS, WEB, expect, launch, suite, uniqueEmail } from '../lib.mjs'
 
 export const ACCOUNT = join(RESULTS, 'account.json')
@@ -12,6 +13,9 @@ export default async function () {
   const p = await ctx.newPage()
   const email = uniqueEmail('qa')
   const settle = (ms = 500) => p.waitForTimeout(ms)
+  /** the form's own error (Next.js also has an empty, invisible role=alert route announcer on every page: a check that found that one proved nothing) */
+  const confirm = (addr) => execSync(`pnpm --filter @prompttoppt/api exec tsx --env-file-if-exists=.env scripts/qa-verify-email.ts ${addr}`, { cwd: new URL('../..', import.meta.url).pathname, stdio: 'pipe' })
+  const formError = () => p.getByRole('alert').filter({ hasText: /\S/ })
 
   await s.check('protected editor route redirects a signed-out user to login with ?next', p, async () => {
     await p.goto(EDITOR + '/created')
@@ -26,10 +30,11 @@ export default async function () {
     await p.locator('input[name=email]').fill('nobody@example.com')
     await p.locator('input[name=password]').fill('wrong-password-123')
     await p.getByRole('button', { name: 'Log in' }).click()
-    await p.getByRole('alert').waitFor({ timeout: 8000 })
+    await formError().waitFor({ timeout: 8000 })
+    expect(/password|invalid|incorrect/i.test(await formError().innerText()), `wrong-password error says: ${await formError().innerText()}`)
   })
 
-  await s.check('signup validates: short password blocked; valid sign-up lands in the editor', p, async () => {
+  await s.check('signup validates: short password blocked; valid sign-up asks to confirm the email (no session before), and after confirming, login lands in the editor', p, async () => {
     await p.goto(WEB + '/signup', { waitUntil: 'networkidle' })
     await p.locator('input[name=name]').fill('QA Tester')
     await p.locator('input[name=email]').fill(email)
@@ -38,6 +43,17 @@ export default async function () {
     expect(p.url().includes('/signup'), 'short password accepted')
     await p.locator('input[name=password]').fill(PASSWORD)
     await p.getByRole('button', { name: 'Sign up free' }).click()
+    await p.getByRole('heading', { name: 'Check your email' }).waitFor({ timeout: 20000 })
+    expect((await p.locator('body').innerText()).includes(email), 'the confirm screen does not say which address')
+    // no session before the address is confirmed: the editor sends them to log in
+    await p.goto(EDITOR + '/'); await p.waitForURL(/\/login/, { timeout: 15000 })
+    // logging in before confirming is refused with a reason
+    await p.locator('input[name=email]').fill(email); await p.locator('input[name=password]').fill(PASSWORD)
+    await p.getByRole('button', { name: 'Log in' }).click(); await formError().waitFor({ timeout: 8000 })
+    expect(/confirm|verif/i.test(await formError().innerText()), `the refusal does not say to confirm: ${await formError().innerText()}`)
+    // the emailed link confirms the address (the QA script does what the click does); then login lands in the editor
+    confirm(email)
+    await p.getByRole('button', { name: 'Log in' }).click()
     await p.waitForURL(/localhost:3001/, { timeout: 20000 })
     await p.getByRole('navigation', { name: 'Main' }).waitFor({ timeout: 15000 })
     writeFileSync(ACCOUNT, JSON.stringify({ email, password: PASSWORD }))
@@ -72,14 +88,16 @@ export default async function () {
     const e1 = uniqueEmail('taba'), e2 = uniqueEmail('tabb')
     const post = (pg, path, body) => pg.evaluate(async ([path, body]) => { const r = await fetch('http://localhost:4000' + path, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); return r.status }, [path, body])
     await A.goto(WEB + '/login', { waitUntil: 'domcontentloaded' })
-    expect(await post(A, '/api/auth/sign-up/email', { email: e1, password: PASSWORD, name: 'Tab A' }) === 200, 'sign-up A failed')
+    // a new account: signed up, its email confirmed (the emailed link), then signed in (sign-up alone gives no session while confirmation is on)
+    const join = async (pg, email, name) => { expect(await post(pg, '/api/auth/sign-up/email', { email, password: PASSWORD, name }) === 200, `sign-up ${name} failed`); confirm(email); expect(await post(pg, '/api/auth/sign-in/email', { email, password: PASSWORD }) === 200, `sign-in ${name} failed`) }
+    await join(A, e1, 'Tab A')
     await A.goto(EDITOR + '/', { waitUntil: 'networkidle' })
     await A.locator('aside').first().getByText(e1, { exact: true }).waitFor({ timeout: 10000 })
     const idA = await A.evaluate(() => fetch('http://localhost:4000/api/v1/me', { credentials: 'include' }).then((r) => r.json()).then((j) => j.data.id))
     // tab B: sign out, sign in as someone else (the cookie is shared by both tabs)
     await B.goto(WEB + '/login', { waitUntil: 'domcontentloaded' })
     await post(B, '/api/auth/sign-out', {})
-    expect(await post(B, '/api/auth/sign-up/email', { email: e2, password: PASSWORD, name: 'Tab B' }) === 200, 'sign-up B failed')
+    await join(B, e2, 'Tab B')
     // back in tab A: it regains focus
     await A.bringToFront(); await A.evaluate(() => window.dispatchEvent(new Event('focus')))
     const dlg = A.getByRole('alertdialog'); await dlg.waitFor({ timeout: 8000 })
@@ -102,7 +120,7 @@ export default async function () {
     await q.goto(WEB + '/signup', { waitUntil: 'networkidle' })
     await q.locator('input[name=name]').fill('Dup'); await q.locator('input[name=email]').fill(email); await q.locator('input[name=password]').fill(PASSWORD)
     await q.getByRole('button', { name: 'Sign up free' }).click()
-    await q.getByRole('alert').waitFor({ timeout: 8000 })
+    await q.getByRole('alert').filter({ hasText: /\S/ }).waitFor({ timeout: 8000 })
     await c2.close()
   })
 

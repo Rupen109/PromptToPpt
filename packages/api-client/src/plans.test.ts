@@ -32,7 +32,7 @@ describe('pricing copy is derived from plan data', () => {
   it('Premium is the plan where the person chooses the model', () => {
     const h = planHighlights(premium, gold)
     expect(h.lead).toBe('All Gold features, plus:')
-    expect(h.items).toEqual(expect.arrayContaining(['3,700 credits / month', 'Up to 60 slides per presentation', 'Choose your AI model: Claude Sonnet and Opus, GLM, Haiku and more']))
+    expect(h.items).toEqual(expect.arrayContaining(['3,700 credits / month', 'Up to 60 slides per presentation', 'Pro AI models: pick fast or most capable for each deck']))
   })
   it('formats money per locale', () => {
     expect(formatMoney(14400, 'USD')).toBe('$144')

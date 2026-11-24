@@ -33,7 +33,7 @@ const views = { Overview: adminView('Overview'), Tokens: adminView('Tokens'), Mo
 
 const PostEdit = lazy(() => import('@/pages/admin/sections/PostEdit'))
 const section = (name: string) => lazy(() => import(`@/pages/admin/sections/${name}.tsx`))
-const sections = { sales: section('Sales'), subscriptions: section('Subscriptions'), images: section('Images'), margin: section('Margin'), presentations: section('Presentations'), exports: section('Exports'), prompts: section('Prompts'), performance: section('Performance'), providers: section('Providers'), audit: section('Audit'), flags: section('Flags'), cloud: section('Cloud'), reviews: section('Reviews'), posts: section('Posts'), support: section('Support') }
+const sections = { sales: section('Sales'), subscriptions: section('Subscriptions'), images: section('Images'), morph: section('Morph'), margin: section('Margin'), presentations: section('Presentations'), exports: section('Exports'), prompts: section('Prompts'), performance: section('Performance'), providers: section('Providers'), audit: section('Audit'), flags: section('Flags'), cloud: section('Cloud'), reviews: section('Reviews'), posts: section('Posts'), support: section('Support') }
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

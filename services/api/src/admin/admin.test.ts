@@ -100,3 +100,18 @@ describe('usage analytics are exact sums of the ledger', () => {
     await expect(db.delete(auditLog).where(eq(auditLog.actorUserId, admin.id))).rejects.toThrow() // append-only
   })
 })
+
+describe('GET /admin/ai-honesty (claimed versus verified)', () => {
+  it('is for admins only, and reports what the settlement records say', async () => {
+    const u = await signUp('hon')
+    expect((await app.request('/api/v1/admin/ai-honesty')).status).toBe(401)
+    expect((await api(u.cookie, 'GET', '/admin/ai-honesty')).status).toBe(403)
+    const a = await adminUser()
+    const res = await api(a.cookie, 'GET', '/admin/ai-honesty?days=30')
+    expect(res.status).toBe(200)
+    const body = await json(res)
+    expect(body.data).toMatchObject({ days: 30 })
+    expect(Array.isArray(body.data.byKind)).toBe(true)
+    expect((await api(a.cookie, 'GET', '/admin/ai-honesty?days=0')).status).toBe(400)
+  })
+})

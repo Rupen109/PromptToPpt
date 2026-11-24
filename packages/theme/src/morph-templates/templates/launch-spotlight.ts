@@ -187,7 +187,7 @@ const spot = (n: number, tc: Tc, o: { k: string; title: string; body: string; ch
 
 export const LAUNCH_SPOTLIGHT = authored(
   {
-    id: 'launch-spotlight', category: 'launch', name: 'Feature Spotlight', tagline: 'Every new feature gets its own spotlight',
+    id: 'launch-spotlight', category: 'launch', fillPictures: ['p1s', 'p2s', 'p3s', 'app'], fillFrame: { app: { radius: 56, inset: 0.06 } }, name: 'Feature Spotlight', tagline: 'Every new feature gets its own spotlight',
     description: 'A bright app-release keynote: colour irises grow from a dot to fill the slide, a carousel of phones pushes one step at a time, feature icons travel from a grid into a list, and a card on the phone zooms up into the feature detail. Cover, overview, four spotlights, before and after, numbers, pricing with store badges and a QR closing.',
     audience: 'The Feature Spotlight template suits app launches, feature announcements, product updates and release notes, SaaS and mobile product tours, customer-facing launch events, internal release reviews and any talk that walks an audience through what is new.',
     topics: ['app launch', 'feature release', 'product update', 'release notes', 'software launch', 'mobile app', 'saas product launch', 'feature announcement', 'product tour', 'new version', 'whats new', 'app release', 'product launch', 'productivity app', 'roadmap update', 'changelog', 'user interface', 'startup'],

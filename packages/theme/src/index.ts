@@ -8,6 +8,9 @@ export { makeColors, type PaletteSeed } from './palette'
 export * from './templates/index'
 export * from './palettes'
 export * from './brand'
+export { brandTheme } from './brand-theme'
+export * from './slide-theme'
 export * from './deck'
 
 // the Morph templates are a separate entry point, '@prompttoppt/theme/morph-templates': their data is large and most pages never need it
+export * from './assist/index'

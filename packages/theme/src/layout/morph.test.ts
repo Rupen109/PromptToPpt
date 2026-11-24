@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { ASPECT_RATIOS, BULLET_GLYPHS, CARD_STYLES, DECOR_STYLES, MORPH_SCENES, presentationSchema, slideContentSchema, type Presentation, type SlideContent, type Theme, type ThemeStyle } from '@prompttoppt/validation'
+import { ASPECT_RATIOS as ALL_ASPECTS, BULLET_GLYPHS, CARD_STYLES, DECOR_STYLES, MORPH_SCENES, presentationSchema, slideContentSchema, type Presentation, type SlideContent, type Theme, type ThemeStyle } from '@prompttoppt/validation'
 import { THEMES, applyValidation, composeSlide } from '../index'
 import { CLASSIC } from '../samples'
 
+/** Morph decks are landscape (16:9, 4:3) or square: the vertical 9:16 format is not offered for Morph (the server refuses it), so it is not part of these checks */
+const ASPECT_RATIOS = ALL_ASPECTS.filter((a) => a !== '9:16')
 type M = Extract<SlideContent, { layout: 'morph' }>
 const text = (n: number) => 'Reducing manual handoffs between teams so customers get answers in minutes instead of days, every single time it matters'.slice(0, n)
 /** the worst case the schema allows: 4 cards with a 40-letter heading and 160 letters of text, a long title and subtitle */
@@ -34,6 +36,37 @@ describe('morph layouts: every scene is a valid, clean slide', () => {
       })
     }
   }
+
+  for (const theme of THEMES) {
+    for (const aspect of ASPECT_RATIOS) {
+      it(`${theme.id} @ ${aspect}: the flipped hand composes all twelve scenes clean too`, () => {
+        let n = 0
+        const d = doc(theme, aspect, MORPH_SCENES.map((s) => ({ ...worst(s), flip: true })), () => `e${n++}`)
+        expect(presentationSchema.safeParse(d).success).toBe(true)
+        const bad = problems(d)
+        expect(bad, JSON.stringify(bad.slice(0, 3))).toEqual([])
+      })
+    }
+  }
+
+  it('the hand swaps the picture to the other side in the five scenes that pair it with text or cards, keeps the cards in reading order, and leaves the other scenes alone', () => {
+    const theme = THEMES[0]!
+    const xOf = (flip: boolean, scene: M['scene'], id: string) => {
+      let n = 0
+      const sl = composeSlide({ ...worst(scene), flip }, theme, '16:9', () => `e${n++}`)
+      return sl.elements.find((e) => e.id === id)
+    }
+    for (const scene of ['cover', 'hero-left', 'cards-column', 'cards-grid', 'focus-hero'] as const) {
+      const a = xOf(false, scene, 'm-hero')!, b = xOf(true, scene, 'm-hero')!
+      expect(Math.abs((a.x + a.width / 2) - 960), scene).toBeGreaterThan(0) // not centred in either hand
+      expect(Math.sign(a.x + a.width / 2 - 960), scene).toBe(-Math.sign(b.x + b.width / 2 - 960)) // the other side
+      expect(a.width, scene).toBe(b.width) // the same picture, only moved
+    }
+    // cards stay in reading order (card 1 before card 2 in a row, whatever the hand)
+    for (const flip of [false, true]) { const c0 = xOf(flip, 'cards-grid', 'm-c0')!, c1 = xOf(flip, 'cards-grid', 'm-c1')!; expect(c0.x).toBeLessThan(c1.x) }
+    // a scene that does not pair the picture with a column is the same in both hands
+    for (const scene of ['cards-row', 'timeline', 'compare', 'quote', 'closing'] as const) expect(xOf(false, scene, 'm-title')!.x, scene).toBe(xOf(true, scene, 'm-title')!.x)
+  })
 
   const classic = THEMES[0]!
   const variants: [string, Partial<ThemeStyle>][] = [

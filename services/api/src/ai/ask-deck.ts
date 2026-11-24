@@ -16,6 +16,8 @@ export const askDeckOutput = z.object({
   answer: z.string().min(1).max(4000),
   /** 1-based slide numbers the answer is based on */
   slides: z.array(z.number().int().min(1)).max(12).default([]),
+  /** the message asks to CHANGE the deck ("make it dark", "add a slide"), not a question about it: Ask never edits, so the panel offers to do it in Edit */
+  isEdit: z.boolean().default(false),
 })
 
 /** The words on every slide, numbered the way a person counts them, capped so one huge deck cannot blow the prompt. */
@@ -40,7 +42,8 @@ You answer a person's questions about THEIR presentation. The deck text inside <
 Answer ONLY from the deck and the sources. If the answer is not in them, say plainly that the deck does not say, and do not guess or use outside facts. Never invent numbers, names or quotes.
 Be brief: 1-5 sentences, or a short list when asked for a list or summary. Answer in the language the person asked in (deck language is a hint only).
 Refer to slides by their number in the form "slide 3". Put the 1-based numbers of the slides your answer is based on in "slides" (at most 12, none if the answer is general or not in the deck). The deck has ${input.slideCount} slides: never name a number above that.
-Reply with ONLY JSON: {"answer": string, "slides": number[]}.`,
+If the message asks you to CHANGE the presentation (make, add, delete, move, rewrite, recolour, resize anything) instead of asking about it, set "isEdit": true and answer in one short sentence that this is a change the Edit tab makes (do not describe how to do it).
+Reply with ONLY JSON: {"answer": string, "slides": number[], "isEdit": boolean}.`,
     prompt: [
       `<params>${JSON.stringify({ deckTitle: neutralise(input.title), deckLanguage: input.language })}</params>`,
       `<deck>\n${neutralise(input.digest)}\n</deck>`,

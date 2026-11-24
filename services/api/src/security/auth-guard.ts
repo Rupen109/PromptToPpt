@@ -5,7 +5,7 @@ import { db } from '../db/index.ts'
 import { authAttempt, user } from '../db/schema.ts'
 import { env } from '../env.ts'
 import { clientIp } from '../middleware/rate-limit.ts'
-import { canonicalEmail, isDisposableEmail } from './email.ts'
+import { canonicalEmail, isDisposableEmail, signupAllowed } from './email.ts'
 
 /**
  * Abuse protection in front of Better Auth, counted from the database (shared across API instances, survives restarts):
@@ -78,7 +78,7 @@ const emailOf = async (c: Context): Promise<string> => {
   try {
     const raw = c.req.raw
     text = await raw.text()
-    c.req.raw = new Request(raw.url, { method: raw.method, headers: raw.headers, body: text })
+    c.req.raw = new Request(raw.url, { method: raw.method, headers: raw.headers, body: text, signal: raw.signal }) // (keeps the connection's abort signal)
     const body = JSON.parse(text) as { email?: unknown }
     return typeof body.email === 'string' && body.email.length <= 320 ? body.email : ''
   } catch {
@@ -99,6 +99,9 @@ export const authGuard: MiddlewareHandler = async (c, next) => {
     if (!env.ALLOW_DISPOSABLE_EMAILS && isDisposableEmail(email, env.EXTRA_BLOCKED_EMAIL_DOMAINS)) {
       return c.json({ code: 'INVALID_EMAIL_DOMAIN', message: 'Please sign up with a permanent email address.' }, 422)
     }
+    // QA is invite-only. Said here, plainly: Better Auth hides a refusal from its own hook behind a "check your email" reply (it never reveals which addresses exist),
+    // so an uninvited tester would wait for a mail that never comes. The hook in auth.ts still refuses Google/Microsoft sign-ups, which do not pass this route.
+    if (!signupAllowed(email, env.SIGNUP_ALLOWED_EMAILS)) return c.json({ code: 'SIGNUP_INVITE_ONLY', message: 'Sign-up on this test site is by invitation only.' }, 403)
     const slot = await reserve('signup', ip, canon)
     const [h, d, e] = await Promise.all([recent('signup', 'ip', ip, HOUR), recent('signup', 'ip', ip, DAY), recent('signup', 'subject', canon, DAY)]) // each includes this request
     if (h > L.signupIpHour) { await release(slot); return tooMany(c, 3600, 'Too many sign-ups from this network. Please try again in an hour.') }

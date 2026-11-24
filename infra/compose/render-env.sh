@@ -8,6 +8,7 @@ umask 077
 {
   echo "NODE_ENV=production"
   echo "PORT=4000"
+  # the live site before the public launch (owner, 2026-11-24): Razorpay TEST keys, so not "production" (which needs live keys); at launch: APP_ENV=production, live keys, a fresh database
   echo "APP_ENV=staging"
   echo "DOMAIN=$DOMAIN"
   echo "API_URL=https://api.$DOMAIN"
@@ -16,7 +17,12 @@ umask 077
   echo "COOKIE_DOMAIN=.$DOMAIN"
   echo "TRUSTED_PROXY_HOPS=1"
   echo "RUN_WORKER=true"
-  echo "AI_PROVIDER=gemini" # Gemini through AI Studio (key GEMINI_API_KEY; same as local dev; vertex only with a Vertex AI key); OpenRouter later: store AI_PROVIDER=openrouter + OPENROUTER_API_KEY in Parameter Store (it overrides this)
+  echo "AI_PROVIDER=gemini" # Gemini through AI Studio, key GEMINI_API_KEY in Parameter Store
+  # the PAID key (a Google project with billing): every model and AI pictures; Google bills real use
+  echo "AI_KEY_TIER=paid"
+  echo "COOKIE_PREFIX=slidesdone"
+  # sign-up stays invite-only until the public launch (test payments + the paid AI key): SIGNUP_ALLOWED_EMAILS (addresses and @domains, comma separated) is stored in
+  # Parameter Store and written below; remove it there to open sign-up
   echo "ASSET_STORAGE=s3"
   echo "ASSET_BUCKET=$ASSETS_BUCKET"
   echo "ASSET_REGION=$AWS_REGION"
@@ -29,3 +35,6 @@ mv .env.new .env
 PW="$(grep '^POSTGRES_PASSWORD=' .env | cut -d= -f2-)"
 [ -n "$PW" ] || { echo "POSTGRES_PASSWORD is missing in Parameter Store: run infra/scripts/put-secrets.sh first" >&2; exit 1; }
 echo "DATABASE_URL=postgres://slidesdone:$PW@postgres:5432/slidesdone" >> .env
+# the OpenRouter backup stays off until a real OpenRouter key is stored and checked (docs/AI_EDIT_V3_ARCHITECTURE.md, "AI provider")
+sed -i '/^AI_BACKUP_PROVIDER=/d' .env
+echo "AI_BACKUP_PROVIDER=none" >> .env

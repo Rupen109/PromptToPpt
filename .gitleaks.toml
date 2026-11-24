@@ -1,0 +1,21 @@
+# Secret scan settings (CI job "secrets", .github/workflows/ci.yml). Gitleaks' default rules, plus the known NON-secrets found in this repository's history
+# (checked one by one 2026-11-24). Add an entry only after checking the value is not a real credential; a real leaked key must be rotated, never allowlisted.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "fake values in tests, and Figma's expired signed download links"
+# test-only fake keys and passwords (unit tests never use real keys: services/api/vitest.config.ts injects fakes)
+regexes = [
+  '''test-key-1234\.abcdef''',
+  '''xkeysib-test-0123456789''',
+  '''re_test_0123456789''',
+  '''edge-secret-0123456789-abcdef''',
+  '''wrong-secret-wrong-secret-1234''',
+  '''third-long-pass-3''',
+  '''abcdefghijklmnopqrstuvwxyz123456''', # the made-up reset token of e2e suite 46
+]
+# a Figma export: its image links are S3 URLs signed by Figma (Figma's own AWS key id, no secret, long expired); not a credential of ours
+paths = [
+  '''^figma_data\.json$''',
+]

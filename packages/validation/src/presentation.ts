@@ -9,7 +9,8 @@ import { SHAPE_PATH_IDS } from './shapes'
 
 export const SCHEMA_VERSION = 1
 
-export const ASPECT_RATIOS = ['16:9', '4:3', '1:1'] as const
+/** 16:9 screens, 4:3 classic, 1:1 social posts, 9:16 vertical stories and reels (phones) */
+export const ASPECT_RATIOS = ['16:9', '4:3', '1:1', '9:16'] as const
 export const aspectRatioSchema = z.enum(ASPECT_RATIOS)
 export type AspectRatio = z.infer<typeof aspectRatioSchema>
 
@@ -17,6 +18,7 @@ export const CANVAS: Record<AspectRatio, { width: number; height: number }> = {
   '16:9': { width: 1920, height: 1080 },
   '4:3': { width: 1440, height: 1080 },
   '1:1': { width: 1080, height: 1080 },
+  '9:16': { width: 1080, height: 1920 },
 }
 
 /** A web link. `z.url()` alone accepts `javascript:` and `data:` URLs (stored XSS the moment a viewer clicks), so every URL in a document goes through this. */
@@ -202,6 +204,8 @@ export const themeStyleSchema = z.object({
   diagram: z.enum(['classic', 'editorial']).default('classic'),
   bullet: z.enum(BULLET_GLYPHS).default('•'),
   footer: z.enum(['none', 'number', 'brand']).default('none'),
+  /** the words at the bottom left of every slide when the footer shows the deck title (the person's own text instead of the deck's title) */
+  footerText: z.string().max(80).optional(),
   bodyBackground: z.enum(['solid', 'tint', 'gradient']).default('solid'),
   titleBackground: z.enum(['primary', 'gradient', 'dark', 'surface', 'accent']).default('primary'),
   headingWeight: z.number().int().min(300).max(900).default(800),
@@ -236,7 +240,7 @@ export const themeSchema = z.object({
   /** the company's brand (from "use my brand"): its logo is drawn on every slide by the layout engine, and it survives template and palette changes */
   brand: z.object({
     name: z.string().max(80).optional(),
-    logo: z.object({ src: httpUrl, /** width ÷ height */ aspect: z.number().min(0.2).max(6) }).optional(),
+    logo: z.object({ src: httpUrl, /** width ÷ height */ aspect: z.number().min(0.2).max(6), /** where along the bottom margin it sits (left by default) */ align: z.enum(['left', 'center', 'right']).optional() }).optional(),
   }).optional(),
 })
 export type Theme = z.infer<typeof themeSchema>
@@ -249,11 +253,16 @@ const box = {
   hidden: z.boolean().optional(),
   /** the name a person gave this object in the Selection pane (the Animation pane and the Morph check show it); never used to match objects for Morph, only ids are */
   label: z.string().max(80).optional(),
+  /** objects of one slide with the same group id are a GROUP: they are selected, moved, resized, copied and deleted together (the file for PowerPoint lists them as separate objects) */
+  groupId: z.string().max(40).optional(),
   x: z.number(),
   y: z.number(),
   width: z.number().positive(),
   height: z.number().positive(),
   rotation: z.number().default(0),
+  /** mirrored left-right / upside down inside its own box (pictures and shapes only: see rotation.ts `canFlip`) */
+  flipH: z.boolean().optional(),
+  flipV: z.boolean().optional(),
   locked: z.boolean().default(false),
   zIndex: z.number().int().default(0),
   opacity: z.number().min(0).max(1).default(1),
@@ -272,6 +281,8 @@ const textRunSchema = z.object({
   /** emphasis colour for a word or phrase (theme token or hex) — e.g. the key figure in a heading */
   color: z.union([z.enum(['textPrimary', 'textSecondary', 'primary', 'secondary', 'accent', 'onPrimary']), hex]).optional(),
   link: httpUrl.optional(),
+  /** a marker colour behind these words (hex), as a highlighter (text-effects.ts) */
+  highlight: hex.optional(),
 })
 const paragraphSchema = z.object({
   runs: z.array(textRunSchema).min(1),
@@ -286,7 +297,7 @@ export const textElementSchema = z.object({
   role: z.enum(TEXT_ROLES),
   paragraphs: z.array(paragraphSchema).min(1),
   fontSize: z.number().min(4).max(600), // a Morph template's giant headline can be up to 600 px
-  align: z.enum(['left', 'center', 'right']).default('left'),
+  align: z.enum(['left', 'center', 'right', 'justify']).default('left'), // justify: both edges straight, the last line of a paragraph at its start (as PowerPoint)
   /** theme token name or explicit hex; resolved at render/export time */
   color: z.union([z.enum(['textPrimary', 'textSecondary', 'primary', 'secondary', 'accent', 'onPrimary']), hex]).default('textPrimary'),
   valign: z.enum(['top', 'middle', 'bottom']).default('top'),
@@ -297,6 +308,10 @@ export const textElementSchema = z.object({
   lineHeight: z.number().min(0.7).max(2.2).optional(),
   /** space between paragraphs, in multiples of the font size (default 0.5) */
   paraGap: z.number().min(0).max(2).optional(),
+  /** a shadow under the letters of the whole box (text-effects.ts) */
+  textShadow: z.enum(['soft', 'strong']).optional(),
+  /** an outline round the letters of the whole box: a theme colour or hex, and its width in slide pixels */
+  textOutline: z.object({ color: z.union([z.enum(['textPrimary', 'textSecondary', 'primary', 'secondary', 'accent', 'onPrimary']), hex]), width: z.number().min(0.5).max(12) }).optional(),
   /** the grey prompt the EDITOR shows while this box is empty ("Click to add title"): a box of a new slide that nobody has typed in yet. Never drawn in thumbnails, Present, the shared view or any export. */
   hint: z.string().max(80).optional(),
 })
@@ -313,6 +328,17 @@ export const imageElementSchema = z.object({
   fit: z.enum(['cover', 'contain']).default('cover'),
   /** crop shape: circle, arch (rounded top), or angled sides — the editorial photo crops premium templates use */
   clip: z.enum(['none', 'circle', 'arch', 'diagonal', 'diagonal-flip', 'hex']).default('none'),
+  /** a cut-out rectangle of the picture, as fractions of the whole picture (0-1): only that part is shown, stretched to the frame (the editor sizes the frame to the cut-out so nothing is distorted). Zoom and position are not used on a cropped picture. */
+  crop: z.object({ x: z.number().min(0).max(0.98), y: z.number().min(0).max(0.98), w: z.number().min(0.02).max(1), h: z.number().min(0.02).max(1) }).refine((c) => c.x + c.w <= 1.0001 && c.y + c.h <= 1.0001, { message: 'the crop must stay inside the picture' }).optional(),
+  /** zoom into the picture (1 = not zoomed) around `focus` (0-1 each way; the middle by default): what shows is part of the picture, the frame keeps its size */
+  zoom: z.number().min(1).max(5).optional(),
+  focus: z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) }).optional(),
+  /** light adjustments (1 = unchanged; grayscale 0 = colour, 1 = black and white) */
+  filter: z.object({ brightness: z.number().min(0.2).max(2).default(1), contrast: z.number().min(0.2).max(2).default(1), grayscale: z.number().min(0).max(1).default(0), /** colour: 0 none … 1 as it is … 2 vivid */ saturation: z.number().min(0).max(2).optional(), /** -1 cool … 1 warm */ warmth: z.number().min(-1).max(1).optional(), /** a soft-focus blur, canvas units (0 = sharp) */ blur: z.number().min(0).max(30).optional() }).optional(),
+  /** a line round the inside of the picture's frame, following its cut shape: a theme colour or hex, and its width */
+  border: z.object({ color: z.union([z.enum(['textPrimary', 'textSecondary', 'primary', 'secondary', 'accent', 'onPrimary', 'surface', 'background']), hex]), width: z.number().min(1).max(40) }).optional(),
+  /** a soft shadow behind the picture (follows its cut shape) */
+  shadow: z.enum(['none', 'soft', 'strong']).optional(),
   /** colour wash over the picture (keeps text on top readable / ties a photo to the palette) */
   overlay: z.object({ from: hexa, to: hexa, angle: z.number().default(180), opacity: z.number().min(0).max(1).default(0.6) }).optional(),
   /** corner radius override (px); defaults to the theme radius */
@@ -330,9 +356,13 @@ export const shapeElementSchema = z.object({
   points: z.array(z.tuple([z.number().min(-1).max(2), z.number().min(-1).max(2)])).min(3).max(64).optional(),
   fill: z.union([z.enum(['surface', 'primary', 'secondary', 'accent', 'background', 'text', 'onPrimary', 'none']), hex]).default('surface'),
   radius: z.number().min(0).default(0),
-  gradient: z.object({ from: hex, to: hex, angle: z.number().min(0).max(360).default(135) }).optional(),
+  gradient: z.object({ from: hex, to: hex, angle: z.number().min(0).max(360).default(135), /** linear (along the angle) or radial (from the middle out to the corners); absent = linear */ kind: z.enum(['linear', 'radial']).optional() }).optional(),
   stroke: z.union([z.enum(['primary', 'secondary', 'accent', 'text', 'onPrimary']), hex]).optional(),
   strokeWidth: z.number().min(0).max(80).optional(),
+  /** the outline (or, for a line, the line itself) dashed or dotted; absent = solid (stroke.ts) */
+  strokeDash: z.enum(['dash', 'dot']).optional(),
+  /** a shadow under the shape (the pictures' presets: picture.ts PICTURE_SHADOWS), following its outline */
+  shadow: z.enum(['none', 'soft', 'strong']).optional(),
 })
 
 export const iconElementSchema = z.object({ type: z.literal('icon'), ...box, name: z.string().max(60), color: z.string().default('primary') })
@@ -340,12 +370,22 @@ export const iconElementSchema = z.object({ type: z.literal('icon'), ...box, nam
 export const chartElementSchema = z.object({
   type: z.literal('chart'),
   ...box,
-  chartType: z.enum(['bar', 'line', 'pie', 'doughnut']),
+  chartType: z.enum(['bar', 'line', 'area', 'scatter', 'pie', 'doughnut']),
   labels: z.array(z.string()).min(1).max(24),
   series: z.array(z.object({ name: z.string(), values: z.array(z.number()) })).min(1).max(6),
   unit: z.string().max(16).optional(),
   /** the figures are stand-ins (a chart kept from a design the person uploaded): the editor shows "Sample data - edit this chart" until the person saves their own data. Never drawn in exports or Present. */
   placeholder: z.boolean().optional(),
+  /** colours chosen in the editor: one per series (bar, line) or per slice (pie, doughnut); unset = the deck's own colours */
+  colors: z.array(hex).max(24).optional(),
+  /** where the legend goes; unset = automatic (shown for several series and for pie and doughnut, at the bottom or the right) */
+  legend: z.enum(['none', 'bottom', 'right']).optional(),
+  /** a straight trend line for every series of a bar or line chart */
+  trendline: z.boolean().optional(),
+  /** the figure on each bar, point or slice; unset = automatic */
+  dataLabels: z.boolean().optional(),
+  /** bars of several series on top of each other (`stacked`), or as shares of each category's total (`percent`); unset = side by side. Bar charts only (chart-style.ts) */
+  stack: z.enum(['stacked', 'percent']).optional(),
 })
 
 export const tableElementSchema = z.object({
@@ -353,12 +393,20 @@ export const tableElementSchema = z.object({
   ...box,
   header: z.array(z.string()).min(1).max(8),
   rows: z.array(z.array(z.string())).max(20),
+  /** text size in canvas units; unset = 30 (a tall slide has the room for larger text) */
+  fontSize: z.number().min(14).max(80).optional(),
   /** colours chosen in the editor; unset = the deck's theme colours */
   headerFill: hex.or(z.literal('none')).optional(),
   headerColor: hex.optional(),
   rowFill: hex.or(z.literal('none')).optional(),
   altRowFill: hex.or(z.literal('none')).optional(),
   textColor: hex.optional(),
+  /** cells given their own colour (the biggest figure of a column, for example): row and column count from 0, rows excluding the header */
+  highlights: z.array(z.object({ row: z.number().int().min(0).max(19), column: z.number().int().min(0).max(7), fill: hex })).max(40).optional(),
+  /** merged cells (table-merge.ts): the top-left cell of each area and its size; row -1 = the header row (merges only across), 0 = the first row below it */
+  merges: z.array(z.object({ row: z.number().int().min(-1).max(19), column: z.number().int().min(0).max(7), rows: z.number().int().min(1).max(20), columns: z.number().int().min(1).max(8) })).max(40).optional(),
+  /** a cell's own alignment (table-merge.ts alignOf): row -1 = the header; h across, v up and down */
+  aligns: z.array(z.object({ row: z.number().int().min(-1).max(19), column: z.number().int().min(0).max(7), h: z.enum(['left', 'center', 'right']).optional(), v: z.enum(['top', 'middle', 'bottom']).optional() })).max(200).optional(),
   borderColor: hex.optional(),
 })
 
@@ -408,6 +456,8 @@ export const slideSchema = z.object({
   locked: z.boolean().default(false),
   /** true once the user hand-edited geometry/text: theme/layout swaps then preserve their elements instead of recomposing */
   manual: z.boolean().optional(),
+  /** true when this slide is a copy of a slide of the person's OWN uploaded file (their template): its design belongs to that file, so the assistant changes its words, not its design */
+  fromFile: z.boolean().optional(),
   /**
    * true once a person (or the assistant) chose this slide's OWN look: its background (colour, gradient or picture) and the text colours that go with it.
    * This is NOT hand-editing: the slide stays a designed slide (its words and layout can still be changed, by the assistant too), and whenever the layout is
@@ -416,11 +466,24 @@ export const slideSchema = z.object({
   ownLook: z.boolean().optional(),
   /** set while generation has not written this slide yet: the slide is a titled placeholder (no elements) that the editor shows as "being written" and does not let anyone edit; the writer replaces the whole slide when its text lands */
   writing: z.object({ title: z.string().max(200) }).optional(),
-  background: z.object({ type: z.enum(['color', 'gradient', 'image']), value: z.string().max(2048), gradient: z.object({ from: hex, to: hex, angle: z.number().min(0).max(360).default(135) }).optional() }).refine((b) => b.type !== 'image' || /^https?:\/\//i.test(b.value), { message: 'an image background must be an http(s) URL' }).optional(),
+  background: z.object({ type: z.enum(['color', 'gradient', 'image']), value: z.string().max(2048), gradient: z.object({ from: hex, to: hex, angle: z.number().min(0).max(360).default(135), /** linear (along the angle) or radial (from the middle out to the corners); absent = linear */ kind: z.enum(['linear', 'radial']).optional() }).optional(), /** a background picture softened (canvas units; 0 = sharp), e.g. so the slide's text reads over it */ blur: z.number().min(0).max(30).optional(), /** a pattern over a colour background (background-pattern.ts) */ pattern: z.object({ kind: z.enum(['dots', 'grid', 'lines', 'diagonal']), color: hex, opacity: z.number().min(0.02).max(1), size: z.number().min(16).max(200) }).optional() }).refine((b) => b.type !== 'image' || /^https?:\/\//i.test(b.value), { message: 'an image background must be an http(s) URL' }).optional(),
   transition: transitionSchema.optional(),
   /** this slide's object effects, in play order (Gold and Premium; absent on most slides) */
   effects: z.array(effectSchema).max(200).optional(),
   themeOverrides: themeSchema.shape.colors.partial().optional(),
+  /**
+   * A brand applied to THIS slide only ("apply my brand to slides 1 to 5"): the brand's own inputs, not a frozen palette, so its colours are worked out against the
+   * deck's design in force (packages/theme slide-theme.ts). Colours need primary + accent, fonts need both families; the logo is drawn on this slide.
+   * themeOverrides (the slide's own look) still sit on top of it.
+   */
+  brand: z.object({
+    name: z.string().max(80).nullable().optional(),
+    primary: hex.optional(),
+    accent: hex.optional(),
+    headingFont: z.string().min(1).max(80).optional(),
+    bodyFont: z.string().min(1).max(80).optional(),
+    logo: z.object({ url: z.string().max(2048), aspect: z.number().positive().max(20) }).optional(),
+  }).optional(),
   elements: z.array(elementSchema).max(400),
   /** stored separately from visible content (spec §9) */
   speakerNotes: z.string().max(5000).default(''),
@@ -483,6 +546,8 @@ export const slideContentSchema = z.discriminatedUnion('layout', [
     scene: short(40),
     /** the words of the scene, by the id of the text object they replace (a scene's own placeholder words are used for any that are missing) */
     fields: z.record(short(80), z.string().max(900)).default({}),
+    /** the deck shows the person's own product in place of the template's (see MorphTemplate.swap): what only fits the original product is left out */
+    swapped: z.boolean().optional(),
     /** pictures chosen for the scene, by the id of the picture object they replace (a template's own pictures are used for any that are missing) */
     images: z.record(short(80), z.object({ url: httpUrl, alt: z.string().max(200).default(''), attribution: z.object({ source: z.string().max(200), license: z.string().max(80), url: httpUrl.optional() }).optional() })).default({}),
     ...common,
@@ -498,6 +563,8 @@ export const slideContentSchema = z.discriminatedUnion('layout', [
     items: z.array(z.object({ heading: short(40), text: short(160) })).max(4).default([]),
     /** spotlight: which item is enlarged (0-3) */
     focus: z.number().int().min(0).max(3).optional(),
+    /** the deck's "hand": the picture and the text column of the five scenes that pair them swap sides (the same on every slide of a deck, so the Morph stays one piece; the order of the cards never flips) */
+    flip: z.boolean().optional(),
     stat: z.object({ value: short(16), label: short(80) }).optional(),
     imagePrompt: short(300).optional(),
     imageAlt: short(200).optional(),
@@ -539,7 +606,7 @@ export const slideContentSchema = z.discriminatedUnion('layout', [
   z.object({
     layout: z.literal('chart'),
     title: short(90),
-    chartType: z.enum(['bar', 'line', 'pie', 'doughnut']),
+    chartType: z.enum(['bar', 'line', 'area', 'scatter', 'pie', 'doughnut']),
     labels: z.array(short(30)).min(2).max(12),
     series: z.array(z.object({ name: short(40), values: z.array(z.number()) })).min(1).max(4),
     unit: short(16).optional(),

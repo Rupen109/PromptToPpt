@@ -1,7 +1,13 @@
-name: Deploy (test environment)
+name: Deploy (slidesdone.app)
 
-# Started by hand: GitHub -> Actions -> "Deploy (test environment)" -> Run workflow. Nothing deploys on its own.
+# ONE live site, https://slidesdone.app, from the `master` branch (docs/RELEASES.md). The `qa` branch is tested on the owner's own machine and deploys nothing.
+# A release: open a pull request qa -> master and merge it. This workflow runs CI, then WAITS for the owner's approval (GitHub environment "production",
+# required reviewer) before anything is built or published.
+# By hand: Actions -> "Deploy (slidesdone.app)" -> Run workflow (branch master), e.g. to redeploy only the API or only the settings.
+# The server's AWS resources keep their first name, "test" (ENVNAME).
 on:
+  push:
+    branches: [master]
   workflow_dispatch:
     inputs:
       what:
@@ -19,20 +25,31 @@ on:
 permissions:
   contents: read
 
-# one deploy at a time
+# one deploy at a time, never cancelled half way
 concurrency:
-  group: deploy-test
+  group: deploy
   cancel-in-progress: false
 
 jobs:
+  ci:
+    if: github.ref == 'refs/heads/master'
+    uses: ./.github/workflows/ci.yml
+
   deploy:
+    needs: ci
+    if: github.ref == 'refs/heads/master'
     # ARM runner: the server is an ARM machine, so the images are built natively (no slow emulation)
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 60
+    # the approval gate: the job waits here until a required reviewer approves it in GitHub
+    environment:
+      name: production
+      url: https://slidesdone.app
     env:
       AWS_REGION: ap-southeast-2
       ENVNAME: test
       DOMAIN: slidesdone.app
+      # Google sign-in needs https://api.slidesdone.app/api/auth/callback/google in the Google Cloud OAuth client's redirect URIs
       NEXT_PUBLIC_GOOGLE_AUTH: 'true'
       NEXT_PUBLIC_MICROSOFT_AUTH: 'false'
     steps:
@@ -46,5 +63,22 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version-file: .nvmrc, cache: pnpm }
       - run: pnpm install --frozen-lockfile
+      # from the public launch (repository variable PROD_RELEASE_CHECK = true): stop before anything is built while a legal-page owner field is still TODO
+      - name: Legal pages are ready
+        if: vars.PROD_RELEASE_CHECK == 'true'
+        run: RELEASE_CHECK=1 node scripts/check-legal.mjs
+      # a database backup before every deploy (the server also takes one twice a day)
+      - name: Back up the database
+        run: |
+          I=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=slidesdone-$ENVNAME-server" "Name=instance-state-name,Values=running" --query 'Reservations[0].Instances[0].InstanceId' --output text)
+          C=$(aws ssm send-command --instance-ids "$I" --document-name AWS-RunShellScript --comment "backup before deploy ${GITHUB_SHA::7}" --parameters 'commands=["bash /opt/slidesdone/backup.sh"]' --query Command.CommandId --output text)
+          for _ in $(seq 1 60); do S=$(aws ssm get-command-invocation --command-id "$C" --instance-id "$I" --query Status --output text 2>/dev/null || echo Pending); case "$S" in Success|Failed|Cancelled|TimedOut) break ;; esac; sleep 5; done
+          echo "backup: $S"; [ "$S" = Success ]
       - name: Build, publish and restart
-        run: infra/scripts/deploy.sh ${{ inputs.what }}
+        run: infra/scripts/deploy.sh ${{ inputs.what || 'api web editor' }}
+      - name: The site answers
+        run: |
+          for u in https://slidesdone.app https://api.slidesdone.app/health https://app.slidesdone.app; do
+            for _ in $(seq 1 30); do code=$(curl -s -o /dev/null -w '%{http_code}' -m 10 "$u" || true); [ "$code" = 200 ] && break; sleep 10; done
+            echo "$u -> $code"; [ "$code" = 200 ] || exit 1
+          done

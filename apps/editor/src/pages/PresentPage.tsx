@@ -16,7 +16,8 @@ export function PresentPage() {
   const { ent, upgrade } = useEntitlements()
   const [deck, setDeck] = useState<LoadedPresentation | null>(null)
   const [failed, setFailed] = useState(false)
-  const [i, setI] = useState(0)
+  // ?slide=N: present from slide N (the assistant's "present from this slide"); clamped to the deck once it is loaded
+  const [i, setI] = useState(() => Math.max(0, (Number(new URLSearchParams(window.location.search).get('slide')) || 1) - 1))
   const [arrival, setArrival] = useState<'forward' | 'back'>('forward') // a slide you come back to is shown finished, the way you left it
   const [notes, setNotes] = useState(false)
   const [size, setSize] = useState({ w: window.innerWidth, h: window.innerHeight })
@@ -31,7 +32,7 @@ export function PresentPage() {
     navigate(`/edit/${id}`, { replace: true })
   }, [locked, id, navigate, upgrade])
   useEffect(() => {
-    api.getPresentation(id).then(setDeck).catch(() => setFailed(true))
+    api.getPresentation(id).then((p) => { setI((x) => Math.min(x, Math.max(0, p.document.slides.length - 1))); setDeck(p) }).catch(() => setFailed(true)) // (a start slide past the end: the last slide)
   }, [id])
   useEffect(() => {
     const on = () => setSize({ w: window.innerWidth, h: window.innerHeight })
@@ -109,7 +110,7 @@ export function PresentPage() {
           const t = (morph.dir === 1 ? doc.slides[morph.to] : slide)!.transition!
           return <MorphLayer from={slide} to={doc.slides[morph.to]!} theme={doc.theme} aspect={doc.aspectRatio} width={width} duration={t.duration ?? MORPH_DEFAULTS.duration} easing={easingCss(t.easing ?? MORPH_DEFAULTS.easing)} blend={t.blend ?? 'through'} by={t.by ?? 'object'} watermark={ent?.features.watermark ?? false} hiddenFrom={morph.hidden} handleRef={morphHandle} onDone={onMorphDone} />
         })()
-      ) : <div key={slide.id} ref={rootRef} style={morphed ? {} : Object.keys(transitionStyle(slide, doc.theme.motion?.transition)).length ? transitionStyle(slide, doc.theme.motion?.transition) : { animation: 'deckFade 300ms ease' }}><SlideCanvas slide={slide} theme={doc.theme} aspect={doc.aspectRatio} width={width} play effects watermark={ent?.features.watermark ?? false} /></div>}
+      ) : <div key={slide.id} ref={rootRef} style={morphed ? {} : Object.keys(transitionStyle(slide, doc.theme.motion?.transition)).length ? transitionStyle(slide, doc.theme.motion?.transition) : { animation: 'deckFade 300ms ease' }}><SlideCanvas slide={slide} theme={doc.theme} aspect={doc.aspectRatio} width={width} play effects watermark={ent?.features.watermark ?? false} footer={{ index: i, total: doc.slides.length, title: doc.title }} /></div>}
       <div className="fixed bottom-3 left-1/2 -translate-x-1/2 text-xs text-white/60" aria-live="polite">{i + 1} / {n} · ←/→ navigate · N notes · F fullscreen · Esc exit</div>
       {notes && <div className="fixed left-0 right-0 bottom-0 bg-black/85 text-white p-6 text-lg leading-relaxed max-h-[40vh] overflow-y-auto" role="region" aria-label="Speaker notes">{slide.speakerNotes || <span className="text-white/50">No notes for this slide.</span>}</div>}
     </div>

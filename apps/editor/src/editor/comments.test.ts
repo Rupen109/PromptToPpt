@@ -32,7 +32,7 @@ describe('mentions', () => {
 })
 
 describe('unread', () => {
-  const t = (mine: boolean, at: string) => ({ id: 't', slideId: 's', x: null, y: null, status: 'open' as const, createdAt: at, resolvedAt: null, resolvedByName: null, comments: [{ id: 'c', authorId: 'a', authorName: 'A', body: 'x', createdAt: at, editedAt: null, mine }] })
+  const t = (mine: boolean, at: string) => ({ id: 't', slideId: 's', x: null, y: null, elementId: null, status: 'open' as const, createdAt: at, resolvedAt: null, resolvedByName: null, comments: [{ id: 'c', authorId: 'a', authorName: 'A', body: 'x', createdAt: at, editedAt: null, mine }] })
   it('only other people\'s comments newer than the last visit count', () => {
     const seen = '2026-10-16T10:00:00.000Z'
     expect(isUnread(t(false, '2026-10-16T10:00:01.000Z'), seen)).toBe(true)

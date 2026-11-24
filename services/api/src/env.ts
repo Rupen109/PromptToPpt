@@ -37,6 +37,10 @@ const schema = z
     WORKER_PORT: z.coerce.number().int().min(0).default(0),
     TRUSTED_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(0),
     COOKIE_DOMAIN: optional(z.string().regex(/^\.[a-z0-9.-]+$/i, 'must start with a dot, e.g. .slidesdone.app')),
+    /** the login cookie's name prefix. QA sets its own (slidesdone-qa) so its login never mixes with production's, whose cookie also reaches *.slidesdone.app */
+    COOKIE_PREFIX: z.string().regex(/^[a-z0-9-]+$/i).default('better-auth'),
+    /** invite-only sign-up (QA): comma list of addresses and "@domain"s; empty = everyone (production) */
+    SIGNUP_ALLOWED_EMAILS: optional(z.string()),
     DATABASE_URL: z.string().startsWith('postgres'),
     AUTH_SECRET: z.string().min(32, 'AUTH_SECRET must be at least 32 characters'),
     GOOGLE_CLIENT_ID: optional(z.string()),
@@ -56,6 +60,20 @@ const schema = z
     /** 'mock' runs the deterministic MockProvider (no key needed; used by tests and key-less dev) */
     /** which backend serves the model catalogue: gemini (AI Studio) | vertex | openrouter (production) | ollama (load tests) | mock (all, deterministic) */
     AI_PROVIDER: z.enum(['gemini', 'vertex', 'openrouter', 'ollama', 'mock']).default('gemini'),
+    /**
+     * paid = a key on a billing account (production). free = a key from a Google project with NO billing (local dev and QA): Google never charges it, it serves only
+     * some models (catalogue column free_tier) with daily caps, so only those are offered, 3.1 Pro and AI pictures are off, and Flash-Lite backs up the Flash models.
+     */
+    AI_KEY_TIER: z.enum(['paid', 'free']).default('paid'),
+    /**
+     * The BACKUP behind Gemini (AI_PROVIDER gemini | vertex): `openrouter` serves the SAME Gemini models through OpenRouter when Gemini refuses (credit used up, the tier's
+     * limits, an outage) or is too busy. Needs OPENROUTER_API_KEY; `none` = Gemini only.
+     */
+    AI_BACKUP_PROVIDER: z.enum(['none', 'openrouter']).default('none'),
+    /** development only: OpenRouter's address, to point the backup at a local stand-in for a switch-over test (e2e/ai-backup-switch) */
+    OPENROUTER_BASE_URL: z.string().url().optional(),
+    /** development only: make the MAIN provider refuse every call with this HTTP status (402 = credit used up, 429 = busy) to prove the backup takes over */
+    AI_TEST_MAIN_REFUSAL: z.enum(['402', '429', '503']).optional(),
     /** Razorpay (test keys start rzp_test_). Key id is public (sent to checkout.js); the secret and webhook secret never leave the server. */
     RAZORPAY_KEY_ID: optional(z.string().regex(/^rzp_(test|live)_/, 'must look like rzp_test_… or rzp_live_…')),
     RAZORPAY_KEY_SECRET: optional(z.string().min(8)),
@@ -92,6 +110,10 @@ const schema = z
     ASSET_REGION: optional(z.string()),
     /** kill switch: set false to stop all picture generation instantly (cost control) */
     IMAGES_ENABLED: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
+    /** Which background removal provider to use (media/bg-providers.ts). It only CHOOSES among providers; it cannot approve one: in production a provider that is not approved in code is refused, and nothing is approved yet (docs/BACKGROUND_REMOVAL_EVALUATION.md). */
+    BACKGROUND_REMOVAL_PROVIDER: z.string().optional(),
+    /** key of the Photoroom Remove Background API (the production provider); without it background removal is not offered. Start it with `sandbox_` to test (results carry a watermark). */
+    PHOTOROOM_API_KEY: z.string().optional(),
     /** live-editing event bus: `memory` (one API process) or `pg` (Postgres LISTEN/NOTIFY — use whenever more than one API task runs). */
     LIVE_BUS: z.enum(['memory', 'pg']).default(PROD ? 'pg' : 'memory'),
     // ── reading uploaded files (Word / Excel / CSV / email / PDF / PowerPoint) happens in short-lived worker threads so a heavy or hostile file cannot freeze or exhaust the API ──
@@ -174,9 +196,12 @@ const schema = z
   .refine((e) => e.NODE_ENV !== 'production' || e.APP_ENV !== 'development', { message: 'NODE_ENV=production cannot run with APP_ENV=development' })
   .refine((e) => e.NODE_ENV !== 'production' || e.TRUSTED_PROXY_HOPS >= 1, { message: 'production runs behind a proxy: set TRUSTED_PROXY_HOPS (ALB only = 1, CloudFront + ALB = 2) or every user shares one rate-limit bucket' })
   .refine((e) => e.NODE_ENV !== 'production' || e.AI_PROVIDER !== 'mock', { message: 'AI_PROVIDER=mock must never run in production' })
+  .refine((e) => e.APP_ENV !== 'production' || e.AI_KEY_TIER === 'paid', { message: 'AI_KEY_TIER=free is for local dev and QA: production needs a paid key (customers would hit the free daily caps)' })
   .refine((e) => e.NODE_ENV !== 'production' || (new Set(e.AUTH_SECRET).size >= 12 && !/(ci-only|change-?me|secret|password|example|test)/i.test(e.AUTH_SECRET)), { message: 'AUTH_SECRET looks like a placeholder: generate one with `openssl rand -base64 48`' })
   .refine((e) => e.NODE_ENV !== 'production' || (e.REQUIRE_EMAIL_VERIFICATION && (!!e.RESEND_API_KEY || !!e.BREVO_API_KEY) && !!e.EMAIL_FROM), { message: 'production requires REQUIRE_EMAIL_VERIFICATION=true with RESEND_API_KEY or BREVO_API_KEY, and EMAIL_FROM (unverified accounts would be unlimited free-credit farms)' })
   .refine((e) => e.AI_PROVIDER !== 'openrouter' || !!e.OPENROUTER_API_KEY, { message: 'AI_PROVIDER=openrouter requires OPENROUTER_API_KEY' })
+  .refine((e) => e.AI_BACKUP_PROVIDER !== 'openrouter' || !!e.OPENROUTER_API_KEY, { message: 'AI_BACKUP_PROVIDER=openrouter requires OPENROUTER_API_KEY' })
+  .refine((e) => e.NODE_ENV !== 'production' || (!e.OPENROUTER_BASE_URL && !e.AI_TEST_MAIN_REFUSAL), { message: 'OPENROUTER_BASE_URL and AI_TEST_MAIN_REFUSAL are switch-over test settings and must never be set in production' })
   .refine((e) => e.AI_PROVIDER !== 'ollama' || !!e.OLLAMA_API_KEY || /^https?:\/\/(localhost|127\.0\.0\.1)/.test(e.OLLAMA_BASE_URL), { message: 'AI_PROVIDER=ollama requires OLLAMA_API_KEY (a local Ollama needs none)' })
   .refine((e) => e.NODE_ENV !== 'production' || e.AI_PROVIDER !== 'ollama', { message: 'AI_PROVIDER=ollama is for load tests and must never run in production' })
   .refine((e) => e.NODE_ENV !== 'production' || (e.API_URL.startsWith('https://') && !!e.COOKIE_DOMAIN), {

@@ -20,6 +20,9 @@ interface DocState {
   future: Entry[]
   /** bumps on EVERY change incl. undo/redo — autosave subscribes to this */
   seq: number
+  /** a VIEWER's copy (they may look, present and comment): every change is refused here, whatever part of the editor asks (the server refuses saves too) */
+  readOnly: boolean
+  setReadOnly: (v: boolean) => void
   load: (doc: Presentation, revision: number) => void
   apply: (label: string, recipe: (d: Draft<Presentation>) => void, opts?: { mergeKey?: string }) => void
   undo: () => void
@@ -47,14 +50,16 @@ export const useDoc = create<DocState>((set, get) => ({
   past: [],
   future: [],
   seq: 0,
+  readOnly: false,
+  setReadOnly: (readOnly) => set({ readOnly, ...(readOnly ? { past: [], future: [] } : {}) }),
   load: (doc, revision) => set({ doc, revision, past: [], future: [], seq: 0 }),
   replaceDoc: (doc, revision) => set((s) => ({ doc, revision, seq: s.seq + 1 })),
   setRevision: (revision) => set({ revision }),
   adoptRemote: (doc, revision) => set({ doc, revision }),
-  mergeRemote: (doc, revision) => set((s) => ({ doc, revision, seq: s.seq + 1 })),
+  mergeRemote: (doc, revision) => set((s) => (s.readOnly ? { doc, revision } : { doc, revision, seq: s.seq + 1 })), // (a viewer has nothing of their own to merge or save)
   apply: (label, recipe, opts) => {
     const { doc, past } = get()
-    if (!doc) return
+    if (!doc || get().readOnly) return
     const next = produce(doc, recipe)
     if (next === doc) return
     const now = Date.now()
@@ -68,12 +73,14 @@ export const useDoc = create<DocState>((set, get) => ({
     set((s) => ({ doc: next, past: nextPast, future: [], seq: s.seq + 1 }))
   },
   undo: () => {
+    if (get().readOnly) return
     const { doc, past, future } = get()
     const entry = past[past.length - 1]
     if (!doc || !entry) return
     set((s) => ({ doc: applyDiff(doc, diffDocs(entry.before, entry.after), 'backward', true), past: past.slice(0, -1), future: [...future, entry], seq: s.seq + 1 }))
   },
   redo: () => {
+    if (get().readOnly) return
     const { doc, past, future } = get()
     const entry = future[future.length - 1]
     if (!doc || !entry) return

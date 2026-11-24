@@ -2,6 +2,10 @@ variable "domain" {
   type    = string
   default = "slidesdone.app"
 }
+variable "site_prefix" {
+  description = "empty = this server is THE site (slidesdone.app, www, app., api.; decided 2026-11-24: one server, testing on the owner's machine). A prefix (e.g. \"qa\") would give <prefix>.<domain> addresses instead."
+  default     = ""
+}
 variable "env" {
   description = "Environment name; also the Parameter Store prefix /prompttoppt/<env>/"
   type        = string
@@ -16,9 +20,9 @@ variable "aws_profile" {
   default = "goldenhour"
 }
 variable "instance_type" {
-  description = "t4g.micro = 1 GB, ARM, free-plan eligible (images are built for arm64)"
+  description = "t4g.small = 2 GB, ARM (images are built for arm64). 1 GB (t4g.micro) is too small for the live site: reading uploaded files alone needs about 1 GB."
   type        = string
-  default     = "t4g.micro"
+  default     = "t4g.small"
 }
 variable "use_cloudfront" {
   description = "Serve the editor from CloudFront. AWS must first verify the account (support case); until then the server serves the editor itself."

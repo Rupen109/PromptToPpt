@@ -12,8 +12,8 @@ export const metadata: Metadata = {
 
 const PROCESSORS: { who: string; what: string; data: string }[] = [
   { who: 'Amazon Web Services (AWS), Mumbai region', what: 'Hosting, database, file storage, content delivery and backups', data: 'Everything described in section 2, stored on our servers' },
-  { who: 'Google (Gemini AI models)', what: 'Writing slides, reading pictures and media, AI edits, web research and AI pictures, when a Google model is used', data: 'Your prompt, the text of your sources, slide text you ask the AI to edit, pictures or audio you ask it to read, your assistant chat' },
-  { who: 'OpenRouter, and the AI model makers it routes to (for example Anthropic, Google and others shown in the model list)', what: 'The same AI work as above, when the production AI service is used; on the Premium plan you choose the model', data: 'The same content as above, sent to the model you or the plan select' },
+  { who: 'Google (Gemini AI models, through the Gemini API)', what: 'Our AI provider: writing slides, reading pictures and media, AI edits, web research and AI pictures', data: 'Your prompt, the text of your sources, slide text you ask the AI to edit, pictures or audio you ask it to read, your assistant chat' },
+  { who: 'OpenRouter (a backup route to the same Google Gemini models)', what: 'Only when Google’s service is unavailable or at its limits: the same AI work is sent through OpenRouter to the same Gemini models, so your request still completes', data: 'The same content as above, for those requests only' },
   { who: 'Razorpay', what: 'Taking payments for paid plans, renewals and refunds', data: 'Your name, e-mail and payment details, which you enter on Razorpay’s checkout; we receive payment status and ids, not card numbers' },
   { who: 'Brevo', what: 'Sending service e-mails (confirmation, password reset, receipts, invitations, shared links)', data: 'Your e-mail address, name and the message' },
   { who: 'Unsplash and Pexels', what: 'Finding stock pictures for slides', data: 'Short search words taken from your slide topic (not your name or account); the picture is then copied to our storage' },
@@ -56,7 +56,7 @@ export default function Page() {
             ? <>We use paid commercial API access with our AI providers, under terms that do not allow them to train their models on what we send. <Owner k="aiNoTrainingConfirmed" /></>
             : <>We use paid commercial API access with our AI providers, under terms that do not allow them to train their models on what we send (last checked {LEGAL.aiNoTrainingConfirmed}).</>}
         </li>
-        <li>Providers handle requests under their own terms and privacy policies. The plan decides which model is used; on the Premium plan you choose it.</li>
+        <li>Providers handle requests under their own terms and privacy policies. Every plan uses Google’s Gemini models: the plan decides which one, and on the Premium plan you can choose between them.</li>
         <li>Do not put into a prompt or source anything you are not allowed to share with a service provider, and avoid sensitive personal data (health, financial account numbers, government ids) unless you really need it.</li>
       </ul>
 

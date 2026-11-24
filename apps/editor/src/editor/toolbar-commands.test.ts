@@ -29,6 +29,42 @@ describe('toolbar commands: objects', () => {
     expect(doc().slides[0]!.manual).toBe(true)
   })
 
+  const overlapArea = (a: { x: number; y: number; width: number; height: number }, b: typeof a) => Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y))
+  it('a new object goes in a FREE spot, never on top of what is on the slide, and a second one avoids the first', () => {
+    apply('pic', (d) => C.addElement(d, 's0', C.makeElement({ id: 'pic', type: 'image', x: 660, y: 300, width: 600, height: 480, rotation: 0, locked: false, zIndex: 1, opacity: 1, alt: 'a photo in the middle', fit: 'cover' } as never)))
+    const ids: string[] = []
+    apply('t', (d) => { ids.push(T.addTextBox(d, 's0')!) })
+    apply('s', (d) => { ids.push(T.addShape(d, 's0', 'ellipse')!) })
+    apply('c', (d) => { ids.push(T.addChart(d, 's0', 'bar')!) })
+    const pic = els().find((e) => e.id === 'pic')!
+    const added = ids.map((id) => els().find((e) => e.id === id)!)
+    for (const n of added.slice(0, 2)) expect(overlapArea(n, pic), `${n.type} lands on the photo`).toBe(0)
+    expect(overlapArea(added[0]!, added[1]!)).toBe(0)
+  })
+
+  it('on a FULL slide (title and text left, photo right) a new object covers the least it can, never the middle of the photo', () => {
+    const theme = getTheme('cobalt')
+    let n = 0
+    const slide = { id: 's1', locked: false, validation: { status: 'passed' as const, issues: [] }, ...composeSlide({ layout: 'split-image-text', title: 'Before Newton', bullets: ['One point here', 'Another point', 'A third point'], imageQuery: 'book', speakerNotes: '', sources: [] } as never, theme, '16:9', () => `e${n++}`) }
+    const p = mk(); p.slides = [slide as never]
+    useDoc.getState().load(p, 1)
+    const room = els().filter((e) => !e.decorative && e.width * e.height < 0.6 * 1920 * 1080)
+    let id = ''
+    apply('t', (d) => { id = T.addTextBox(d, 's1')! })
+    const box = els().find((e) => e.id === id)!
+    const covered = room.reduce((a, o) => a + overlapArea(box, o), 0)
+    const mid = { x: (1920 - box.width) / 2, y: (1080 - box.height) / 2, width: box.width, height: box.height }
+    expect(covered).toBeLessThan(room.reduce((a, o) => a + overlapArea(mid, o), 0))
+    for (const e of [box]) { expect(e.x).toBeGreaterThanOrEqual(0); expect(e.x + e.width).toBeLessThanOrEqual(1920) }
+  })
+
+  it('a new text box is EMPTY with an editor-only prompt: nothing typed never shows words in Present or an export', () => {
+    apply('t', (d) => void T.addTextBox(d, 's0'))
+    const t = els().at(-1) as { paragraphs: { runs: { text: string }[] }[]; hint?: string }
+    expect(t.paragraphs.flatMap((p) => p.runs).map((r) => r.text).join('')).toBe('')
+    expect(t.hint).toBe('Click to add text')
+  })
+
   it('keeps 1:1 shapes square and puts new objects inside every slide size', () => {
     for (const aspect of ['4:3', '1:1'] as const) {
       useDoc.getState().load(mk(aspect), 1)
@@ -62,6 +98,20 @@ describe('toolbar commands: objects', () => {
     expect(els()).toHaveLength(0)
     useDoc.getState().redo()
     expect(els()[0]).toMatchObject({ type: 'shape', shape: 'heart' })
+  })
+})
+
+describe('toolbar commands: chart types', () => {
+  const chart = () => els().find((e) => e.type === 'chart') as Extract<ReturnType<typeof els>[number], { type: 'chart' }>
+  it('area and scatter can be added (a scatter starts with numbers as its x values); the type changes only where the data allows, with the reason', () => {
+    apply('a', (d) => void T.addChart(d, 's0', 'scatter'))
+    expect(chart().chartType).toBe('scatter'); expect(chart().labels.every((l) => /^\d+$/.test(l))).toBe(true)
+    expect(presentationSchema.safeParse(doc()).success).toBe(true)
+    let why: string | null = 'x'
+    apply('t', (d) => { why = T.setChartType(d, 's0', chart().id, 'area') }); expect(why).toBeNull(); expect(chart().chartType).toBe('area')
+    apply('lab', (d) => { const c = d.slides[0]!.elements.find((e) => e.type === 'chart') as { labels: string[] }; c.labels = ['Q1', 'Q2', 'Q3', 'Q4', 'Q5'] })
+    apply('t2', (d) => { why = T.setChartType(d, 's0', chart().id, 'scatter') })
+    expect(why).toMatch(/needs a number for every label/); expect(chart().chartType).toBe('area')
   })
 })
 
@@ -100,6 +150,39 @@ describe('toolbar commands: tables', () => {
     for (let i = 0; i < 40; i++) { apply('r', (d) => T.removeTableRow(d, 's0', id(), 0)); apply('k', (d) => T.removeTableColumn(d, 's0', id(), 0)) }
     expect(table().rows).toHaveLength(1)
     expect(table().header).toHaveLength(1)
+  })
+
+  it('merges and unmerges cells as one undo step each; rows and columns added or removed keep the merge on its cells; a locked table refuses', () => {
+    apply('tb', (d) => void T.addTable(d, 's0', 4, 4))
+    apply('c', (d) => { T.setTableCell(d, 's0', id(), -1, 1, 'Q1'); T.setTableCell(d, 's0', id(), -1, 2, 'Q2') })
+    let why: string | null = 'x'
+    apply('m', (d) => { why = T.mergeTableCells(d, 's0', id(), { row: -1, column: 1, rows: 1, columns: 2 }) })
+    expect(why).toBeNull()
+    expect(table().merges).toEqual([{ row: -1, column: 1, rows: 1, columns: 2 }])
+    expect(table().header.slice(1, 3)).toEqual(['Q1 Q2', ''])
+    apply('m2', (d) => { why = T.mergeTableCells(d, 's0', id(), { row: 0, column: 0, rows: 2, columns: 1 }) })
+    expect(table().merges).toHaveLength(2)
+    // the refused merge changes nothing and says why
+    apply('bad', (d) => { why = T.mergeTableCells(d, 's0', id(), { row: -1, column: 0, rows: 2, columns: 1 }) })
+    expect(why).toMatch(/header row only merges across/)
+    expect(table().merges).toHaveLength(2)
+    // a column added inside the header area widens it; a row added inside the tall area makes it taller
+    apply('k', (d) => T.addTableColumn(d, 's0', id(), 2))
+    apply('r', (d) => T.addTableRow(d, 's0', id(), 1))
+    expect(table().merges).toEqual([{ row: -1, column: 1, rows: 1, columns: 3 }, { row: 0, column: 0, rows: 3, columns: 1 }])
+    expect(presentationSchema.safeParse(doc()).success).toBe(true)
+    useDoc.getState().undo(); useDoc.getState().undo()
+    expect(table().merges).toEqual([{ row: -1, column: 1, rows: 1, columns: 2 }, { row: 0, column: 0, rows: 2, columns: 1 }])
+    apply('u', (d) => { why = T.unmergeTableCells(d, 's0', id(), { row: 1, column: 0, rows: 1, columns: 1 }) })
+    expect(table().merges).toEqual([{ row: -1, column: 1, rows: 1, columns: 2 }])
+    apply('ua', (d) => { why = T.unmergeTableCells(d, 's0', id()) })
+    expect(table().merges).toBeUndefined()
+    apply('ua2', (d) => { why = T.unmergeTableCells(d, 's0', id()) })
+    expect(why).toBe('the table has no merged cells')
+    apply('lock', (d) => { (d.slides[0]!.elements.find((e) => e.type === 'table') as { locked: boolean }).locked = true })
+    apply('m3', (d) => { why = T.mergeTableCells(d, 's0', id(), { row: 0, column: 1, rows: 1, columns: 2 }) })
+    expect(why).toBe('the table is locked')
+    expect(table().merges).toBeUndefined()
   })
 })
 

@@ -133,8 +133,8 @@ Timing options: easing becomes smooth start / smooth end (`accel` / `decel`: eas
 Browsers other than Chromium, touch devices (drag handles use pointer events but were driven with a mouse only), screen readers (accessible names, roles and keyboard flows are checked; actual speech output is not).
 
 ## Known gaps / decisions still open
-- Copy/paste of elements does not copy their effects.
-- The standalone exported HTML is static.
+- (Fixed 2026-11-18) Copy and Paste and Duplicate now copy an element's effects with it (`effectsForCopies`): a trigger that points at an element that was copied too follows the copy, otherwise the effect plays in the click sequence.
+- (Improved 2026-11-18) The standalone exported HTML plays each slide's transition (fade, slide, zoom, push, wipe) and the design's entrance animations every time a slide is shown, with plain CSS and `prefers-reduced-motion` respected; a count-up number shows its final value. Still not in it: the object effects timeline and Morph (a Morph slide arrives as a fade, effect slides show their finished state).
 
 ## Tests
 `packages/ui/src/motion/motion.test.ts` (catalogue, every effect's start/end state, timeline rules, player with a stand-in clock, renderer), `motion-extra.test.ts` (paths, triggers, loops, text parts, new effects, hidden objects), `morph.test.ts` (Morph by word / character), `apps/editor/src/editor/effect-commands.test.ts` and `animation-workflow.test.ts` (apply / add / clear / paint, trigger, paths, order, timeline model, Selection pane commands, transitions, Morph check and fixes), `services/api/src/billing/animation-gate.test.ts`, `services/api/src/export/motion.test.ts` (PowerPoint export of effects, transitions and Morph; fixtures in `motion-fixtures.ts`), the save-route test in `routes/presentations.test.ts`, and the browser suites `58-object-effects.mjs`, `59-morph.mjs`, `63-animation-workflow.mjs` (editor: gallery, options, timing, reorder, bars, painter, trigger, Selection pane, reload), `64-animation-playback.mjs` (drawn paths, Transitions tab, sampled Present playback, advance after time, shared view), `65-morph-editor.mjs` (Gold, Pro and a downgraded person) `66-animation-kinds-a11y-perf.mjs` (every object kind, keyboard, accessible names, 60 slides / 100 effects) and `67-morph-by-hidden-remap.mjs` (Morph by word / character sampled mid-transition, hidden objects, effects following a layout change). They need the API with email verification off; run with `cd e2e && E2E_WEB=http://localhost:3100 node run.mjs <suite>`.
@@ -177,3 +177,86 @@ Known limits: document schema caps font size at 600 px, line height at 2.2 and p
 **Limits.** 16:9 only (the templates are drawn at 1920 x 1080); the template's scene count is the deck's length (11 to 20 today; it must be within the plan's slide limit: Gold 25, Premium 60); the template's navigation labels (small repeated menu words) stay in the template's English unless they are branding boxes; where a figure box is left empty its small caption stays.
 
 **Tests.** `services/api/src/generation/template-deck.test.ts` (helpers), `generation.test.ts` (gates, quota, one call, scenes/ids/pictures, no placeholder, saves clean), suite `e2e/suites/68-morph-template-deck.mjs` (website link, home chip, picker, real build in about 12 s, opening, editing, Pro locked).
+
+## Choosing a template from the topic ("Best match for my topic", 2026-11-18)
+
+**What the person sees.** With Morph on, the picker offers "AI plans it" (still the default), "Best match for my topic" (never on by default) and the template grid. Choosing "Best match" shows the recommended template (poster, slide count, one plain sentence of why), up to two close alternatives, or "no designed template fits, the deck is designed for your topic". The length step then shows that template's real slide count; the length buttons wait while the answer is coming.
+
+**Why it is decided before the deck starts.** The template fixes the slide count, the credits reserved and the deck's first frame, all settled when the job is created. So `POST /api/v1/generation/morph-match` (Gold and Premium, 12 a minute, 200 model calls a day, answers cached 10 minutes) decides, the create page shows it, and the job only ever receives a concrete `morphTemplate` id (validated again by the existing start rules). One decision function, `services/api/src/generation/morph-match.ts`.
+
+**How it decides.**
+1. *Hard filters (code):* templates longer than the plan's slides per deck (Gold 25, Premium 60) or costing more credits than the balance even at the cheapest model tier; languages the template fonts cannot set (only Latin-script languages match; Arabic, Hindi, Chinese, Vietnamese and the rest always get a custom deck); an explicit light or dark request; and the template's PICTURES: `MORPH_PROFILES` (`packages/theme/src/morph-templates/profiles.ts`) says whether a template's art is `abstract` (any subject), `themed` (a loose world) or `subject` (one subject: planets, a drinks can, a microscope). A subject template is offered only when the request uses words of that subject, so a tax guide never gets a soda can.
+2. *Score (pure, tested):* the template's own topic words, the deck family the request's category belongs to, the picture world, how close the template's length is to a length asked for, and figures (scenes built around a number stay empty when the request has none). Every score comes with readable reasons.
+3. *One small model call* (`morph_match`, fast route) chooses between the closest three or answers "none"; it judges pictures and story, not the name. If it fails, a strong score (55+) is enough, otherwise the deck is custom. A low confidence also becomes custom.
+Anything that does not fit well is a **custom deck** (the AI-planned Morph, in the topic's colours): a poor template is never forced.
+
+**Adding a template.** Add its `MORPH_PROFILES` entry (the test fails without it), its `topics` (8 or more), `category` and `audience`; then add golden-set rows for the requests it should win.
+
+**Tests.** `generation/morph-match.test.ts` (a golden set of 40 requests: the templates a person would accept, or custom; subject templates never offered for another subject; plan, credit, mood, language and length filters; the decision with a stubbed model), `routes/morph-match.test.ts` (auth, Gold gate, schema, cache, no model call for a language that cannot match), `profiles.test.ts` (every template has a profile). Checked by hand with the real model: a Series A pitch → Market Pitch (with its reason and two alternatives), a tax guide → custom, Arabic → custom; the answer takes 1 to 3 seconds, 6 ms when cached.
+
+### Which scenes a template deck shows (shorter decks, scenes the request cannot fill)
+
+A template is drawn with a fixed story (11 to 20 scenes). `packages/theme/src/morph-templates/scenes.ts` (`chooseScenes`) decides which scenes a deck shows; `services/api/src/generation/morph-scenes.ts` says what a request can fill. The rules:
+- The first and the last scene are never left out.
+- After a scene goes, the scenes on either side must still share at least 3 visible objects (`MIN_SHARED`, the rule templates are authored to), so the Morph stays one piece. A scene the Morph could not bridge is kept.
+- **Pre-flight fill check:** the model is told never to invent a figure, a person or a quotation, so a scene built around figures stays empty when the request has none, and a "who is who" scene stays empty when no team is mentioned. Those scenes are left out when the gap can be bridged (the others stay and count against the template in the match score).
+- **Shorter decks:** a person may choose a shorter length; only the template's `droppable` scenes (its profile, least important first) go. The reachable lengths run down one at a time. A template with no `droppable` list is offered at its full length only.
+- **Plan and credits:** a template longer than the plan's slides per deck is offered shortened, and is set aside only if even its shortest length does not fit (or cannot be paid for at the cheapest model tier).
+
+The job gets the decided list (`options.morphScenes`, written by `startDeckJob`); the pipeline validates it (the template's own order, first and last kept) and writes only those scenes, so the slide count, the credits reserved and the words all follow the same list. `POST /generation/morph-lengths` returns the lengths and the scenes left out for the create page's length buttons (no model call).
+
+### The decision log and the owner's report
+
+Every computed match decision is written to `morph_match_log` (migration 0046): the analysed topic (200 characters), category, language, what was recommended, the candidates and why others were set aside; when the deck is started the row is marked with what it actually used (`markUsed`). Admin → Product → "Morph matches" shows how often a template fit, how often the recommendation was taken, switched or replaced by the AI-planned deck, each template's recommended and started counts, and the topics that got a custom deck (a 140-character excerpt, by category) which is the list of templates to build next. No names, emails or ids leave the report; rows are deleted with the account.
+
+### The custom deck's hand
+
+The custom (AI-planned) Morph has one cast and twelve scenes. It now has a deck-level "hand" (`flip` on the content, chosen from the deck's title by `handOf`, the same on every slide of a deck): in the five scenes that pair the picture with a text column or the cards (cover, hero-left, cards-column, cards-grid, focus-hero) a flipped deck puts the picture on the other side. The cards never change reading order. About half of all decks take each hand. The twelve scenes themselves are still the same arrangements: more variety needs more scene arrangements, not more parameters.
+
+### New templates for topics that had none (2026-11-18)
+
+Sales Proposal (`biz-sales`), Case Study (`biz-casestudy`), Team Welcome (`biz-team`), Health & Wellness (`edu-health`) and Finance Plan (`biz-finance`), authored with `author.ts` and checked by eye (every scene sheet and three transitions each). The library is now 28 templates. Each has a `MORPH_PROFILES` entry and rows in the match golden set.
+
+**Still open.** (1) The custom deck's scene arrangements (see above). (2) The words are checked for length and invented figures, but there is no check yet that a template's text boxes together tell a coherent story for an odd request: only the model's one call. (3) More templates for what the report shows is missing (travel, real estate, non-profit, events are the next candidates). (4) The preview script uses one shared deck, so two people running it at the same moment see each other's template.
+
+## A template deck about the person's OWN product (2026-11-19)
+
+Owner's failure case: the Unboxing template (a headphone launch) was chosen, a picture of a coffee cup was attached and "make a launch for this coffee product" was asked. The deck kept the headphone
+picture, the sample brand "ZENO ONE" on most slides, and (Billboard template) the sample ticker "SUMMER POP / FIZZLE SODA" on every slide. Fixed structurally:
+
+- **The picture is kept.** `POST /sources/image` stores the PNG/JPEG as one of the person's assets (also visible in their Media library) and puts its address on the source (`source_document.url`). A WebP is still read but not kept.
+- **Templates declare a product swap** (`MorphTemplate.swap`: the pictures that show the original product, the objects that only fit it, scenes about its box). With a kept picture attached: the pictures are replaced (filled, rounded), the call-outs and accessories are hidden, the box scene is left out at job start (slide count and credits follow), words are drawn above the picture (`content.swapped`). Declared for `launch-unbox` and `mkt-billboard`; the other templates keep their own pictures.
+- **One object, one wording.** `carryAcrossScenes`: a text object that appears on several scenes (the huge product name parked on the others) says the same thing on all of them. `blankLeftovers`: any text that would still be the sample deck's words is left out. A test over ALL templates fails if any sample word survives.
+- **Ticker bands of authored templates** now take the deck's phrase (the composer returned before applying it).
+- An empty spec box ("248 g", "12 March") with no honest value stays empty instead of being filled with the title.
+- Verified with the real model: e2e suite `77-template-own-product` (7/7), slides looked at.
+- **Known limits:** a photo with its own background is not a cut-out like the template's product; the equalizer bars of the Unboxing "sound" scene stay; other product templates (`launch`, spotlight, countdown) have no swap yet.
+
+## Your own pictures in the Marketing templates (2026-11-19)
+
+- **Picture slots** (`packages/theme/src/morph-templates/pictures.ts`): every template's pictures grouped by the PICTURE ITSELF (its artwork file, wherever it is used, parked copies included: so it is changed everywhere at once and the Morph never brings the old one back). An object id is NOT a picture: in imported templates one id shows a gradient on one scene and a product photo on the next (Business Plan), so placement and replacement are per scene. Kinds: `photo`, `portrait` (a team member: never auto-filled), `art` (light, haze, ribbons).
+- **At creation:** `fillPictures` templates (Cool Morph, Social Feed, Brand Moodboard) and `swap` templates (Unboxing, Billboard Campaign) place the person's attached pictures into their photo slots, biggest first; with fewer pictures than slots they are used round again (the deck shows the person's pictures, not the sample's stock photos). Social Feed: the phone's cards, the photo cards and the story circles. Moodboard: every tile. Billboard: the four products. Cool: its photographs (not its light, not its team portraits).
+- **In the editor:** Media > "Template pictures…" lists every picture of a template deck; Upload or Library replaces it on EVERY slide at once (parked invisible copies too, so the Morph never brings the old one back); scenes remember it (`content.images`); one undo step.
+- **A plain photo can be attached** (PNG/JPEG with nothing to read): it used to be refused as "nothing to build a deck from". WebP is still refused when nothing is readable (it cannot be kept).
+- Verified with the real model: e2e `78-marketing-own-pictures` (14/14: four templates, two pictures, none of the sample's stock photos or words; the panel replaces a picture on every slide and survives a reload); slides looked at.
+- **Not done yet:** the other 23 templates can be edited with the panel but do not place attached pictures automatically (their slot classification needs a review per template); no topic photos are searched for slots when nothing is attached; Cool's team portraits keep the template's faces until replaced by hand.
+
+
+## Business & Strategy templates with your own pictures (2026-11-19)
+
+- Take the person's pictures (`fillPictures`): **Business Plan** (its product photographs, 13 places; its gradients and glowing stripes stay), **Annual Report** (the four tall photo strips), **Sales Proposal** (the office-towers photo), **Case Study** (hero, two images), **Team Welcome** (office, desk, kitchen).
+- The three whose pictures are decorative 3D objects take the person's pictures as rounded photo frames (`fillRadius`, and `fillInset` for small icons so a photo does not touch the words beside it): **Strategy Matrix** (its still life, a modest slot: the matrix itself is made of shapes), **Roadmap** (the six milestone icons; the flag and the sky stay), **Finance Plan** (the coin-stack hero, the chart sculpture, the seedling and the vault door).
+- Still the template's own: Sales Proposal's rings, target and pen, Team Welcome's mug, plant and notebook (props); they can be replaced by hand in "Template pictures".
+- In the editor a replaced picture is placed the way the template places it (frame, margin) unless the person had already moved or resized it.
+- A test over EVERY template that takes pictures fails if one of its photographs is still shown after the person's pictures were placed. Real-AI suite `79-business-own-pictures` (all eight templates) and slides looked at.
+
+## Pitch (investor) templates with your own pictures (2026-11-19)
+
+- **Story Cards:** all seven photo cards. **Orbit Pitch:** the glass sphere and its four orbs, as round pictures (`fillFrame` clip circle; the nebula background stays). **Market Pitch:** the hero sphere (round), the laptop screen (rounded), the cube (rounded, with a margin), the sphere and the torus (round).
+- `fillFrame` is a per-object frame for a replaced 3D object (round, rounded, margin); `fillRadius`/`fillInset` are the template-wide defaults. The editor's "Template pictures" panel uses the same placement.
+- Real-AI suite `80-pitch-own-pictures` (3 templates, 10/10) and slides looked at. Families done: Marketing, Business & Strategy, Pitch. **Not yet:** Launch (Unboxing and Billboard-style swaps exist; Product Launch, Spotlight, Countdown do not take pictures), Technology and Education.
+
+## Product Launch family with your own pictures (2026-11-19)
+
+- **Product Launch** (the soda-can template): EVERY photograph takes the person's pictures (cans, flavour photographs, beach/pool/sky scenery, gallery, wall panel, portrait), because a coffee launch must not show raspberries; rounded where it replaces a cut-out can, never rounded when it is full-bleed; words are drawn above the pictures (`textAboveOwn`: its sample cans stood in front of the words, a photograph would hide them). Team avatars stay. **Feature Spotlight:** the three phone screens and the app icon (rounded). **Countdown:** the three products (rounded, tilted as the template tilts them). **Unboxing:** the product swap (suite 77).
+- Real-AI suite `81-launch-own-pictures` (3 templates, all checks) and slides looked at. Families done: Marketing, Business & Strategy, Pitch, Launch. **Not yet:** Technology and Education.

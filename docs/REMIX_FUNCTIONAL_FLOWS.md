@@ -70,6 +70,33 @@ Status values: ✅ passed in the real run · ❌ failed.
 | F3 | Two remixes of the same deck, one after the other | Independent decks | real  | ✅ |
 | F4 | Browser Back after the remix opens | Lands somewhere sensible, not a broken page | real browser  | ✅ |
 
+## G. A new shape for the remix, and the vertical 9:16 format (2026-11-18)
+A remix can now be made in any of the four shapes: Widescreen 16:9, Standard 4:3, Square 1:1 and **Vertical 9:16** (1080 × 1920, for stories, reels and phones). Vertical is also offered on Create from scratch and on the Templates page. Written before the run; proven without AI (the start request is answered by the test, everything else is real).
+| ID | Flow | Must be true | Proven by | Status |
+|---|---|---|---|---|
+| G1 | The Remix dialog opens | A "Format of the new version" row lists the four shapes and marks the deck's current one ("now") | suite 74 | ✅ |
+| G2 | Remix with the format left alone | The job carries no `aspectRatio` (the original's shape is kept) | suite 74, API test | ✅ |
+| G3 | Remix with 9:16 chosen | The job carries `aspectRatio: '9:16'`; the new deck is vertical, in the original's look, its slides laid out again; the original is untouched | suite 74, `remix/format-and-file.test.ts` | ✅ (mock model) |
+| G4 | A vertical deck in the editor | The slide is drawn at its true shape, small enough to fit the screen's height (no scrolling to see the bottom), thumbnails and the Present view too | suite 74, by eye | ✅ |
+| G5 | Every layout and design at 9:16 | All 137 designs (1,402 slides) and every layout × theme compose without an overflow or contrast error | theme tests, a catalogue run | ✅ |
+| G6 | Tall slides look arranged for a tall slide | Chart over its takeaway, picture above the words, comparison and case study stacked, metrics / process / timeline / agenda in one column, a long figure on one line | `layout/portrait.test.ts`, by eye (dev gallery `/dev/gallery?aspect=9:16`) | ✅ |
+| G7 | Export a vertical deck | PowerPoint: a portrait page of 9:16; PDF: 810 × 1440 pt portrait, one page per slide; HTML: 1080 × 1920 slides | `export/pptx-vertical.test.ts`, browser | ✅ |
+| G8 | Morph with 9:16 | Refused with a clear message (Morph is widescreen); a deck in your own design keeps that file's shape | API tests | ✅ |
+
+## H. Remix a PowerPoint (2026-11-18)
+Home → "Remix a PowerPoint" (Pro, Gold, Premium; Starter sees the Pro lock and the upgrade message). Choose a .pptx; its slide text and speaker notes are read on the server; say how it should change; pick the length and the shape; get a NEW presentation built from that file's content in a fresh design. The file is never changed. Charged per slide like any deck.
+| ID | Flow | Must be true | Proven by | Status |
+|---|---|---|---|---|
+| H1 | Starter opens it | The Pro lock and the upgrade message; no dialog; nothing uploaded | suite 74 (fresh account), API test | ✅ |
+| H2 | A file that is not a PowerPoint (text, PDF) | A clear message; Create stays off | suite 74, API test | ✅ |
+| H3 | A real .pptx | "N slides with text read"; the slide count prefilled (within the plan's limit); the title is the file's name | suite 74, API test | ✅ |
+| H4 | Create | The job carries the file's source, `remixFile` (its title), the shape, the length and the instruction; the person lands on the progress screen | suite 74 | ✅ |
+| H5 | The job through the real pipeline | A new deck in the chosen shape and length, valid, with the file kept as its source; refused without the file, on Starter, or combined with rewrite / Morph / your own design | `remix/format-and-file.test.ts` | ✅ (mock model) |
+| H6 | The language | The brief quotes the file's first words and tells the model to write in their language (no language detector); a language chosen on the request wins | unit test | ✅ (the brief); ✅ real model, 2026-11-19: a Spanish file gave a Spanish deck (suite 75) |
+| H7 | Faithfulness | Figures and claims of the file are kept, nothing invented, "leave out X" respected: the same brief rules as a deck remix | the brief | ✅ real model, 2026-11-19 (suite 75, 6/6): a 6-slide Spanish .pptx became a 5-slide 9:16 deck; every figure came from the file, the hiring plan asked to be left out was left out, all slides valid and inside the page. Bug found and fixed by this run: after the job finished the progress screen sent the person Home instead of opening the editor |
+
+**Not in this version, said plainly:** only the file's text and notes are used (pictures, charts and tables in the file are not read; the new deck gets its own pictures); the file's look is not kept (a fresh design is chosen; use "Use a file's design" to build in its look); old .ppt files are refused (save as .pptx); the Morph engine and Morph templates stay widescreen (16:9) only; the architecture and table layouts are plain on a vertical slide.
+
 ## Found by the real run (all fixed, each now covered by a test)
 1. **Duplicate → your edits in the copy were never saved.** The editor's "last saved edit" counter was not reset when moving to another deck, so the copy's first edit looked already saved (status stuck on "Unsaved changes…", reload lost it). Fixed in `autosave.ts`; covered by suite 22 (B1/B2/B3).
 2. **Leaving a deck right after an edit lost that edit** (the 1.5 s save delay was dropped on navigation). Fixed: pending edits are sent when leaving; covered by G1.

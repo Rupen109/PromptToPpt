@@ -7,7 +7,7 @@ import { logger } from 'hono/logger'
 import { secureHeaders } from 'hono/secure-headers'
 import { auth } from './auth.ts'
 import { env } from './env.ts'
-import { BillingError, ConflictError, GateError } from './billing/errors.ts'
+import { BillingError, ConflictError, GateError, ViewOnlyError } from './billing/errors.ts'
 import { billing } from './routes/billing.ts'
 import { images } from './routes/images.ts'
 import { editorMedia } from './routes/editor-media.ts'
@@ -72,7 +72,7 @@ app.use(
   cors({
     origin: [env.WEB_URL, env.EDITOR_URL],
     credentials: true,
-    allowHeaders: ['Content-Type', 'Authorization', 'X-Share-Access', 'X-Session-User'],
+    allowHeaders: ['Content-Type', 'Authorization', 'X-Share-Access', 'X-Session-User', 'X-Turnstile-Token'], // (the website sends the captcha answer in X-Turnstile-Token from another origin: without it the browser refuses the sign-in or sign-up request before it is sent)
     exposeHeaders: ['Content-Disposition'],
     allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   }),
@@ -97,7 +97,8 @@ const noNul: MiddlewareHandler = async (c, next) => {
     const text = await c.req.text().catch(() => '') // Hono caches the body, so the route's own parser still reads it
     if (text.includes('\u0000') || /\\u0000/i.test(text)) return c.json({ success: false, error: { code: 'INVALID_REQUEST', message: 'The request contains characters that are not allowed.' } }, 400)
     // whatever reads the raw request next (the auth library, a route's own size limit) needs an unread stream, so hand it a fresh request carrying the text we already read
-    c.req.raw = new Request(c.req.raw.url, { method: c.req.method, headers: c.req.raw.headers, body: text })
+    // (the new request keeps the connection's abort signal: without it a client that goes away could never be noticed by the route, and work for it could never be stopped)
+    c.req.raw = new Request(c.req.raw.url, { method: c.req.method, headers: c.req.raw.headers, body: text, signal: c.req.raw.signal })
   }
   return next()
 }
@@ -177,6 +178,7 @@ app.route('/api/v1/admin', admin)
 app.onError((err, c) => {
   if (err instanceof ConflictError) return c.json({ success: false, error: { code: 'CONFLICT', message: err.message, details: err.details } }, 409)
   if (err instanceof BillingError) return c.json({ success: false, error: { code: err.code, message: err.message } }, err.status)
+  if (err instanceof ViewOnlyError) return c.json({ success: false, error: { code: err.code, message: err.message } }, err.status)
   if (err instanceof GateError) return c.json({ success: false, error: { code: err.code, message: err.message, ...(err.details ? { details: err.details } : {}) } }, err.status)
   // errors the framework raises about the REQUEST itself (unreadable JSON, bad headers…) are the caller's mistake: they get their own 4xx, not a 500 and a stack trace
   if (err instanceof HTTPException && err.status >= 400 && err.status < 500) return c.json({ success: false, error: { code: err.status === 400 ? 'INVALID_REQUEST' : 'REQUEST_REFUSED', message: err.status === 400 ? 'The request could not be read. Check that it is valid and complete.' : 'The request was refused.' } }, err.status)

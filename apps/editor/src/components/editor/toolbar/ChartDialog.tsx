@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Plus, Trash2, X } from '@prompttoppt/ui/icons'
-import type { SlideElement } from '@prompttoppt/validation'
+import { CHART_TYPES, canStack, chartLookOn, chartShowsFigures, chartTypeProblem, type SlideElement } from '@prompttoppt/validation'
+import { slideBase } from '@prompttoppt/theme'
 import { Portal } from '@/components/Portal'
 import * as T from '@/editor/toolbar-commands'
 import { useDoc } from '@/editor/store'
@@ -20,10 +21,16 @@ function Field({ label, value, onSave, number, narrow, max = 80 }: { label: stri
 /** Edit a chart's categories, series and figures (double-click a chart, "Edit data", or the "Sample data" tag). Every change is one undo step; "Done" says these are the person's own figures. */
 export function ChartDialog({ slideId, elementId, onClose }: { slideId: string; elementId: string; onClose: () => void }) {
   const ref = useDialog<HTMLDivElement>(true, onClose)
-  const el = useDoc((s) => s.doc?.slides.find((x) => x.id === slideId)?.elements.find((e) => e.id === elementId)) as ChartEl | undefined
+  const slide = useDoc((s) => s.doc?.slides.find((x) => x.id === slideId))
+  const el = slide?.elements.find((e) => e.id === elementId) as ChartEl | undefined
   const apply = useDoc((s) => s.apply)
-  if (!el || el.type !== 'chart') return null
+  const theme = useDoc((s) => s.doc?.theme)
+  if (!el || el.type !== 'chart' || !theme || !slide) return null
   const circular = el.chartType === 'pie' || el.chartType === 'doughnut'
+  // what the chart shows now for each series or slice (the deck's own colours on this slide, chart-style.ts, unless the person chose)
+  const deck = chartLookOn(slideBase(theme, slide).colors, slide).palette // (the slide's own brand, then its own look)
+  const marks = circular ? el.labels : el.series.map((s, i) => s.name || `Series ${i + 1}`)
+  const shown = marks.map((_, i) => el.colors?.[i] ?? deck[i % deck.length]!)
   return (
     <Portal><div className="fixed inset-0 z-[70] bg-black/40 grid place-items-center p-4" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Edit chart data" data-testid="chart-dialog" className="bg-white rounded-2xl w-full max-w-3xl max-h-[86vh] overflow-auto p-5 shadow-xl outline-none">
@@ -56,6 +63,39 @@ export function ChartDialog({ slideId, elementId, onClose }: { slideId: string; 
             </tbody>
           </table>
         </div>
+        <section aria-label="Chart style" data-testid="chart-style" className="mt-5 border-t border-border pt-4">
+          <h3 className="font-heading font-bold text-base mb-2">Style</h3>
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-3 text-sm text-slate-700">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-slate-600">{circular ? 'Slice colours' : 'Series colours'}</span>
+              {marks.map((m, i) => (
+                <label key={i} className="inline-flex items-center gap-1.5">
+                  <input type="color" aria-label={`Colour of ${m}`} value={shown[i]} onChange={(e) => apply('Chart colour', (d) => T.setChartColor(d, slideId, elementId, i, e.target.value, deck), { mergeKey: `chart-colour:${elementId}:${i}` })} className="h-8 w-10 p-0.5 border border-border rounded-md bg-white" />
+                  <span className="max-w-[110px] truncate">{m}</span>
+                </label>
+              ))}
+              {el.colors && <button onClick={() => apply('Chart colours', (d) => T.resetChartColors(d, slideId, elementId))} className="h-8 px-2 rounded-md border border-border">Use deck colours</button>}
+            </div>
+            <label className="inline-flex items-center gap-2">Legend
+              <select aria-label="Legend" value={el.legend ?? 'auto'} onChange={(e) => apply('Chart legend', (d) => T.setChartLegend(d, slideId, elementId, e.target.value === 'auto' ? null : (e.target.value as 'none' | 'bottom' | 'right')))} className="h-9 px-2 border border-border rounded-md bg-white">
+                <option value="auto">Automatic</option><option value="bottom">Bottom</option><option value="right">Right</option><option value="none">None</option>
+              </select>
+            </label>
+            <label className="inline-flex items-center gap-2">Type
+              <select aria-label="Chart type" value={el.chartType} onChange={(e) => { let why: string | null = null; apply('Chart type', (d) => { why = T.setChartType(d, slideId, elementId, e.target.value as (typeof CHART_TYPES)[number]) }); if (why) window.alert(`This chart cannot be shown that way: ${why}.`) }} className="border border-border rounded-md px-2 py-1">
+                {CHART_TYPES.map((t) => { const why = chartTypeProblem(el, t); return <option key={t} value={t} disabled={!!why} title={why ?? undefined}>{({ bar: 'Bar', line: 'Line', area: 'Area', scatter: 'Scatter (X, Y)', pie: 'Pie', doughnut: 'Doughnut' } as const)[t]}{why ? ' (not for this data)' : ''}</option> })}
+              </select>
+            </label>
+            {el.chartType === 'scatter' && <span className="text-xs text-slate-500">The first column holds the X values (numbers).</span>}
+            {el.chartType === 'bar' && <label className="inline-flex items-center gap-2" title={canStack(el) ? undefined : 'Add a second series to stack the bars'}>Bars
+              <select aria-label="Bars" value={canStack(el) ? (el.stack ?? 'side') : 'side'} disabled={!canStack(el)} onChange={(e) => apply('Chart bars', (d) => T.setChartStack(d, slideId, elementId, e.target.value === 'side' ? null : (e.target.value as 'stacked' | 'percent')))} className="h-9 px-2 border border-border rounded-md bg-white disabled:opacity-50">
+                <option value="side">Side by side</option><option value="stacked">Stacked</option><option value="percent">100% stacked</option>
+              </select>
+            </label>}
+            {!circular && !(el.stack && canStack(el)) && <label className="inline-flex items-center gap-2"><input type="checkbox" aria-label="Trend line" checked={!!el.trendline} onChange={(e) => apply('Chart trend line', (d) => T.setChartTrendline(d, slideId, elementId, e.target.checked))} />Trend line</label>}
+            <label className="inline-flex items-center gap-2"><input type="checkbox" aria-label="Show figures" checked={chartShowsFigures(el)} onChange={(e) => apply('Chart figures', (d) => T.setChartDataLabels(d, slideId, elementId, e.target.checked))} />Show the figures</label>
+          </div>
+        </section>
         <div className="flex flex-wrap items-center gap-2 mt-4">
           <button onClick={() => apply('Add category', (d) => T.addChartRow(d, slideId, elementId))} disabled={el.labels.length >= T.CHART_MAX_LABELS} className="h-9 px-3 rounded-lg border border-border text-sm inline-flex items-center gap-1.5 disabled:opacity-40"><Plus aria-hidden size={14} />Category</button>
           {!circular && <button onClick={() => apply('Add series', (d) => T.addChartSeries(d, slideId, elementId))} disabled={el.series.length >= T.CHART_MAX_SERIES} className="h-9 px-3 rounded-lg border border-border text-sm inline-flex items-center gap-1.5 disabled:opacity-40"><Plus aria-hidden size={14} />Series</button>}

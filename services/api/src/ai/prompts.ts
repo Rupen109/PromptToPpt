@@ -48,6 +48,20 @@ Use "broad_topic" when the request is only a subject/name with no goals, audienc
   prompt: `<user_request>\n${neutralise(prompt)}\n</user_request>`,
 })
 
+/** Which Morph template (if any) fits THIS request: its pictures and its story, judged against the topic. One small call over the few closest candidates. */
+export const morphMatchPrompt = (i: { analysis: PromptAnalysis; userPrompt: string; templates: { id: string; name: string; tagline: string; mode: string; slides: number; pictures: string; scenes: string; audience: string }[] }) => ({
+  system: `[task:morph_match]
+You choose a designed Morph template for a presentation, or decide that none is right. ${DATA_RULES}
+A template fixes the layout, the PICTURES and the movement of every slide; only the words change. So judge two things: (1) do its pictures belong to this subject? A template whose pictures are about drinks, planets, sneakers or chips is WRONG for a topic that is not about them, however good its layout; (2) does the story it tells (its scenes, in order) suit what the person wants to say?
+Pick the ONE template that fits both, or answer "none" when no listed template is right: a custom deck is better than a template whose pictures or story do not belong. Do not choose by name or by mood alone.
+Return JSON: {"choice": one of the listed ids, or "none", "confidence": a number from 0 to 1, "reason": one short sentence a person can read, saying why it fits (or why none does)}.`,
+  prompt: [
+    `<params>${JSON.stringify({ topic: i.analysis.topic, objective: i.analysis.objective, audience: i.analysis.audience, tone: i.analysis.tone, category: i.analysis.category, requiredSections: i.analysis.requiredSections, lightRequested: i.analysis.lightMode, darkRequested: i.analysis.darkMode })}</params>`,
+    `<user_request>\n${neutralise(i.userPrompt).slice(0, 1500)}\n</user_request>`,
+    `<templates>\n${i.templates.map((t) => `${t.id} | ${t.name} | ${t.tagline} | ${t.mode} | ${t.slides} slides | ${t.pictures} | scenes: ${t.scenes} | suits: ${t.audience.slice(0, 220)}`).join('\n')}\n</templates>`,
+  ].join('\n'),
+})
+
 /** Which template (visual design) fits THIS topic: one small, cheap call over the category's shortlist. */
 export const designPickPrompt = (i: { analysis: PromptAnalysis; userPrompt: string; designs: { id: string; name: string; tagline: string; mode: string; headingFont: string; bodyFont: string }[] }) => ({
   system: `[task:design_pick]

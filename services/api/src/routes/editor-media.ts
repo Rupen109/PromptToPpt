@@ -11,6 +11,9 @@ import { generatedAsset } from '../db/schema.ts'
 import { env } from '../env.ts'
 import { rateLimit } from '../middleware/rate-limit.ts'
 import { requireAuth, type AppEnv } from '../middleware/session.ts'
+import { CutoutCancelledError, CutoutError } from '../media/cutout.ts'
+import { cutOutPicture, CutoutBusyError, maskOfPicture, originalOfPicture } from '../media/cutout-picture.ts'
+import { refuseIfOff } from '../flags/flags.ts'
 import { LIBRARY_TAGS } from '../pictures/library-tags.ts'
 import { searchStockForEditor } from '../pictures/pick.ts'
 import { hasPictureRoom, importStockPhoto, isStockHost, MAX_KEPT_PICTURES, MAX_PICTURE_BYTES } from '../pictures/stock-import.ts'
@@ -52,6 +55,67 @@ editorMedia.post(
     }
   },
 )
+
+const cutoutBody = z.object({ url: z.string().url().max(2000) })
+/**
+ * "Remove background": the subject of one of the person's pictures is cut out (an open model on this server, see media/cutout.ts) and kept as a new transparent PNG in their pictures;
+ * the original stays. Nothing leaves the server, and it costs no credits.
+ */
+editorMedia.post('/presentations/:id/images/cutout', requireAuth, rateLimit({ windowMs: 3_600_000, max: 60, key: (c) => `cutout:${uid(c)}` }), zValidator('json', cutoutBody), async (c) => {
+  const off = await refuseIfOff('background_removal', c, uid(c)) // development only until a commercially approved model or provider is chosen
+  if (off) return off
+  const access = await resolveAccess(c.req.param('id'), uid(c))
+  if (!access) return err(c, 404, 'NOT_FOUND', 'Presentation not found')
+  if (!(await hasPictureRoom(access.ownerId))) return err(c, 422, 'LIMIT_REACHED', FULL)
+  const { url } = c.req.valid('json')
+  try {
+    return c.json({ success: true, data: await cutOutPicture(access.ownerId, url, { signal: c.req.raw.signal }) })
+  } catch (e) {
+    if (e instanceof CutoutCancelledError) return err(c, 503, 'CANCELLED', 'Cancelled. Nothing was changed.') // the person has gone: the work was stopped
+    if (e instanceof CutoutBusyError) return err(c, 503, 'BUSY', e.message)
+    if (e instanceof CutoutError) return err(c, 422, e.message.startsWith('I can only') ? 'NOT_A_PICTURE' : 'CUTOUT_FAILED', e.message)
+    console.error('[cutout]', e)
+    return err(c, 503, 'CUTOUT_UNAVAILABLE', 'Removing the background is not available right now. Nothing was changed.')
+  }
+})
+
+/**
+ * The background removal dialog (development only, see the flag): the model's foreground MASK of one of the person's pictures, as a grey-scale PNG at the model's working size (the editor
+ * resamples it to the picture's own size and lets the person refine it), and the picture's original bytes so the editor never needs cross-site access to where it is kept.
+ */
+editorMedia.post('/presentations/:id/images/cutout-mask', requireAuth, rateLimit({ windowMs: 3_600_000, max: 60, key: (c) => `cutout:${uid(c)}` }), zValidator('json', cutoutBody), async (c) => {
+  const off = await refuseIfOff('background_removal', c, uid(c))
+  if (off) return off
+  const access = await resolveAccess(c.req.param('id'), uid(c))
+  if (!access) return err(c, 404, 'NOT_FOUND', 'Presentation not found')
+  try {
+    const { png, width, height } = await maskOfPicture(access.ownerId, c.req.valid('json').url, { signal: c.req.raw.signal })
+    return c.body(new Uint8Array(png), 200, { 'Content-Type': 'image/png', 'Cache-Control': 'no-store', 'X-Mask-Width': String(width), 'X-Mask-Height': String(height) })
+  } catch (e) {
+    if (e instanceof CutoutCancelledError) return err(c, 503, 'CANCELLED', 'Cancelled. Nothing was changed.') // the person has gone: the work was stopped
+    if (e instanceof CutoutBusyError) return err(c, 503, 'BUSY', e.message)
+    if (e instanceof CutoutError) return err(c, 422, e.message.startsWith('I can only') ? 'NOT_A_PICTURE' : 'CUTOUT_FAILED', e.message)
+    console.error('[cutout-mask]', e)
+    return err(c, 503, 'CUTOUT_UNAVAILABLE', 'Removing the background is not available right now. Nothing was changed.')
+  }
+})
+
+/**
+ * One of the person's own pictures, exactly as stored (the editor needs the bytes for any editing feature and any provider; it is NOT part of background removal, so it does not depend on
+ * that feature's flag). Signed in, the deck must be one they can open, and only their own stored pictures or the template pictures of our website are served, and only if their first bytes say
+ * PNG, JPEG or WebP.
+ */
+editorMedia.post('/presentations/:id/images/original', requireAuth, rateLimit({ windowMs: 3_600_000, max: 240, key: (c) => `picbytes:${uid(c)}` }), zValidator('json', cutoutBody), async (c) => {
+  const access = await resolveAccess(c.req.param('id'), uid(c))
+  if (!access) return err(c, 404, 'NOT_FOUND', 'Presentation not found')
+  try {
+    const { bytes, mime } = await originalOfPicture(access.ownerId, c.req.valid('json').url)
+    return c.body(new Uint8Array(bytes), 200, { 'Content-Type': mime, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' })
+  } catch (e) {
+    if (e instanceof CutoutError) return err(c, 422, e.message.startsWith('I can only') ? 'NOT_A_PICTURE' : 'UNSUPPORTED_FORMAT', e.message)
+    throw e
+  }
+})
 
 /** The person's own uploaded pictures, newest first (the "My uploads" tab). */
 editorMedia.get('/media/mine', requireAuth, async (c) => {

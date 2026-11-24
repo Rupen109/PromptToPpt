@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, type MutableRefObject } from 'react'
-import { CANVAS, type AspectRatio, type Slide, type Theme } from '@prompttoppt/validation'
-import { ElementView, Watermark, backgroundCss } from '../SlideCanvas'
+import { CANVAS, transformOf, type AspectRatio, type Slide, type Theme } from '@prompttoppt/validation'
+import { ElementView, SlideBackground, Watermark, backgroundCss } from '../SlideCanvas'
 import { carry, planMorph } from './morph'
 
 /** What the page can do to a Morph that is running. */
@@ -131,7 +131,8 @@ export function MorphLayer({ from, to, theme, aspect, width, duration, easing, b
         play(dst, [{ opacity: 0, offset: 0 }, { opacity: 0, offset: 0.34 }, { opacity: 1, offset: 0.7 }, { opacity: 1, offset: 1 }], b.id)
       } else play(dst, [{ opacity: 0 }, { opacity: 1 }], b.id) // the new copy appears over the old one, which stays solid underneath
       // the element itself carries the rotation (and its own opacity): both copies change it from the old value to the new one
-      if (a.rotation !== b.rotation) for (const n of [src, dst]) play(n.firstElementChild, [{ transform: `rotate(${a.rotation}deg)` }, { transform: `rotate(${b.rotation}deg)` }], a.id)
+      // (with its mirroring: a picture flipped between the two slides turns over through its edge, never jumps)
+      if (transformOf(a) !== transformOf(b)) for (const n of [src, dst]) play(n.firstElementChild, [{ transform: transformOf(a, true)! }, { transform: transformOf(b, true)! }], a.id)
       if (a.opacity !== b.opacity) for (const n of [src, dst]) play(n.firstElementChild, [{ opacity: a.opacity }, { opacity: b.opacity }], a.id)
     }
     // the words of a card never travel on their own: when a card leaves its big form its body is gone before the card has moved, and when a card becomes big its body appears only once it has arrived
@@ -163,7 +164,7 @@ export function MorphLayer({ from, to, theme, aspect, width, duration, easing, b
   return (
     <div ref={root} data-testid="morph" style={{ width, height: H * scale, overflow: 'hidden', position: 'relative', isolation: 'isolate', background: backgroundCss(from, theme), borderRadius: 4 }}>
       <div style={{ width: W, height: H, transform: `scale(${scale})`, transformOrigin: 'top left', position: 'absolute', left: 0, top: 0 }}>
-        <div data-morph-bg="to" style={{ position: 'absolute', inset: 0, background: backgroundCss(to, theme) }} />
+        <div data-morph-bg="to" style={{ position: 'absolute', inset: 0, background: backgroundCss(to, theme) }}><SlideBackground slide={to} scale={scale} W={W} H={H} /></div>
         <div data-morph-side="from" style={{ display: 'contents' }}>{fromEls.map((el) => <ElementView key={el.id} el={el} theme={theme} slide={from} fx={{ hidden: false, ...(parts.has(el.id) ? { parts: parts.get(el.id)! } : {}) }} />)}</div>
         <div data-morph-side="to" style={{ display: 'contents' }}>{toEls.map((el) => <ElementView key={el.id} el={el} theme={theme} slide={to} fx={{ hidden: false, ...(parts.has(el.id) ? { parts: parts.get(el.id)! } : {}) }} />)}</div>
         {watermark && <Watermark />}

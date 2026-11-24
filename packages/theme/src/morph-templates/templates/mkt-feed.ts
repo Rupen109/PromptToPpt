@@ -133,7 +133,7 @@ const BIG_R = rect(1200, 120, 640, 840)
 
 export const MKT_FEED = authored(
   {
-    id: 'mkt-feed', category: 'marketing', name: 'Social Feed', tagline: 'A phone, a feed and a plan that moves',
+    id: 'mkt-feed', category: 'marketing', fillPictures: true, name: 'Social Feed', tagline: 'A phone, a feed and a plan that moves',
     description: 'A social media strategy told on a phone: the feed scrolls from post to post while each one grows into a slide, story rings become the audience, two phones compare channels, the feed regroups into a content calendar, metric bubbles settle into bars and everything folds into one call to action.',
     audience: 'The Social Feed template suits social media strategies and plans, content calendars, brand awareness and community campaigns, Instagram and TikTok proposals, influencer and creator briefs, marketing reviews and agency pitches for lifestyle brands.',
     topics: ['social media', 'social media strategy', 'social media plan', 'social media marketing', 'content calendar', 'content strategy', 'content marketing', 'instagram', 'tiktok', 'facebook', 'linkedin', 'brand awareness', 'influencer', 'influencer marketing', 'community', 'community management', 'engagement', 'followers', 'audience', 'campaign', 'lifestyle brand', 'marketing plan', 'digital marketing', 'creator', 'reels', 'stories'],

@@ -60,7 +60,7 @@ void row3
 
 export const PITCH_MARKET = authored(
   {
-    id: 'pitch-market', category: 'pitch', name: 'Market Pitch', tagline: 'Market size, positioning and growth told in moving shapes',
+    id: 'pitch-market', category: 'pitch', fillPictures: ['orb', 'laptop', 'cube', 'gem', 'torus'], fillFrame: { orb: { clip: 'circle', inset: 0.06 }, torus: { clip: 'circle', inset: 0.08 }, gem: { clip: 'circle' }, cube: { radius: 40, inset: 0.1 }, laptop: { radius: 24 } }, name: 'Market Pitch', tagline: 'Market size, positioning and growth told in moving shapes',
     description: 'A bright investor deck that makes the numbers move: nested circles size the market and zoom into the next slide, a positioning map where competitors drift away, a funnel that turns into bars and then a rising line, a product mockup that slides in, unit economics and the ask.',
     audience: 'The Market Pitch template suits startup and SaaS investor decks, seed and Series A fundraising, market-opportunity and competitive-positioning talks, go-to-market plans, board updates and any pitch that has to prove the size of the opportunity with numbers.',
     topics: ['pitch', 'pitch deck', 'investor', 'investors', 'investor deck', 'market size', 'market opportunity', 'tam sam som', 'total addressable market', 'competition', 'competitive landscape', 'positioning', 'go to market', 'go-to-market', 'fundraising', 'series a', 'seed', 'startup', 'saas', 'b2b software', 'unit economics', 'traction', 'funnel', 'business plan', 'venture capital'],

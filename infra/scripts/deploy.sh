@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build, upload and start SlidesDone on the test server (Sydney).
+# Build, upload and start SlidesDone on its server (Sydney; the AWS resources keep their first name, "test"): https://slidesdone.app
 #
 #   infra/scripts/deploy.sh [api] [web] [editor] [config]     (no argument = everything)
 #
@@ -64,6 +64,9 @@ fi
 
 # images.env keeps the image tags in use; a partial deploy keeps the other one as it was
 TMP="$(mktemp -d)"; cp infra/compose/* "$TMP/"; echo "$DOMAIN" > "$TMP/domain.txt"
+# the editor's security headers for this site's own addresses (Caddy imports the file)
+HDR="$(mktemp -d)"; API_URL="https://api.$DOMAIN" WEB_URL="https://$DOMAIN" EDITOR_URL="https://app.$DOMAIN" OUT_DIR="$HDR" node scripts/gen-security-headers.mjs >/dev/null
+cp "$HDR/editor-headers.caddy" "$TMP/"; rm -rf "$HDR"
 aws s3 cp "s3://$ASSETS/deploy/images.env" "$TMP/images.old" --no-progress >/dev/null 2>&1 || true
 { if [ -f /tmp/api.image ] && has api; then cat /tmp/api.image; else grep '^API_IMAGE=' "$TMP/images.old" 2>/dev/null || true; fi
   if [ -f /tmp/web.image ] && has web; then cat /tmp/web.image; else grep '^WEB_IMAGE=' "$TMP/images.old" 2>/dev/null || true; fi; } > "$TMP/images.env"

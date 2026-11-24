@@ -1,5 +1,7 @@
 # AWS architecture: final plan (2026-11-04)
 
+> **2026-11-24: the separate production server (`infra/prod`, CloudFront, WAL-G) was dropped by the owner to keep AWS to one server.** The live site https://slidesdone.app runs on the former QA server (`infra/tofu`, `infra/compose`, `infra/scripts/deploy.sh`); branches and releases: `docs/RELEASES.md`. The `infra/prod` parts below are kept as history only.
+
 Status: **final plan; code written 2026-11-04 (`infra/prod/`), applied step by step after the owner's yes on each `tofu plan`.** Runbook: `docs/DEPLOY_AWS_PROD.md`. Replaces the test setup in `docs/DEPLOY_AWS_TEST.md`.
 
 Every price is a list price from the AWS Pricing API (read 2026-11-04, 730 hours a month) or from AWS's own pages (sources at the end). Measured numbers say "measured". Estimates say "assumed" and show their assumptions.

@@ -1,0 +1,13 @@
+// Sales Proposal: soft, bright studio 3D objects and calm photography in cobalt blue, teal and one warm orange accent. No people, no text.
+export default ({ GREEN, MAGENTA }) => {
+  const look = 'Clean, bright, premium studio 3D render look with soft diffused light, a palette of cobalt blue, crisp white and a small touch of warm orange, smooth satin and glossy materials, calm and confident corporate style. Nothing is cropped by the frame, the whole subject sits inside the frame with a clear margin. No text, no letters, no numbers, no logo, no watermark.'
+  const cut = (name, key, size, p) => ({ name: `sales-${name}`, key, ratio: '1:1', size, mode: 'trim', fill: 0.9, check: true, p: `${p} ${look} Floating with no shadow and no reflection, on ${key === 'green' ? GREEN : MAGENTA}.` })
+  return [
+    cut('hero', 'green', [900, 900], 'One abstract sculptural 3D object: three smooth rounded rings of different sizes interlocked like a loose knot, the biggest in glossy cobalt blue, one in matte white, the smallest in glossy warm orange, seen from a slight three-quarter angle.'),
+    cut('target', 'magenta', [800, 800], 'A round three-dimensional bullseye target disc seen at a slight angle, concentric rings in cobalt blue and white, with one slim orange dart standing in the exact centre.'),
+    cut('box', 'green', [900, 900], 'A neatly sealed matte white parcel box with a wide cobalt blue satin ribbon tied around it in a simple bow and a small blank white tag, seen from a three-quarter angle above.'),
+    cut('pen', 'green', [900, 900], 'A premium navy blue fountain pen with brushed gold trim lying diagonally across a small neat stack of blank white contract pages held with a slim blue paper clip, seen from above at a slight angle, no writing on the pages.'),
+    { name: 'sales-skyline', key: null, ratio: '3:2', size: [1800, 1200], mode: 'cover', p: 'A bright, airy photograph looking up at a cluster of modern glass office towers against a pale blue morning sky with a few soft white clouds, one slender tower exactly at the centre of the frame, crisp reflections in cool blue and white tones, calm and confident corporate style. No people, no text, no signage, no logo, no watermark.' },
+    { name: 'sales-desk', key: null, ratio: '1:1', size: [1200, 1200], mode: 'cover', p: 'A bright top-down photograph of a tidy modern meeting table: a closed navy folder, a white ceramic coffee cup, a pair of round glasses, a small green plant and a notepad with a pen, on a pale light-grey desk surface, soft daylight, cool blue and white palette with a single warm orange accent, calm and confident corporate style. No people, no text, no logo, no watermark.' },
+  ]
+}

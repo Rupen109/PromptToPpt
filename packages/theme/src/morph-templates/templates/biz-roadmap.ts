@@ -152,7 +152,7 @@ const panScene = (n: number, k: number, purpose: string) => ({
 
 export const BIZ_ROADMAP = authored(
   {
-    id: 'biz-roadmap', category: 'business', name: 'Roadmap', tagline: 'One long road, one stage at a time',
+    id: 'biz-roadmap', category: 'business', fillPictures: ['ic0', 'ic1', 'ic2', 'ic3', 'ic4', 'ic5'], fillRadius: 28, fillInset: 0.14, name: 'Roadmap', tagline: 'One long road, one stage at a time',
     description: 'A calm, premium business roadmap told as a camera pan along a single road: discover, prototype, launch, grow, scale and lead, each stage arriving under a giant year while the hills drift past, then the whole road zoomed out and a decision to take.',
     audience: 'The Roadmap template suits product and business roadmaps, strategy and growth plans, project plans and milestone reviews, board and steering-committee updates, consulting proposals and any talk that walks an audience through stages over time.',
     topics: ['roadmap', 'product roadmap', 'timeline', 'plan', 'project plan', 'milestones', 'strategy', 'strategic plan', 'growth plan', 'business plan', 'stages', 'phases', 'journey', 'vision', 'five year plan', 'go to market', 'launch plan', 'consulting', 'business', 'planning'],

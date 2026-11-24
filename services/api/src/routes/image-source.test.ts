@@ -103,12 +103,13 @@ describe('POST /sources/image (image to deck)', () => {
     expect(await db.select().from(sourceDocument).where(eq(sourceDocument.userId, u.id))).toHaveLength(0)
   })
 
-  it('a picture with nothing readable is refunded with a plain message', async () => {
+  it('a PNG or JPEG with nothing readable (a plain product photo) is accepted as a picture to show on the slides, and its copy is kept', async () => {
     const u = await signUp('img'); await json(await api(u.cookie, 'GET', '/me/entitlements'))
     const r = await upload(u.cookie, png(64, 64, undefined, 'BLANK_PICTURE'))
-    expect(r.status).toBe(422)
-    expect((await json(r)).error).toMatchObject({ code: 'NOTHING_READABLE' })
-    expect(await balance(u.id)).toBe(100)
+    expect(r.status).toBe(201)
+    const [src] = await db.select().from(sourceDocument).where(eq(sourceDocument.userId, u.id))
+    expect(src?.type).toBe('image')
+    expect(src?.url).toMatch(/\/api\/v1\/assets\/[A-Za-z0-9_-]{32}$/)
   })
 
   it('out of credits: 402 and nothing stored', async () => {

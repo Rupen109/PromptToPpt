@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { create } from 'zustand'
 import type { LivePeer } from '@prompttoppt/api-client'
 import { api } from '@/lib/api'
@@ -17,12 +17,14 @@ interface LiveState {
   peers: Record<string, LivePeer> // `${userId}:${clientId}`
   /** why this person was disconnected from the deck (access ended) */
   ended: boolean
+  /** bumps when the owner changes what this person may do (edit ↔ view): the editor reads its access again */
+  accessSeq: number
   /** a short message to flash ("Maya is editing this text") */
   notice: string | null
 }
 const newClientId = () => Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => b.toString(36).padStart(2, '0')).join('').slice(0, 20)
 
-export const useLive = create<LiveState>(() => ({ connected: false, clientId: newClientId(), you: null, peers: {}, ended: false, notice: null }))
+export const useLive = create<LiveState>(() => ({ connected: false, clientId: newClientId(), you: null, peers: {}, ended: false, accessSeq: 0, notice: null }))
 export const peerKey = (p: { userId: string; clientId: string }) => `${p.userId}:${p.clientId}`
 /** Everyone else (other people, not my own other tabs), one entry per tab. */
 export const othersOf = (peers: Record<string, LivePeer>, me: string | undefined) => Object.values(peers).filter((p) => p.userId !== me)
@@ -34,6 +36,15 @@ export const pointer: { current: { x: number; y: number } | null; poke: () => vo
 const THROTTLE_MS = 120
 
 export function useLiveSync(deckId: string, enabled: boolean, pull: () => void) {
+  // Back online after the network dropped: the old stream may be half-open (no error, events lost while away), so a FRESH one is opened. Its `hello` then
+  // catches up the deck and the comments (seen in suite 28 E3: the stream never errored, the comment posted meanwhile never arrived, and the minute fallback
+  // waits only while disconnected).
+  const [generation, setGeneration] = useState(0)
+  useEffect(() => {
+    const online = () => setGeneration((g) => g + 1)
+    window.addEventListener('online', online)
+    return () => window.removeEventListener('online', online)
+  }, [])
   useEffect(() => {
     if (!enabled || typeof EventSource === 'undefined') return
     const clientId = useLive.getState().clientId
@@ -59,6 +70,7 @@ export function useLiveSync(deckId: string, enabled: boolean, pull: () => void) 
     es.addEventListener('comments', () => useComments.getState().refresh())
     es.addEventListener('presence', (ev) => upsert((JSON.parse((ev as MessageEvent).data) as { peer: LivePeer }).peer))
     es.addEventListener('leave', (ev) => remove((JSON.parse((ev as MessageEvent).data) as { clientId: string }).clientId))
+    es.addEventListener('access', () => useLive.setState((st) => ({ accessSeq: st.accessSeq + 1 })))
     es.addEventListener('kick', () => { stopped = true; es.close(); useLive.setState({ connected: false, ended: true, peers: {} }) })
     es.onerror = () => { if (!stopped) useLive.setState({ connected: false }) } // EventSource reconnects by itself; `hello` resyncs
 
@@ -92,5 +104,5 @@ export function useLiveSync(deckId: string, enabled: boolean, pull: () => void) 
       pointer.poke = () => {}; pointer.current = null
       useLive.setState({ connected: false, peers: {}, you: null })
     }
-  }, [deckId, enabled, pull])
+  }, [deckId, enabled, pull, generation])
 }

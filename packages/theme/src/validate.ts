@@ -2,18 +2,19 @@ import { presentationSchema, type Presentation, type Slide, type SlideElement, t
 import { blend, contrastRatio } from './color'
 import { SUPPORTED_FONTS } from './themes'
 import { estimateTextHeight, metricOptsFor } from './text-metrics'
+import { slideTheme } from './slide-theme'
 
 export { contrastRatio }
 
 export function resolveColor(token: string, theme: Theme, slide?: Slide): string {
   if (token.startsWith('#')) return token
-  const colors = { ...theme.colors, ...slide?.themeOverrides } as Record<string, string>
+  const colors = slideTheme(theme, slide).colors as Record<string, string> // the slide's own brand and own look (slide-theme.ts)
   const map: Record<string, string | undefined> = { text: colors['textPrimary'], background: colors['background'], none: undefined }
   return (map[token] ?? colors[token]) as string
 }
 
 // a picture's colour is unknown, so judge text over it against the WORST case for light text (a white photo) — the scrim must carry the contrast
-const slideBg = (slide: Slide, theme: Theme) => (slide.background?.type === 'image' ? '#FFFFFF' : slide.background?.type === 'color' ? slide.background.value : slide.background?.type === 'gradient' ? (slide.background.gradient ? blend(slide.background.gradient.to, slide.background.gradient.from, 0.5) : slide.background.value) : theme.colors.background)
+const slideBg = (slide: Slide, theme: Theme) => (slide.background?.type === 'image' ? '#FFFFFF' : slide.background?.type === 'color' ? slide.background.value : slide.background?.type === 'gradient' ? (slide.background.gradient ? blend(slide.background.gradient.to, slide.background.gradient.from, 0.5) : slide.background.value) : slideTheme(theme, slide).colors.background)
 
 /**
  * The colour actually behind a text element: the topmost filled shape under its centre (cards, panels, bands…), blended
@@ -49,8 +50,10 @@ export function validateSlide(slide: Slide, theme: Theme): ValidationIssue[] {
   const hasContent = slide.elements.some((e) => isContent(e) && (e.type === 'text' || e.type === 'chart' || e.type === 'table' || e.type === 'diagram' || e.type === 'image'))
   if (slide.elements.length === 0 ? slide.layoutId !== 'blank' : !hasContent && slide.layoutId !== 'blank') issues.push({ code: 'missing_content', severity: 'error', message: 'Slide has no content' })
 
+  // fonts as this slide really shows them (its own brand: slide-theme.ts); colours below go through resolveColor, which takes the DECK theme and the slide
+  const fontsOf = slideTheme(theme, slide)
   for (const t of texts) {
-    const need = estimateTextHeight(t.paragraphs, t.fontSize, t.width, metricOptsFor(t, theme))
+    const need = estimateTextHeight(t.paragraphs, t.fontSize, t.width, metricOptsFor(t, fontsOf))
     // rotated text (axis labels) is measured along its own axis
     if (need > t.height * 1.02) issues.push({ code: 'overflow', severity: 'error', message: `Text needs ~${Math.round(need)}px but box is ${Math.round(t.height)}px`, elementId: t.id })
     // readable size (1920 px canvas, 1 pt = 2 px): reading text under 11 pt is flagged so the generator can shorten the words; numbers/badges (metric) are display type
@@ -78,7 +81,7 @@ export interface DeckReport {
 
 export function validateDeck(doc: Presentation): DeckReport {
   const deckIssues: ValidationIssue[] = []
-  for (const f of [doc.theme.fonts.heading, doc.theme.fonts.body]) {
+  for (const f of new Set([doc.theme.fonts.heading, doc.theme.fonts.body, ...doc.slides.flatMap((x) => (x.brand?.headingFont && x.brand.bodyFont ? [x.brand.headingFont, x.brand.bodyFont] : []))])) {
     if (!SUPPORTED_FONTS.includes(f)) deckIssues.push({ code: 'font_fallback', severity: 'warning', message: `Font "${f}" is not supported; a fallback will be used` })
   }
   const slides = doc.slides.map((s, i) => {

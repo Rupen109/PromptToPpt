@@ -9,4 +9,6 @@ export const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? 
 export const SUPPORT_EMAIL = process.env.NEXT_PUBLIC_SUPPORT_EMAIL ?? 'support@slidesdone.app'
 export const SUPPORT_WHATSAPP = process.env.NEXT_PUBLIC_SUPPORT_WHATSAPP ?? ''
 // Google Analytics (website only). On only for the real site: the id is public, and local, test and staging builds send nothing, so development never pollutes the reports. Override with NEXT_PUBLIC_GA_ID ('' = off).
-export const GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_ID ?? (SITE_URL.startsWith('https://slidesdone.app') ? 'G-J8GE062BB6' : '')
+/** the real public site: only it is listed by search engines and counted by analytics (QA at qa.slidesdone.app, local and test builds are kept out) */
+export const IS_PUBLIC_SITE = SITE_URL.startsWith('https://slidesdone.app')
+export const GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_ID ?? (IS_PUBLIC_SITE ? 'G-J8GE062BB6' : '')

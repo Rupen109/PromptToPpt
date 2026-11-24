@@ -17,38 +17,47 @@ const upload = (cookie: string, path: string, bytes: Buffer, name = 'logo.png', 
   return app.request(`/api/v1/brand${path}`, { method: 'POST', headers: { Cookie: cookie, Origin: origin }, body: f })
 }
 const asset = (url: string) => app.request(url.replace(env.API_URL, ''))
-const pro = async () => { const u = await signUp('bk'); await setPlan(u.id, 'pro'); return u }
+const paid = async () => { const u = await signUp('bk'); await setPlan(u.id, 'gold'); return u }
 const kit = (cookie: string, body: object = {}) => api(cookie, 'POST', '/brand/kits', { name: 'Acme', primary: '#e4572e', accent: '#17bebb', headingFont: 'Playfair Display', bodyFont: 'Inter', ...body })
 
 describe('brand kits: plans and limits', () => {
-  it('Starter has none (limit 0, creating is refused); Pro keeps 1, Gold 5', async () => {
-    const free = await signUp('bk')
-    const list = await json(await api(free.cookie, 'GET', '/brand/kits'))
-    expect(list.data).toMatchObject({ kits: [], limit: 0 })
-    const denied = await kit(free.cookie)
-    expect(denied.status).toBe(403); expect((await json(denied)).error.code).toBe('UPGRADE_REQUIRED')
-
-    const p = await pro()
-    expect((await kit(p.cookie)).status).toBe(201)
-    const second = await kit(p.cookie, { name: 'Second' })
-    expect(second.status).toBe(429); expect((await json(second)).error.code).toBe('LIMIT_REACHED')
-
-    const g = await signUp('bk'); await setPlan(g.id, 'gold')
-    for (let i = 0; i < 5; i++) expect((await kit(g.cookie, { name: `K${i}` })).status).toBe(201)
-    expect((await kit(g.cookie, { name: 'K6' })).status).toBe(429)
+  it('Starter and Pro have none (limit 0, the list is empty, creating and editing are refused); Gold and Premium keep 5', async () => {
+    for (const plan of ['starter', 'pro'] as const) {
+      const u = await signUp('bk'); if (plan !== 'starter') await setPlan(u.id, plan)
+      expect((await json(await api(u.cookie, 'GET', '/brand/kits'))).data).toMatchObject({ kits: [], limit: 0 })
+      const denied = await kit(u.cookie)
+      expect(denied.status).toBe(403); expect((await json(denied)).error).toMatchObject({ code: 'UPGRADE_REQUIRED', message: 'Brand kits are available on Gold and Premium.' })
+    }
+    for (const plan of ['gold', 'premium'] as const) {
+      const g = await signUp('bk'); await setPlan(g.id, plan)
+      expect((await json(await api(g.cookie, 'GET', '/brand/kits'))).data.limit).toBe(5)
+      for (let i = 0; i < 5; i++) expect((await kit(g.cookie, { name: `K${i}` })).status).toBe(201)
+      const sixth = await kit(g.cookie, { name: 'K6' })
+      expect(sixth.status).toBe(429); expect((await json(sixth)).error.code).toBe('LIMIT_REACHED')
+    }
+  })
+  it('a person who moved to Pro keeps their kits stored but cannot see, edit or use them; deleting their own kit always works', async () => {
+    const u = await paid()
+    const k = (await json(await kit(u.cookie))).data
+    await setPlan(u.id, 'pro')
+    expect((await json(await api(u.cookie, 'GET', '/brand/kits'))).data).toMatchObject({ kits: [], limit: 0 })
+    expect((await api(u.cookie, 'PATCH', `/brand/kits/${k.id}`, { name: 'X' })).status).toBe(403)
+    expect((await upload(u.cookie, `/kits/${k.id}/logo`, png(400, 200))).status).toBe(403)
+    expect((await api(u.cookie, 'DELETE', `/brand/kits/${k.id}`)).status).toBe(200)
   })
   it('parallel creates cannot slip past the cap', async () => {
-    const p = await pro()
-    const rs = await Promise.all([kit(p.cookie, { name: 'A' }), kit(p.cookie, { name: 'B' }), kit(p.cookie, { name: 'C' })])
+    const g = await paid()
+    for (let i = 0; i < 4; i++) expect((await kit(g.cookie, { name: `K${i}` })).status).toBe(201)
+    const rs = await Promise.all([kit(g.cookie, { name: 'A' }), kit(g.cookie, { name: 'B' }), kit(g.cookie, { name: 'C' })])
     expect(rs.filter((r) => r.status === 201)).toHaveLength(1)
-    expect((await json(await api(p.cookie, 'GET', '/brand/kits'))).data.kits).toHaveLength(1)
+    expect((await json(await api(g.cookie, 'GET', '/brand/kits'))).data.kits).toHaveLength(5)
   })
   it('needs a sign-in', async () => { expect((await api('', 'GET', '/brand/kits')).status).toBe(401) })
 })
 
 describe('brand kits: content', () => {
   it('normalises colours, drops fonts we cannot render, rejects bad colours; the first kit is the default', async () => {
-    const p = await pro()
+    const p = await paid()
     const r = await json(await kit(p.cookie, { headingFont: 'Comic Sans Fancy', extra: ['#112233', '#abcdef'] }))
     expect(r.data).toMatchObject({ name: 'Acme', isDefault: true, colors: { primary: '#E4572E', accent: '#17BEBB', extra: ['#112233', '#ABCDEF'] }, fonts: { heading: null, body: 'Inter' }, logo: null, images: [] })
     expect((await kit(p.cookie, { primary: 'red' })).status).toBe(400)
@@ -70,7 +79,7 @@ describe('brand kits: content', () => {
 
 describe('brand kits: logo and pictures', () => {
   it('a PNG/JPEG logo is accepted and measured; other files, tiny and extreme shapes are refused; replacing removes the old file', async () => {
-    const p = await pro(); const k = (await json(await kit(p.cookie))).data
+    const p = await paid(); const k = (await json(await kit(p.cookie))).data
     const ok = await upload(p.cookie, `/kits/${k.id}/logo`, png(480, 160))
     expect(ok.status).toBe(200)
     const logo1 = (await json(ok)).data.logo
@@ -96,7 +105,7 @@ describe('brand kits: logo and pictures', () => {
     expect((await json(await api(g.cookie, 'GET', '/me/entitlements'))).data.usage.imagesThisPeriod).toBe(0)
   })
   it('a 1 MB logo and a 2.5 MB picture are accepted (the global 256 KB request limit must not apply to uploads); over the kit limits they get a plain message', async () => {
-    const p = await pro(); const k = (await json(await kit(p.cookie))).data
+    const p = await paid(); const k = (await json(await kit(p.cookie))).data
     const big = (n: number) => Buffer.concat([png(300, 100), Buffer.alloc(n)])
     const logo = await upload(p.cookie, `/kits/${k.id}/logo`, big(1024 * 1024))
     expect(logo.status).toBe(200)
@@ -108,14 +117,14 @@ describe('brand kits: logo and pictures', () => {
     expect(huge.status).toBe(413); expect((await json(huge)).error.message).toMatch(/too large/i)
   })
   it('deleting a kit deletes its files', async () => {
-    const p = await pro(); const k = (await json(await kit(p.cookie))).data
+    const p = await paid(); const k = (await json(await kit(p.cookie))).data
     const logo = (await json(await upload(p.cookie, `/kits/${k.id}/logo`, png(300, 100)))).data.logo.url
     const pic = (await json(await upload(p.cookie, `/kits/${k.id}/images`, png(100, 100)))).data.images[0].url
     await api(p.cookie, 'DELETE', `/brand/kits/${k.id}`)
     expect((await asset(logo)).status).toBe(404); expect((await asset(pic)).status).toBe(404)
   })
   it('deleting a kit keeps a file a deck still shows (no broken logo), but removes the ones nothing uses', async () => {
-    const p = await pro(); const k = (await json(await kit(p.cookie))).data
+    const p = await paid(); const k = (await json(await kit(p.cookie))).data
     const logo = (await json(await upload(p.cookie, `/kits/${k.id}/logo`, png(300, 100)))).data.logo.url
     const pic = (await json(await upload(p.cookie, `/kits/${k.id}/images`, png(100, 100)))).data.images[0].url
     const deck = await makeDeck(p.id)
@@ -126,7 +135,7 @@ describe('brand kits: logo and pictures', () => {
     expect((await asset(pic)).status).toBe(404) // used by nothing
   })
   it('a kit can be created from a website lookup\'s saved logo (measured from the stored file); someone else\'s logo is refused', async () => {
-    const a = await pro(), b = await pro()
+    const a = await paid(), b = await paid()
     const mine = `${env.API_URL}/api/v1/assets/${await storeAsset(a.id, 'logo', png(400, 100), 'image/png', 'https://acme.example/')}`
     const made = await json(await kit(a.cookie, { logoUrl: mine }))
     expect(made.data.logo.aspect).toBeCloseTo(4, 2)
@@ -139,7 +148,7 @@ describe('brand kits: logo and pictures', () => {
 
 describe('brand kits: ownership', () => {
   it('nobody can read, change, delete or upload into another person\'s kit', async () => {
-    const a = await pro(), b = await pro(); const k = (await json(await kit(a.cookie))).data
+    const a = await paid(), b = await paid(); const k = (await json(await kit(a.cookie))).data
     expect((await json(await api(b.cookie, 'GET', '/brand/kits'))).data.kits).toEqual([])
     expect((await api(b.cookie, 'PATCH', `/brand/kits/${k.id}`, { name: 'hijack' })).status).toBe(404)
     expect((await api(b.cookie, 'DELETE', `/brand/kits/${k.id}`)).status).toBe(404)
@@ -161,8 +170,8 @@ describe('new decks in a brand kit (no AI call is made in these tests)', () => {
     expect(empty).toEqual(base)
     expect(themeWithKit(base, { name: 'Logo only', colors: { primary: '#E4572E', accent: null }, fonts: { heading: 'Inter', body: null }, logo: null } as never)).toEqual(base) // half a pair is not applied
   })
-  it('a job can name a brand kit: your own is accepted and stored; someone else\'s, an unknown one, or one on Starter is refused', async () => {
-    const a = await pro(), b = await pro(), free = await signUp('bk')
+  it('a job can name a brand kit: your own is accepted and stored; someone else\'s, an unknown one, or one on Starter or Pro is refused', async () => {
+    const a = await paid(), b = await paid(), free = await signUp('bk')
     const k = (await json(await kit(a.cookie))).data, theirs = (await json(await kit(b.cookie))).data
     const job = (kitId?: string) => ({ prompt: 'Create an 8 slide overview of our onboarding process for new customers', slideCount: 8, idempotencyKey: `key-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`, ...(kitId ? { brandKitId: kitId } : {}) })
     const ok = await api(a.cookie, 'POST', '/generation/jobs', job(k.id))
@@ -175,5 +184,9 @@ describe('new decks in a brand kit (no AI call is made in these tests)', () => {
     expect((await api(a.cookie, 'POST', '/generation/jobs', job('nope'))).status).toBe(400)
     const denied = await api(free.cookie, 'POST', '/generation/jobs', job(k.id))
     expect(denied.status).toBe(403); expect((await json(denied)).error.code).toBe('UPGRADE_REQUIRED')
+    // a person whose plan is now Pro cannot start a deck with the kit they made on Gold
+    await setPlan(a.id, 'pro')
+    const proDenied = await api(a.cookie, 'POST', '/generation/jobs', job(k.id))
+    expect(proDenied.status).toBe(403); expect((await json(proDenied)).error.code).toBe('UPGRADE_REQUIRED')
   })
 })

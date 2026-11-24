@@ -8,6 +8,7 @@ services:
       DOMAIN: ${DOMAIN}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./editor-headers.caddy:/etc/caddy/editor-headers.caddy:ro
       - ./editor:/srv/editor:ro
       - caddy_data:/data
       - caddy_config:/config

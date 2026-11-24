@@ -3,7 +3,7 @@ import { nanoid } from 'nanoid'
 import { zValidator } from '@hono/zod-validator'
 import { and, eq, isNull } from 'drizzle-orm'
 import { z } from 'zod'
-import { exportFormatSchema, presentationSchema } from '@prompttoppt/validation'
+import { exportFormatSchema, presentationSchema, slidesFileSuffix } from '@prompttoppt/validation'
 import { assertExport, getEntitlements } from '../billing/entitlements.ts'
 import { db } from '../db/index.ts'
 import { exportEvent, presentation, presentationVersion } from '../db/schema.ts'
@@ -16,13 +16,13 @@ export const exportsRoute = new Hono<AppEnv>()
 exportsRoute.use('*', requireAuth)
 
 /** letters, combining marks (Hindi and Gujarati vowel signs are marks, not letters) and digits are kept */
-const fileName = (title: string, ext: string) => `${title.replace(/[^\p{L}\p{M}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'presentation'}.${ext}`
+const fileName = (title: string, ext: string, suffix = '') => `${title.replace(/[^\p{L}\p{M}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'presentation'}${suffix}.${ext}`
 /**
  * Download header for any title. HTTP headers carry only Latin-1, so a Hindi or Gujarati title in `filename` crashed the export (500).
  * RFC 6266: `filename` gets an ASCII fallback for old clients, `filename*` the real name, UTF-8 percent-encoded.
  */
-export const attachment = (title: string, ext: string) => {
-  const name = fileName(title, ext)
+export const attachment = (title: string, ext: string, suffix = '') => {
+  const name = fileName(title, ext, suffix)
   const ascii = name.replace(/[^\x20-\x7e]+/g, '-').replace(/-+/g, '-').replace(/^-|-(?=\.)/g, '')
   return `attachment; filename="${ascii.startsWith('.') ? `presentation${ascii}` : ascii}"; filename*=UTF-8''${encodeURIComponent(name)}`
 }
@@ -32,9 +32,9 @@ export const attachment = (title: string, ext: string) => {
  * in the browser (that is where the fonts and the slide renderer are) — the server only authorises them, so the answer is
  * `{ mode: 'client' }` and the same plan check still applies.
  */
-exportsRoute.post('/', rateLimit({ windowMs: 60_000, max: 20, key: (c) => `export:${(c.get('session') as { user: { id: string } }).user.id}` }), zValidator('json', z.object({ presentationId: z.string().max(64), format: exportFormatSchema })), async (c) => {
+exportsRoute.post('/', rateLimit({ windowMs: 60_000, max: 20, key: (c) => `export:${(c.get('session') as { user: { id: string } }).user.id}` }), zValidator('json', z.object({ presentationId: z.string().max(64), format: exportFormatSchema, /** only these slides ("this slide", "1-3, 5"), in deck order; absent = the whole deck */ slideIds: z.array(z.string().min(1).max(64)).min(1).max(500).optional() })), async (c) => {
   const userId = c.get('session')!.user.id
-  const { presentationId, format } = c.req.valid('json')
+  const { presentationId, format, slideIds } = c.req.valid('json')
   const off = await refuseIfOff('exports', c, userId)
   if (off) return off
   const ent = await getEntitlements(userId)
@@ -53,12 +53,19 @@ exportsRoute.post('/', rateLimit({ windowMs: 60_000, max: 20, key: (c) => `expor
     await db.update(exportEvent).set({ status: 'failed', error: 'invalid document', durationMs: Date.now() - t0 }).where(eq(exportEvent.id, eventId))
     return c.json({ success: false, error: { code: 'EXPORT_FAILED', message: 'This presentation could not be exported. Open it, fix any highlighted slide and try again.' } }, 422)
   }
+  // a part of the deck: every slide asked for must still be in it (a slide deleted in another tab is never silently left out)
+  const numbers = slideIds ? slideIds.map((sid) => parsed.data.slides.findIndex((s) => s.id === sid) + 1) : []
+  if (numbers.some((n) => n === 0)) {
+    await db.update(exportEvent).set({ status: 'failed', error: 'slides not in the deck', durationMs: Date.now() - t0 }).where(eq(exportEvent.id, eventId))
+    return c.json({ success: false, error: { code: 'SLIDES_GONE', message: 'One of the slides you chose is no longer in this presentation. Choose the slides again.' } }, 422)
+  }
+  const total = parsed.data.slides.length
   try {
-    const file = await buildPptx(parsed.data, fetchImageLoader())
-    await db.update(exportEvent).set({ status: 'success', bytes: file.length, slideCount: parsed.data.slides.length, durationMs: Date.now() - t0 }).where(eq(exportEvent.id, eventId))
+    const file = await buildPptx(parsed.data, fetchImageLoader(), { slideIds })
+    await db.update(exportEvent).set({ status: 'success', bytes: file.length, slideCount: slideIds ? new Set(slideIds).size : total, durationMs: Date.now() - t0 }).where(eq(exportEvent.id, eventId))
     return c.body(new Uint8Array(file), 200, {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-      'Content-Disposition': attachment(p.title, 'pptx'),
+      'Content-Disposition': attachment(p.title, 'pptx', slidesFileSuffix(numbers, total)),
       'Cache-Control': 'no-store',
     })
   } catch (e) {

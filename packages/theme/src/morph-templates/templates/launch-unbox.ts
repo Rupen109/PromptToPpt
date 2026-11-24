@@ -90,6 +90,7 @@ export const LAUNCH_UNBOX = authored(
     fonts: { heading: 'Sora', body: 'Inter' },
     colors: { background: '#07080C', surface: '#12141C', textPrimary: '#F2F6FF', textSecondary: '#98A2B8', primary: '#C8FF2E', secondary: '#3A3FFF', accent: '#C8FF2E', onPrimary: '#07080C' },
     background: '#07080C',
+    swap: { pictures: ['hero', 'g1', 'g2'], hide: ['case', 'puck', ...[1, 2, 3, 4, 5, 6].flatMap((n) => [`c${n}`, `d${n}`, `e${n}`])], dropScenes: ['s10'], radius: 40 },
   },
   {
     objects: {

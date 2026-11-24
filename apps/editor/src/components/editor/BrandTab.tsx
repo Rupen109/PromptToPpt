@@ -2,17 +2,45 @@ import { FileUp } from '@prompttoppt/ui/icons'
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import { ApiError, isGateError, type BrandKit, type BrandKitInput, type BrandProfile } from '@prompttoppt/api-client'
 import { SUPPORTED_FONTS } from '@prompttoppt/theme'
-import type { Presentation } from '@prompttoppt/validation'
+import { describeSlides, parseSlideRange, type Presentation } from '@prompttoppt/validation'
 import * as C from '@/editor/commands'
 import { useDoc } from '@/editor/store'
 import { api } from '@/lib/api'
 import { uploadDesign } from '@/components/FileTemplatePicker'
 import { useEntitlements } from '@/lib/entitlements'
 import { SlideLoader } from '../SlideLoader'
+import { BrandThemes } from './BrandThemes'
 
 type Form = { name: string; primary: string; accent: string; heading: string; body: string }
 const formOf = (k: BrandKit): Form => ({ name: k.name, primary: k.colors.primary ?? '', accent: k.colors.accent ?? '', heading: k.fonts.heading ?? '', body: k.fonts.body ?? '' })
 const field = 'w-full border border-border rounded-lg px-3 py-2 text-sm'
+
+type Scope = 'all' | 'current' | 'range'
+/** where a brand goes: every slide (the deck's own design), the slide on screen, or slides typed like "1-5, 8" (read by the same reader as Export and the assistant: slide-range.ts) */
+function useApplyScope(doc: Presentation, slideId: string) {
+  const [scope, setScope] = useState<Scope>('all')
+  const [range, setRange] = useState('')
+  const total = doc.slides.length
+  const parsed = scope === 'range' ? parseSlideRange(range, total) : null
+  const ids: string[] | null = scope === 'all' ? null : scope === 'current' ? [slideId] : parsed?.ok ? parsed.numbers.map((n) => doc.slides[n - 1]!.id) : []
+  const blocked = scope === 'range' && !parsed?.ok
+  const said = scope === 'all' ? 'every slide' : scope === 'current' ? `slide ${doc.slides.findIndex((x) => x.id === slideId) + 1}` : parsed?.ok ? describeSlides(parsed.numbers, total) : ''
+  const control = (name: string) => (
+    <fieldset className="space-y-1 text-sm" aria-label="Apply to">
+      <legend className="text-xs font-semibold text-slate-600 mb-0.5">Apply to</legend>
+      <div className="flex flex-wrap gap-x-4 gap-y-1">
+        <label className="flex items-center gap-1.5"><input type="radio" name={name} checked={scope === 'all'} onChange={() => setScope('all')} />Every slide</label>
+        <label className="flex items-center gap-1.5"><input type="radio" name={name} checked={scope === 'current'} onChange={() => setScope('current')} />This slide</label>
+      </div>
+      <label className="flex items-center gap-1.5"><input type="radio" name={name} checked={scope === 'range'} onChange={() => setScope('range')} />Slides
+        <input aria-label="Slides to brand" placeholder="e.g. 1-5" value={range} onFocus={() => setScope('range')} onChange={(e) => setRange(e.target.value)}
+          className={`ml-1 flex-1 min-w-0 h-7 border rounded-md px-2 text-sm ${scope === 'range' && range && !parsed?.ok ? 'border-red-400' : 'border-border'}`} />
+      </label>
+      {scope === 'range' && range && parsed && !parsed.ok && <p className="text-xs text-red-700">{parsed.why}</p>}
+    </fieldset>
+  )
+  return { ids, blocked, said, control }
+}
 
 /**
  * Brand kits: the company's colours, fonts, logo and pictures, saved once. "Apply" puts a kit on the open presentation (colours, fonts and the
@@ -31,6 +59,15 @@ export function BrandTab({ doc, slideId }: { doc: Presentation; slideId: string 
   const [note, setNote] = useState<string | null>(null)
 
   const kit = kits?.find((k) => k.id === sel) ?? null
+  const where = useApplyScope(doc, slideId)
+  /** a brand on every slide (the deck's design) or on the chosen slides only (slide.brand: theme slide-theme.ts) */
+  const applyTo = (label: string, b: C.BrandProfileLike, parts: typeof pick, ids: string[] | null, said: string): string => {
+    if (!ids) { apply(label, (d) => C.applyBrand(d, b, parts)); return 'Applied to every slide. You can undo it with ⌘Z.' }
+    let n = 0
+    apply(label, (d) => { n = C.applyBrandToSlides(d, ids, b, parts) })
+    return n ? `Applied to ${said}. You can undo it with ⌘Z.` : 'Nothing was changed: those slides are locked.'
+  }
+  const branded = doc.slides.flatMap((x, i) => (x.brand ? [i + 1] : []))
   const fail = useCallback((e: unknown) => {
     if (isGateError(e) && e.code === 'UPGRADE_REQUIRED') upgrade.show(e.message)
     else setError(e instanceof ApiError ? e.message : 'Something went wrong. Please try again.')
@@ -59,16 +96,16 @@ export function BrandTab({ doc, slideId }: { doc: Presentation; slideId: string 
     if (!/\.(png|jpe?g)$/i.test(f.name)) return setError('Use a PNG or JPEG picture.')
     void run(what, () => (what === 'logo' ? api.brandKitLogo(kit.id, f) : api.brandKitImageAdd(kit.id, f, f.name.replace(/\.[^.]+$/, ''))), (k) => replace(k, true))
   }
-  const applyKit = () => { if (!kit || !form) return; apply('Apply brand kit', (d) => C.applyBrand(d, { name: kit.name, colors: { primary: kit.colors.primary, accent: kit.colors.accent }, fonts: { heading: kit.fonts.heading ? { family: kit.fonts.heading } : null, body: kit.fonts.body ? { family: kit.fonts.body } : null }, logo: kit.logo }, pick)); setNote('Applied to every slide. You can undo it with ⌘Z.') }
+  const applyKit = () => { if (!kit || !form || where.blocked) return; setNote(applyTo('Apply brand kit', { name: kit.name, colors: { primary: kit.colors.primary, accent: kit.colors.accent }, fonts: { heading: kit.fonts.heading ? { family: kit.fonts.heading } : null, body: kit.fonts.body ? { family: kit.fonts.body } : null }, logo: kit.logo }, pick, where.ids, where.said)) }
 
-  // ── starter plan / loading
+  // ── a plan without brand kits (Starter, Pro) / loading
   if (kits === null) return <SlideLoader size="sm" />
   if (limit === 0) {
     return (
       <div className="rounded-xl border border-border p-4 space-y-2" aria-label="Brand kit">
         <h3 className="font-semibold">Your brand, on every slide</h3>
-        <p className="text-sm text-slate-600">Save your company's colours, fonts and logo once, or read them from your website, a PowerPoint or a PDF, and apply them to any presentation. Available on Pro and Gold.</p>
-        <button onClick={() => upgrade.show('Brand kits are available on Pro, Gold and Premium.')} className="bg-primary text-white rounded-lg px-4 py-2 text-sm font-semibold">See plans</button>
+        <p className="text-sm text-slate-600">Save your company's colours, fonts and logo once, or read them from your website, a PowerPoint or a PDF, and apply them to any presentation. Available on Gold and Premium.</p>
+        <button onClick={() => upgrade.show('Brand kits are available on Gold and Premium.')} className="bg-primary text-white rounded-lg px-4 py-2 text-sm font-semibold">See plans</button>
       </div>
     )
   }
@@ -150,8 +187,18 @@ export function BrandTab({ doc, slideId }: { doc: Presentation; slideId: string 
               <label className="flex items-center gap-1.5"><input type="checkbox" checked={pick.fonts} disabled={!kit.fonts.heading || !kit.fonts.body} onChange={(e) => setPick({ ...pick, fonts: e.target.checked })} />Fonts</label>
               <label className="flex items-center gap-1.5"><input type="checkbox" checked={pick.logo} disabled={!kit.logo} onChange={(e) => setPick({ ...pick, logo: e.target.checked })} />Logo</label>
             </div>
-            <button onClick={applyKit} disabled={dirty} title={dirty ? 'Save your changes first' : undefined} className="w-full bg-primary text-white rounded-lg py-2 text-sm font-semibold disabled:opacity-40">Apply to this presentation</button>
+            {where.control('kit-scope')}
+            <button onClick={applyKit} disabled={dirty || where.blocked} title={dirty ? 'Save your changes first' : undefined} className="w-full bg-primary text-white rounded-lg py-2 text-sm font-semibold disabled:opacity-40">{where.ids ? `Apply to ${where.said || 'the chosen slides'}` : 'Apply to this presentation'}</button>
           </div>
+        </section>
+      )}
+
+      <BrandThemes doc={doc} kit={kit} kitDirty={dirty} onNote={(t) => { setError(null); setNote(t) }} onFail={fail} />
+
+      {branded.length > 0 && (
+        <section className="rounded-xl border border-border p-3 space-y-1.5" aria-label="Slides with their own brand">
+          <div className="text-sm font-medium">Slides with their own brand: {describeSlides(branded, doc.slides.length)}</div>
+          <button onClick={() => { let n = 0; apply('Remove slide brand', (d) => { n = C.removeSlideBrand(d, doc.slides.filter((x) => x.brand).map((x) => x.id)) }); setNote(n ? 'Those slides are back in the presentation\'s own look.' : 'Nothing was changed: those slides are locked.') }} className="text-sm text-primary font-semibold">Back to the presentation's look</button>
         </section>
       )}
 
@@ -163,7 +210,7 @@ export function BrandTab({ doc, slideId }: { doc: Presentation; slideId: string 
         </section>
       )}
 
-      <GetBrand kits={kits} limit={limit} sel={sel} busy={!!busy} onSave={(body) => run('site', async () => (kits.length < limit ? api.brandKitCreate(body) : api.brandKitUpdate(sel ?? kits[0]!.id, body)),
+      <GetBrand kits={kits} limit={limit} sel={sel} busy={!!busy} where={where} onApply={(b, parts) => applyTo('Apply brand', b, parts, where.ids, where.said)} onSave={(body) => run('site', async () => (kits.length < limit ? api.brandKitCreate(body) : api.brandKitUpdate(sel ?? kits[0]!.id, body)),
         (k) => { if (kits.some((x) => x.id === k.id)) replace(k); else setKits([...kits, k]); setSel(k.id); setForm(formOf(k)); setNote(`Saved to your brand kit "${k.name}".`) })} onFail={fail} />
     </div>
   )
@@ -197,8 +244,7 @@ const WEBSITE_LAYOUTS = 'A website has no slide layouts, so it can give colours,
  * "Get brand from a website, PowerPoint or PDF": reads the colours, fonts and logo of a company site, or of a PowerPoint or PDF you upload, into one review card where you can
  * edit them; apply them straight away or save them into a kit. A PowerPoint can also be kept as a design (its slide layouts) from the same card.
  */
-function GetBrand({ kits, limit, sel, busy, onSave, onFail }: { kits: BrandKit[]; limit: number; sel: string | null; busy: boolean; onSave: (body: BrandKitInput) => void; onFail: (e: unknown) => void }) {
-  const apply = useDoc((s) => s.apply)
+function GetBrand({ kits, limit, sel, busy, where, onApply, onSave, onFail }: { kits: BrandKit[]; limit: number; sel: string | null; busy: boolean; where: ReturnType<typeof useApplyScope>; onApply: (b: C.BrandProfileLike, parts: { colors: boolean; fonts: boolean; logo: boolean }) => string; onSave: (body: BrandKitInput) => void; onFail: (e: unknown) => void }) {
   const { upgrade } = useEntitlements()
   const [source, setSource] = useState<Source>('website')
   const [url, setUrl] = useState('')
@@ -210,7 +256,7 @@ function GetBrand({ kits, limit, sel, busy, onSave, onFail }: { kits: BrandKit[]
   const [body, setBody] = useState('')
   const [name, setName] = useState('')
   const [pick, setPick] = useState({ colors: true, fonts: true, logo: true })
-  const [done, setDone] = useState(false)
+  const [done, setDone] = useState<string | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
   const [over, setOver] = useState(false)
   const [design, setDesign] = useState<{ state: 'idle' | 'busy' | 'done' | 'failed'; message?: string }>({ state: 'idle' })
@@ -220,7 +266,7 @@ function GetBrand({ kits, limit, sel, busy, onSave, onFail }: { kits: BrandKit[]
     setFound(f); setPrimary(f.colors.primary ?? '#2563EB'); setAccent(f.colors.accent ?? '#7C3AED'); setHeading(f.fonts.heading?.family ?? ''); setBody(f.fonts.body?.family ?? ''); setName(f.name ?? '')
     setPick({ colors: !!f.colors.primary, fonts: !!f.fonts.heading, logo: !!f.logo }); setDesign({ state: 'idle' })
   }
-  const reset = () => { setFound(null); setDone(false); setProblem(null); setDesign({ state: 'idle' }) }
+  const reset = () => { setFound(null); setDone(null); setProblem(null); setDesign({ state: 'idle' }) }
   const fail = (err: unknown) => {
     if (isGateError(err)) onFail(err) // the upgrade prompt
     else setProblem(err instanceof ApiError ? err.message : 'We could not reach the server. Check your connection and try again.')
@@ -367,11 +413,12 @@ function GetBrand({ kits, limit, sel, busy, onSave, onFail }: { kits: BrandKit[]
             </span>
           </label>
 
+          {where.control('found-scope')}
           <div className="flex gap-2">
-            <button onClick={() => { apply('Apply brand', (d) => C.applyBrand(d, asBrand(), pick)); setDone(true) }} disabled={nothing} className="flex-1 bg-foreground text-white rounded-lg py-2 text-sm font-semibold disabled:opacity-40">Apply to this presentation</button>
+            <button onClick={() => setDone(onApply(asBrand(), pick))} disabled={nothing || where.blocked} className="flex-1 bg-foreground text-white rounded-lg py-2 text-sm font-semibold disabled:opacity-40">{where.ids ? `Apply to ${where.said || 'the chosen slides'}` : 'Apply to this presentation'}</button>
             <button onClick={save} disabled={busy || nothing} title={kits.length >= limit && sel ? 'Replaces what is in your selected kit' : undefined} className="flex-1 border border-border rounded-lg py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-40">{kits.length < limit ? 'Save as brand kit' : 'Update my kit'}</button>
           </div>
-          {done && <p role="status" className="text-xs text-green-800">Applied to every slide. You can undo it with ⌘Z.</p>}
+          {done && <p role="status" className="text-xs text-green-800">{done}</p>}
 
           <div className="rounded-lg border border-border p-2.5 space-y-1.5" data-testid="brand-layouts">
             <div className="text-sm font-medium">Slide layouts</div>

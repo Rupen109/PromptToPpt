@@ -1,11 +1,11 @@
 import { Ban, Blend, Film, Layers, ListTree, Lock, MoveRight, Play, Square, Trash2, Waves, ZoomIn, type LucideIcon } from '@prompttoppt/ui/icons'
-import { EFFECT_DIRECTIONS, MORPH_BY, MORPH_DEFAULTS, TRANSITION_TYPES, type Presentation, type Slide } from '@prompttoppt/validation'
+import { EFFECT_DIRECTIONS, EFFECT_EASINGS, MORPH_BY, MORPH_DEFAULTS, TRANSITION_TYPES, type Presentation, type Slide } from '@prompttoppt/validation'
 import * as TC from '@/editor/transition-commands'
 import { useDoc } from '@/editor/store'
 import { useUi } from '@/editor/ui'
 import { useEntitlements } from '@/lib/entitlements'
 import { NumberField, SelectField, groupLabel } from './fields'
-import { DIRECTION_LABEL, DIRECTION_TRANSITIONS, MORPH_LOCKED_REASON, TRANSITION_LABEL } from './labels'
+import { DIRECTION_LABEL, DIRECTION_TRANSITIONS, MORPH_LOCKED_REASON, TRANSITION_LABEL, easingLabel } from './labels'
 
 const ICON: Record<string, LucideIcon> = { none: Ban, fade: Blend, slide: MoveRight, zoom: ZoomIn, push: Layers, wipe: Waves, morph: Film }
 const tool = 'h-8 px-2.5 rounded-md border border-border bg-white text-sm hover:bg-slate-50 disabled:opacity-40 disabled:hover:bg-white inline-flex items-center gap-1.5 whitespace-nowrap [&>svg]:shrink-0'
@@ -69,6 +69,7 @@ export function TransitionsRibbon({ doc, slide }: { doc: Presentation; slide: Sl
           ) : isMorph ? (
             <>
               <SelectField label="Morph" testId="tr-morph-by" disabled={frozen} value={t?.by ?? 'object'} options={MORPH_BY.map((v) => ({ value: v, label: { object: 'By object', word: 'By word', character: 'By character' }[v] }))} onChange={(v) => setT(patchKeep({ by: v === 'object' ? undefined : v } as Partial<TC.TransitionPatch>))} />
+              <SelectField label="Blend" testId="tr-morph-blend" disabled={frozen} value={t?.blend ?? 'through'} options={[{ value: 'through', label: 'One after the other' }, { value: 'cross', label: 'Both at once' }]} onChange={(v) => setT(patchKeep({ blend: v as 'through' | 'cross' }))} />
               <p className="text-xs text-slate-500">Text that is too different or too long still moves as one object.</p>
             </>
           ) : <p className="text-xs text-slate-500">This transition has no options.</p>}
@@ -78,6 +79,8 @@ export function TransitionsRibbon({ doc, slide }: { doc: Presentation; slide: Sl
       <Group label="Timing">
         <div className="flex flex-col gap-1.5">
           <NumberField label="Duration" testId="tr-duration" disabled={frozen || type === 'none'} min={0.1} max={4} step={0.1} unit="s" value={(t?.duration ?? (isMorph ? MORPH_DEFAULTS.duration : 500)) / 1000} onCommit={(v) => setT(patchKeep({ duration: Math.round(v * 1000) }), true)} />
+          {/* the speed curve: played by SlidesDone's slideshow and share pages (PowerPoint plays its own curve for its transitions) */}
+          <SelectField label="Easing" testId="tr-easing" disabled={frozen || type === 'none'} value={t?.easing ?? (isMorph ? MORPH_DEFAULTS.easing : 'ease-out')} options={EFFECT_EASINGS.map((x) => ({ value: x, label: easingLabel(x) }))} onChange={(v) => setT(patchKeep({ easing: v as (typeof EFFECT_EASINGS)[number] }))} />
           <label className="flex items-center gap-2 text-xs text-slate-600"><input type="checkbox" data-testid="tr-on-click" disabled={frozen || type === 'none' && !t} checked={t?.advanceOnClick !== false} onChange={(e) => setT(patchKeep({ advanceOnClick: e.target.checked ? undefined as unknown as boolean : false }))} />On mouse click</label>
         </div>
       </Group>

@@ -1,7 +1,8 @@
 import { eq } from 'drizzle-orm'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { pageReader } from '../ai/linked-pages.ts'
 import { db } from '../db/index.ts'
-import { creditBalance } from '../db/schema.ts'
+import { creditBalance, creditLedger } from '../db/schema.ts'
 import { api, json, makeDeck, rid, setPlan, signUp } from '../test-utils.ts'
 
 /** POST /ai-assist on the v2 pipeline (the default), with the mock model (src/ai/mock-assistant.ts). Pro plan, Gemini Flash credit class: one unit = 2 credits. */
@@ -98,7 +99,7 @@ describe('POST /ai-assist (v2): understand → resolve → do → check', () => 
     const t = await ask(u.cookie, id, 'use a premium template')
     expect(t.body.data.theme).not.toBeNull()
     const ex = await ask(u.cookie, id, 'export it to pdf')
-    expect(ex.body.data.notes).toContain('I cannot export.')
+    expect(ex.body.data.notes.join(' ')).toMatch(/I can't do that yet: I cannot export\./) // said by code in one fixed shape, never the model's own wording
   })
 
   it('a model failure is refunded; retrying the same requestId is charged once', async () => {
@@ -118,5 +119,38 @@ describe('POST /ai-assist (v2): understand → resolve → do → check', () => 
     expect(body.data.theme).toBeNull()
     expect(body.data.notes[0]).toMatch(/Only the selected slide/)
     expect(await balance(u.id)).toBe(start)
+  })
+
+  it('past the daily allowance of free checks, a reply that changes nothing is CHARGED and the reply says so (never a silent charge)', async () => {
+    const { u, id, start } = await setup('v2cap')
+    const before = (await ask(u.cookie, id, 'hey')).body.data
+    expect(before).toMatchObject({ creditsCharged: 0 }) // inside the allowance: free
+    const now = new Date()
+    await db.insert(creditLedger).values(Array.from({ length: 25 }, (_, i) => ({ id: `cap-${rid()}-${i}`, userId: u.id, delta: 2, balanceAfter: start, reason: 'refund', refType: 'ai_assist', refId: `old-${i}`, idempotencyKey: `cap-key-${rid()}-${i}`, createdAt: now })))
+    const after = (await ask(u.cookie, id, 'hey')).body.data
+    expect(after.creditsCharged).toBe(2)
+    expect(after.notes.join(' ')).toMatch(/used today's 25 free checks and answers, so this reply used 2 credits/)
+    expect(await balance(u.id)).toBe(start - 2)
+  })
+})
+
+describe('a pasted link is charged only when its words are used', () => {
+  const PAGE = { title: 'Launch notes', parts: [{ locator: null, text: 'The launch happens in March and has two partners. '.repeat(8) }] }
+  it('the page is used to write: one unit for the edit, one for the page', async () => {
+    const read = vi.spyOn(pageReader, 'read').mockResolvedValue(PAGE as never)
+    const { u, id, doc, start } = await setup('v2link1')
+    const { body } = await ask(u.cookie, id, 'shorten slide 2 using https://www.tata.com/newsroom/launch', { activeSlideId: doc.slides[0]!.id })
+    read.mockRestore()
+    expect(body.data.creditsCharged).toBe(4)
+    expect(await balance(u.id)).toBe(start - 4)
+  })
+  it('the page is read but nothing needed it: the page is not charged, and the answer says so', async () => {
+    const read = vi.spyOn(pageReader, 'read').mockResolvedValue(PAGE as never)
+    const { u, id, doc, start } = await setup('v2link2')
+    const { body } = await ask(u.cookie, id, 'lock slide 2, my notes are at https://www.tata.com/newsroom/launch', { activeSlideId: doc.slides[0]!.id })
+    read.mockRestore()
+    expect(body.data.creditsCharged).toBe(2)
+    expect(body.data.notes.join(' ')).toMatch(/did not need the page you linked/)
+    expect(await balance(u.id)).toBe(start - 2)
   })
 })

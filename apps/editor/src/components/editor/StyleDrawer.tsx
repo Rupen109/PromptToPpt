@@ -7,8 +7,9 @@ import * as C from '@/editor/commands'
 import { useEntitlements } from '@/lib/entitlements'
 import { useDoc } from '@/editor/store'
 import { BrandTab } from './BrandTab'
+import { DesignTab } from './DesignTab'
 
-type Tab = 'templates' | 'designs' | 'colors' | 'fonts' | 'brand'
+type Tab = 'templates' | 'designs' | 'colors' | 'fonts' | 'design' | 'brand'
 
 /** Right-hand Style drawer (reference screenshot 2): workspace themes, alternative slide designs, colours, typography. Brand tab = a company's colours, fonts and logo from its website. */
 export function StyleDrawer({ doc, slide, onClose }: { doc: Presentation; slide: Slide; onClose: () => void }) {
@@ -24,13 +25,14 @@ export function StyleDrawer({ doc, slide, onClose }: { doc: Presentation; slide:
         <button onClick={onClose} aria-label="Close style panel" className="text-xl leading-none text-slate-500 hover:text-slate-800"><X aria-hidden size={20} /></button>
       </div>
       <div role="tablist" className="flex flex-wrap gap-1 px-3 pt-3">
-        {([['templates', 'Templates'], ['designs', 'Layouts'], ['colors', 'Colors'], ['fonts', 'Fonts'], ['brand', 'Brand']] as const).map(([k, l]) => (
+        {([['templates', 'Templates'], ['designs', 'Layouts'], ['colors', 'Colors'], ['fonts', 'Fonts'], ['design', 'Design'], ['brand', 'Brand']] as const).map(([k, l]) => (
           <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={`px-3 py-1.5 rounded-full text-sm ${tab === k ? 'bg-foreground text-white' : 'bg-slate-100 hover:bg-slate-200'}`}>{l}</button>
         ))}
       </div>
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {tab === 'templates' && <TemplatesTab doc={doc} />}
         {tab === 'brand' && <BrandTab doc={doc} slideId={slide.id} />}
+        {tab === 'design' && <DesignTab doc={doc} />}
         {tab === 'designs' && (
           alternatives.length === 0 ? (
             <p className="text-sm text-slate-500">No alternative designs for this slide{slide.manual ? '. Hand-edited slides keep their layout.' : '.'}</p>

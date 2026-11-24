@@ -106,3 +106,74 @@ describe('Product Launch: a tilted picture becomes the upright artwork, turned',
     expect(new Set(rays.map((r) => Math.round(r.rotation))).size).toBeGreaterThan(8)
   })
 })
+
+describe('a template deck about the person\'s own product (swap)', () => {
+  const tpl = MORPH_TEMPLATES.find((t) => t.id === 'launch-unbox')!
+  const pic = { url: 'https://example.com/cup.png', alt: 'A coffee cup' }
+  const images = Object.fromEntries(tpl.swap!.pictures.map((id) => [id, pic]))
+  const compose = (scene: string, swapped: boolean) => composeTemplateScene(tpl, { layout: 'morph-template', template: tpl.id, scene, fields: {}, images: swapped ? images : {}, ...(swapped ? { swapped: true } : {}), speakerNotes: '', sources: [] } as never)
+  it('the person\'s picture replaces the template\'s product, filled and rounded, and the original product\'s accessories and call-outs are left out', () => {
+    const own = compose('s6', true).elements
+    const orig = compose('s6', false).elements
+    const heroOwn = own.find((e) => e.id === 'hero') as { src: string; fit: string; radius: number }
+    expect(heroOwn.src).toBe(pic.url)
+    expect(heroOwn.fit).toBe('cover')
+    expect(heroOwn.radius).toBeGreaterThan(0)
+    for (const id of tpl.swap!.hide) expect(own.some((e) => e.id === id), `${id} should be hidden`).toBe(false)
+    expect(orig.some((e) => tpl.swap!.hide.includes(e.id)), 'the template alone keeps its call-outs').toBe(true)
+    expect(orig.find((e) => e.id === 'hero')).toBeTruthy()
+  })
+  it('words are drawn above the picture in a swapped deck (a photo has a background; the product cut-out of the template had none)', () => {
+    const els = compose('s2', true).elements
+    const hero = els.find((e) => e.id === 'hero')!
+    const texts = els.filter((e) => e.type === 'text')
+    expect(texts.length).toBeGreaterThan(0)
+    for (const t of texts) expect(t.zIndex, t.id).toBeGreaterThan(hero.zIndex)
+  })
+  it('a template without a swap keeps its own pictures even when asked', () => {
+    const orbit = MORPH_TEMPLATES.find((t) => t.id === 'pitch-orbit')!
+    expect(orbit.swap).toBeUndefined()
+  })
+})
+
+describe('a cut-out object replaced by the person\'s picture is shown as a softly rounded photo', () => {
+  it('Roadmap icons, Finance hero pictures and the Matrix still life take the template\'s corner radius and fill their frame', () => {
+    for (const [id, obj, scene, radius] of [['biz-roadmap', 'ic1', 's2', 28], ['biz-finance', 'coins', 's1', 40], ['biz-matrix', 'solids', 's2', 24]] as const) {
+      const tpl = MORPH_TEMPLATES.find((t) => t.id === id)!
+      const sc = tpl.scenes.find((s) => composeTemplateScene(tpl, { layout: 'morph-template', template: id, scene: s.id, fields: {}, images: {}, speakerNotes: '', sources: [] } as never).elements.some((e) => e.id === obj && (e.opacity ?? 1) >= 0.5))?.id ?? scene
+      const out = composeTemplateScene(tpl, { layout: 'morph-template', template: id, scene: sc, fields: {}, images: { [obj]: { url: 'https://example.com/me.jpg', alt: 'Mine' } }, speakerNotes: '', sources: [] } as never)
+      const el = out.elements.find((e) => e.id === obj) as { src: string; fit: string; radius: number }
+      expect(el.src, id).toBe('https://example.com/me.jpg')
+      expect(el.fit, id).toBe('cover')
+      expect(el.radius, id).toBe(radius)
+    }
+  })
+})
+
+describe('Pitch templates: a replaced 3D object keeps its outline', () => {
+  const put = (id: string, obj: string) => {
+    const tpl = MORPH_TEMPLATES.find((t) => t.id === id)!
+    const scene = tpl.scenes.find((s) => composeTemplateScene(tpl, { layout: 'morph-template', template: id, scene: s.id, fields: {}, images: {}, speakerNotes: '', sources: [] } as never).elements.some((e) => e.id === obj && (e.opacity ?? 1) >= 0.5))!.id
+    const out = composeTemplateScene(tpl, { layout: 'morph-template', template: id, scene: scene.toString(), fields: {}, images: { [obj]: { url: 'https://example.com/me.jpg', alt: 'Mine' } }, speakerNotes: '', sources: [] } as never)
+    return out.elements.find((e) => e.id === obj) as { src: string; fit: string; clip: string; radius: number }
+  }
+  it('spheres and orbs become round pictures, the laptop screen and the cube rounded ones; all fill their frame', () => {
+    for (const [t, o] of [['pitch-orbit', 'core'], ['pitch-orbit', 's2'], ['pitch-market', 'orb'], ['pitch-market', 'gem']] as const) { const e = put(t, o); expect(e.clip, `${t}/${o}`).toBe('circle'); expect(e.fit).toBe('cover'); expect(e.src).toBe('https://example.com/me.jpg') }
+    expect(put('pitch-market', 'laptop').radius).toBe(24)
+    expect(put('pitch-market', 'cube').radius).toBe(40)
+  })
+})
+
+describe('Product Launch: the person\'s photographs never hide the words', () => {
+  it('with the person\'s pictures every word is drawn above every picture', () => {
+    const tpl = MORPH_TEMPLATES.find((t) => t.id === 'launch')!
+    for (const sc of tpl.scenes) {
+      const base = composeTemplateScene(tpl, { layout: 'morph-template', template: 'launch', scene: sc.id, fields: {}, images: {}, speakerNotes: '', sources: [] } as never)
+      const ids = base.elements.filter((e) => e.type === 'image').map((e) => e.id)
+      const images = Object.fromEntries(ids.map((id) => [id, { url: 'https://example.com/me.jpg', alt: 'Mine' }]))
+      const out = composeTemplateScene(tpl, { layout: 'morph-template', template: 'launch', scene: sc.id, fields: {}, images, speakerNotes: '', sources: [] } as never)
+      const topPic = Math.max(-1, ...out.elements.filter((e) => e.type === 'image').map((e) => e.zIndex))
+      for (const t of out.elements.filter((e) => e.type === 'text')) expect(t.zIndex, `${sc.id}/${t.id}`).toBeGreaterThan(topPic)
+    }
+  })
+})

@@ -40,6 +40,16 @@ describe('Chat with your presentation (askDeck)', () => {
     expect(await balance(u.id)).toBe(after)
   })
 
+  it('an edit typed into Ask ("make it dark") is not answered there and not charged: it is offered to Edit with the same words', async () => {
+    const u = await signUp('ask'); await setPlan(u.id, 'pro'); const { id } = await makeDeck(u.id)
+    await json(await api(u.cookie, 'GET', '/me/entitlements'))
+    const before = await balance(u.id)
+    const r = await json(await ask(u.cookie, id, 'make the theme dark'))
+    expect(r.data).toMatchObject({ editRequest: 'make the theme dark', creditsCharged: 0, slides: [] })
+    expect(r.data.answer).toMatch(/the Edit tab makes changes/)
+    expect(await balance(u.id)).toBe(before)
+  })
+
   it('says so when the deck does not contain the answer (no slides cited)', async () => {
     const u = await signUp('ask'); await setPlan(u.id, 'pro'); const { id } = await makeDeck(u.id)
     const r = await json(await ask(u.cookie, id, 'something not in the deck please'))

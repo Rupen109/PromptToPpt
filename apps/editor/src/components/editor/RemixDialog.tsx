@@ -2,6 +2,8 @@ import { Portal } from '@/components/Portal'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { ApiError, isGateError, type ModelOption } from '@prompttoppt/api-client'
+import type { AspectRatio } from '@prompttoppt/validation'
+import { FormatPicker } from '@/components/FormatPicker'
 import { api } from '@/lib/api'
 import { useEntitlements } from '@/lib/entitlements'
 import { useDialog } from '@/lib/useDialog'
@@ -21,13 +23,14 @@ const IDEAS = [
 /** A slide count the user wrote in the instruction ("6 slides", "make it 8-slide"), or null. */
 export const slidesInText = (t: string): number | null => { const m = /\b(\d{1,2})\s*[- ]?\s*slides?\b/i.exec(t); return m ? Number(m[1]) : null }
 
-export function RemixDialog({ presentationId, title, slideCount, handEdited, beforeStart, onClose }: { presentationId: string; title: string; slideCount: number; /** slides edited by hand: a remix reads what they show now */ handEdited: number; /** saves what is on screen first: a remix reads the SAVED deck */ beforeStart: () => Promise<unknown>; onClose: () => void }) {
+export function RemixDialog({ presentationId, title, slideCount, aspect, handEdited, beforeStart, onClose }: { presentationId: string; title: string; slideCount: number; /** the deck's shape now: the new version can have another */ aspect: AspectRatio; /** slides edited by hand: a remix reads what they show now */ handEdited: number; /** saves what is on screen first: a remix reads the SAVED deck */ beforeStart: () => Promise<unknown>; onClose: () => void }) {
   const { ent, upgrade } = useEntitlements()
   const navigate = useNavigate()
   const cap = ent?.limits.maxSlides ?? 40
   const [text, setText] = useState('')
   const [count, setCount] = useState(String(Math.min(slideCount, cap))) // text, so typing "12" does not jump on the first digit
   const [touched, setTouched] = useState(false)
+  const [format, setFormat] = useState<AspectRatio>(aspect)
   const clamp = (v: string) => Math.max(3, Math.min(cap, Math.round(Number(v)) || 3))
   const [models, setModels] = useState<ModelOption[]>([])
   const [modelId, setModelId] = useState<string | null>(null)
@@ -47,7 +50,7 @@ export function RemixDialog({ presentationId, title, slideCount, handEdited, bef
       await beforeStart().catch(() => {}) // never remix a stale copy: save what is on screen first
       const slides = clamp(count)
       const src = await api.remixSource(presentationId)
-      const job = await api.createJob({ prompt: instruction, slideCount: slides, sourceIds: [src.sourceId], remixOf: presentationId, ...(modelId ? { model: modelId } : {}), idempotencyKey: idem.current })
+      const job = await api.createJob({ prompt: instruction, slideCount: slides, sourceIds: [src.sourceId], remixOf: presentationId, ...(format !== aspect ? { aspectRatio: format } : {}), ...(modelId ? { model: modelId } : {}), idempotencyKey: idem.current })
       clearPending(); setPendingPrompt(`Remix of "${title}": ${instruction}`); setPendingJob(job.id)
       navigate('/create') // the create screen shows the progress and opens the new presentation when it is ready
     } catch (e) {
@@ -69,6 +72,8 @@ export function RemixDialog({ presentationId, title, slideCount, handEdited, bef
           <input type="number" inputMode="numeric" aria-label="Slides in the new version" min={3} max={cap} value={count} onChange={(e) => { setTouched(true); setCount(e.target.value) }} onBlur={() => setCount(String(clamp(count)))} className="w-20 border border-border rounded-lg px-2 py-1.5" />
           <span className="text-slate-500">(now {slideCount})</span>
         </label>
+        <FormatPicker value={format} onChange={setFormat} label="Format of the new version" current={aspect} cols={2} />
+        {format !== aspect && <p className="mt-2 text-xs text-slate-600">The slides are laid out again for the new shape; the look, the words and the figures stay.</p>}
         {choice && models.filter((m) => m.allowed).length > 0 && (
           <label className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">AI model
             <select aria-label="AI model" value={modelId ?? ''} onChange={(e) => setModelId(e.target.value)} className="min-w-0 flex-1 border border-border rounded-lg px-2 py-1.5 bg-white">

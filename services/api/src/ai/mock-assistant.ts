@@ -25,8 +25,14 @@ export function mockUnderstand(prompt: string): string {
   if (t.includes('fail_please')) throw new Error('mock model failure')
   if (/^\s*(hi|hey|hello|thanks|thank you|ok)\b[\s.!]*$/.test(t)) return JSON.stringify({ kind: 'chat' })
   if (/water|weather|recipe/.test(t)) return JSON.stringify({ kind: 'off_topic' })
+  if (/^what can you (do|edit)|^what (is|'s) available/.test(t)) return JSON.stringify({ kind: 'help', help: /on this slide|edit on/.test(t) ? 'slide' : /plan|subscription/.test(t) ? 'plan' : 'all' })
   if (/^how many slides/.test(t)) { const n = (prompt.match(/<slides>\n([\s\S]*?)\n<\/slides>/)?.[1] ?? '').split('\n').length; return JSON.stringify({ kind: 'question', answer: `This deck has ${n} slides.` }) }
   if (t.includes('ask_please')) return JSON.stringify({ kind: 'edit', clarity: 'ask', question: 'Do you mean the whole deck or only this slide?' })
+  // objects, the saved brand and the person's own pictures (the same understanding a real model gives for these phrases)
+  if (/^make (this|it) bigger/.test(t)) return JSON.stringify({ kind: 'edit', clarity: 'act', tasks: [{ family: 'element', targets: [{ by: 'current' }], values: { elements: [{ by: 'selected' }], ops: [{ op: 'resize', scale: 1.3 }] } }] })
+  if (/^use my brand/.test(t)) return JSON.stringify({ kind: 'edit', clarity: 'act', tasks: [{ family: 'brand', targets: [], values: {} }] })
+  const own = /^use my (.+?) (photo|picture|image)/.exec(t)
+  if (own) return JSON.stringify({ kind: 'edit', clarity: 'act', tasks: [{ family: 'picture', targets: [{ by: 'current' }], values: { replace: own[1] } }] })
   const tasks: unknown[] = []
   const unsupported: string[] = []
   const refs = refsIn(t)

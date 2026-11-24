@@ -29,6 +29,8 @@ export type LiveEvent =
   | { t: 'leave'; deck: string; clientId: string }
   | { t: 'kick'; deck: string; userId: string }
   | { t: 'comments'; deck: string; by: string }
+  /** what this person may do changed (the owner made them a viewer or an editor): their open editor reads its access again */
+  | { t: 'access'; deck: string; userId: string }
 
 export interface Bus {
   publish(e: LiveEvent): Promise<void>
@@ -97,4 +99,5 @@ let singleton: Bus | null = null
 export const bus = (): Bus => (singleton ??= createBus(env.LIVE_BUS))
 export const publishRevision = (deck: string, rev: number, by: string) => void bus().publish({ t: 'rev', deck, rev, by }).catch((e) => console.error('[live]', e))
 export const publishComments = (deck: string, by: string) => void bus().publish({ t: 'comments', deck, by }).catch((e) => console.error('[live]', e))
+export const publishAccess = (deck: string, userId: string) => void bus().publish({ t: 'access', deck, userId }).catch((e) => console.error('[live]', e))
 export const kickUser = (deck: string, userId: string) => void bus().publish({ t: 'kick', deck, userId }).catch((e) => console.error('[live]', e))

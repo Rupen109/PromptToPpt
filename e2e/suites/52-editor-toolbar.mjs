@@ -31,6 +31,8 @@ export default async function () {
     expect(await tb('home-scratch').count() === 1, 'no link on the home page')
     expect(await p.getByRole('link', { name: 'Create from scratch' }).count() >= 1, 'no sidebar link')
     await tb('home-scratch').click(); await p.waitForURL(/\/scratch$/)
+    // (the page loads after the address changes: wait for it to draw before counting)
+    await p.getByRole('heading', { name: 'Create from scratch' }).first().waitFor({ timeout: 10000 })
     expect(await p.getByRole('heading', { name: 'Create from scratch' }).count() === 1, 'page heading')
   })
 
@@ -263,19 +265,24 @@ export default async function () {
     expect(bg.type === 'gradient', `bg: ${JSON.stringify(bg)}`)
   })
 
-  await s.check('a Starter person: adding objects shows the upgrade message; background, undo and history stay open', p, async () => {
+  await s.check('a Starter person: adding objects follows the plan (the advanced editor is in Starter since the plans changed: a text box; without it, the upgrade message); background, undo and history stay open', p, async () => {
     const S = await person(b, 'tbars', 'starter')
-    await api.get(S, '/me/entitlements')
+    const ent = await api.get(S, '/me/entitlements')
     const sid = (await api.post(S, '/presentations', { blank: true })).data.id
     const q = await S.ctx.newPage()
     await q.goto(`${EDITOR}/edit/${sid}`, { waitUntil: 'networkidle' }); await q.locator('[data-testid="stage"]').waitFor(); await q.waitForTimeout(800)
     await q.locator('[data-testid="tb-text"]').click()
-    await q.getByText(/Advanced editor/).first().waitFor({ timeout: 5000 })
-    expect(await q.locator('[data-testid^="el-"]').count() === 0, 'Starter was able to add text')
-    await q.keyboard.press('Escape')
-    await q.locator('[data-testid="tb-shapes"]').click()
-    expect(await q.locator('[data-testid^="shape-"]').count() === 0, 'shape menu opened for Starter')
-    await q.keyboard.press('Escape')
+    if (ent.data.features.advancedEditor) {
+      await q.locator('[contenteditable="true"]').first().waitFor({ timeout: 5000 }) // (the new text box opens ready to type)
+      await q.keyboard.press('Escape'); await q.keyboard.press('Escape')
+    } else {
+      await q.getByText(/Advanced editor/).first().waitFor({ timeout: 5000 })
+      expect(await q.locator('[data-testid^="el-"]').count() === 0, 'Starter was able to add text')
+      await q.keyboard.press('Escape')
+      await q.locator('[data-testid="tb-shapes"]').click()
+      expect(await q.locator('[data-testid^="shape-"]').count() === 0, 'shape menu opened for Starter')
+      await q.keyboard.press('Escape')
+    }
     await q.locator('[data-testid="tb-background"]').click()
     expect(await q.locator('[data-testid="bg-color"]').count() === 1, 'background menu should be open to Starter')
     await q.locator('[data-testid="bg-grad-ocean"]').click()

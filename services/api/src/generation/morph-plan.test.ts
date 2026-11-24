@@ -100,3 +100,21 @@ describe('the plan the model writes', () => {
   })
   it('scrubNumbers leaves a text without figures alone', () => { expect(scrubNumbers('Plain words', new Set())).toBe('Plain words') })
 })
+
+describe('the deck\'s hand (a custom Morph deck is not always laid out the same way)', () => {
+  const plan = (title: string) => ({ title, concepts: [{ heading: 'A', text: 'a' }, { heading: 'B', text: 'b' }], scenes: [{ scene: 'cover', title: 'x', notes: '' }, { scene: 'hero-left', title: 'y', notes: '' }, { scene: 'closing', title: 'z', notes: '' }] }) as never
+  it('every slide of a deck has the same hand, and the same request gives the same deck', async () => {
+    const { morphContents, handOf } = await import('./morph-plan.ts')
+    for (const t of ['Quarterly marketing review', 'Tax planning guide', 'Wedding timeline']) {
+      const hands = new Set(morphContents(plan(t)).map((c) => (c as { flip?: boolean }).flip === true))
+      expect(hands.size).toBe(1)
+      expect(handOf(t)).toBe(handOf(t)); expect(handOf(t)).toBe(handOf(`  ${t.toUpperCase()} `))
+    }
+  })
+  it('both hands are used: about half of different titles take each', async () => {
+    const { handOf } = await import('./morph-plan.ts')
+    const titles = Array.from({ length: 200 }, (_, i) => `Deck about topic number ${i}`)
+    const flipped = titles.filter(handOf).length
+    expect(flipped).toBeGreaterThan(60); expect(flipped).toBeLessThan(140)
+  })
+})

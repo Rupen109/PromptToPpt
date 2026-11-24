@@ -24,6 +24,27 @@ const post = (who: { cookie: string }, deckId: string, body: object) => api(who.
 const list = async (who: { cookie: string }, deckId: string) => (await json(await api(who.cookie, 'GET', `/presentations/${deckId}/comments`))).data
 const mailsTo = (email: string) => mailOutbox.filter((m) => m.to === email)
 
+describe('comments on an object', () => {
+  it('a comment can be ON an object of the slide (its pin follows the object; x/y keep where it was); an object that is not on the saved slide is refused', async () => {
+    const t = await team()
+    const el = t.deck.doc.slides[0]!.elements.find((e) => !e.decorative)!
+    const r = await post(t.owner, t.deck.id, { slideId: t.slide, x: 0.9, y: 0.1, elementId: el.id, body: 'Check this number' })
+    expect(r.status).toBe(201)
+    const th = (await list(t.friend, t.deck.id)).threads.find((x: any) => x.comments[0].body === 'Check this number')
+    expect(th).toMatchObject({ slideId: t.slide, elementId: el.id, x: 0.9, y: 0.1 })
+    // a slide comment keeps no object
+    await post(t.owner, t.deck.id, { slideId: t.slide, body: 'Plain' })
+    expect((await list(t.owner, t.deck.id)).threads.find((x: any) => x.comments[0].body === 'Plain').elementId).toBeNull()
+    // an object of ANOTHER slide, or one that does not exist: refused, nothing stored
+    const other = t.deck.doc.slides[1]!.elements[0]!
+    for (const elementId of [other.id, 'nope']) {
+      const bad = await post(t.owner, t.deck.id, { slideId: t.slide, elementId, body: 'x' })
+      expect(bad.status).toBe(422)
+      expect(JSON.stringify(await json(bad))).toMatch(/That object is not on the slide/)
+    }
+  })
+})
+
 describe('comments: access', () => {
   it('A1/A2 the owner (on any plan) and an invited collaborator can comment and see each other\'s comments; names come from the server', async () => {
     const t = await team()

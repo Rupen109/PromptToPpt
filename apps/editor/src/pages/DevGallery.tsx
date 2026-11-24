@@ -12,7 +12,7 @@ const KITS: { name: string; theme: { style: Partial<ThemeStyle> } }[] = [
   { name: 'minimal + none + flat + corner', theme: { style: { title: 'minimal', header: 'none', card: 'flat', decor: 'corner', headingWeight: 700 } } },
   { name: 'frame + bar + accent-top + blobs (gradient body)', theme: { style: { title: 'frame', header: 'bar', card: 'accent-top', decor: 'blobs', bodyBackground: 'gradient', titleBackground: 'gradient' } } },
 ]
-const SHOW = ['title', 'title-body', 'metrics', 'roadmap', 'architecture', 'case-study', 'agenda', 'team', 'matrix', 'big-number', 'process', 'comparison']
+const SHOW = ['title', 'title-body', 'metrics', 'roadmap', 'architecture', 'case-study', 'agenda', 'team', 'matrix', 'big-number', 'process', 'comparison', 'chart', 'quote', 'table', 'split-image-text', 'timeline', 'thank-you']
 
 /** DEV-ONLY visual check of the layout engine. Not routed in production builds. */
 export function DevGallery() {
@@ -27,9 +27,9 @@ export function DevGallery() {
   return (
     <div style={{ padding: 24, background: '#e5e7eb', minHeight: '100vh' }}>
       <h1 style={{ font: '700 20px Inter' }}>{kit.name} · theme {THEMES[themeIdx]!.id} · {aspect}</h1>
-      <div style={{ display: 'grid', gridTemplateColumns: aspect === '1:1' ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)', gap: 20, marginTop: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: aspect === '9:16' ? 'repeat(6, 1fr)' : aspect === '1:1' ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)', gap: 20, marginTop: 16 }}>
         {slides.map((s, i) => (
-          <div key={s.id}><div style={{ font: '12px Inter', color: '#475569', marginBottom: 4 }}>{s.layoutId}</div><SlideCanvas slide={s} theme={theme} aspect={aspect} width={aspect === '1:1' ? 330 : 440} play={play} footer={{ index: i, total: slides.length, title: 'Deck title' }} /></div>
+          <div key={s.id}><div style={{ font: '12px Inter', color: '#475569', marginBottom: 4 }}>{s.layoutId}</div><SlideCanvas slide={s} theme={theme} aspect={aspect} width={aspect === '9:16' ? 230 : aspect === '1:1' ? 330 : 440} play={play} footer={{ index: i, total: slides.length, title: 'Deck title' }} /></div>
         ))}
       </div>
     </div>

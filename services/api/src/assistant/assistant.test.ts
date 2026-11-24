@@ -5,7 +5,7 @@ import { CAPABILITIES } from './capabilities/index.ts'
 import { priceUnits, runAssistant, type AssistantDeps } from './pipeline.ts'
 import { insertionPoints, resolveTargets } from './resolve.ts'
 import { buildState, slideIndexText } from './state.ts'
-import { intentSchema, understandPrompt, type Intent } from './understand.ts'
+import { elementOpsAnswer, intentSchema, objectsPrompt, understandPrompt, type Intent } from './understand.ts'
 
 /** The customer's deck: a cover, four slides in a row with the SAME picture + text layout (7-10), a pricing slide, a thank-you page. */
 const theme = getTheme('cobalt')
@@ -46,6 +46,16 @@ const run = (intent: Partial<Intent>, writer?: Parameters<typeof fake>[1], o: Pa
   const f = fake(intent, writer)
   return runAssistant({ doc: deck(), ent: pro, instruction: 'x', activeSlideId: 's2', ...o }, f.deps).then((out) => ({ out, calls: f.calls }))
 }
+/** a partly blocked request (a locked slide among the targets): the FIRST answer asks "do the rest?" with nothing written or charged; the result is the answer to "Yes, do the rest" (the same tasks, no model) */
+const runProceed = async (intent: Partial<Intent>, writer?: Parameters<typeof fake>[1], o: Partial<Parameters<typeof runAssistant>[0]> = {}) => {
+  const first = await run(intent, writer, o)
+  if (first.out.kind !== 'ask') throw new Error(`expected the do-the-rest question first, got ${first.out.kind}`)
+  expect(first.calls).toMatchObject({ write: 0, authorized: [] })
+  const yes = first.out.question.options.find((x) => x.confirm?.kind === 'proceed')
+  if (!yes) throw new Error('no do-the-rest option')
+  const second = await run({}, writer, { ...o, confirm: yes.confirm as never })
+  return { ...second, asked: first.out.question.text }
+}
 const done = (o: Awaited<ReturnType<typeof runAssistant>>) => { if (o.kind !== 'done') throw new Error(`expected done, got ${o.kind}`); return o }
 
 describe('stage 1: the deck state is facts, not guesses', () => {
@@ -56,10 +66,13 @@ describe('stage 1: the deck state is facts, not guesses', () => {
   })
   it('the understanding prompt carries the slide index and focus, never the slides\' words, and stays small', () => {
     const s = buildState(deck(), { activeSlideId: 's7' })
-    const p = understandPrompt(s, 'update layout of slides 7-10')
+    const p = understandPrompt(s, 'update layout of slides 7-10', [], { examples: false }) // the ALWAYS-sent part (the per-message examples have their own bound below and in catalogue.test.ts)
+    const withExamples = understandPrompt(s, 'update layout of slides 7-10')
+    expect(withExamples.prompt).toContain('<examples>')
+    expect((withExamples.system.length + withExamples.prompt.length) / 4).toBeLessThan(3500 + 450)
     expect(p.prompt).toContain('7 | split-image-text | Architect of Pokhran-II')
     expect(p.prompt).not.toContain('One idea') // no slide text
-    expect((p.system.length + p.prompt.length) / 4).toBeLessThan(2600) // ≈ tokens: the cheap call stays cheap
+    expect((p.system.length + p.prompt.length) / 4).toBeLessThan(3500) // ≈ tokens: the cheap call stays cheap (the guide is the STATIC part of the prompt, which providers cache when it repeats; 4500 with timing, paths and picture shapes). NEXT TIME do not raise this: split the object-operations guide into a second call used only when the model picks the object family (docs/AI_EDIT_HONESTY_AND_SCENARIOS.md section 24). Every capability's guide text is sent with EVERY message (2600 before the object and brand families, 3000 before shapes/tables/charts, 3500 with transitions): raise this deliberately, per family, never silently. (2600 before the object and brand families, which add the closed list of object operations)
   })
 })
 
@@ -121,14 +134,16 @@ describe('the pipeline: the real chats that went wrong', () => {
     expect(r.compiled.applied).toContain('Changed slide 9 to the agenda layout')
     expect(r.units).toBe(2) // more than one slide written
   })
-  it('the check catches "all the same layout" and retries ONCE naming the problem; still wrong = the person is told', async () => {
+  it('the check catches "all the same layout" and retries ONCE naming the problem; still wrong = NOTHING is applied and the person is told why (never a claimed change that misses the request)', async () => {
     const same = (_c: string, input: any, problems: boolean) => ({ slides: input.slides.map((s: any, i: number) => ({ slideId: s.slideId, content: { layout: problems && i % 2 ? 'timeline' : 'process', title: s.content.title, steps: s.content.bullets.map((b: string) => ({ label: b, detail: b })) } })) })
     const fixed = await run({ tasks: [{ family: 'layout', targets: [{ by: 'range', from: 7, to: 10 }], values: {} }] }, same)
     expect(fixed.calls.write).toBe(2)
     expect(new Set(done(fixed.out).compiled.edits.map((e) => e.content.layout)).size).toBe(2)
     const never = await run({ tasks: [{ family: 'layout', targets: [{ by: 'range', from: 7, to: 10 }], values: {} }] }, (_c, input) => same(_c, input, false))
     expect(never.calls.write).toBe(2)
-    expect(done(never.out).notes.join(' ')).toMatch(/^Not done: .*same layout/)
+    const r = done(never.out)
+    expect(r.compiled.edits).toEqual([]); expect(r.compiled.applied).toEqual([])
+    expect(r.notes.join(' ')).toMatch(/^I couldn't do that \(all 4 slides came back with the same layout \(process\).*\), so nothing was changed for it\./)
   })
   it('"add thank you page" then "color should be brown": the colour goes on THAT page (focus), the deck palette is untouched', async () => {
     const recent = [{ theme: false, slideIds: ['s12'], summary: ['Added a new slide at the end'] }]
@@ -152,14 +167,15 @@ describe('the pipeline: the real chats that went wrong', () => {
     const { out } = await run({ tasks: [{ family: 'add_slide', targets: [], values: { count: 2, where: 'after', after: { by: 'number', n: 3 } } }] }, () => ({ slides: [{ content: tb('One') }, { content: tb('Two') }] }))
     expect(done(out).compiled.additions.map((a) => [a.id, a.afterSlideId])).toEqual([['new1', 's3'], ['new2', 'new1']])
   })
-  it('text: "add 2 more points" that only rewords is retried once with the exact count; locked slides are left alone and said so', async () => {
-    const { out, calls } = await run({ tasks: [{ family: 'text', targets: [{ by: 'number', n: 2 }, { by: 'number', n: 11 }], values: { request: 'add 2 more points', addPoints: 2 } }] }, (_c, input, problems) => ({
+  it('text: "add 2 more points" that only rewords is retried once with the exact count; a locked slide among the targets is asked about FIRST, then left alone and said so', async () => {
+    const { out, calls, asked } = await runProceed({ tasks: [{ family: 'text', targets: [{ by: 'number', n: 2 }, { by: 'number', n: 11 }], values: { request: 'add 2 more points', addPoints: 2 } }] }, (_c, input, problems) => ({
       slides: input.slides.map((s: any) => ({ slideId: s.slideId, content: { ...s.content, bullets: problems ? [...s.content.bullets, 'Four', 'Five'] : s.content.bullets.map((b: string) => `${b}!`) } })),
     }))
     const r = done(out)
     expect(calls.write).toBe(2)
     expect((r.compiled.edits[0]!.content as { bullets: string[] }).bullets).toHaveLength(5)
     expect(r.notes).toContain('Slide 11 is locked, so I left it alone.')
+    expect(asked).toBe('I can do that for 1 slide, but not on slide 11 (locked). Nothing was changed yet. Shall I do the rest?')
   })
 })
 
@@ -192,7 +208,7 @@ describe('the pipeline: questions, chat and refusals cost nothing', () => {
 
 describe('the pipeline: slide management and looks, done by code', () => {
   it('delete, move, duplicate and lock produce exact editor changes; a locked slide is never deleted; the last slide never goes', async () => {
-    const del = done((await run({ tasks: [{ family: 'remove_slide', targets: [{ by: 'number', n: 4 }, { by: 'number', n: 11 }], values: {} }] })).out)
+    const del = done((await runProceed({ tasks: [{ family: 'remove_slide', targets: [{ by: 'number', n: 4 }, { by: 'number', n: 11 }], values: {} }] })).out)
     expect(del.slideOps.removals).toEqual(['s4'])
     expect(del.notes).toContain('Slide 11 is locked, so I kept it.')
     expect(del.applied).toEqual(['Deleted slide 4'])
@@ -235,7 +251,30 @@ describe('the pipeline: slide management and looks, done by code', () => {
     expect(ai.compiled.images).toHaveLength(1)
     const rm = done((await run({ tasks: [{ family: 'picture', targets: [{ by: 'number', n: 7 }], values: { remove: true } }] })).out)
     expect(rm.compiled.edits[0]).toMatchObject({ slideId: 's7', content: { layout: 'title-body', title: 'Architect of Pokhran-II' } })
-    expect(rm.slideOps.clearPictures).toEqual(['s7'])
+    expect(rm.slideOps.clearPictures).toEqual([]) // (the layout switch alone takes the picture off: one promise, one check, no "had no picture" note)
+  })
+  it('"remove the background of this image" is never taken for removing the image: the picture is KEPT and asked to be cut out; a slide with no picture says so', async () => {
+    const doc = deck() as unknown as { slides: { elements: unknown[] }[] }
+    const img = (id: string, w: number, h: number, extra: object = {}) => ({ type: 'image', id, x: 0, y: 0, width: w, height: h, rotation: 0, locked: false, zIndex: 1, opacity: 1, src: `https://example.test/${id}.jpg`, alt: '', ...extra })
+    doc.slides[1]!.elements = [img('small', 100, 100), img('big', 800, 600), img('decor', 900, 900, { decorative: true }), img('hidden', 500, 500, { opacity: 0 })]
+    const f = fake({ tasks: [{ family: 'picture', targets: [{ by: 'number', n: 2 }], values: { cutout: true } }] })
+    const r = done(await runAssistant({ doc: doc as never, ent: pro, instruction: 'x', activeSlideId: 's2' }, f.deps))
+    expect(r.slideOps.clearPictures).toEqual([])
+    expect(r.compiled.edits).toEqual([])
+    expect(r.slideOps.cutouts.map((c) => c.elementId)).toEqual(['big', 'small']) // the main pictures, biggest first; never the decoration or a hidden copy
+    expect(r.slideOps.cutouts[0]).toMatchObject({ slideId: 's2', url: 'https://example.test/big.jpg' })
+    const none = done((await run({ tasks: [{ family: 'picture', targets: [{ by: 'number', n: 7 }], values: { cutout: true } }] })).out)
+    expect(none.slideOps.cutouts).toEqual([])
+    expect(none.notes.join(' ')).toMatch(/no picture to remove the background of/)
+  })
+  it('"remove the picture" on a Morph template slide is never reported as done (its pictures belong to the template design)', async () => {
+    const doc = deck() as unknown as { slides: { layoutId: string }[] }
+    doc.slides[1]!.layoutId = 'morph-template'
+    const f = fake({ tasks: [{ family: 'picture', targets: [{ by: 'number', n: 2 }], values: { remove: true } }] })
+    const r = done(await runAssistant({ doc: doc as never, ent: pro, instruction: 'x', activeSlideId: 's2' }, f.deps))
+    expect(r.slideOps.clearPictures).toEqual([])
+    expect(r.applied).toEqual([])
+    expect(r.notes.join(' ')).toMatch(/Morph design/)
   })
   it('"undo that" after a MOVE or a DELETE works even when the model scopes it to "that slide" (the dead end seen in the 1,500-user test)', async () => {
     for (const summary of ['Moved slide 3 to the end', 'Deleted slide 4']) {
@@ -275,7 +314,7 @@ describe('writer answers are accepted slide by slide', () => {
     const r = done(out)
     expect(calls.write).toBe(2)
     expect(r.compiled.edits.map((e) => e.slideId)).toEqual(['s7', 's9', 's10'])
-    expect(r.notes).toContain("Slide 8: I couldn't fit that into the slide, so I left it as it was.")
+    expect(r.notes.join(' ')).toMatch(/Slide 8: I couldn't do that \(.+\), so I left it as it was\./) // (with the reason, so a person can act on it)
   })
   it('a slide that was not returned at all, or came back without its layout change, is asked for again like an invalid one', async () => {
     const { out, calls } = await run(layoutTask, (_c, input, problems) => ({ slides: input.slides.filter((s: any) => problems || s.slideId !== 's10').map((s: any) => ({ slideId: s.slideId, content: !problems && s.slideId === 's7' ? s.content : steps(s) })) }))
@@ -302,5 +341,303 @@ describe('writer answers are accepted slide by slide', () => {
     const stuck = await run({ tasks: [{ family: 'add_slide', targets: [], values: { count: 2, where: 'end', about: 'more' } }] }, (_c, input) => ({ slides: input.count === 2 ? [good(1), { content: broken }] : [{ content: broken }] }))
     expect(done(stuck.out).compiled.additions).toHaveLength(1)
     expect(done(stuck.out).notes).toContain('I could only make 1 of the 2 slides you asked for.')
+  })
+  it('figures are traced against the deck AS IT IS and the person\'s own words: a chart whose numbers appear only in the slide being added is refused; typed figures pass', async () => {
+    const chartOf = (values: number[]) => ({ layout: 'chart', title: 'Market share', chartType: 'pie', labels: ['A', 'B', 'C', 'D'], series: [{ name: 'Share', values }], unit: '%', takeaway: 'We lead the market', speakerNotes: '', sources: [] })
+    const mk = (instruction: string) => runAssistant({ doc: deck(), ent: pro, instruction, activeSlideId: 's2' }, fake({ tasks: [{ family: 'add_slide', targets: [], values: { count: 1, where: 'end', about: 'market share', layout: 'chart' } }] }, () => ({ slides: [{ content: chartOf([17, 31, 23, 29]) }] })).deps)
+    const invented = done(await mk('add a pie chart of our market share'))
+    expect(invented.compiled.additions).toEqual([])
+    expect(invented.notes.join(' ')).toMatch(/figures .* are not in your message, your deck or your sources/)
+    const given = done(await mk('add a pie chart: 17% A, 31% B, 23% C and 29% D'))
+    expect(given.compiled.additions).toHaveLength(1)
+  })
+  it('a slide built from the person\'s OWN uploaded template keeps its design: a layout change is refused with the reason, and nothing is reported as done', async () => {
+    const doc = deck() as unknown as { slides: { fromFile?: boolean }[] }
+    doc.slides[1]!.fromFile = true
+    const f = fake({ tasks: [{ family: 'layout', targets: [{ by: 'number', n: 2 }], values: { layout: 'timeline' } }] })
+    const r = done(await runAssistant({ doc: doc as never, ent: pro, instruction: 'x', activeSlideId: 's2' }, f.deps))
+    expect(r.applied).toEqual([])
+    expect(r.compiled.edits).toEqual([])
+    expect(r.notes.join(' ')).toMatch(/your own template/)
+  })
+  it('"use my coffee photo" when the model only says "latest": the upload the person NAMED is used, not the newest; with no name said, the newest', async () => {
+    const mk = (instruction: string) => {
+      const doc = deck() as unknown as { slides: { elements: unknown[] }[] }
+      doc.slides[1]!.elements = [{ type: 'image', id: 'only', x: 0, y: 0, width: 600, height: 400, rotation: 0, locked: false, zIndex: 1, opacity: 1, src: 'https://example.test/old.jpg', alt: 'old' }]
+      const f = fake({ tasks: [{ family: 'picture', targets: [{ by: 'number', n: 2 }], values: { replace: 'latest' } }] })
+      return runAssistant({ doc: doc as never, ent: pro, instruction, activeSlideId: 's2', uploads: [{ id: 'u1', url: 'https://x.test/tea.png', name: 'tea leaves' }, { id: 'u2', url: 'https://x.test/coffee.png', name: 'coffee beans' }] } as never, f.deps)
+    }
+    expect(done(await mk('use my coffee photo here')).slideOps.swaps[0]?.url).toBe('https://x.test/coffee.png')
+    const newest = done(await mk('use my latest upload'))
+    expect(newest.slideOps.swaps[0]?.url).toBe('https://x.test/tea.png')
+  })
+  it('addressIsInMessage: the website the model passes must be written in the person\'s own message', async () => {
+    const { addressIsInMessage } = await import('./capabilities/look.ts')
+    expect(addressIsInMessage('acme.com', 'match the brand of acme.com')).toBe(true)
+    expect(addressIsInMessage('https://www.acme.com/about', 'use https://acme.com for the style')).toBe(true)
+    expect(addressIsInMessage('www.Acme.com', 'make it look like WWW.ACME.COM please')).toBe(true)
+    expect(addressIsInMessage('acme.com', 'match the brand of my company website')).toBe(false) // invented by the model
+    expect(addressIsInMessage('acme', 'match acme')).toBe(false) // not an address
+    expect(addressIsInMessage('acme.com', 'match the brand of notacme.org')).toBe(false)
+    expect(addressIsInMessage('acme.com', 'match the brand of notacme.com')).toBe(false)
+    expect(addressIsInMessage('acme.com', 'match the brand of mail.acme.com.')).toBe(true)
+  })
+
+  describe('"I can\'t do that yet" is never a mistake: a second look at what CAN be done', () => {
+    const answers = (list: Partial<Intent>[]) => { let n = 0; const seen: string[] = []; const base = fake({}); const deps: AssistantDeps = { ...base.deps, understand: async (p) => { seen.push(p.prompt); return intentSchema.parse({ kind: 'edit', clarity: 'act', ...list[Math.min(n++, list.length - 1)] }) } }; return { deps, seen, calls: () => n } }
+    it('only unsupported parts: the model is asked once more with the real capability list, and a task it finds is used', async () => {
+      const a = answers([{ unsupported: ['lock slide 2'] }, { tasks: [{ family: 'lock_slide', targets: [{ by: 'number', n: 2 }], values: { locked: true } }] }])
+      const r = done(await runAssistant({ doc: deck(), ent: pro, instruction: 'protect slide 2', activeSlideId: 's1' }, a.deps))
+      expect(a.calls()).toBe(2)
+      expect(a.seen[1]).toMatch(/<second look>[\s\S]*lock or unlock slides[\s\S]*<\/second look>/)
+      expect(r.slideOps.locks).toHaveLength(1)
+      expect(r.notes.join(' ')).not.toMatch(/can't do that yet/)
+    })
+    it('when nothing fits it stays unsupported, said by code', async () => {
+      const a = answers([{ unsupported: ['play music'] }])
+      const r = done(await runAssistant({ doc: deck(), ent: pro, instruction: 'play music', activeSlideId: 's1' }, a.deps))
+      expect(a.calls()).toBe(2)
+      expect(r.notes.join(' ')).toMatch(/I can't do that yet: play music/)
+      expect(r.applied).toEqual([])
+    })
+    it('it is NOT asked again when the model already found a task, or when there is nothing unsupported', async () => {
+      const a = answers([{ tasks: [{ family: 'lock_slide', targets: [{ by: 'number', n: 2 }], values: { locked: true } }], unsupported: ['play music'] }])
+      await runAssistant({ doc: deck(), ent: pro, instruction: 'lock slide 2 and play music', activeSlideId: 's1' }, a.deps)
+      expect(a.calls()).toBe(1)
+      const b = answers([{ kind: 'chat' }])
+      await runAssistant({ doc: deck(), ent: pro, instruction: 'hi', activeSlideId: 's1' }, b.deps)
+      expect(b.calls()).toBe(1)
+    })
+  })
+
+  describe('a big message is done step by step', () => {
+    it('does the first parts, names the rest in the person\'s words, and offers them as the next step', async () => {
+      const t = (n: number, phrase: string) => ({ family: 'background' as const, targets: [{ by: 'number' as const, n }], values: { color: '#112233' }, phrase })
+      // (three or more changes are shown as a plan first: the plan names the first four and the rest for the next step; "Go ahead" does the four and still offers the rest)
+      const { out, asked } = await runProceed({ tasks: [t(1, 'slide 1 dark'), t(2, 'slide 2 dark'), t(3, 'slide 3 dark'), t(4, 'slide 4 dark'), t(5, 'slide 5 dark'), t(6, 'slide 6 dark')] })
+      expect(asked).toMatch(/^I'll make these 4 changes:\n1\. slide 1 dark\n2\. slide 2 dark\n3\. slide 3 dark\n4\. slide 4 dark\nThen, in the next step: slide 5 dark; slide 6 dark\.\nNothing has changed yet\. Go ahead\?$/)
+      const r = done(out)
+      expect(r.later).toEqual(['slide 5 dark', 'slide 6 dark'])
+      expect(r.notes.join(' ')).toMatch(/step by step: the first 4 parts are done here. Still to do: slide 5 dark; slide 6 dark\./)
+      expect(r.compiled.backgrounds).toHaveLength(4) // only four were done
+    })
+    it('two changes in one message are done at once; three or more are shown as a plan first and nothing runs or is charged before Go ahead', async () => {
+      const t = (n: number) => ({ family: 'background' as const, targets: [{ by: 'number' as const, n }], values: { color: '#112233' }, phrase: `slide ${n} dark` })
+      expect(done((await run({ tasks: [t(1), t(2)] })).out).compiled.backgrounds).toHaveLength(2)
+      const three = await run({ tasks: [t(1), t(2), t(3)] })
+      expect(three.out.kind).toBe('ask'); expect(three.calls).toMatchObject({ write: 0, authorized: [] })
+    })
+    it('a message within the limit has nothing left over', async () => {
+      const { out } = await run({ tasks: [{ family: 'background', targets: [{ by: 'number', n: 1 }], values: { color: '#112233' } }] })
+      expect(done(out).later).toBeUndefined()
+    })
+  })
+
+  describe('object tasks are decided in a second step', () => {
+    const picDeck = () => { const d = deck() as unknown as { slides: { elements: unknown[] }[] }; d.slides[1]!.elements = [{ type: 'image', id: 'only', x: 100, y: 100, width: 600, height: 400, rotation: 0, locked: false, zIndex: 1, opacity: 1, src: 'https://example.test/a.jpg', alt: 'a', fit: 'cover', clip: 'none' }]; return d as never }
+    const twoStep = (stage1: Partial<Intent>, stage2: unknown) => { const seen = { one: [] as string[], two: [] as string[] }; const base = fake({}); const deps: AssistantDeps = { ...base.deps, understand: async (p) => { seen.one.push(p.system); return intentSchema.parse({ kind: 'edit', clarity: 'act', ...stage1 }) }, understandOps: async (p) => { seen.two.push(p.system + '\n' + p.prompt); return elementOpsAnswer.parse(stage2) as never } }; return { deps, seen } }
+    it('step 1 only says "objects"; step 2 (with the full operation list) says which and what, and the change is made', async () => {
+      const a = twoStep({ tasks: [{ family: 'element', targets: [{ by: 'number', n: 2 }], values: {} }] }, { tasks: [{ index: 0, elements: [{ by: 'type', type: 'image' }], ops: [{ op: 'picture_style', clip: 'circle' }] }] })
+      const r = done(await runAssistant({ doc: picDeck(), ent: { features: { advancedEditor: true } } as never, instruction: 'make the picture a circle', activeSlideId: 's2' }, a.deps))
+      expect(a.seen.two).toHaveLength(1)
+      expect(a.seen.two[0]).toMatch(/picture_style/); expect(a.seen.two[0]).toMatch(/"index":0/)
+      expect(a.seen.one[0]).not.toMatch(/picture_style|table_order|chart_value|add_shape/) // the long operation list is NOT in the first prompt
+      expect(r.slideOps.elementChanges).toHaveLength(1)
+      expect(r.slideOps.elementChanges[0]!.patch).toMatchObject({ clip: 'circle' })
+    })
+    it('a plan limit is refused with the reason AND the upgrade offer; a rule or a switch is not an upgrade', async () => {
+      const mk = () => twoStep({ tasks: [{ family: 'element', targets: [{ by: 'number', n: 2 }], values: {} }] }, { tasks: [{ index: 0, elements: [{ by: 'type', type: 'image' }], ops: [{ op: 'picture_style', clip: 'circle' }] }] })
+      const a = mk()
+      const r = await runAssistant({ doc: picDeck(), ent: { features: { advancedEditor: false } } as never, instruction: 'make the picture a circle', activeSlideId: 's2' }, a.deps)
+      expect(r).toMatchObject({ kind: 'done' })
+      expect((r as { notes: string[] }).notes.join(' ')).toMatch(/advanced editor, which your plan does not include/)
+      expect((r as { upgrade?: string }).upgrade).toMatch(/advanced editor/)
+      const b = mk()
+      const ok = await runAssistant({ doc: picDeck(), ent: { features: { advancedEditor: true } } as never, instruction: 'make the picture a circle', activeSlideId: 's2' }, b.deps)
+      expect((ok as { upgrade?: string }).upgrade).toBeUndefined()
+    })
+    it('a listed id becomes its sentence with the way forward; free words keep the plain sentence', async () => {
+      const a = twoStep({ tasks: [{ family: 'element', targets: [{ by: 'number', n: 2 }], values: {} }] }, { tasks: [{ index: 0, unsupported: 'shape_shadow' }] }) // (chart styling is supported now: a still-unsupported listed id)
+      const r = await runAssistant({ doc: picDeck(), ent: { features: { advancedEditor: true } } as never, instruction: 'add a shadow to the box', activeSlideId: 's2' }, a.deps)
+      const text = (r as { notes: string[] }).notes.join(' ')
+      expect(text).toMatch(/a shadow on a shape or on text/)
+      expect(text).toMatch(/Give a shape an outline or a different colour/)
+      const b = twoStep({ tasks: [{ family: 'element', targets: [{ by: 'number', n: 2 }], values: {} }] }, { tasks: [{ index: 0, unsupported: 'other', said: 'spin the slide in 3D' }] })
+      const r2 = await runAssistant({ doc: picDeck(), ent: { features: { advancedEditor: true } } as never, instruction: 'spin the slide in 3D', activeSlideId: 's2' }, b.deps)
+      expect((r2 as { notes: string[] }).notes.join(' ')).toMatch(/I can't do that yet: spin the slide in 3D\./)
+    })
+    it('an id that is not on the list is not an error: it becomes "other" with the model\'s own words', () => {
+      const bad = elementOpsAnswer.parse({ tasks: [{ index: 0, unsupported: 'chart_legend' }] }).tasks[0]!
+      expect(bad).toMatchObject({ unsupported: 'other', said: 'chart_legend' })
+      expect(elementOpsAnswer.parse({ tasks: [{ index: 0, unsupported: 'hand_path' }] }).tasks[0]).toMatchObject({ unsupported: 'hand_path' })
+    })
+    it('a question from step 2 is asked as it is, and nothing is changed', async () => {
+      const a = twoStep({ tasks: [{ family: 'element', targets: [{ by: 'number', n: 2 }], values: {} }] }, { tasks: [{ index: 0, ask: 'Which picture do you mean?' }] })
+      const out = await runAssistant({ doc: picDeck(), ent: { features: { advancedEditor: true } } as never, instruction: 'make it a circle', activeSlideId: 's2' }, a.deps)
+      expect(out).toMatchObject({ kind: 'ask', question: { text: 'Which picture do you mean?' } })
+    })
+    it('step 2 is not asked for anything that is not an object task, or when step 1 already gave operations', async () => {
+      const a = twoStep({ tasks: [{ family: 'lock_slide', targets: [{ by: 'number', n: 2 }], values: { locked: true } }] }, { tasks: [{ index: 0, ops: [{ op: 'delete' }] }] })
+      await runAssistant({ doc: deck(), ent: pro, instruction: 'lock slide 2', activeSlideId: 's1' }, a.deps)
+      expect(a.seen.two).toHaveLength(0)
+      const b = twoStep({ tasks: [{ family: 'element', targets: [{ by: 'number', n: 2 }], values: { elements: [{ by: 'type', type: 'image' }], ops: [{ op: 'delete' }] } }] }, { tasks: [{ index: 0, ops: [{ op: 'delete' }] }] })
+      await runAssistant({ doc: picDeck(), ent: { features: { advancedEditor: true } } as never, instruction: 'delete the picture', activeSlideId: 's2' }, b.deps)
+      expect(b.seen.two).toHaveLength(0)
+    })
+    it('the object prompt carries the selection and counts, and the first prompt is a fraction of what it was', () => {
+      const st = buildState(deck(), { activeSlideId: 's2' })
+      const one = understandPrompt(st, 'x'), two = objectsPrompt(st, 'x', [{ index: 0, targets: [] }])
+      const tokens = (p: { system: string; prompt: string }) => (p.system.length + p.prompt.length) / 4
+      expect(tokens(one)).toBeLessThan(3500)
+      expect(two.prompt).toMatch(/"selected"/); expect(two.prompt).toMatch(/objectsOnCurrentSlide/)
+    })
+  })
+})
+
+describe('W0 slice 1: "done" means the REQUEST is met (real chats: "5 points total in timeline", "add more content", "add 2 more in both side")', () => {
+  const timeline = (n: number): SlideContent => ({ layout: 'timeline', title: 'Academic Pursuits', steps: Array.from({ length: n }, (_, i) => ({ label: `Step ${i + 1}`, detail: `What happened in step ${i + 1}` })), speakerNotes: '', sources: [] } as unknown as SlideContent)
+  const withTimeline = () => { const d = deck(); d.slides[2] = slide('s3', timeline(4)) as never; return d }
+  const textTask = (values: Record<string, unknown>, n = 3): Partial<Intent> => ({ tasks: [{ family: 'text', targets: [{ by: 'number', n }], values: { request: 'change the text', ...values } }] })
+  const editOf = (r: ReturnType<typeof done>, id: string) => r.compiled.edits.find((e) => e.slideId === id)?.content as any
+
+  it('"also add 5 points total in timeline": the writer is told exactly 5; 4 steps is NOT accepted (retried with the reason), 5 is applied', async () => {
+    const seen: any[] = []
+    const { out, calls } = await run(textTask({ totalPoints: 5 }), (_c, input, problems) => { seen.push(input); return { slides: [{ slideId: 's3', content: problems ? timeline(5) : { ...timeline(4), title: 'Reworded' } }] } }, { doc: withTimeline() })
+    expect(seen[0].slides[0].goal).toEqual({ points: { steps: 5 } })
+    expect(seen[1].problems[0]).toMatch(/Slide 3 was rejected: it has 4 points; it needs exactly 5/)
+    expect(calls.write).toBe(2)
+    expect(editOf(done(out), 's3').steps).toHaveLength(5)
+  })
+  it('a writer that never reaches the goal: the slide is NOT changed and the reply says why (it used to say "Done — rewrote slide 4")', async () => {
+    const { out } = await run(textTask({ totalPoints: 5 }), () => ({ slides: [{ slideId: 's3', content: { ...timeline(4), title: 'Reworded' } }] }), { doc: withTimeline() })
+    const r = done(out)
+    expect(r.compiled.edits).toEqual([]); expect(r.compiled.applied).toEqual([])
+    expect(r.notes.join(' ')).toMatch(/Slide 3: I couldn't do that \(it has 4 points; it needs exactly 5\), so I left it as it was\./)
+  })
+  it('more than the layout holds ("8 points" on a timeline that holds 6): asked BEFORE writing, nothing written, nothing charged', async () => {
+    const { out, calls } = await run(textTask({ totalPoints: 8 }), undefined, { doc: withTimeline() })
+    expect(out.kind).toBe('ask')
+    expect(calls.write).toBe(0); expect(calls.authorized).toEqual([1]) // (the route gives the reservation back for a question)
+    if (out.kind === 'ask') { expect(out.question.text).toMatch(/slide 3: this timeline slide holds at most 6 points\. Nothing was changed/); expect(out.question.options.map((o) => o.label)).toEqual(['Yes, 6 points', 'No, leave it']) }
+  })
+  it('"add more content in the 2nd slide": the writer gets a word target; the same amount of words reworded is NOT done', async () => {
+    const seen: any[] = []
+    const same = { layout: 'title-body', title: 'Early life', bullets: ['First idea here', 'Second idea here', 'Third idea here'], speakerNotes: '', sources: [] }
+    const longer = { ...same, bullets: ['First idea here, with the detail of what happened and why it mattered', 'Second idea here, with an example from the period', 'Third idea here, and what it led to later'] }
+    const { out } = await run(textTask({ length: 'longer' }, 2), (_c, input, problems) => { seen.push(input); return { slides: [{ slideId: 's2', content: problems ? longer : same }] } })
+    expect(seen[0].slides[0].goal.words.atLeast).toBeGreaterThan(10)
+    expect(seen[1].problems[0]).toMatch(/it needs at least \d+ \(more detail/)
+    expect(editOf(done(out), 's2').bullets[0]).toMatch(/what happened/)
+  })
+  it('"add 2 more in both side" on a comparison: each side ends with exactly +2', async () => {
+    const d = deck(); d.slides[2] = slide('s3', { layout: 'comparison', title: 'Balance', left: { heading: 'State', bullets: ['a1', 'a2', 'a3'] }, right: { heading: 'Person', bullets: ['b1', 'b2', 'b3'] }, speakerNotes: '', sources: [] } as unknown as SlideContent) as never
+    const side = (n: number, p: string) => Array.from({ length: n }, (_, i) => `${p}${i + 1}`)
+    const { out, calls } = await run(textTask({ addPoints: 2 }), (_c, input, problems) => ({ slides: [{ slideId: 's3', content: { layout: 'comparison', title: 'Balance', left: { heading: 'State', bullets: side(problems ? 5 : 6, 'a') }, right: { heading: 'Person', bullets: side(problems ? 5 : 6, 'b') }, speakerNotes: '', sources: [] } }] }), { doc: d })
+    expect(calls.write).toBe(2) // 6 per side (one too many each) was refused
+    const c = editOf(done(out), 's3')
+    expect([c.left.bullets.length, c.right.bullets.length]).toEqual([5, 5])
+  })
+  it('speaker notes only: code takes ONLY the notes from the writer, so a writer that also rewords the title cannot change the slide (one call, no retry)', async () => {
+    const base = { layout: 'title-body', title: 'Early life', bullets: ['First point here', 'Second point here', 'Third point here'], sources: [] }
+    const { out, calls } = await run(textTask({ notesOnly: true }, 2), () => ({ slides: [{ slideId: 's2', content: { ...base, title: 'Early years', bullets: ['changed'], speakerNotes: 'Talk about the early years.' } }] }))
+    expect(calls.write).toBe(1)
+    const c = editOf(done(out), 's2')
+    expect(c.title).toBe('Early life'); expect(c.bullets).toEqual(['First point here', 'Second point here', 'Third point here']); expect(c.speakerNotes).toBe('Talk about the early years.')
+  })
+  it('"add more content" may also add points to lists with room (the writer is told which, and the result keeps the new item)', async () => {
+    const seen: any[] = []
+    const { out } = await run(textTask({ length: 'longer' }, 2), (_c, input) => { seen.push(input); return { slides: [{ slideId: 's2', content: { layout: 'title-body', title: 'Early life', bullets: ['First point here, told in more detail', 'Second point here, with an example', 'Third point here', 'A fourth point that adds real detail'], speakerNotes: '', sources: [] } }] } })
+    expect(seen[0].slides[0].goal.mayAddPoints).toEqual({ bullets: 6 })
+    expect(editOf(done(out), 's2').bullets).toHaveLength(4)
+  })
+  it('"4 slides after slide 6" with one withheld (an invented figure): the other three still go right after slide 6, never to the end', async () => {
+    let i = 0
+    const { out } = await run({ tasks: [{ family: 'add_slide', targets: [], values: { count: 4, where: 'after', after: { by: 'number', n: 6 }, about: 'more' } }] }, () => ({ slides: [0, 1, 2, 3].map(() => ({ content: { layout: 'title-body', title: `New ${++i}`, bullets: i === 2 ? ['Revenue grew 42% to $9.7 million', 'b point', 'c point'] : ['a point', 'b point', 'c point'], speakerNotes: '', sources: [] } })) }), { instruction: 'add 4 more slides after slide 6' })
+    const r = done(out)
+    expect(r.compiled.additions).toHaveLength(3)
+    // new2 was withheld: new3 takes its place right after new1, new4 after new3; nothing falls to the end
+    expect(r.compiled.additions.map((a) => [a.id, a.afterSlideId])).toEqual([['new1', 's6'], ['new3', 'new1'], ['new4', 'new3']])
+    expect(r.notes.join(' ')).toMatch(/I never make up numbers/)
+  })
+  it('W1: a timed script ("30 seconds") is the notes at a normal speaking pace: too short is sent back once with the exact gap, the reply calls the length an estimate', async () => {
+    const base = { layout: 'title-body', title: 'Early life', bullets: ['First point here', 'Second point here', 'Third point here'], sources: [] }
+    const words = (n: number) => Array.from({ length: n }, (_, i) => `word${i}`).join(' ')
+    const seen: any[] = []
+    let i = 0
+    const { out, calls } = await run(textTask({ notesOnly: true, notesSeconds: 30 }, 2), (_c, input) => { seen.push(input); return { slides: [{ slideId: 's2', content: { ...base, speakerNotes: words(++i === 1 ? 20 : 70) } }] } })
+    expect(seen[0].speakerNotesWords).toEqual({ about: 70, atLeast: 56, atMost: 84 })
+    expect(calls.write).toBe(2) // (20 words was refused: the exact gap went back)
+    expect(seen[1].problems.join(' ')).toMatch(/must be 56-84 words \(about 30 seconds spoken\); they have 20/)
+    const r = done(out)
+    expect(editOf(r, 's2').speakerNotes.split(' ')).toHaveLength(70)
+    expect(r.notes.join(' ')).toMatch(/Slide 2: about 30 seconds spoken at a normal pace \(70 words; your own pace may differ\)/)
+  })
+  it('W1: a timed script for many slides keeps its timing through the confirm', async () => {
+    const { out } = await runProceed({ tasks: [{ family: 'text', targets: [{ by: 'all' }], values: { request: 'write a 1 minute script', notesOnly: true, notesSeconds: 60 } }] })
+    if (out.kind === 'ask') expect(out.question.options[0]!.confirm).toMatchObject({ kind: 'text_bulk', notesOnly: true, notesSeconds: 60 })
+    else throw new Error('expected the confirm')
+  })
+  it('notes for many slides: the confirm says it writes the SPEAKER NOTES (it used to say "rewrites the words")', async () => {
+    const { out } = await runProceed({ tasks: [{ family: 'text', targets: [{ by: 'all' }], values: { request: 'add speaker notes', notesOnly: true } }] })
+    expect(out.kind).toBe('ask')
+    if (out.kind === 'ask') { expect(out.question.text).toMatch(/^This writes the speaker notes of 11 of the 12 slides/); expect(out.question.options[0]!.confirm).toMatchObject({ kind: 'text_bulk', notesOnly: true }) }
+  })
+  it('"make these 4 different": a picture layout is refused for slides without a picture (no empty picture boxes)', async () => {
+    const d = deck(); for (const i of [6, 7, 8, 9]) d.slides[i] = slide(d.slides[i]!.id, tb(`Topic ${i}`)) as never
+    const { out } = await run({ tasks: [{ family: 'layout', targets: [{ by: 'range', from: 7, to: 10 }], values: {} }] }, (_c, input, problems) => ({ slides: input.slides.map((s: any, i: number) => ({ slideId: s.slideId, content: !problems && i === 0 ? { layout: 'split-image-text', title: s.content.title, bullets: s.content.bullets, imagePrompt: 'x', imageAlt: 'x', speakerNotes: '', sources: [] } : { layout: i % 2 ? 'process' : 'timeline', title: s.content.title, steps: s.content.bullets.map((b: string) => ({ label: b.slice(0, 20), detail: b })) } })) }), { doc: d })
+    const r = done(out)
+    expect(r.compiled.edits.map((e) => e.content.layout)).not.toContain('split-image-text')
+    expect(r.compiled.edits).toHaveLength(4)
+  })
+})
+
+describe('W0 slice 2: check BEFORE changing (real chat: "update the text color to red" left slides 9-10 and said Done)', () => {
+  const big = (slides: number) => { const d = deck(); const extra = Array.from({ length: slides }, (_, i) => slide(`b${i}`, tb(`Topic ${i}`))); d.slides = [...d.slides.filter((s) => !s.locked), ...extra] as never; return d }
+  const textCount = (d: Presentation) => d.slides.reduce((n, s) => n + s.elements.filter((e) => e.type === 'text' && !e.decorative && !(e as { brand?: boolean }).brand).length, 0)
+  const editor = { features: { premiumTemplates: true, advancedEditor: true } } as never
+  const red = { tasks: [{ family: 'element' as const, targets: [{ by: 'all' as const }], values: { elements: [{ by: 'all_text' }], ops: [{ op: 'text_style', color: '#FF0000' }] } }] }
+
+  it('more than 60 text objects: EVERY one is changed (the first 60 used to be kept silently)', async () => {
+    const d = big(30)
+    expect(textCount(d)).toBeGreaterThan(60)
+    const r = done((await run(red, undefined, { doc: d, ent: editor })).out)
+    expect(r.slideOps.elementChanges).toHaveLength(textCount(d))
+    expect(new Set(r.slideOps.elementChanges.map((c) => c.slideId)).size).toBe(d.slides.length)
+  })
+  it('more than the request limit: refused BEFORE anything changes, with the count and what to do instead (never a silent cut)', async () => {
+    const d = big(160)
+    const r = done((await run(red, undefined, { doc: d, ent: editor })).out)
+    expect(r.slideOps.elementChanges).toEqual([])
+    expect(r.notes.join(' ')).toMatch(/That is \d+ objects, more than the 400 I can change in one request, so nothing was changed\./)
+  })
+  it('some slides locked: asked first ("do the rest?"), nothing charged; "Yes" changes every unlocked text and names the locked slide', async () => {
+    const { out, asked } = await runProceed(red, undefined, { ent: editor })
+    const r = done(out)
+    expect(asked).toMatch(/^I can do that for \d+ objects, but not on slide 11 \(locked\)\. Nothing was changed yet\. Shall I do the rest\?$/)
+    expect(r.slideOps.elementChanges.some((c) => c.slideId === 's11')).toBe(false)
+    expect(r.slideOps.elementChanges.length).toBeGreaterThan(10)
+  })
+  it('EVERYTHING asked is blocked (only the locked slide): no pointless question, a plain reason, nothing charged', async () => {
+    const { out, calls } = await run({ tasks: [{ family: 'remove_slide', targets: [{ by: 'number', n: 11 }], values: {} }] })
+    const r = done(out)
+    expect(r.slideOps.removals).toEqual([])
+    expect(r.notes).toContain('Slide 11 is locked, so I kept it.')
+    expect(calls.authorized).toEqual([1]) // (code-only work; the route refunds a request that changed nothing)
+  })
+  it('the "do the rest" answer re-checks every task: a forged task value is refused like any new request', async () => {
+    const { out } = await run({}, undefined, { confirm: { kind: 'proceed', tasks: [{ family: 'transition', targets: [{ by: 'all' }], values: { type: 'teleport' } }] } as never })
+    const r = done(out)
+    expect(r.compiled.applied).toEqual([]); expect(r.notes).toEqual(['That confirmation does not match what I can do any more, so nothing was changed. Please ask again.'])
+  })
+})
+
+describe('a background change made through slide ops says what it did (the route answers "nothing changed" to an empty applied list)', () => {
+  it('pattern, pattern off, and a picture blur each come back with an applied line', async () => {
+    const withPicture = () => { const d = deck(); (d.slides[1] as { background?: unknown }).background = { type: 'image', value: 'https://images.example/p.jpg' }; return d }
+    for (const [values, doc] of [[{ pattern: 'dots' }, deck()], [{ pattern: 'none' }, deck()], [{ blur: 'soft' }, withPicture()]] as const) {
+      const { out } = await run({ tasks: [{ family: 'background', targets: [{ by: 'number', n: 2 }], values } as never] }, undefined, { doc: doc as never })
+      expect(out.kind).toBe('done')
+      if (out.kind === 'done') expect(out.applied.length, JSON.stringify(values)).toBeGreaterThan(0)
+    }
   })
 })

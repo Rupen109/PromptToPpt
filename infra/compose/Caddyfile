@@ -1,4 +1,5 @@
-# HTTPS certificates come from Let's Encrypt automatically once the domain points at this server.
+# The live site (DOMAIN = slidesdone.app): the website, www (sent on to the bare name), the editor (app.) and the API (api.).
+# HTTPS certificates come from Let's Encrypt automatically, because the names point at this server.
 {$DOMAIN} {
 	encode zstd gzip
 	reverse_proxy web:3000
@@ -14,6 +15,8 @@ api.{$DOMAIN} {
 }
 app.{$DOMAIN} {
 	encode zstd gzip
+	# the editor's security headers (CSP, HSTS, frame and referrer rules), from the same rule as the website's (scripts/csp.mjs), written by the deploy
+	import /etc/caddy/editor-headers.caddy
 	root * /srv/editor
 	# a single-page app: unknown paths are the app itself; hashed files are cached for a year, the entry page never
 	@hashed path /assets/*

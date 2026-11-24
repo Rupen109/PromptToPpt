@@ -6,6 +6,7 @@ import { API, EDITOR, WEB, expect, uniqueEmail } from './lib.mjs'
 /** Shared helpers of the brand-kit suites (24-kits, 25-kits-deck): fresh accounts, plans, fixtures, API calls, the Brand tab. */
 const cwd = new URL('..', import.meta.url).pathname
 export const tsx = (cmd) => execSync(`pnpm --filter @prompttoppt/api exec tsx --env-file-if-exists=.env ${cmd}`, { cwd, stdio: 'pipe' }).toString().trim().split('\n').pop()
+export const verifyEmail = (email) => tsx(`scripts/qa-verify-email.ts ${email}`)
 export const plan = (email, p) => tsx(`scripts/qa-grant-plan.ts ${email} ${p}`)
 export const JSON_HEADERS = { Origin: WEB, 'Content-Type': 'application/json' }
 
@@ -32,6 +33,9 @@ export async function person(b, tag, planId) {
   const ctx = await b.newContext({ viewport: { width: 1500, height: 950 } })
   const su = await ctx.request.post(`${API}/api/auth/sign-up/email`, { headers: JSON_HEADERS, data: { email, password: 'Passw0rd!qa-test', name: 'Kit QA' } })
   expect(su.ok(), `sign-up ${su.status()}`)
+  verifyEmail(email) // (the dev server may require a verified email: the account is verified directly, then signed in)
+  const si = await ctx.request.post(`${API}/api/auth/sign-in/email`, { headers: JSON_HEADERS, data: { email, password: 'Passw0rd!qa-test' } })
+  expect(si.ok(), `sign-in ${si.status()}`)
   if (planId) plan(email, planId)
   const p = await ctx.newPage()
   return { email, ctx, p, id: null }
