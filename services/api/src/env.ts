@@ -49,8 +49,12 @@ const schema = z
     MICROSOFT_CLIENT_ID: optional(z.string()),
     MICROSOFT_CLIENT_SECRET: optional(z.string()),
     MICROSOFT_TENANT_ID: z.string().default('common'),
-    /** AI Studio key (AI_PROVIDER=gemini) or Vertex AI / Agent Platform express key (AI_PROVIDER=vertex) */
+    /** AI Studio key (AI_PROVIDER=gemini) or Vertex AI / Agent Platform express key (AI_PROVIDER=vertex); the one used is chosen by IS_QA (see `aiKey` below) */
     GEMINI_API_KEY: optional(z.string()),
+    /** the FREE keys (Google projects with no billing: Google never charges them) and the PAID key, side by side in one .env; IS_QA picks */
+    GEMINI_API_KEY_QA: optional(z.string()),
+    GEMINI_API_KEY_LOCAL: optional(z.string()),
+    GEMINI_API_KEY_PAID: optional(z.string()),
     OPENROUTER_API_KEY: optional(z.string()),
     /** Ollama cloud key (AI_PROVIDER=ollama: load tests and open-model experiments). Sent as a Bearer header from the server only. */
     OLLAMA_API_KEY: optional(z.string()),
@@ -61,10 +65,11 @@ const schema = z
     /** which backend serves the model catalogue: gemini (AI Studio) | vertex | openrouter (production) | ollama (load tests) | mock (all, deterministic) */
     AI_PROVIDER: z.enum(['gemini', 'vertex', 'openrouter', 'ollama', 'mock']).default('gemini'),
     /**
-     * paid = a key on a billing account (production). free = a key from a Google project with NO billing (local dev and QA): Google never charges it, it serves only
-     * some models (catalogue column free_tier) with daily caps, so only those are offered, 3.1 Pro and AI pictures are off, and Flash-Lite backs up the Flash models.
+     * THE switch between testing and the real thing (owner, 2026-11-25). true = testing: the FREE Gemini key (GEMINI_API_KEY_QA, else GEMINI_API_KEY_LOCAL, else
+     * GEMINI_API_KEY) and the free tier: Google serves only some models (catalogue column free_tier) with daily caps, so only those are offered, 3.1 Pro and AI pictures
+     * are off, and Flash-Lite backs up the Flash models. false (default) = the PAID key (GEMINI_API_KEY_PAID, else GEMINI_API_KEY) and every model. Production refuses true.
      */
-    AI_KEY_TIER: z.enum(['paid', 'free']).default('paid'),
+    IS_QA: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
     /**
      * The BACKUP behind Gemini (AI_PROVIDER gemini | vertex): `openrouter` serves the SAME Gemini models through OpenRouter when Gemini refuses (credit used up, the tier's
      * limits, an outage) or is too busy. Needs OPENROUTER_API_KEY; `none` = Gemini only.
@@ -196,7 +201,9 @@ const schema = z
   .refine((e) => e.NODE_ENV !== 'production' || e.APP_ENV !== 'development', { message: 'NODE_ENV=production cannot run with APP_ENV=development' })
   .refine((e) => e.NODE_ENV !== 'production' || e.TRUSTED_PROXY_HOPS >= 1, { message: 'production runs behind a proxy: set TRUSTED_PROXY_HOPS (ALB only = 1, CloudFront + ALB = 2) or every user shares one rate-limit bucket' })
   .refine((e) => e.NODE_ENV !== 'production' || e.AI_PROVIDER !== 'mock', { message: 'AI_PROVIDER=mock must never run in production' })
-  .refine((e) => e.APP_ENV !== 'production' || e.AI_KEY_TIER === 'paid', { message: 'AI_KEY_TIER=free is for local dev and QA: production needs a paid key (customers would hit the free daily caps)' })
+  .refine((e) => e.APP_ENV !== 'production' || !e.IS_QA, { message: 'IS_QA=true (the free Gemini key) is for testing: production needs the paid key (customers would hit the free daily caps)' })
+  // the old switch, replaced by IS_QA: a forgotten line that disagrees would quietly run the wrong key, so it stops the start instead
+  .refine((e) => !process.env['AI_KEY_TIER'] || process.env['AI_KEY_TIER'] === (e.IS_QA ? 'free' : 'paid'), { message: 'AI_KEY_TIER is replaced by IS_QA (true = free key, false = paid key): remove AI_KEY_TIER from the .env' })
   .refine((e) => e.NODE_ENV !== 'production' || (new Set(e.AUTH_SECRET).size >= 12 && !/(ci-only|change-?me|secret|password|example|test)/i.test(e.AUTH_SECRET)), { message: 'AUTH_SECRET looks like a placeholder: generate one with `openssl rand -base64 48`' })
   .refine((e) => e.NODE_ENV !== 'production' || (e.REQUIRE_EMAIL_VERIFICATION && (!!e.RESEND_API_KEY || !!e.BREVO_API_KEY) && !!e.EMAIL_FROM), { message: 'production requires REQUIRE_EMAIL_VERIFICATION=true with RESEND_API_KEY or BREVO_API_KEY, and EMAIL_FROM (unverified accounts would be unlimited free-credit farms)' })
   .refine((e) => e.AI_PROVIDER !== 'openrouter' || !!e.OPENROUTER_API_KEY, { message: 'AI_PROVIDER=openrouter requires OPENROUTER_API_KEY' })
@@ -213,5 +220,9 @@ if (!parsed.success) {
   console.error('Invalid environment configuration:\n' + z.prettifyError(parsed.error))
   process.exit(1)
 }
-export const env = parsed.data
+/** the key and tier IS_QA picks (every AI call reads these two, never the named keys) */
+export const aiKeyFor = (e: { IS_QA: boolean; GEMINI_API_KEY?: string | undefined; GEMINI_API_KEY_QA?: string | undefined; GEMINI_API_KEY_LOCAL?: string | undefined; GEMINI_API_KEY_PAID?: string | undefined }) => e.IS_QA
+  ? { AI_KEY_TIER: 'free' as const, GEMINI_API_KEY: e.GEMINI_API_KEY_QA ?? e.GEMINI_API_KEY_LOCAL ?? e.GEMINI_API_KEY }
+  : { AI_KEY_TIER: 'paid' as const, GEMINI_API_KEY: e.GEMINI_API_KEY_PAID ?? e.GEMINI_API_KEY }
+export const env = { ...parsed.data, ...aiKeyFor(parsed.data) }
 export const isProd = env.NODE_ENV === 'production'

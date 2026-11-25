@@ -5,9 +5,12 @@
  */
 import { AI_STUDIO, GeminiProvider, ModelRegistry, VERTEX, computeCostUsd, geminiModels, routingFromEnv } from '@prompttoppt/ai'
 
-const key = process.env['GEMINI_API_KEY']
+// the same choice as the app (src/env.ts): IS_QA=true checks the free key, otherwise the paid one
+const e = process.env
+const key = e['IS_QA'] === 'true' ? (e['GEMINI_API_KEY_QA'] || e['GEMINI_API_KEY_LOCAL'] || e['GEMINI_API_KEY']) : (e['GEMINI_API_KEY_PAID'] || e['GEMINI_API_KEY'])
+console.log(`Checking the ${e['IS_QA'] === 'true' ? 'FREE (IS_QA=true)' : 'PAID'} Gemini key`)
 if (!key) {
-  console.error('GEMINI_API_KEY is not set (services/api/.env).')
+  console.error('No Gemini key is set for this mode (services/api/.env: IS_QA=true uses GEMINI_API_KEY_QA or _LOCAL, otherwise GEMINI_API_KEY_PAID or GEMINI_API_KEY).')
   process.exit(1)
 }
 const vertex = process.env['AI_PROVIDER'] === 'vertex'

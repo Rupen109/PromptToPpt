@@ -18,8 +18,8 @@ umask 077
   echo "TRUSTED_PROXY_HOPS=1"
   echo "RUN_WORKER=true"
   echo "AI_PROVIDER=gemini" # Gemini through AI Studio, key GEMINI_API_KEY in Parameter Store
-  # the PAID key (a Google project with billing): every model and AI pictures; Google bills real use
-  echo "AI_KEY_TIER=paid"
+  # the PAID key (a Google project with billing; Parameter Store GEMINI_API_KEY): every model and AI pictures; Google bills real use. IS_QA=true would pick a free key.
+  echo "IS_QA=false"
   echo "COOKIE_PREFIX=slidesdone"
   # sign-up stays invite-only until the public launch (test payments + the paid AI key): SIGNUP_ALLOWED_EMAILS (addresses and @domains, comma separated) is stored in
   # Parameter Store and written below; remove it there to open sign-up

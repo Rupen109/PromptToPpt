@@ -108,7 +108,7 @@ Review it before every release; add a date and initials when an item is ticked o
 - ☐ **Release flow set up** (`docs/RELEASES.md`, one live site since 2026-11-24): branches `qa` and `master` pushed; GitHub environment `production` (required reviewer = owner, `master` only); branch rules on `master`; the AWS deploy secrets available to it.
 - ☐ Every release candidate is tested on the owner's machine (`qa` branch) before the `qa` → `master` pull request; Google sign-in redirect URI `https://api.slidesdone.app/api/auth/callback/google` added in the Google OAuth client.
 - ☐ **Public launch on the live server** (`docs/RELEASES.md`, "The public launch"): backup + fresh database, Razorpay live keys + `APP_ENV=production`, open sign-up (remove `SIGNUP_ALLOWED_EMAILS`), legal fields, `PROD_RELEASE_CHECK = true`, sender `@slidesdone.app` authenticated in Brevo.
-- ☐ Production runs a PAID Gemini key with `AI_KEY_TIER=paid` (the default; the API refuses `free` in production). The free keys "SlidesDone Local" and "SlidesDone QA" never go to production.
+- ☐ Production runs a PAID Gemini key with `IS_QA=false` (the default; the API refuses `IS_QA=true` in production). The free keys "SlidesDone Local" and "SlidesDone QA" never go to production.
 - ☐ Release order: build/push images → `vite build` → sync editor to S3 + invalidate → **run `pnpm db:migrate` as a one-off task before rolling the API** (migrations stay backward-compatible for one release) → roll API → roll web.
 - ☐ `LIVE_BUS=pg` (default in production) so live-editing events reach every API task.
 - ☐ Rollback plan written and tried once on staging (previous images, DB changes reversible or backward-compatible).

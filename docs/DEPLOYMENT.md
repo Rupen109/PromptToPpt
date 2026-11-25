@@ -29,7 +29,7 @@ single session cookie scoped to `.slidesdone.app` authenticates all three withou
 | `AUTH_SECRET` | any ≥32 chars | unique, from Secrets Manager; never share between envs |
 | `AI_PROVIDER` | `gemini` (AI Studio) or `mock` | `gemini` (AI Studio, decided 2026-11-24), key `GEMINI_API_KEY` in Parameter Store |
 | `AI_BACKUP_PROVIDER` | `none` | `openrouter`: the same Gemini models through OpenRouter when Gemini refuses or is too busy. The server scripts set it as soon as `OPENROUTER_API_KEY` is stored |
-| `AI_KEY_TIER` | `free` (a free-tier Gemini key from a Google project with no billing; QA too) | `paid` (default; the API refuses `free` in production). See `docs/RELEASES.md` |
+| `IS_QA` | `true`: the free Gemini key (`GEMINI_API_KEY_QA`, else `_LOCAL`) and the free models only | `false` (default): the paid key (`GEMINI_API_KEY_PAID`, else `GEMINI_API_KEY`); the API refuses `true` in production. Replaces `AI_KEY_TIER`. See `docs/RELEASES.md` |
 | `COOKIE_PREFIX` | *(default `better-auth`)* | default. QA sets `slidesdone-qa` so its login never mixes with production's |
 | `SIGNUP_ALLOWED_EMAILS` | *(empty: everyone)* | empty. QA: the invited addresses / `@domains` |
 | `DATABASE_URL` | local Postgres | RDS, from Secrets Manager |

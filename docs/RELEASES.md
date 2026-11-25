@@ -11,7 +11,7 @@ dropped to keep the AWS bill to one server.
 | Address | localhost (web 3100, editor 3001, API 4000) | **https://slidesdone.app** (`www.` sends on to it), `app.` (editor), `api.` |
 | Branch | `qa` (and any work branch) | **`master`**: a merge deploys after the owner approves |
 | Server | your Mac | EC2 t4g.small in Sydney (`infra/tofu`, `infra/compose`, `infra/scripts/deploy.sh`) |
-| AI key | `GEMINI_API_KEY` = the free key "SlidesDone Local" (`AI_KEY_TIER=free`) | the PAID AI Studio key (Parameter Store `/prompttoppt/test/GEMINI_API_KEY`, `AI_KEY_TIER=paid`); OpenRouter backup off until a real key is checked |
+| AI key (`IS_QA`, the one switch) | `IS_QA=true`: the free key (`GEMINI_API_KEY_QA`, else `GEMINI_API_KEY_LOCAL`) | `IS_QA=false`: the PAID AI Studio key (Parameter Store `/prompttoppt/test/GEMINI_API_KEY`); OpenRouter backup off until a real key is checked |
 | Who can sign up | anyone | **until the public launch**: only `SIGNUP_ALLOWED_EMAILS` (see below) |
 | Payments | simulator / Razorpay test | **until the public launch**: Razorpay **test** keys (`APP_ENV=staging`; production mode refuses test keys) |
 | Data | your local database | the data made while this server was QA, kept on purpose (owner's own content) |
@@ -27,7 +27,7 @@ dropped to keep the AWS bill to one server.
 
 Each key is made in AI Studio inside a Google project with **no billing account linked**, so Google cannot charge it (probed 2026-11-24: its quota names say `FreeTier`; Gemini 3.1 Pro answers `limit: 0`). 
 
-With `AI_KEY_TIER=free` the API:
+With `IS_QA=true` (the free key; `AI_KEY_TIER` was the old name of this switch and is refused if it disagrees) the API:
 - offers only the models marked `free_tier` in `model_catalog` (3.1 Flash-Lite, 3.6 Flash, 3.8 Flash). **Gemini 3.1 Pro and AI pictures are off**: the picture button answers "AI pictures are not available on this server" and charges nothing;
 - ends each route with the other route's free models (writing: 3.6 → 3.8 → Flash-Lite; quick tasks: Flash-Lite → 3.6 → 3.8). The free tier allows about 20 calls a day on each Flash model and about 500 on Flash-Lite (Google's AI Studio rate-limit page shows the project's exact numbers), and Google turns free traffic away first when a model is busy;
 - passes a model over for the rest of its day as soon as Google says its **daily** quota is used up (`exhaustedForMs` on the error, packages/ai/src/gemini.ts) instead of asking it again on every call, so decks keep going on Flash-Lite;

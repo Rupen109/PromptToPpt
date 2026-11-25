@@ -17,8 +17,10 @@ const sharpDir = readdirSync(join(root, 'node_modules', '.pnpm')).find((d) => d.
 const sharp = (await import(pathToFileURL(join(root, 'node_modules', '.pnpm', sharpDir, 'node_modules', 'sharp', 'dist', 'index.mjs')).href)).default
 const OUT = join(root, 'apps', 'web', 'public', 'morph-templates')
 const env = readFileSync(join(root, 'services', 'api', '.env'), 'utf8')
-const KEY = (env.match(/^GEMINI_API_KEY=(.*)$/m) ?? [])[1]?.trim().replace(/^["']|["']$/g, '')
-if (!KEY) { console.error('GEMINI_API_KEY is not set in services/api/.env'); process.exit(1) }
+// picture models need the PAID key (a free-tier key has no picture quota), whatever IS_QA says for the app
+const keyOf = (name) => (env.match(new RegExp(`^${name}=(.*)$`, 'm')) ?? [])[1]?.trim().replace(/^["']|["']$/g, '') || undefined
+const KEY = keyOf('GEMINI_API_KEY_PAID') ?? keyOf('GEMINI_API_KEY')
+if (!KEY) { console.error('GEMINI_API_KEY_PAID (or GEMINI_API_KEY) is not set in services/api/.env'); process.exit(1) }
 const args = process.argv.slice(2)
 const flag = (n) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : undefined }
 const MODEL = flag('--model') ?? 'gemini-3-pro-image'

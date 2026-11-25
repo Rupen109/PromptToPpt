@@ -20,7 +20,7 @@ export default defineConfig({ test: { globalSetup: ['./test-global-setup.ts'], s
       // the test suite itself books (mock) costs at real model prices: keep the spend breaker out of unrelated tests; src/security/spend-breaker.test.ts sets tiny budgets explicitly
       AI_BUDGET_USD_HOUR: '1000000', AI_BUDGET_USD_DAY: '1000000', AI_USER_USD_DAY: '1000000',
       PEXELS_API_KEY: '', UNSPLASH_ACCESS_KEY: '', UNPLASH_ACCESS_KEY: '',
-      // local dev runs a FREE-tier Gemini key (AI_KEY_TIER=free in .env, docs/RELEASES.md) and QA is invite-only: the suite tests the production catalogue and open
-      // sign-up; the free-tier and invite tests (src/ai/models.test.ts, src/security/qa-site.test.ts) set what they need themselves
-      AI_KEY_TIER: 'paid', SIGNUP_ALLOWED_EMAILS: '', COOKIE_PREFIX: 'better-auth',
+      // local dev runs the FREE Gemini key (IS_QA=true in .env, docs/RELEASES.md) and the live site is invite-only: the suite tests the paid catalogue and open
+      // sign-up; the free-tier and invite tests (src/ai/models.test.ts, src/security/qa-site.test.ts) set what they need themselves. (AI_KEY_TIER is the old switch: emptied.)
+      IS_QA: 'false', AI_KEY_TIER: '', SIGNUP_ALLOWED_EMAILS: '', COOKIE_PREFIX: 'better-auth',
     }, include: ['src/**/*.test.ts'], testTimeout: 15_000, fileParallelism: false } })
