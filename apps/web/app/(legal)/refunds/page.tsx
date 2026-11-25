@@ -41,7 +41,7 @@ export default function Page() {
       <p>The credits of a plan belong to the billing period they were granted for. Unused credits are not carried forward, are not exchangeable for money and are not refunded.</p>
 
       <h2 id="time">6. How long a refund takes</h2>
-      <p>We reply to refund requests within 2 working days. An approved refund is sent through our payment provider Razorpay to the payment method you used. Banks and card networks usually take <strong>5 to 7 working days</strong> to show it, and some take up to 10 (UPI is often faster). Taxes charged on the payment (such as GST) are refunded with it. If the refund has not arrived after that time, contact your bank with the refund reference we give you, and write to us if it is still missing.</p>
+      <p>We reply to refund requests within 2 working days. An approved refund is sent through our payment provider Razorpay to the payment method you used. Banks and card networks usually take <strong>5 to 7 working days</strong> to show it, and some take up to 10 (UPI is often faster). Any tax charged on the payment is refunded with it. If the refund has not arrived after that time, contact your bank with the refund reference we give you, and write to us if it is still missing.</p>
 
       <h2 id="disputes">7. Payment disputes</h2>
       <p>Please write to us before raising a dispute (chargeback) with your bank; we can usually solve it faster. If a dispute is raised, the plan that payment bought may be paused or ended while it is looked into.</p>

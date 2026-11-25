@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { Footer } from '@/components/layout/Footer'
 import { Header } from '@/components/layout/Header'
 import { JsonLd } from '@/components/seo/JsonLd'
-import { LEGAL,assertLegalReady, missingOwnerFields, ownerText, type OwnerField } from '@/lib/legal'
+import { LEGAL,assertLegalReady, missingOwnerFields, ownerText, type OwnerField, NOT_REGISTERED } from '@/lib/legal'
 import { breadcrumbLd } from '@/lib/seo'
 
 export const LEGAL_PAGES = [
@@ -24,6 +24,11 @@ export const Mail = ({ address }: { address: string }) => <a href={`mailto:${add
 export const SupportMail = () => <Mail address={LEGAL.supportEmail} />
 
 /** Who runs the service: used at the top of every legal page and in the contact section. */
+/** " GSTIN: …" after the operator's address; nothing when the operator is not registered for GST (a TODO still shows, marked, so it gets filled in) */
+export function Gstin() {
+  return (LEGAL.gstin as string) === NOT_REGISTERED ? null : <> GSTIN: <Owner k="gstin" />.</>
+}
+
 export function Operator() {
   return <><strong><Owner k="entityName" /></strong>, <Owner k="registeredAddress" /></>
 }

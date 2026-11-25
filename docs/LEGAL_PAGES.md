@@ -9,9 +9,9 @@ Every field that is `'TODO'` shows on the page as a yellow `[Owner to add: …]`
 
 | Field | What to put |
 |---|---|
-| `entityName` | legal name of the company / proprietorship (as on GST and Razorpay) |
-| `registeredAddress` | registered office, one line |
-| `gstin` | GST number |
+| `entityName` | legal name of whoever runs SlidesDone, as on the Razorpay account: a registered company's name, or an individual's own full name (the owner is a solo developer with no registered company, 2026-11-25) |
+| `registeredAddress` | registered office, or for an individual the address on the Razorpay account, one line |
+| `gstin` | GST number, or `NOT_REGISTERED` (set 2026-11-25: not registered). Then no GSTIN is shown and the terms say no GST is added; once registered, put the number in and the GST-inclusive wording returns |
 | `grievanceOfficerName`, `grievanceOfficerEmail` | Grievance Officer (IT Rules, E-Commerce Rules, DPDP Act) |
 | `dataProtectionEmail` | where deletion / export / privacy requests go (may equal support) |
 | `governingLawCity` | city whose courts have jurisdiction, e.g. "Mumbai, Maharashtra" |

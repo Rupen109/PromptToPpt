@@ -8,18 +8,20 @@
  */
 
 export const TODO = 'TODO'
+/** the value for `gstin` when the operator is not registered for GST (e.g. a solo developer under the threshold): the pages then show no GSTIN and claim no GST */
+export const NOT_REGISTERED = 'NOT_REGISTERED'
 
 export const LEGAL = {
   productName: 'SlidesDone',
   websiteHost: 'slidesdone.app',
 
   // ── Owner fields: replace every 'TODO' ───────────────────────────────────
-  /** full legal name of the company / proprietorship / person that runs SlidesDone (as on the GST and Razorpay registration) */
+  /** full legal name of whoever runs SlidesDone, as on the Razorpay account: a registered company's name, or, for an individual, the person's own full name */
   entityName: TODO,
   /** registered office or principal place of business, one line */
   registeredAddress: TODO,
-  /** GST registration number (needed on invoices for Indian customers) */
-  gstin: TODO,
+  /** GST registration number, or NOT_REGISTERED when not registered for GST (then no GSTIN is shown and the terms say no GST is charged) */
+  gstin: NOT_REGISTERED,
   /** Grievance Officer (India IT Rules, Consumer Protection E-Commerce Rules, DPDP Act) */
   grievanceOfficerName: TODO,
   grievanceOfficerEmail: TODO,
@@ -90,6 +92,11 @@ export function legalReleaseProblems(env: Env = process.env, legal: LegalConfig 
 export function assertLegalReady(env: Env = process.env, legal: LegalConfig = LEGAL): void {
   const problems = legalReleaseProblems(env, legal)
   if (problems.length) throw new Error(`Legal pages are not ready for release:\n  ${problems.join('\n  ')}`)
+}
+
+/** Is the operator registered for GST? (false while gstin is NOT_REGISTERED, or still TODO) */
+export function gstRegistered(legal: LegalConfig = LEGAL): boolean {
+  return !isMissing(legal.gstin) && legal.gstin !== NOT_REGISTERED
 }
 
 /** The text to print for an owner field: the value, or a clearly visible marker while it is TODO (never shipped, see assertLegalReady). */

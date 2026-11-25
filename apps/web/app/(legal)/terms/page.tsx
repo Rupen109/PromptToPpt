@@ -1,8 +1,8 @@
 import type { Metadata } from 'next'
 import { withShare } from '@/lib/seo'
 import Link from 'next/link'
-import { LegalPage, Operator, Owner, SupportMail } from '@/components/legal/LegalPage'
-import { LEGAL } from '@/lib/legal'
+import { Gstin, LegalPage, Operator, Owner, SupportMail } from '@/components/legal/LegalPage'
+import { LEGAL, gstRegistered } from '@/lib/legal'
 
 export const metadata: Metadata = withShare({
   title: 'Terms of Service',
@@ -27,7 +27,7 @@ export default function Page() {
       <h2 id="plans">3. Plans, credits and limits</h2>
       <ul>
         <li><strong>Free plan.</strong> Every account starts on a free plan with a monthly allowance of credits and smaller limits. Free decks carry a SlidesDone watermark and some features, such as exporting, are not included.</li>
-        <li><strong>Paid plans.</strong> The current plans, prices, credits and limits are shown on the <Link href="/pricing">pricing page</Link>. Prices shown for customers in India include GST; for other customers any applicable tax is shown at checkout.</li>
+        <li><strong>Paid plans.</strong> The current plans, prices, credits and limits are shown on the <Link href="/pricing">pricing page</Link>. {gstRegistered() ? 'Prices shown for customers in India include GST; for other customers any applicable tax is shown at checkout.' : 'The price shown is the price you pay: no GST is added, as we are not registered for GST.'}</li>
         <li><strong>Credits.</strong> AI work (writing slides, AI edits, pictures, reading media and similar) uses credits. The credits of a plan are granted for each billing period and <strong>do not roll over</strong>: unused credits are not carried to the next period and have no cash value. When you move to a higher plan, your balance is reset to the new plan’s allowance.</li>
         <li><strong>Other limits.</strong> Plans also limit things such as presentations per month, slides per presentation, pictures, file sizes, animated (Morph) decks per month and the formats you can export. We enforce these limits on our servers. Fair-use limits (for example per minute and per day) protect the service for everyone.</li>
         <li><strong>Changes.</strong> We may change plans, prices, credits and limits. A change to the price of a plan you already pay for applies from your next renewal and we will tell you beforehand. We will not take a higher price from you without that notice.</li>
@@ -98,7 +98,7 @@ export default function Page() {
       <p>These terms and the policies they refer to are the whole agreement between us about the service. If a part is found unenforceable, the rest stays in force. If we do not enforce a right straight away, we have not given it up. You may not transfer your rights under these terms without our consent; we may transfer ours as part of a business transfer. We may notify you by e-mail, in the product or on this website.</p>
 
       <h2 id="contact">17. Contact and grievances</h2>
-      <p>Questions: <SupportMail /> or the <Link href="/support">support form</Link>. Complaints: our Grievance Officer is <Owner k="grievanceOfficerName" />, <Owner k="grievanceOfficerEmail" />. We acknowledge complaints within {LEGAL.grievanceAcknowledgeHours} hours and aim to resolve them within {LEGAL.grievanceResolveDays} days. Address: <Operator />. GSTIN: <Owner k="gstin" />.</p>
+      <p>Questions: <SupportMail /> or the <Link href="/support">support form</Link>. Complaints: our Grievance Officer is <Owner k="grievanceOfficerName" />, <Owner k="grievanceOfficerEmail" />. We acknowledge complaints within {LEGAL.grievanceAcknowledgeHours} hours and aim to resolve them within {LEGAL.grievanceResolveDays} days. Address: <Operator />.<Gstin /></p>
     </LegalPage>
   )
 }

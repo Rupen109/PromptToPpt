@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { withShare } from '@/lib/seo'
 import Link from 'next/link'
-import { LEGAL_PAGES, LegalPage, Operator, Owner, SupportMail } from '@/components/legal/LegalPage'
+import { Gstin, LEGAL_PAGES, LegalPage, Operator, Owner, SupportMail } from '@/components/legal/LegalPage'
 
 export const metadata: Metadata = withShare({
   title: 'Legal',
@@ -23,7 +23,7 @@ export default function Page() {
         {LEGAL_PAGES.map((p) => <li key={p.href}><Link href={p.href}>{p.label}</Link>: {ABOUT[p.href]}</li>)}
       </ul>
       <h2 id="who">Who we are</h2>
-      <p><Operator />. GSTIN: <Owner k="gstin" />.</p>
+      <p><Operator />.<Gstin /></p>
       <h2 id="contact">Contact</h2>
       <p>Support: <SupportMail /> or the <Link href="/support">support form</Link>. Privacy and data requests: <Owner k="dataProtectionEmail" />. Grievance Officer: <Owner k="grievanceOfficerName" />, <Owner k="grievanceOfficerEmail" />.</p>
     </LegalPage>

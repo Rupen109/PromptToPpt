@@ -1,7 +1,7 @@
 // Unit tests for the legal-pages guard (node:test, no dependencies). Run: node --experimental-strip-types --test scripts/check-legal.test.mjs
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { LEGAL, OWNER_FIELDS, TODO, assertLegalReady, isReleaseCheck, legalReleaseProblems, missingOwnerFields, ownerText } from '../apps/web/lib/legal.ts'
+import { LEGAL, NOT_REGISTERED, OWNER_FIELDS, TODO, assertLegalReady, gstRegistered, isReleaseCheck, legalReleaseProblems, missingOwnerFields, ownerText } from '../apps/web/lib/legal.ts'
 
 const filled = Object.fromEntries(OWNER_FIELDS.map((f) => [f.key, 'x']))
 const full = { ...LEGAL, ...filled }
@@ -44,4 +44,12 @@ test('the repo as it stands fails a release check (owner still has to fill the f
 test('ownerText shows a visible marker for TODO and the real value once filled', () => {
   assert.equal(ownerText('gstin', partial), '[Owner to add: GSTIN]')
   assert.equal(ownerText('gstin', { ...full, gstin: '27ABCDE1234F1Z5' }), '27ABCDE1234F1Z5')
+})
+
+test('not registered for GST is a real answer: it counts as filled, and the pages then show no GSTIN and claim no GST', () => {
+  const solo = { ...full, gstin: NOT_REGISTERED }
+  assert.deepEqual(missingOwnerFields(solo), [])
+  assert.equal(gstRegistered(solo), false)
+  assert.equal(gstRegistered({ ...full, gstin: '24ABCDE1234F1Z5' }), true)
+  assert.equal(gstRegistered({ ...full, gstin: TODO }), false)
 })
