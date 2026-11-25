@@ -81,26 +81,34 @@ export default async function () {
   // ── PDF → PPT, converted in the browser ──────────────────────────────────────────────
   const pdf = tinyPdf(['Quarterly revenue grew twelve percent', 'Hiring plan for the fourth quarter'])
   const dir = mkdtempSync(join(tmpdir(), 'pdf2ppt-'))
-  const convert = async (mode) => {
+  const convert = async () => {
     await p.goto(WEB + '/free-tools/pdf-to-ppt', { waitUntil: 'networkidle' })
     await p.setInputFiles('input[type=file]', { name: 'Report.pdf', mimeType: 'application/pdf', buffer: pdf })
-    await p.getByText(mode === 'text' ? 'Editable text' : 'Exact look').first().click()
     await p.getByRole('button', { name: /Convert to PowerPoint/ }).click()
     await p.getByRole('button', { name: /Download \.pptx/ }).waitFor({ timeout: 60_000 })
     const [dl] = await Promise.all([p.waitForEvent('download'), p.getByRole('button', { name: /Download \.pptx/ }).click()])
-    const path = join(dir, `${mode}.pptx`)
+    const path = join(dir, 'Report.pptx')
     await dl.saveAs(path)
     expect(dl.suggestedFilename() === 'Report.pptx', `file name ${dl.suggestedFilename()}`)
     return path
   }
-  await s.check('PDF → PPT (exact look): downloads a .pptx with one slide per page and page pictures', p, async () => {
-    const path = await convert('image')
+  await s.check('PDF → PPT: no mode to choose; the download button appears in the same card as the convert button (no second box)', p, async () => {
+    await p.goto(WEB + '/free-tools/pdf-to-ppt', { waitUntil: 'networkidle' })
+    expect(await p.locator('input[type=radio]').count() === 0, 'a conversion mode is still offered')
+    await p.setInputFiles('input[type=file]', { name: 'Report.pdf', mimeType: 'application/pdf', buffer: pdf })
+    const convertBtn = p.getByRole('button', { name: /Convert to PowerPoint/ })
+    const card = p.getByLabel('Choose a PDF').locator('xpath=ancestor::div[contains(@class, "rounded-3xl")][1]') // the converter's own card
+    await convertBtn.click()
+    const download = p.getByRole('button', { name: /Download \.pptx/ })
+    await download.waitFor({ timeout: 60_000 })
+    expect(await card.getByRole('button', { name: /Download \.pptx/ }).count() === 1, 'the download button is not in the converter card')
+    expect(await convertBtn.count() === 0, 'the convert button is still shown next to the download')
+    expect(await p.getByRole('button', { name: 'Convert another PDF' }).isVisible(), 'no way to convert another PDF')
+  })
+  await s.check('PDF → PPT: a .pptx with one slide per page, and the text is real, editable text', p, async () => {
+    const path = await convert()
     const files = execFileSync('unzip', ['-Z1', path]).toString().split('\n')
     expect(files.filter((f) => /^ppt\/slides\/slide\d+\.xml$/.test(f)).length === 2, `slides: ${files.filter((f) => f.includes('slides/slide')).join(',')}`)
-    expect(files.some((f) => /^ppt\/media\//.test(f)), 'no page pictures in the file')
-  })
-  await s.check('PDF → PPT (editable text): the text is real text in the slides', p, async () => {
-    const path = await convert('text')
     const xml = execFileSync('unzip', ['-p', path, 'ppt/slides/slide1.xml']).toString()
     expect(/Quarterly revenue grew twelve percent/.test(xml), 'page-1 text is not in slide 1')
     const xml2 = execFileSync('unzip', ['-p', path, 'ppt/slides/slide2.xml']).toString()

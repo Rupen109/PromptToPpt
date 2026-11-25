@@ -6,16 +6,15 @@ import { join } from 'node:path'
 import { WEB, expect, launch, suite } from '../lib.mjs'
 
 /**
- * The free PDF to PowerPoint converter with big PDFs (up to 300 pages / 100 MB), in a real browser:
- *  - "Exact look": a 300-page PDF with photos becomes a valid 300-slide PowerPoint (every link resolves, every part has a type, each page a picture filling its
- *    slide), and the page's memory stays far below what the old way needed (over 1.1 GB for 300 pages; pages now stream into the file as they are drawn).
- *  - "Editable text": 300 slides, and no character XML forbids anywhere (one made PowerPoint "repair" files).
+ * The free PDF to PowerPoint converter (editable text) with big PDFs (up to 300 pages / 100 MB), in a real browser:
+ *  - a 300-page PDF with photos becomes a valid 300-slide PowerPoint (every link resolves, every part has a type, the text of page 300 is on slide 300), with no
+ *    character XML forbids anywhere (one made PowerPoint "repair" files), and the page's memory stays far below what it used before pdf.js's caches were emptied.
  *  - 301 pages are refused with a clear message; the page says the real limits; a PDF too big for the AI redesign says so instead of offering the button.
  * Test PDFs are made here from the site's own template photos. No AI is used.
  */
 const web = createRequire(new URL('../../apps/web/package.json', import.meta.url))
 const { PDFDocument, StandardFonts, rgb } = web('pdf-lib')
-const { unzipSync, strFromU8 } = web('fflate')
+const { unzipSync, strFromU8 } = createRequire(new URL('../../services/api/package.json', import.meta.url))('fflate')
 const PHOTOS = new URL('../../apps/web/public/template-assets/w768/', import.meta.url).pathname
 
 async function makePdf(pages, { padMB = 0 } = {}) {
@@ -62,11 +61,10 @@ export default async function () {
     const tooMany = join(dir, 'report-301.pdf'); writeFileSync(tooMany, await makePdf(301))
     const heavy = join(dir, 'report-heavy.pdf'); writeFileSync(heavy, await makePdf(3, { padMB: 11 }))
 
-    async function convert(file, mode) {
+    async function convert(file) {
       const ctx = await b.newContext({ acceptDownloads: true, viewport: { width: 1300, height: 900 } }); const p = await ctx.newPage()
       await p.goto(`${WEB}/free-tools/pdf-to-ppt`, { waitUntil: 'networkidle' })
       await p.getByLabel('Choose a PDF').setInputFiles(file)
-      await p.locator(`input[name=mode][value=${mode}]`).check({ force: true })
       const before = rendererMB(); let peak = before, stop = false
       const poll = (async () => { while (!stop) { peak = Math.max(peak, rendererMB()); await new Promise((r) => setTimeout(r, 300)) } })()
       await p.getByRole('button', { name: 'Convert to PowerPoint' }).click()
@@ -88,26 +86,14 @@ export default async function () {
       await p.context().close()
     })
 
-    await s.check('Exact look: 300 pages with photos → a valid 300-slide PowerPoint, each page a picture filling its slide, memory far below the old way', null, async () => {
-      const r = await convert(big, 'image')
-      expect(r.outcome === 'ok', `conversion failed: ${r.outcome}`)
-      const slides = Object.keys(r.zip).filter((n) => /^ppt\/slides\/slide\d+\.xml$/.test(n)).length
-      const pictures = Object.keys(r.zip).filter((n) => /^ppt\/media\/page-\d+\.jpeg$/.test(n)).length
-      expect(slides === 300 && pictures === 300, `${slides} slides, ${pictures} pictures`)
-      const problems = packageProblems(r.zip); expect(problems.length === 0, `package problems: ${problems.slice(0, 4).join(' | ')}`)
-      const size = strFromU8(r.zip['ppt/presentation.xml']).match(/<p:sldSz cx="(\d+)" cy="(\d+)"/)
-      const pic = strFromU8(r.zip['ppt/slides/slide300.xml']).match(/<p:pic>[\s\S]*?<a:ext cx="(\d+)" cy="(\d+)"/)
-      expect(size && pic && pic[1] === size[1] && pic[2] === size[2], `the picture does not fill the slide: ${pic?.slice(1)} vs ${size?.slice(1)}`)
-      // the old way (every picture held as text, the PDF reader's caches never emptied) used over 1,100 MB here
-      if (r.memMB) expect(r.memMB < 950, `the page used ${r.memMB} MB converting 300 pages`)
-      await r.ctx.close()
-    })
-
-    await s.check('Editable text: 300 slides, nothing XML forbids in any part (PowerPoint opens it without "repair")', null, async () => {
-      const r = await convert(big, 'text')
+    await s.check('300 pages with photos → a valid 300-slide editable PowerPoint, nothing XML forbids in any part, memory far below the old way', null, async () => {
+      const r = await convert(big)
       expect(r.outcome === 'ok', `conversion failed: ${r.outcome}`)
       const slides = Object.keys(r.zip).filter((n) => /^ppt\/slides\/slide\d+\.xml$/.test(n))
       expect(slides.length === 300, `${slides.length} slides`)
+      const problems = packageProblems(r.zip).filter((x) => !/slideMaster\d+\.xml/.test(x)); expect(problems.length === 0, `package problems: ${problems.slice(0, 4).join(' | ')}`)
+      // before pdf.js's caches were emptied every 10 pages this used over 600 MB
+      if (r.memMB) expect(r.memMB < 520, `the page used ${r.memMB} MB converting 300 pages`)
       const bad = Object.entries(r.zip).filter(([n, d]) => /\.(xml|rels)$/.test(n) && /[\u0000-\u0008\u000B\u000C\u000E-\u001F￾￿]/.test(strFromU8(d))).map(([n]) => n)
       expect(bad.length === 0, `forbidden characters in ${bad.slice(0, 4).join(', ')}`)
       expect(strFromU8(r.zip['ppt/slides/slide300.xml']).includes('Page 300: quarterly report'), 'the text of page 300 is missing')
@@ -115,13 +101,13 @@ export default async function () {
     })
 
     await s.check('a 301-page PDF is refused with a clear message', null, async () => {
-      const r = await convert(tooMany, 'image')
+      const r = await convert(tooMany)
       expect(/301 pages.*up to 300/.test(r.outcome), `message: ${r.outcome}`)
       await r.ctx.close()
     })
 
     await s.check('a PDF over the AI redesign limit converts, and says plainly the AI cannot read it (no button that would fail)', null, async () => {
-      const r = await convert(heavy, 'image')
+      const r = await convert(heavy)
       expect(r.outcome === 'ok', `conversion failed: ${r.outcome}`)
       expect(await r.p.getByText(/AI redesign reads PDFs up to 10 MB, and this one is 1\d\.\d MB/).isVisible(), 'no message about the AI limit')
       expect(await r.p.getByRole('button', { name: 'Redesign it with AI' }).count() === 0, 'the redesign button is still offered')

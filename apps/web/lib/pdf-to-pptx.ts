@@ -2,13 +2,10 @@ import { xmlSafe } from '@prompttoppt/validation'
 import { MAX_BYTES, MAX_PAGES, PPT_MAX_BYTES, PPT_MAX_PAGES, type PdfLimits } from './pdf-limits'
 
 /**
- * PDF → PowerPoint, entirely in the visitor's browser (pdf.js to read; pptx-picture-deck.ts / pptxgenjs to write). Nothing is uploaded and nothing costs us
- * anything per run. Two modes:
- *  - `image`: each page becomes one slide holding a picture of the page — looks exactly like the PDF, text is not editable.
- *  - `text`:  text is rebuilt as editable text boxes in their original positions; pictures and graphics are not carried over.
- * Both are heavy, so the libraries are loaded only when a file is converted.
+ * PDF → PowerPoint, entirely in the visitor's browser (pdf.js to read, pptxgenjs to write). Nothing is uploaded and nothing costs us anything per run.
+ * The text is rebuilt as editable text boxes where it was on the page, one slide per page; pictures and graphics are not carried over.
+ * The libraries are heavy, so they are loaded only when a file is converted.
  */
-export type PdfMode = 'image' | 'text'
 export { MAX_BYTES, MAX_PAGES, PPT_MAX_BYTES, PPT_MAX_PAGES, type PdfLimits }
 const TOOL_LIMITS: PdfLimits = { maxPages: MAX_PAGES, maxBytes: MAX_BYTES }
 
@@ -64,49 +61,20 @@ async function releaseEvery(pdf: Awaited<ReturnType<typeof openPdf>>, n: number)
   if (n % 10 === 0) await pdf.cleanup()
 }
 
-/** a page drawn as a JPEG (bytes, not text: a 300-page PDF must not hold 300 pictures as strings) */
-async function pageJpeg(page: Awaited<ReturnType<Awaited<ReturnType<typeof openPdf>>['getPage']>>): Promise<Uint8Array> {
-  const v1 = page.getViewport({ scale: 1 })
-  const viewport = page.getViewport({ scale: Math.min(2, 1800 / v1.width) })
-  const canvas = document.createElement('canvas')
-  canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height)
-  try {
-    await page.render({ canvas, viewport }).promise
-    const blob = await new Promise<Blob | null>((ok) => canvas.toBlob(ok, 'image/jpeg', 0.85))
-    if (!blob) throw new PdfConvertError('Your browser ran out of memory drawing a page. Try the editable-text mode, or a smaller PDF.')
-    return new Uint8Array(await blob.arrayBuffer())
-  } finally {
-    canvas.width = 0 // release the bitmap before the next page
-  }
-}
-
-export async function convertPdf(file: File, mode: PdfMode, onProgress?: (p: Progress) => void): Promise<Blob> {
+export async function convertPdf(file: File, onProgress?: (p: Progress) => void): Promise<Blob> {
   const pdf = await openPdf(file, { maxPages: PPT_MAX_PAGES, maxBytes: PPT_MAX_BYTES })
   const first = await pdf.getPage(1)
   const base = first.getViewport({ scale: 1 })
   const W = base.width / 72, H = base.height / 72 // slide size in inches = the PDF page in inches
   const title = xmlSafe(file.name.replace(/\.pdf$/i, ''))
   try {
-    if (mode === 'image') {
-      // "exact look": every page a picture, written into the file as it is drawn
-      const { pictureDeck } = await import('./pptx-picture-deck')
-      const deck = await pictureDeck({ widthIn: W, heightIn: H, title })
-      for (let n = 1; n <= pdf.numPages; n++) {
-        onProgress?.({ page: n, pages: pdf.numPages })
-        const page = await pdf.getPage(n)
-        deck.add(await pageJpeg(page))
-        page.cleanup()
-        await releaseEvery(pdf, n)
-      }
-      return deck.finish()
-    }
     return await textDeck(pdf, W, H, title, onProgress)
   } finally {
     void pdf.loadingTask.destroy() // the PDF itself (and pdf.js's copy in its worker) is let go as soon as the file is made
   }
 }
 
-/** "editable text": text rebuilt as text boxes where it was; light at any size, so it stays with pptxgenjs */
+/** the text of every page rebuilt as text boxes where it was, one slide per page */
 async function textDeck(pdf: Awaited<ReturnType<typeof openPdf>>, W: number, H: number, title: string, onProgress?: (p: Progress) => void): Promise<Blob> {
   const PptxGenJS = (await import('pptxgenjs')).default
   const pres = new PptxGenJS()

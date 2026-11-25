@@ -19,7 +19,6 @@
     "@prompttoppt/types": "workspace:*",
     "@prompttoppt/ui": "workspace:*",
     "@prompttoppt/validation": "workspace:*",
-    "fflate": "0.8.3",
     "jszip": "3.10.1",
     "next": "16.4.6",
     "pdf-lib": "1.17.1",
