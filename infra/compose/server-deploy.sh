@@ -16,11 +16,15 @@ bash ./render-env.sh
 REGISTRY="$(cut -d/ -f1 <<<"$(grep '^API_IMAGE=' images.env | cut -d= -f2-)")"
 aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$REGISTRY"
 COMPOSE="docker compose --env-file .env --env-file images.env"
+# images not in use are removed before AND after the new ones are pulled: the 20 GB disk filled up with every old version (2026-11-25, "no space left on
+# device" in the middle of a pull). Nothing running is touched; any older version can still be pulled from ECR, which keeps the last five.
+docker image prune -af >/dev/null 2>&1 || true
 $COMPOSE pull
 $COMPOSE up -d postgres
 $COMPOSE run --rm api node dist/migrate.js
 $COMPOSE up -d --remove-orphans
-docker image prune -f >/dev/null
+docker image prune -af >/dev/null 2>&1 || true
+echo "disk: $(df -h / | awk 'NR==2 {print $5" used, "$4" free"}')"
 # backup timer, written on every deploy: twice a day, 02:30 and 13:00 India time (21:00 and 07:30 UTC)
 {
   cat > /etc/systemd/system/slidesdone-backup.service <<UNIT
