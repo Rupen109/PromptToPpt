@@ -183,10 +183,10 @@ export function PageView(p: PageViewProps) {
         // a paragraph: the handles change how wide the lines may be, not the size of the letters
         const wrap = Math.max(o.size * 2, resizeBox(o, g.handle, dx, 0, false).w)
         const t = retext(o, { wrap })
-        p.onPatch(g.id, { wrap: t.wrap, lines: t.lines, w: t.w, h: t.h, x: g.handle.includes('w') ? o.x + o.w - t.w : o.x }, g.key)
+        p.onPatch(g.id, { wrap, x: g.handle.includes('w') ? o.x + o.w - t.w : o.x }, g.key) // (laid out again by retext and stored whole: the editor's onPatch)
       } else if (o.kind === 'text') {
         const t = retext(o, { size: Math.max(4, o.size * (nb.w / o.w)) })
-        p.onPatch(g.id, { size: t.size, w: t.w, h: t.h, x: g.handle.includes('w') ? o.x + o.w - t.w : o.x, y: g.handle.includes('n') ? o.y + o.h - t.h : o.y }, g.key)
+        p.onPatch(g.id, { size: t.size, x: g.handle.includes('w') ? o.x + o.w - t.w : o.x, y: g.handle.includes('n') ? o.y + o.h - t.h : o.y }, g.key)
       } else p.onPatch(g.id, nb, g.key)
     }
   }

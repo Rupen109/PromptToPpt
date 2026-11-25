@@ -230,7 +230,7 @@ export default async function () {
       await p.goto(WEB + '/free-tools', { waitUntil: 'load' })
       expect(await p.getByRole('link', { name: /Free PDF Editor/ }).count() >= 1, 'not listed on /free-tools')
       expect((await (await p.request.get(WEB + '/sitemap.xml')).text()).includes('/free-tools/pdf-editor'), 'not in sitemap')
-      expect((await (await p.request.get(WEB + '/llms.txt')).text()).includes('PDF editor'), 'not in llms.txt')
+      { const llms = (await (await p.request.get(WEB + '/llms.txt')).text()); expect(/pdf editor/i.test(llms) && llms.includes('/free-tools/pdf-editor'), 'not in llms.txt') }
       const seen = []; const on = (r) => seen.push(r.url()); p.on('request', on)
       await p.goto(WEB + '/', { waitUntil: 'networkidle' })
       await p.goto(WEB + '/free-tools/pdf-to-jpg', { waitUntil: 'networkidle' })

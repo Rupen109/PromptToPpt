@@ -44,6 +44,27 @@ function ownResources(lib: Lib, ctx: PDFContext, leaf: PDFPageLeaf): void {
 }
 
 /** a direct resource dictionary that was inherited from the page tree and now sits on several pages is written once and referenced */
+/**
+ * The attributes a page inherits from its page-tree parents, written onto the page itself: when pages are deleted or moved they get a new parent, and
+ * without this a page would lose its size, crop box, turn or resources. Nothing else on the page is touched (its content stream is left exactly as it was).
+ */
+const INHERITED = ['Resources', 'MediaBox', 'CropBox', 'Rotate'] as const
+function pinInherited(lib: Lib, leaf: PDFPageLeaf): void {
+  for (const k of INHERITED) {
+    if (leaf.get(N(lib, k)) !== undefined) continue
+    const v = leaf.getInheritableAttribute(N(lib, k))
+    if (v !== undefined) leaf.set(N(lib, k), v)
+  }
+}
+/**
+ * pdf-lib's normalize() also wraps the page's content in q … Q by default (autoNormalizeCTM). The export adds that wrapper itself, once, only on pages that get
+ * new drawing (export.ts), so here it is switched off: an edited page is not wrapped twice, and nothing else changes the page content.
+ */
+function normalizeForDrawing(leaf: PDFPageLeaf): void {
+  (leaf as unknown as { autoNormalizeCTM: boolean }).autoNormalizeCTM = false
+  leaf.normalize()
+}
+
 function shareInherited(lib: Lib, ctx: PDFContext, leaves: PDFPageLeaf[]): void {
   const seen = new Map<PDFDict, number>(), refs = new Map<PDFDict, PDFRef>()
   for (const l of leaves) { const r = l.get(N(lib, 'Resources')); if (r instanceof lib.PDFDict) seen.set(r, (seen.get(r) ?? 0) + 1) }
@@ -179,9 +200,9 @@ export function planPages(lib: Lib, doc: PDFDocument, states: PageState[]): Plan
   const used = new Set<number>(); for (const s of states) if (s.src !== null) used.add(s.src)
   const same = states.length === originals.length && states.every((s, i) => s.src === i)
   const deleted = new Set<string>(); originals.forEach((p, i) => { if (!used.has(i)) deleted.add(tagOf(p.ref)) })
-  const edited = new Set<number>(); states.forEach((s) => { if (s.src !== null && (s.annos.length > 0 || s.turn !== 0)) edited.add(s.src) })
-  // inherited size / rotation / resources are copied onto the page objects that move to a new parent; pages that stay where they are are only touched when edited
-  for (const i of same ? edited : used) originals[i]!.node.normalize()
+  // inherited size / rotation / resources are copied onto the page objects that move to a new parent (their content is not touched); a page that gets new
+  // drawing is normalised for it. An untouched page keeps its content stream exactly as it was, even when other pages are deleted or moved.
+  if (!same) for (const i of used) pinInherited(lib, originals[i]!.node)
   if (!same) shareInherited(lib, ctx, [...used].map((i) => originals[i]!.node))
   const first = new Set<number>()
   const aliases = new Map<string, string>()
@@ -195,6 +216,8 @@ export function planPages(lib: Lib, doc: PDFDocument, states: PageState[]): Plan
     if (!first.has(s.src)) { first.add(s.src); return { page: orig, kind: 'original' as const, src: s.src, state: s } }
     return { page: duplicateLeaf(lib, doc, orig.node, aliases), kind: 'duplicate' as const, src: s.src, state: s }
   })
+  // every page that gets new drawing (an original or a duplicate) is prepared for it exactly once, without pdf-lib's own q … Q (export.ts adds one)
+  for (const p of pages) if (p.kind !== 'blank' && p.state.annos.length > 0) normalizeForDrawing(p.page.node)
   for (const p of pages) if (p.kind !== 'original' || p.state.annos.length > 0) ownResources(lib, ctx, p.page.node)
   if (!same) {
     const rootRef = doc.catalog.get(N(lib, 'Pages')) as PDFRef

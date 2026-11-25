@@ -120,6 +120,13 @@ export const insertAnnos = (d: Doc, pageId: string, a: Anno[], at: number): Doc 
 export const removeAnno = (d: Doc, pageId: string, id: string): Doc => mapPage(d, pageId, (p) => ({ ...p, annos: p.annos.filter((a) => a.id !== id) }))
 export const patchAnno = (d: Doc, pageId: string, id: string, patch: Partial<Anno>): Doc =>
   mapPage(d, pageId, (p) => ({ ...p, annos: p.annos.map((a) => (a.id === id ? ({ ...a, ...patch } as Anno) : a)) }))
+/**
+ * An item replaced WHOLE. A text item laid out again by `retext` must be stored this way, never merged with patchAnno: retext leaves out what no longer applies
+ * (spans, styled lines, a paragraph's lines), and a merge would keep the old values, so the screen and the saved file drew the old words (a line with a bold
+ * stretch lost every edit).
+ */
+export const replaceAnno = (d: Doc, pageId: string, id: string, next: Anno): Doc =>
+  mapPage(d, pageId, (p) => ({ ...p, annos: p.annos.map((a) => (a.id === id ? next : a)) }))
 export const findAnno = (d: Doc, pageId: string, id: string): Anno | undefined => d.pages.find((p) => p.id === pageId)?.annos.find((a) => a.id === id)
 
 /** keep a box inside the page and at least MIN_SIZE big */

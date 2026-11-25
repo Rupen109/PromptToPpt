@@ -7,7 +7,7 @@ import { Card } from '@/components/ui/Card'
 import { clampZoom, fitWidthZoom, screenToPageDelta, turnedBounds } from '@/lib/pdf-editor/geometry'
 import { fitIntoBox, loadImageFile, type Loaded } from '@/lib/pdf-editor/images'
 import {
-  addAnno, addBlankPage, cancelKey, commit, deletePage, duplicatePage, findAnno, insertAnnos, movePage, movePageBy, newDoc, newHistory, patchAnno, pageSize, redo, removeAnno, rotatePage, seal, setField, shownSize, uid, undo,
+  addAnno, addBlankPage, cancelKey, commit, deletePage, duplicatePage, findAnno, insertAnnos, movePage, movePageBy, newDoc, newHistory, patchAnno, replaceAnno, pageSize, redo, removeAnno, rotatePage, seal, setField, shownSize, uid, undo,
   type Anno, type Box, type Doc, type History, type ImageAnno, type PageState, type WhiteoutAnno,
 } from '@/lib/pdf-editor/model'
 import { MAX_PAGES, OpenCancelled, PdfConvertError, extractRuns, openForEditing, type PasswordAsk, type Run } from '@/lib/pdf-editor/render'
@@ -46,6 +46,9 @@ export const downloadName = (name: string): string => {
 const isField = (t: EventTarget | null): boolean => t instanceof HTMLElement && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.isContentEditable)
 
 /** Free PDF editor. Everything runs in the browser: pdf.js draws the pages, pdf-lib writes the result. The file is never uploaded. */
+/** the fields of a text item that change how it is laid out (a change to any of them is laid out again by retext) */
+const TEXT_LAYOUT = ['text', 'size', 'wrap', 'spans', 'bold', 'italic', 'fam', 'pitch'] as const
+
 export function PdfEditorTool() {
   const fileInput = useRef<HTMLInputElement>(null)
   const imageInput = useRef<HTMLInputElement>(null)
@@ -377,7 +380,7 @@ export function PdfEditorTool() {
     const last = annos.at(-1)!
     if (last.kind === 'text' && last.fam !== 'sans' && last.fam !== 'serif' && last.fam !== 'mono') { // a bundled font that was not loaded yet: measure again once it is (not an undo step)
       const pid = page.id, id = last.id
-      void ensureFont(last.fam, last.bold, last.italic).then(() => setH((cur) => { const a = cur && findAnno(cur.present, pid, id); return cur && a?.kind === 'text' ? { ...cur, present: patchAnno(cur.present, pid, id, retext(a, {})) } : cur }))
+      void ensureFont(last.fam, last.bold, last.italic).then(() => setH((cur) => { const a = cur && findAnno(cur.present, pid, id); return cur && a?.kind === 'text' ? { ...cur, present: replaceAnno(cur.present, pid, id, retext(a, {})) } : cur }))
     }
     if (last.kind === 'path' && last.variant === 'pen') { setStatus('Line drawn.'); return }
     setSel(last.id)
@@ -420,8 +423,10 @@ export function PdfEditorTool() {
     setStatus('The part you boxed is covered. Type the new words; resize the text with its corner handles.')
   }
   // right-to-left words that replace a line read from a picture grow to the left: their right edge stays where the line's was
-  const onText = (id: string, text: string) => { if (page) change((d) => { const a = findAnno(d, page.id, id); if (a?.kind !== 'text') return d; const t = retext(a, { text }); return patchAnno(d, page.id, id, a.replaces && hasRtl(text) ? { ...t, x: a.x + a.w - t.w } : t) }, `text:${id}`) }
-  const onPatch = (id: string, patch: Partial<Anno>, key: string) => { if (page) change((d) => { const a = findAnno(d, page.id, id); return a?.kind === 'text' && a.right !== undefined && ('x' in patch) ? patchAnno(d, page.id, id, retext(a, patch as never)) : patchAnno(d, page.id, id, patch) }, key) }
+  const onText = (id: string, text: string) => { if (page) change((d) => { const a = findAnno(d, page.id, id); if (a?.kind !== 'text') return d; const t = retext(a, { text }); return replaceAnno(d, page.id, id, a.replaces && hasRtl(text) ? { ...t, x: a.x + a.w - t.w } : t) }, `text:${id}`) }
+  // a change that lays a text item out again (its words, size, wrap width, style, font, or the right edge of right-to-left text) goes through retext and replaces
+  // the item whole; a plain move or a non-text item is merged
+  const onPatch = (id: string, patch: Partial<Anno>, key: string) => { if (page) change((d) => { const a = findAnno(d, page.id, id); return a?.kind === 'text' && (TEXT_LAYOUT.some((k) => k in patch) || (a.right !== undefined && 'x' in patch)) ? replaceAnno(d, page.id, id, retext(a, patch as never)) : patchAnno(d, page.id, id, patch) }, key) }
   /** a found picture was clicked: cut its pixels out of a sharp render, leave a smooth cover where it was, and let the visitor move / resize / replace / delete the picture like any other */
   async function onPicPick(pic: Pic, cover: PicCover) {
     if (!pdf || !page || page.src === null || picking) return
@@ -475,7 +480,7 @@ export function PdfEditorTool() {
       const looks = new Set(charStyles(next.text, next.bold, next.italic, next.spans).map((x) => x))
       await Promise.all([...looks].map((x) => ensureFont(next.fam, !!(x & 1), !!(x & 2))))
       const id = selected.id, pid = page.id
-      change((d) => { const a = findAnno(d, pid, id); return a?.kind === 'text' ? patchAnno(d, pid, id, retext(a, range && which ? { spans: next.spans ?? [] } : (patch as never))) : d }, `style:${id}:${range ? 'range' : Object.keys(patch).join()}`)
+      change((d) => { const a = findAnno(d, pid, id); return a?.kind === 'text' ? replaceAnno(d, pid, id, retext(a, range && which ? { spans: next.spans ?? [] } : (patch as never))) : d }, `style:${id}:${range ? 'range' : Object.keys(patch).join()}`)
       if (range && which) return // a stretch: the starting style for new text stays as it was
     } else if (selected && page) {
       change((d) => patchAnno(d, page.id, selected.id, patch as Partial<Anno>), `style:${selected.id}:${Object.keys(patch).join()}`)
