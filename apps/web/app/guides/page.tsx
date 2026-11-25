@@ -1,15 +1,16 @@
 import type { Metadata } from 'next'
+import { withShare } from '@/lib/seo'
 import Link from 'next/link'
 import { ArrowRight } from '@prompttoppt/ui/icons'
 import { ContentPage, Empty, Unavailable } from '@/components/content/parts'
 import { Card } from '@/components/ui/Card'
 import { getGuides, hrefOf } from '@/lib/content'
 
-export const metadata: Metadata = {
+export const metadata: Metadata = withShare({
   title: 'Guides — How to Use SlidesDone',
   description: 'Step-by-step guides to make presentations with SlidesDone: create a deck from a prompt, a PDF, a picture or a video, edit it, brand it, share it and export it.',
   alternates: { canonical: '/guides' },
-}
+})
 
 export const revalidate = 60
 

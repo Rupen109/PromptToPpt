@@ -2,6 +2,7 @@ import { SITE_URL } from '@/lib/env'
 import { BASE_PATH, type Kind, fetchContent } from '@/lib/content'
 import { GENERAL_FAQS } from '@/lib/faq'
 import { LANDINGS } from '@/lib/template-landing'
+import { FREE_TOOLS } from '@/lib/free-tool-list'
 import { SITE_NAME, SUPPORT_MAIL } from '@/lib/seo'
 
 export const revalidate = 3600
@@ -25,10 +26,13 @@ export async function GET() {
 - [Pricing](${SITE_URL}/pricing): the free plan and the paid plans, with current prices
 - [Templates](${SITE_URL}/templates): designer-made presentation templates
 - [Morph animation templates](${SITE_URL}/morph-animation-templates): presentation templates where every slide change is one smooth movement, in six families (business and strategy, pitch and investor, marketing and campaigns, product launch, technology, education), each with live previews and answers to common questions
-- [Free tools](${SITE_URL}/free-tools): outline generator, PDF to presentation, PDF to PPT, PDF to JPG, PDF editor, YouTube transcript to slides, video to slides, script to slides, sitemap generator
+- [Free tools](${SITE_URL}/free-tools): free presentation and PDF tools, no sign-up (listed below)
 - [Support](${SITE_URL}/support): contact us, ${SUPPORT_MAIL}
 
 - [Terms of Service](${SITE_URL}/terms), [Privacy Policy](${SITE_URL}/privacy), [Cookie notice](${SITE_URL}/cookies), [Cancellation and refund policy](${SITE_URL}/refunds): the legal documents (index: [Legal](${SITE_URL}/legal))
+
+## Free tools (no sign-up)
+${FREE_TOOLS.map((t) => `- [${t.name}](${SITE_URL}${t.href}): ${t.text}`).join('\n')}
 
 ## Free template collections
 ${LANDINGS.map((l) => `- [${l.noun} presentation templates](${SITE_URL}/free-templates/${l.slug})`).join('\n')}

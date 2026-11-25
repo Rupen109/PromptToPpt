@@ -1,13 +1,14 @@
 import type { Metadata } from 'next'
+import { withShare } from '@/lib/seo'
 import Link from 'next/link'
 import { LegalPage, Owner, SupportMail } from '@/components/legal/LegalPage'
 import { LEGAL } from '@/lib/legal'
 
-export const metadata: Metadata = {
+export const metadata: Metadata = withShare({
   title: 'Cancellation and refund policy',
   description: 'How to cancel a SlidesDone plan, when you can get a refund, how long refunds take, and what happens to your credits and access.',
   alternates: { canonical: '/refunds' },
-}
+})
 
 export default function Page() {
   return (

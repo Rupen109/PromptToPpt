@@ -1,8 +1,9 @@
 import type { Metadata } from 'next'
+import { withShare } from '@/lib/seo'
 import { Header } from '@/components/layout/Header'
 import { TemplateLab } from '@/components/templates/TemplateLab'
 
-export const metadata: Metadata = { title: 'Template lab (review)', robots: { index: false, follow: false } }
+export const metadata: Metadata = withShare({ title: 'Template lab (review)', robots: { index: false, follow: false } })
 
 export default function TemplateLabPage() {
   return (

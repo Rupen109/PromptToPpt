@@ -1,13 +1,14 @@
 import type { Metadata } from 'next'
+import { withShare } from '@/lib/seo'
 import Link from 'next/link'
 import { Logo } from '@prompttoppt/ui/logo'
 import { ForgotPasswordForm } from '@/components/auth/ForgotPasswordForm'
 
-export const metadata: Metadata = {
+export const metadata: Metadata = withShare({
   title: 'Forgot your password',
   robots: { index: false, follow: false },
   alternates: { canonical: '/forgot-password' },
-}
+})
 
 export default async function Page({ searchParams }: { searchParams: Promise<{ email?: string }> }) {
   const { email } = await searchParams

@@ -1,14 +1,15 @@
 import type { Metadata } from 'next'
+import { withShare } from '@/lib/seo'
 import Link from 'next/link'
 import { LegalPage, Operator, Owner, SupportMail } from '@/components/legal/LegalPage'
 import { GOOGLE_AUTH, MICROSOFT_AUTH, TURNSTILE_SITE_KEY } from '@/lib/env'
 import { LEGAL } from '@/lib/legal'
 
-export const metadata: Metadata = {
+export const metadata: Metadata = withShare({
   title: 'Privacy Policy',
   description: 'What personal data SlidesDone collects, how your content is processed by AI providers, who else receives it, how long we keep it, and how to export or delete your data.',
   alternates: { canonical: '/privacy' },
-}
+})
 
 const PROCESSORS: { who: string; what: string; data: string }[] = [
   { who: 'Amazon Web Services (AWS), Mumbai region', what: 'Hosting, database, file storage, content delivery and backups', data: 'Everything described in section 2, stored on our servers' },

@@ -1,13 +1,14 @@
 import type { Metadata } from 'next'
+import { withShare } from '@/lib/seo'
 import { Flame } from '@prompttoppt/ui/icons'
 import { ContentPage, Empty, NewsItem, Pager, TagBar, Unavailable } from '@/components/content/parts'
 import { getTags, getTrending, listPosts } from '@/lib/content'
 
-export const metadata: Metadata = {
+export const metadata: Metadata = withShare({
   title: 'Tech News — Short Daily AI and Software Updates',
   description: 'Short, clear tech and AI news in plain words, with a link to the original story. Updated by the SlidesDone team.',
   alternates: { canonical: '/news' },
-}
+})
 
 export const revalidate = 60
 

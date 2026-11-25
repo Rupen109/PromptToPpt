@@ -5,13 +5,13 @@ import { PricingSection } from '@/components/sections/PricingSection'
 import FaqSection from '@/components/sections/FaqSection'
 import { JsonLd } from '@/components/seo/JsonLd'
 import { PRICING_FAQS } from '@/lib/faq'
-import { breadcrumbLd } from '@/lib/seo'
+import { breadcrumbLd, withShare } from '@/lib/seo'
 
-export const metadata: Metadata = {
+export const metadata: Metadata = withShare({
   title: 'Pricing and plans',
   description: 'Start free with 100 credits. Upgrade to Pro, Gold or Premium for export, premium models, AI edits and more.',
   alternates: { canonical: '/pricing' },
-}
+})
 
 export default function PricingPage() {
   return (

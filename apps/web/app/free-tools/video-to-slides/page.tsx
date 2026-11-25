@@ -1,16 +1,18 @@
 import type { Metadata } from 'next'
+import { withShare } from '@/lib/seo'
 import { MediaTool } from '@/components/free-tools/MediaTool'
 import { ToolShell } from '@/components/free-tools/ToolShell'
 
-export const metadata: Metadata = {
+export const metadata: Metadata = withShare({
   title: 'Free Audio & Video to Slides Converter',
   description: 'Upload a lecture, meeting or voice recording, get a timed transcript in its own language, then turn it into an editable presentation. Free to try.',
   alternates: { canonical: '/free-tools/video-to-slides' },
-}
+})
 
 export default function Page() {
   return (
     <ToolShell
+      path="/free-tools/video-to-slides"
       title="Turn a Recording into Slides"
       intro="Upload your own lecture, meeting, voice note or screen recording. AI writes down what is said and you can turn it into a presentation in one click."
       steps={[

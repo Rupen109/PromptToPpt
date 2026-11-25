@@ -1,14 +1,15 @@
 import type { Metadata } from 'next'
+import { withShare } from '@/lib/seo'
 import Link from 'next/link'
 import { CookieSettingsButton } from '@/components/legal/CookieConsent'
 import { LegalPage, SupportMail } from '@/components/legal/LegalPage'
 import { TURNSTILE_SITE_KEY } from '@/lib/env'
 
-export const metadata: Metadata = {
+export const metadata: Metadata = withShare({
   title: 'Cookie notice',
   description: 'Which cookies and similar storage SlidesDone uses, what each is for, and how to accept or refuse analytics cookies.',
   alternates: { canonical: '/cookies' },
-}
+})
 
 export default function Page() {
   return (

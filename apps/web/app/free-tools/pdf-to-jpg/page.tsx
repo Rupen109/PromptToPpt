@@ -1,16 +1,18 @@
 import type { Metadata } from 'next'
+import { withShare } from '@/lib/seo'
 import { PdfToJpgTool } from '@/components/free-tools/PdfToJpgTool'
 import { ToolShell } from '@/components/free-tools/ToolShell'
 
-export const metadata: Metadata = {
+export const metadata: Metadata = withShare({
   title: 'Free PDF to JPG Converter — Online, No Sign-up',
   description: 'Convert PDF pages to JPG pictures free, right in your browser. Pick the quality and the pages, download one by one or all in a zip. Your file is not uploaded.',
   alternates: { canonical: '/free-tools/pdf-to-jpg' },
-}
+})
 
 export default function Page() {
   return (
     <ToolShell
+      path="/free-tools/pdf-to-jpg"
       title="Free PDF to JPG Converter"
       intro="Turn every page of a PDF into a JPG picture in seconds. It runs on your device, so your document is not uploaded and there is nothing to install."
       steps={[

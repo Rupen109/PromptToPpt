@@ -6,14 +6,14 @@ import { Header } from '@/components/layout/Header'
 import { JsonLd } from '@/components/seo/JsonLd'
 import FaqSection from '@/components/sections/FaqSection'
 import { GENERAL_FAQS } from '@/lib/faq'
-import { SITE_NAME, breadcrumbLd } from '@/lib/seo'
+import { SITE_NAME, breadcrumbLd, withShare } from '@/lib/seo'
 import { SITE_URL } from '@/lib/env'
 
-export const metadata: Metadata = {
+export const metadata: Metadata = withShare({
   title: 'AI PPT Maker: Make a PowerPoint with AI',
   description: 'Describe your topic or add a PDF, Word file or web link and get a designed, editable PowerPoint presentation in seconds. Start free, no design skills needed.',
   alternates: { canonical: '/ai-ppt-maker' },
-}
+})
 
 const STEPS = [
   { icon: Sparkles, title: 'Say what it is about', text: 'Type a topic in a sentence or two, or add a PDF, Word, Excel or PowerPoint file, an email, a website link or a YouTube video as the source.' },

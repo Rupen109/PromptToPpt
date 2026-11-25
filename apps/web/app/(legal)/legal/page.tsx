@@ -1,12 +1,13 @@
 import type { Metadata } from 'next'
+import { withShare } from '@/lib/seo'
 import Link from 'next/link'
 import { LEGAL_PAGES, LegalPage, Operator, Owner, SupportMail } from '@/components/legal/LegalPage'
 
-export const metadata: Metadata = {
+export const metadata: Metadata = withShare({
   title: 'Legal',
   description: 'SlidesDone legal documents: Terms of Service, Privacy Policy, Cookie notice, and the cancellation and refund policy.',
   alternates: { canonical: '/legal' },
-}
+})
 
 const ABOUT: Record<string, string> = {
   '/terms': 'The rules for using SlidesDone: accounts, plans and credits, your content and AI output, acceptable use.',

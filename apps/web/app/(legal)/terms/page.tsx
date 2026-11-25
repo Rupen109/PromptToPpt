@@ -1,13 +1,14 @@
 import type { Metadata } from 'next'
+import { withShare } from '@/lib/seo'
 import Link from 'next/link'
 import { LegalPage, Operator, Owner, SupportMail } from '@/components/legal/LegalPage'
 import { LEGAL } from '@/lib/legal'
 
-export const metadata: Metadata = {
+export const metadata: Metadata = withShare({
   title: 'Terms of Service',
   description: 'The rules for using SlidesDone: your account, plans and credits, your content and AI output, acceptable use, and how we handle disputes.',
   alternates: { canonical: '/terms' },
-}
+})
 
 export default function Page() {
   return (

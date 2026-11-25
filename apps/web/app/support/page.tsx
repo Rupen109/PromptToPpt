@@ -1,13 +1,14 @@
 import type { Metadata } from 'next'
+import { withShare } from '@/lib/seo'
 import { Footer } from '@/components/layout/Footer'
 import { Header } from '@/components/layout/Header'
 import { ContactChips, SupportForm } from '@/components/support/SupportForm'
 
-export const metadata: Metadata = {
+export const metadata: Metadata = withShare({
   title: 'Support — Contact SlidesDone',
   description: 'Need help with SlidesDone? Send us a message with a screenshot and we will get back to you within 24–48 hours.',
   alternates: { canonical: '/support' },
-}
+})
 
 export default function Page() {
   return (

@@ -1,5 +1,6 @@
 import { Zap } from '@prompttoppt/ui/icons'
 import type { Metadata } from 'next'
+import { withShare } from '@/lib/seo'
 import Link from 'next/link'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
@@ -13,14 +14,14 @@ import { PricingSection } from '@/components/sections/PricingSection'
 import FaqSection from '@/components/sections/FaqSection'
 import { ReviewsSection } from '@/components/sections/ReviewsSection'
 
-export const metadata: Metadata = {
+export const metadata: Metadata = withShare({
   title: 'SlidesDone: AI Presentation Maker | Slides in Seconds',
   description:
     'Transform any topic or prompt into a beautiful, editable presentation with AI. Upload PDFs, paste text, or enter a YouTube URL — get a professional deck in seconds.',
   alternates: {
     canonical: '/',
   },
-}
+})
 
 export default function HomePage() {
   return (

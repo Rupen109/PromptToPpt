@@ -1,16 +1,18 @@
 import type { Metadata } from 'next'
+import { withShare } from '@/lib/seo'
 import { SitemapTool } from '@/components/free-tools/SitemapTool'
 import { ToolShell } from '@/components/free-tools/ToolShell'
 
-export const metadata: Metadata = {
+export const metadata: Metadata = withShare({
   title: 'Free Sitemap Generator — Create sitemap.xml Online',
   description: 'Generate a sitemap.xml for your website free. We crawl your pages like a search bot, respect robots.txt and noindex, and give you a file ready for Google.',
   alternates: { canonical: '/free-tools/sitemap-generator' },
-}
+})
 
 export default function Page() {
   return (
     <ToolShell
+      path="/free-tools/sitemap-generator"
       title="Free Sitemap Generator"
       intro="Type your website address and get a sitemap.xml that search engines understand. We visit your pages the way Google does, so the list only has pages that really exist."
       steps={[

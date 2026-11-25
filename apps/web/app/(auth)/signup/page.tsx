@@ -1,12 +1,13 @@
 import type { Metadata } from 'next'
+import { withShare } from '@/lib/seo'
 import { AuthForm } from '@/components/auth/AuthForm'
 import { AuthShell } from '@/components/auth/AuthShell'
 
-export const metadata: Metadata = {
+export const metadata: Metadata = withShare({
   title: 'Sign up',
   robots: { index: false, follow: false }, // auth pages should not be indexed
   alternates: { canonical: '/signup' },
-}
+})
 
 export default async function Page({ searchParams }: { searchParams: Promise<{ next?: string; email?: string; error?: string }> }) {
   const { next, email, error } = await searchParams

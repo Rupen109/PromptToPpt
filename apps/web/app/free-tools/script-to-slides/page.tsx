@@ -1,16 +1,18 @@
 import type { Metadata } from 'next'
+import { withShare } from '@/lib/seo'
 import { ScriptTool } from '@/components/free-tools/ScriptTool'
 import { ToolShell } from '@/components/free-tools/ToolShell'
 
-export const metadata: Metadata = {
+export const metadata: Metadata = withShare({
   title: 'Free Script to Slides: Turn a Script into a Deck',
   description: 'Paste the script of your Reel, video, talk or podcast and get a slide-by-slide outline, then open it as an editable presentation. Free.',
   alternates: { canonical: '/free-tools/script-to-slides' },
-}
+})
 
 export default function Page() {
   return (
     <ToolShell
+      path="/free-tools/script-to-slides"
       title="Turn a Video or Reel Script into Slides"
       intro="Paste the script or caption of your Reel, YouTube video, talk or podcast. AI turns each beat into a slide you can edit, present or share."
       steps={[

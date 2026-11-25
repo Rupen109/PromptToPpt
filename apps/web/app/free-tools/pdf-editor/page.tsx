@@ -1,16 +1,18 @@
 import type { Metadata } from 'next'
+import { withShare } from '@/lib/seo'
 import { PdfEditorTool } from '@/components/free-tools/pdf-editor/PdfEditorTool'
 import { ToolShell } from '@/components/free-tools/ToolShell'
 
-export const metadata: Metadata = {
+export const metadata: Metadata = withShare({
   title: 'Free PDF Editor — Edit PDF Online, No Sign-up',
   description: 'Edit a PDF free in your browser: change text, add text, whiteout, highlight, draw, add shapes, pictures and your signature, and rotate, reorder or delete pages. Your file is not uploaded.',
   alternates: { canonical: '/free-tools/pdf-editor' },
-}
+})
 
 export default function Page() {
   return (
     <ToolShell
+      path="/free-tools/pdf-editor"
       wide
       title="Free PDF Editor"
       intro="Fix a typo, add a signature, black out a line or reorder pages, right in your browser. Your PDF is not uploaded, there is nothing to install and no account to make."

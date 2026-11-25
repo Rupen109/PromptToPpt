@@ -1,16 +1,18 @@
 import type { Metadata } from 'next'
+import { withShare } from '@/lib/seo'
 import { PdfTool } from '@/components/free-tools/PdfTool'
 import { ToolShell } from '@/components/free-tools/ToolShell'
 
-export const metadata: Metadata = {
+export const metadata: Metadata = withShare({
   title: 'Free PDF to Presentation Converter with AI',
   description: 'Turn any PDF into a presentation with AI. Get a summary and a slide-by-slide outline in seconds, then open a designed, editable deck. Free, no sign-up.',
   alternates: { canonical: '/free-tools/pdf-to-presentation' },
-}
+})
 
 export default function Page() {
   return (
     <ToolShell
+      path="/free-tools/pdf-to-presentation"
       title="Turn a PDF into a Presentation with AI"
       intro="Upload a report, paper or plan. AI reads it, pulls out what matters and lays it out as slides you can edit and present."
       steps={[

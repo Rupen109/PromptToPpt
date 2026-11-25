@@ -1,16 +1,18 @@
 import type { Metadata } from 'next'
+import { withShare } from '@/lib/seo'
 import { ToolShell } from '@/components/free-tools/ToolShell'
 import { TranscriptTool } from '@/components/free-tools/TranscriptTool'
 
-export const metadata: Metadata = {
+export const metadata: Metadata = withShare({
   title: 'Free YouTube Transcript to Slides Converter',
   description: 'Paste a YouTube transcript, clean it up (time stamps, repeats, [Music]), copy or download it, and turn it into a designed, editable presentation. Free, no sign-up.',
   alternates: { canonical: '/free-tools/youtube-transcript-to-slides' },
-}
+})
 
 export default function Page() {
   return (
     <ToolShell
+      path="/free-tools/youtube-transcript-to-slides"
       title="YouTube Transcript to Slides"
       intro="Copy a video’s transcript from YouTube, paste it here, and get clean text you can copy, download, or turn into a presentation in one click."
       steps={[

@@ -1,16 +1,18 @@
 import type { Metadata } from 'next'
+import { withShare } from '@/lib/seo'
 import { OutlineTool } from '@/components/free-tools/OutlineTool'
 import { ToolShell } from '@/components/free-tools/ToolShell'
 
-export const metadata: Metadata = {
+export const metadata: Metadata = withShare({
   title: 'Free AI Presentation Outline Generator',
   description: 'Type your topic and get a clear slide-by-slide presentation outline in seconds. Free, no sign-up. Turn it into a finished deck with one click.',
   alternates: { canonical: '/free-tools/presentation-outline-generator' },
-}
+})
 
 export default function Page() {
   return (
     <ToolShell
+      path="/free-tools/presentation-outline-generator"
       title="Free AI Presentation Outline Generator"
       intro="Tell us your topic and who it is for. Get a slide-by-slide outline with a story that flows from the opening to the close, then turn it into a designed presentation."
       steps={[

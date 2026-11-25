@@ -1,12 +1,13 @@
 import type { Metadata } from 'next'
+import { withShare } from '@/lib/seo'
 import { ContentPage, Empty, Pager, PostCard, TagBar, Unavailable } from '@/components/content/parts'
 import { getTags, listPosts } from '@/lib/content'
 
-export const metadata: Metadata = {
+export const metadata: Metadata = withShare({
   title: 'Blog — AI Presentations, Design and Storytelling',
   description: 'Practical articles on making better presentations with AI: structure, design, storytelling and the tools that save time.',
   alternates: { canonical: '/blog' },
-}
+})
 
 export const revalidate = 60
 

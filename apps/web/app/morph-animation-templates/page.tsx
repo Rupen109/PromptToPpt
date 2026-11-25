@@ -10,19 +10,17 @@ import { JsonLd } from '@/components/seo/JsonLd'
 import { SITE_URL } from '@/lib/env'
 import { MORPH_CATEGORIES, categoryById } from '@/lib/morph-categories'
 import { MORPH_FAQS, MORPH_POINTS, MORPH_STEPS } from '@/lib/morph-page'
-import { SITE_NAME, breadcrumbLd } from '@/lib/seo'
+import { SITE_NAME, breadcrumbLd, withShare } from '@/lib/seo'
 
 const PATH = '/morph-animation-templates'
 const TITLE = 'Morph Animation Templates for Presentations'
 const DESCRIPTION = 'Morph animation templates make every slide change one smooth movement. Watch Morph templates for business, pitch decks, marketing, product launches, technology and education play, and build yours with AI.'
 
-export const metadata: Metadata = {
+export const metadata: Metadata = withShare({
   title: TITLE,
   description: DESCRIPTION,
   alternates: { canonical: PATH },
-  openGraph: { title: TITLE, description: DESCRIPTION, url: `${SITE_URL}${PATH}`, type: 'website', siteName: SITE_NAME },
-  twitter: { card: 'summary_large_image', title: TITLE, description: DESCRIPTION },
-}
+})
 
 export default function MorphTemplatesPage() {
   const ld = [

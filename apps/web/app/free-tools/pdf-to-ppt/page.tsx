@@ -1,16 +1,18 @@
 import type { Metadata } from 'next'
+import { withShare } from '@/lib/seo'
 import { PdfToPptTool } from '@/components/free-tools/PdfToPptTool'
 import { ToolShell } from '@/components/free-tools/ToolShell'
 
-export const metadata: Metadata = {
+export const metadata: Metadata = withShare({
   title: 'Free PDF to PPT Converter — Online, No Sign-up',
   description: 'Convert a PDF to a PowerPoint (.pptx) file free, right in your browser. Keep the exact look or get editable text. Your file is not uploaded.',
   alternates: { canonical: '/free-tools/pdf-to-ppt' },
-}
+})
 
 export default function Page() {
   return (
     <ToolShell
+      path="/free-tools/pdf-to-ppt"
       title="Free PDF to PPT Converter"
       intro="Turn a PDF into a PowerPoint file in seconds. It runs on your device, so your document is not uploaded. Want something that looks professionally designed? One click hands it to our AI."
       steps={[

@@ -1,15 +1,19 @@
 import type { Metadata } from 'next'
+import { breadcrumbLd, withShare } from '@/lib/seo'
+import { SITE_URL } from '@/lib/env'
+import { CATEGORIES, DESIGNS } from '@prompttoppt/theme'
+import { JsonLd } from '@/components/seo/JsonLd'
 import { Footer } from '@/components/layout/Footer'
 import { Header } from '@/components/layout/Header'
 import Link from 'next/link'
 import { LANDINGS } from '@/lib/template-landing'
 import { TemplateGallery } from '@/components/templates/TemplateGallery'
 
-export const metadata: Metadata = {
+export const metadata: Metadata = withShare({
   title: 'Presentation templates',
   description: 'Designer-made, animated presentation templates for pitch decks, sales, marketing, strategy, reports and training. Free to start.',
   alternates: { canonical: '/templates' },
-}
+})
 
 export default function TemplatesIndexPage() {
   return (
@@ -24,6 +28,15 @@ export default function TemplatesIndexPage() {
           <h2 id="collections" className="font-heading font-extrabold text-2xl text-foreground mb-4">Browse by use</h2>
           <ul className="flex flex-wrap gap-3">{LANDINGS.map((l) => <li key={l.slug}><Link href={`/free-templates/${l.slug}`} className="inline-block rounded-full border-2 border-foreground bg-white px-4 py-2 text-sm font-bold text-foreground hover:bg-secondary">{l.noun} templates</Link></li>)}</ul>
         </nav>
+        {/* every template with its address, for search and answer engines (the gallery itself is drawn in the browser) */}
+        <JsonLd data={{
+          '@context': 'https://schema.org',
+          '@graph': [
+            { '@type': 'CollectionPage', '@id': `${SITE_URL}/templates#page`, url: `${SITE_URL}/templates`, name: 'Presentation templates',
+              mainEntity: { '@type': 'ItemList', numberOfItems: DESIGNS.length, itemListElement: DESIGNS.map((d, i) => ({ '@type': 'ListItem', position: i + 1, url: `${SITE_URL}/templates/${d.id}`, name: `${d.name} (${CATEGORIES.find((c) => c.id === d.category)?.name ?? d.category})` })) } },
+            { ...breadcrumbLd([['Home', '/'], ['Templates', '/templates']]), '@context': undefined },
+          ],
+        }} />
       </main>
       <Footer />
     </div>

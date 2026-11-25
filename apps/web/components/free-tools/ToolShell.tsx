@@ -3,14 +3,15 @@ import Link from 'next/link'
 import { Footer } from '@/components/layout/Footer'
 import { Header } from '@/components/layout/Header'
 import { Card } from '@/components/ui/Card'
+import { ldJson, toolGraph } from '@/lib/seo'
 
 export interface Faq { q: string; a: string }
 
-/** Common frame for every free tool: header, H1 + promise, the tool itself, short explainer copy, FAQ (also emitted as JSON-LD), footer. */
-export function ToolShell({ title, intro, children, steps, faqs, related, wide }: {
-  wide?: boolean; title: string; intro: string; children: ReactNode; steps: { title: string; text: string }[]; faqs: Faq[]; related: { href: string; label: string }[]
+/** Common frame for every free tool: header, H1 + promise, the tool itself, short explainer copy, FAQ, footer; the tool, its steps, breadcrumbs and FAQ as JSON-LD (lib/seo.ts toolGraph). */
+export function ToolShell({ path, title, intro, children, steps, faqs, related, wide }: {
+  /** the page's own address, e.g. /free-tools/pdf-to-ppt (the same as its canonical) */
+  path: string; wide?: boolean; title: string; intro: string; children: ReactNode; steps: { title: string; text: string }[]; faqs: Faq[]; related: { href: string; label: string }[]
 }) {
-  const ld = { '@context': 'https://schema.org', '@type': 'FAQPage', mainEntity: faqs.map((f) => ({ '@type': 'Question', name: f.q, acceptedAnswer: { '@type': 'Answer', text: f.a } })) }
   return (
     <div className="flex flex-col min-h-screen bg-background">
       <Header />
@@ -58,7 +59,7 @@ export function ToolShell({ title, intro, children, steps, faqs, related, wide }
             </p>
           </div>
         </section>
-        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(ld).replace(/</g, '\\u003c') }} />
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: ldJson(toolGraph({ path, title, intro, steps, faqs })) }} />
       </main>
       <Footer />
     </div>

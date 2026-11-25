@@ -9,12 +9,28 @@ www.{$DOMAIN} {
 }
 api.{$DOMAIN} {
 	encode zstd gzip
+	# the API and the editor are not pages for search: a robots.txt that says so, and noindex on every answer (the website itself is slidesdone.app)
+	header X-Robots-Tag "noindex, nofollow"
+	@robots path /robots.txt
+	header @robots Content-Type "text/plain; charset=utf-8"
+	respond @robots <<TXT
+		User-agent: *
+		Disallow: /
+		TXT 200
 	reverse_proxy api:4000 {
 		header_up X-Forwarded-Proto {scheme}
 	}
 }
 app.{$DOMAIN} {
 	encode zstd gzip
+	# the API and the editor are not pages for search: a robots.txt that says so, and noindex on every answer (the website itself is slidesdone.app)
+	header X-Robots-Tag "noindex, nofollow"
+	@robots path /robots.txt
+	header @robots Content-Type "text/plain; charset=utf-8"
+	respond @robots <<TXT
+		User-agent: *
+		Disallow: /
+		TXT 200
 	# the editor's security headers (CSP, HSTS, frame and referrer rules), from the same rule as the website's (scripts/csp.mjs), written by the deploy
 	import /etc/caddy/editor-headers.caddy
 	root * /srv/editor

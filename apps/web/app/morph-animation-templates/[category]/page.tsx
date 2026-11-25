@@ -11,7 +11,7 @@ import { JsonLd } from '@/components/seo/JsonLd'
 import { SITE_URL } from '@/lib/env'
 import { MORPH_CATEGORIES, categoryBySlug } from '@/lib/morph-categories'
 import { MORPH_FAQS } from '@/lib/morph-page'
-import { SITE_NAME, breadcrumbLd } from '@/lib/seo'
+import { SITE_NAME, breadcrumbLd, withShare } from '@/lib/seo'
 
 const HUB = '/morph-animation-templates'
 export const dynamicParams = false
@@ -21,11 +21,7 @@ export async function generateMetadata({ params }: { params: Promise<{ category:
   const c = categoryBySlug((await params).category)
   if (!c) return {}
   const path = `${HUB}/${c.slug}`
-  return {
-    title: c.title, description: c.description, alternates: { canonical: path },
-    openGraph: { title: c.title, description: c.description, url: `${SITE_URL}${path}`, type: 'website', siteName: SITE_NAME },
-    twitter: { card: 'summary_large_image', title: c.title, description: c.description },
-  }
+  return withShare({ title: c.title, description: c.description, alternates: { canonical: path } })
 }
 
 export default async function MorphCategoryPage({ params }: { params: Promise<{ category: string }> }) {

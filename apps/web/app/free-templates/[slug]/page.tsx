@@ -1,6 +1,6 @@
 import { ArrowRight } from '@prompttoppt/ui/icons'
 import type { Metadata } from 'next'
-import { fit } from '@/lib/seo'
+import { fit, firstFit, withShare } from '@/lib/seo'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { CATEGORIES, DESIGNS, SKELETONS } from '@prompttoppt/theme'
@@ -20,11 +20,13 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const l = landingBySlug(slug)
   if (!l) return {}
   const n = DESIGNS.filter((d) => d.category === l.category).length
-  return {
-    title: fit(`Free ${l.noun} Presentation Templates`, 47),
+  // ("Sales Presentation" is already a presentation: never "Sales Presentation Presentation Templates")
+  const noun = /presentation$/i.test(l.noun) ? l.noun.replace(/\s*presentation$/i, '') : l.noun
+  return withShare({
+    title: firstFit([`Free ${noun} Presentation Templates`, `Free ${noun} Templates`, `${noun} Presentation Templates`, `${noun} Templates`], 47),
     description: fit(`${n} designed ${l.noun.toLowerCase()} presentation templates. Edit one in your browser and let AI fill it in for your topic. No design skills needed.`, 155),
     alternates: { canonical: `/free-templates/${l.slug}` },
-  }
+  })
 }
 
 export default async function Page({ params }: { params: Promise<{ slug: string }> }) {

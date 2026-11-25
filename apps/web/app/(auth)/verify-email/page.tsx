@@ -1,13 +1,14 @@
 import type { Metadata } from 'next'
+import { withShare } from '@/lib/seo'
 import Link from 'next/link'
 import { Logo } from '@prompttoppt/ui/logo'
 import { VerifyEmailResult } from '@/components/auth/VerifyEmailResult'
 
-export const metadata: Metadata = {
+export const metadata: Metadata = withShare({
   title: 'Confirm your email',
   robots: { index: false, follow: false },
   alternates: { canonical: '/verify-email' },
-}
+})
 
 /** Where the confirmation link in the e-mail lands (the API redirects here after checking it): `?error=TOKEN_EXPIRED` / `INVALID_TOKEN` when it fails, no error when it worked. */
 export default async function Page({ searchParams }: { searchParams: Promise<{ error?: string; next?: string }> }) {
