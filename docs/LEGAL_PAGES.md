@@ -30,7 +30,7 @@ Defaults already set (policy decisions, change in the same file): `supportEmail`
 ## What is wired where
 Footer "Trust & Privacy" column (4 links); sign-up form consent line (`AuthForm`, signup mode only, covers the Google/Microsoft buttons too); pricing section note and editor Billing page note (renews automatically, no rollover, links to /refunds and /terms); sitemap; `/llms.txt`; consent banner (`CookieConsent`, in `app/layout.tsx`). The editor has no sign-up form of its own (sign-up lives on the website).
 
-**Analytics change:** the Google Analytics snippet used to load for every visitor on the real site. It now loads only after "Accept analytics" (opt-in, stored as `sd-consent` in localStorage), and is revoked with cookie removal + reload. Expect lower analytics numbers. The banner only exists when `NEXT_PUBLIC_GA_ID`/the real site URL turns GA on, so it is not visible in local development (not browser-tested with GA on; logic reviewed only).
+**Analytics change:** the Google Analytics snippet used to load for every visitor on the real site. It now loads only after "Accept cookies" (opt-in, stored as `sd-consent` in localStorage), and is revoked with cookie removal + reload. Expect lower analytics numbers. The banner only exists when `NEXT_PUBLIC_GA_ID`/the real site URL turns GA on, so it is not visible in local development (not browser-tested with GA on; logic reviewed only).
 
 ## Statement -> fact map (re-check when the product changes)
 | Statement on the pages | Fact / where |

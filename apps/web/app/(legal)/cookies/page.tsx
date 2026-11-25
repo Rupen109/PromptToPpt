@@ -32,7 +32,7 @@ export default function Page() {
       </div>
 
       <h2 id="optional">2. Optional cookies: analytics (only if you accept)</h2>
-      <p>If you click “Accept analytics”, we load Google Analytics on the public website. It sets cookies whose names start with <code>_ga</code> (up to about two years) to count visits and see which pages are useful. It receives page views and technical details from your browser. It never receives your prompts, files or slides. If you click “Refuse” (or ignore the banner), Google Analytics is not loaded and sets nothing. We do not use advertising or tracking cookies.</p>
+      <p>If you click “Accept cookies”, we load Google Analytics on the public website. It sets cookies whose names start with <code>_ga</code> (up to about two years) to count visits and see which pages are useful. It receives page views and technical details from your browser. It never receives your prompts, files or slides. If you click “Refuse” (or ignore the banner), Google Analytics is not loaded and sets nothing. We do not use advertising or tracking cookies.</p>
       <p>Your current choice: <CookieSettingsButton /></p>
 
       <h2 id="third">3. Other third-party requests</h2>

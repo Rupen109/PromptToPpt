@@ -70,7 +70,7 @@ export function CookieConsent() {
       <p className="text-sm leading-6 text-[#1e293b] sm:flex-1">We use essential cookies to keep you signed in. With your OK we also use Google Analytics cookies to count visits. Your prompts, files and slides are never sent to it. <Link href="/cookies" className="font-bold text-primary underline">Cookie notice</Link></p>
       <div className="mt-3 flex gap-3 sm:mt-0">
         <button type="button" onClick={() => decide('denied')} className={`${btn} bg-white text-foreground`}>Refuse</button>
-        <button type="button" onClick={() => decide('granted')} className={`${btn} bg-primary text-white`}>Accept analytics</button>
+        <button type="button" onClick={() => decide('granted')} className={`${btn} bg-primary text-white`}>Accept cookies</button>
       </div>
     </div>
   )
@@ -84,7 +84,7 @@ export function CookieSettingsButton() {
   return (
     <span className="inline-flex flex-wrap items-center gap-3">
       <strong data-testid="consent-state">{choice === 'granted' ? 'analytics accepted' : choice === 'denied' ? 'analytics refused' : 'no choice yet (analytics off)'}</strong>
-      <button type="button" onClick={() => decide(choice === 'granted' ? 'denied' : 'granted')} className={`${btn} bg-white text-foreground`}>{choice === 'granted' ? 'Refuse analytics' : 'Accept analytics'}</button>
+      <button type="button" onClick={() => decide(choice === 'granted' ? 'denied' : 'granted')} className={`${btn} bg-white text-foreground`}>{choice === 'granted' ? 'Refuse cookies' : 'Accept cookies'}</button>
     </span>
   )
 }
