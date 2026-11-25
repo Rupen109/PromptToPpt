@@ -15,9 +15,9 @@ export const LEGAL = {
 
   // ── Owner fields: replace every 'TODO' ───────────────────────────────────
   /** full legal name of the company / proprietorship / person that runs SlidesDone (as on the GST and Razorpay registration) */
-  entityName: TODO,
+  entityName: 'SlidesDone',
   /** registered office or principal place of business, one line */
-  registeredAddress: TODO,
+  registeredAddress: 'Vadodara, Gujarat, India',
   /** GST registration number (needed on invoices for Indian customers) */
   gstin: TODO,
   /** Grievance Officer (India IT Rules, Consumer Protection E-Commerce Rules, DPDP Act) */
