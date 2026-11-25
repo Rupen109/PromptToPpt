@@ -92,9 +92,11 @@ export default async function () {
     expect(dl.suggestedFilename() === 'Report.pptx', `file name ${dl.suggestedFilename()}`)
     return path
   }
-  await s.check('PDF → PPT: no mode to choose; the download button appears in the same card as the convert button (no second box)', p, async () => {
+  await s.check('PDF → PPT: "No OCR" (chosen) or "OCR", both free; the download button appears in the same card as the convert button (no second box)', p, async () => {
     await p.goto(WEB + '/free-tools/pdf-to-ppt', { waitUntil: 'networkidle' })
-    expect(await p.locator('input[type=radio]').count() === 0, 'a conversion mode is still offered')
+    expect(await p.getByRole('radio', { name: /No OCR/ }).isChecked(), '"No OCR" is not the starting choice')
+    expect(await p.getByRole('radio', { name: /^OCR/ }).count() === 1, 'no "OCR" choice')
+    expect(!(await p.locator('body').innerText()).includes('Premium'), 'a Premium badge is shown')
     await p.setInputFiles('input[type=file]', { name: 'Report.pdf', mimeType: 'application/pdf', buffer: pdf })
     const convertBtn = p.getByRole('button', { name: /Convert to PowerPoint/ })
     const card = p.getByLabel('Choose a PDF').locator('xpath=ancestor::div[contains(@class, "rounded-3xl")][1]') // the converter's own card

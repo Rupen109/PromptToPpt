@@ -82,7 +82,7 @@ function toCanvas(img: Img): HTMLCanvasElement {
  * Read page `src` of the file in language `code`. Draws a copy about OCR_WIDTH wide, reads it (whole page, flipped colours when the slide is dark, then the
  * labels in circles / chevrons / cards, numbers and small lines the first look missed), maps the lines back to page space (points).
  */
-export function ocrPage(pdf: PDFDocumentProxy, src: number, base: { w: number; h: number }, code: string, onProgress: (p: OcrProgress) => void): OcrJob {
+export function ocrPage(pdf: PDFDocumentProxy, src: number, base: { w: number; h: number }, code: string, onProgress: (p: OcrProgress) => void, budgetMs = OCR_BUDGET_MS): OcrJob {
   let cancelled = false
   let render: ReturnType<typeof renderPage> | null = null
   const notes: OcrNotes = { partial: false, curved: 0, turned: 0 }
@@ -115,7 +115,7 @@ export function ocrPage(pdf: PDFDocumentProxy, src: number, base: { w: number; h
       }
       const page = toImg(canvas)
       const runs = await readImage(page, rec, {
-        measure: canvasMeasure(), cancelled: () => cancelled, notes: turnNotes, budgetMs: OCR_BUDGET_MS, onPartial: () => { notes.partial = true },
+        measure: canvasMeasure(), cancelled: () => cancelled, notes: turnNotes, budgetMs, onPartial: () => { notes.partial = true },
         stage: (s, f) => {
           if (s === 'first') readRange = [0.6, 0.78, 'read']
           else if (s === 'again') readRange = [0.78, 0.88, 'again']

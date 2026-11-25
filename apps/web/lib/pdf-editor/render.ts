@@ -1,6 +1,6 @@
 /** pdf.js side of the editor: open the file, draw pages, find the text runs, sample colours. Browser only; pdf.js is loaded on first use. */
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist'
-import { MAX_BYTES, MAX_PAGES, PdfConvertError } from '../pdf-to-pptx'
+import { MAX_BYTES, MAX_PAGES, PdfConvertError } from '../pdf-limits'
 import { runFromItem, unturnRun, type RunBox } from './geometry'
 import { guessFont, spansFrom } from './text'
 import { closestFont } from './fonts'

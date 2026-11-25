@@ -29,7 +29,8 @@ export function isWinAnsi(text: string): boolean {
   }
   return true
 }
-export const hasRtl = (text: string): boolean => /[֐-ࣿיִ-﷿ﹰ-﻿]/.test(text)
+/** Hebrew, Arabic, Syriac, Thaana… and their presentation forms. Written as escapes: typed as letters, "יִ" is two code points and the range swallowed nearly every non-Latin character (dashes, ₹, Devanagari, CJK). */
+export const hasRtl = (text: string): boolean => /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/.test(text)
 /** Devanagari and the other scripts that need shaping (joined letters): they are drawn as a picture so the shapes are right */
 export const needsShaping = (text: string): boolean => hasRtl(text) || /[ऀ-෿฀-໿က-႟]/.test(text)
 

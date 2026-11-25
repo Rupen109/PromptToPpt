@@ -5,19 +5,28 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { api } from '@/lib/api'
 import { openInEditor, toolError } from '@/lib/free-tools'
-import { PPT_MAX_BYTES, PPT_MAX_PAGES, PdfConvertError } from '@/lib/pdf-to-pptx'
+import { PPT_MAX_BYTES, PPT_MAX_PAGES, PdfConvertError } from '@/lib/pdf-limits'
+import { OCR_LANGUAGES, defaultOcrLanguage } from '@/lib/pdf-editor/ocr-info'
 import { SOURCE_MAX_BYTES } from '@prompttoppt/validation'
 
+const MODES: { ocr: boolean; label: string; hint: string }[] = [
+  { ocr: false, label: 'No OCR', hint: 'Convert PDFs with selectable text into editable PowerPoint files.' },
+  { ocr: true, label: 'OCR', hint: 'Convert scanned PDFs with non-selectable text into editable PowerPoint files.' },
+]
+
 /**
- * Free PDF → PPT: the text of every page becomes editable text boxes. One card from start to finish: choose, convert, and the download button appears in the
- * same place as the convert button. The conversion runs in the browser; the PDF is only uploaded if the visitor chooses "Redesign it with AI".
+ * Free PDF → PPT: every page becomes a slide that looks like the page, with its text as editable text boxes (No OCR: the PDF's own text; OCR: also the text
+ * of pages that are only pictures). One card from start to finish: the download button appears in the same place as the convert button.
+ * The conversion runs in the browser; the PDF is only uploaded if the visitor chooses "Redesign it with AI".
  */
 export function PdfToPptTool() {
   const input = useRef<HTMLInputElement>(null)
   const [file, setFile] = useState<File | null>(null)
+  const [ocr, setOcr] = useState(false)
+  const [lang, setLang] = useState(() => (typeof document === 'undefined' ? 'eng' : defaultOcrLanguage(document.documentElement.lang)))
   const [busy, setBusy] = useState(false)
-  const [progress, setProgress] = useState<{ page: number; pages: number } | null>(null)
-  const [done, setDone] = useState<{ url: string; name: string; size: number } | null>(null)
+  const [progress, setProgress] = useState<{ page: number; pages: number; reading?: boolean } | null>(null)
+  const [done, setDone] = useState<{ url: string; name: string; size: number; pages: number; pictures: number; read: number; partial: number } | null>(null)
   const [opening, setOpening] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -28,13 +37,13 @@ export function PdfToPptTool() {
     if (!/\.pdf$/i.test(f.name) && f.type !== 'application/pdf') return setError('Please choose a PDF file.')
     setFile(f)
   }
-  async function convert() {
+  async function convert(withOcr = ocr) {
     if (!file) return setError('Choose a PDF first.')
     reset(); setBusy(true); setProgress(null)
     try {
       const { convertPdf } = await import('@/lib/pdf-to-pptx')
-      const blob = await convertPdf(file, setProgress)
-      setDone({ url: URL.createObjectURL(blob), name: `${file.name.replace(/\.pdf$/i, '')}.pptx`, size: blob.size })
+      const r = await convertPdf(file, { ocr: withOcr, ocrLanguage: lang }, setProgress)
+      setDone({ url: URL.createObjectURL(r.blob), name: `${file.name.replace(/\.pdf$/i, '')}.pptx`, size: r.blob.size, pages: r.pages, pictures: r.pictures, read: r.read, partial: r.partial })
     } catch (e) {
       setError(e instanceof PdfConvertError ? e.message : 'Something went wrong while converting. Try a different PDF.')
     } finally { setBusy(false) }
@@ -62,10 +71,39 @@ export function PdfToPptTool() {
         </button>
         <input ref={input} type="file" accept="application/pdf,.pdf" className="sr-only" aria-label="Choose a PDF" onChange={(e) => pick(e.target.files?.[0])} />
 
+        <fieldset className="mt-5" disabled={busy}>
+          <legend className="sr-only">How to read the text</legend>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {MODES.map((m) => (
+              <label key={m.label} className={`flex cursor-pointer gap-3 rounded-xl border-2 px-4 py-3 ${ocr === m.ocr ? 'border-foreground bg-[#f8f9fc]' : 'border-[#cbd5e1] bg-white hover:border-foreground'}`}>
+                <input type="radio" name="ocr" checked={ocr === m.ocr} onChange={() => { setOcr(m.ocr); reset() }} className="mt-1 h-4 w-4 shrink-0 accent-[#0f172a]" />
+                <span>
+                  <span className="block font-heading font-extrabold text-base text-foreground">{m.label}</span>
+                  <span className="block text-sm font-medium text-[#475569]">{m.hint}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+          {ocr && (
+            <label className="mt-3 flex flex-wrap items-center gap-2 text-sm font-bold text-foreground">
+              Language of the text
+              <select value={lang} onChange={(e) => { setLang(e.target.value); reset() }} className="rounded-lg border-2 border-foreground bg-white px-2 py-1 text-sm font-medium">
+                {OCR_LANGUAGES.map((l) => <option key={l.code} value={l.code}>{l.name}</option>)}
+              </select>
+              <span className="font-medium text-[#64748b]">OCR reads each page on your device, so it takes a few seconds a page.</span>
+            </label>
+          )}
+        </fieldset>
+
         {done ? (
           <div className="mt-6" role="status">
             <p className="font-heading font-extrabold text-lg text-foreground">Your PowerPoint is ready</p>
-            <p className="mt-1 text-sm font-medium text-[#64748b]">{done.name} · {(done.size / 1024 / 1024).toFixed(1)} MB · the text is editable</p>
+            <p className="mt-1 text-sm font-medium text-[#64748b]">{done.name} · {(done.size / 1024 / 1024).toFixed(1)} MB{done.pictures < done.pages ? ' · the text is editable' : ''}</p>
+            {done.pictures > 0 && (
+              // pages that are only pictures: said plainly, with the way to make their text editable
+              <p className="mt-2 text-sm font-bold text-[#92400e]">{done.pictures === 1 ? '1 page has' : `${done.pictures} pages have`} no selectable text, so {done.pictures === 1 ? 'it was' : 'they were'} kept as {done.pictures === 1 ? 'a picture' : 'pictures'}. <button type="button" onClick={() => { setOcr(true); void convert(true) }} className="underline text-primary">Convert again with OCR</button> to make that text editable.</p>
+            )}
+            {done.partial > 0 && <p className="mt-2 text-sm font-medium text-[#475569]">OCR ran out of time on {done.partial === 1 ? '1 page' : `${done.partial} pages`}, so some of their text may still be part of the picture.</p>}
             <div className="mt-4 flex flex-wrap items-center gap-3">
               <Button variant="lime" size="lg" onClick={download}>Download .pptx</Button>
               <Button variant="white" size="lg" onClick={() => { pick(undefined); if (input.current) { input.current.value = ''; input.current.click() } }}>Convert another PDF</Button>
@@ -74,7 +112,7 @@ export function PdfToPptTool() {
         ) : (
           <>
             <Button variant="accent" size="lg" arrow disabled={busy || !file} onClick={() => void convert()} className="mt-6">
-              {busy ? (progress ? `Converting page ${progress.page} of ${progress.pages}…` : 'Opening your PDF…') : 'Convert to PowerPoint'}
+              {busy ? (progress ? `${progress.reading ? 'Reading' : 'Converting'} page ${progress.page} of ${progress.pages}…` : 'Opening your PDF…') : 'Convert to PowerPoint'}
             </Button>
             {busy && progress && <div className="mt-4 h-2 rounded-full bg-[#e2e8f0] overflow-hidden" role="progressbar" aria-valuemin={0} aria-valuemax={progress.pages} aria-valuenow={progress.page}><div className="h-full bg-primary transition-all" style={{ width: `${(progress.page / progress.pages) * 100}%` }} /></div>}
           </>

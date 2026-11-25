@@ -60,11 +60,26 @@ export default async function () {
     const big = join(dir, 'report-300.pdf'); writeFileSync(big, await makePdf(300))
     const tooMany = join(dir, 'report-301.pdf'); writeFileSync(tooMany, await makePdf(301))
     const heavy = join(dir, 'report-heavy.pdf'); writeFileSync(heavy, await makePdf(3, { padMB: 11 }))
+    // a deck exported as pictures (no text in the PDF at all): two slides drawn in the browser, light and dark
+    const scanned = join(dir, 'deck-pictures.pdf')
+    {
+      const p = await (await b.newContext()).newPage()
+      const shots = []
+      for (const [bg, ink, title] of [['#ffffff', '#111827', 'Quarterly revenue grew twelve percent'], ['#0f2340', '#ffffff', 'Hiring plan for the fourth quarter']]) {
+        await p.setContent(`<body style="margin:0"><div style="width:1600px;height:900px;background:${bg};color:${ink};font:bold 72px Arial;padding:120px;box-sizing:border-box">${title}<div style="font:400 40px Arial;margin-top:60px">Prepared for the board, October</div></div></body>`)
+        shots.push(await p.locator('div').first().screenshot({ type: 'png' }))
+      }
+      await p.context().close()
+      const doc = await PDFDocument.create()
+      for (const png of shots) { const img = await doc.embedPng(png); doc.addPage([1600, 900]).drawImage(img, { x: 0, y: 0, width: 1600, height: 900 }) }
+      writeFileSync(scanned, await doc.save())
+    }
 
-    async function convert(file) {
+    async function convert(file, { ocr = false } = {}) {
       const ctx = await b.newContext({ acceptDownloads: true, viewport: { width: 1300, height: 900 } }); const p = await ctx.newPage()
       await p.goto(`${WEB}/free-tools/pdf-to-ppt`, { waitUntil: 'networkidle' })
       await p.getByLabel('Choose a PDF').setInputFiles(file)
+      if (ocr) await p.getByRole('radio', { name: /^OCR/ }).check()
       const before = rendererMB(); let peak = before, stop = false
       const poll = (async () => { while (!stop) { peak = Math.max(peak, rendererMB()); await new Promise((r) => setTimeout(r, 300)) } })()
       await p.getByRole('button', { name: 'Convert to PowerPoint' }).click()
@@ -98,6 +113,26 @@ export default async function () {
       expect(bad.length === 0, `forbidden characters in ${bad.slice(0, 4).join(', ')}`)
       expect(strFromU8(r.zip['ppt/slides/slide300.xml']).includes('Page 300: quarterly report'), 'the text of page 300 is missing')
       await r.ctx.close()
+    })
+
+    await s.check('a PDF of pictures: "No OCR" keeps each page as its picture (never blank) and says so; "OCR" makes the words editable text in their colours', null, async () => {
+      const plain = await convert(scanned)
+      expect(plain.outcome === 'ok', `conversion failed: ${plain.outcome}`)
+      expect(await plain.p.getByText('2 pages have no selectable text, so they were kept as pictures').isVisible(), 'no note about the pages kept as pictures')
+      expect(!(await plain.p.getByRole('status').innerText()).includes('the text is editable'), 'says the text is editable when no page had any')
+      // each slide shows one picture of its page (counted from the slides' own links, not the media folder, which also holds the library's own files)
+      const perSlide = [1, 2].map((i) => (strFromU8(plain.zip[`ppt/slides/_rels/slide${i}.xml.rels`]).match(/relationships\/image"/g) ?? []).length)
+      expect(perSlide.every((c) => c === 1), `pictures per slide: ${perSlide}`)
+      await plain.ctx.close()
+      const read = await convert(scanned, { ocr: true })
+      expect(read.outcome === 'ok', `OCR conversion failed: ${read.outcome}`)
+      const s1 = strFromU8(read.zip['ppt/slides/slide1.xml']), s2 = strFromU8(read.zip['ppt/slides/slide2.xml'])
+      expect(/Quarterly revenue grew/.test(s1) && /Hiring plan/.test(s2), 'the words were not read into text')
+      // the white words on the dark slide come back white (the colour of the pixels the cover replaced), the dark words on the light slide dark
+      const colour = (x, word) => x.split('<p:sp>').find((sp) => sp.includes(word))?.match(/<a:srgbClr val="([0-9A-F]{6})"/)?.[1] ?? ''
+      const lum = (h) => parseInt(h.slice(0, 2), 16) + parseInt(h.slice(2, 4), 16) + parseInt(h.slice(4, 6), 16)
+      expect(lum(colour(s2, 'Hiring')) > 600 && lum(colour(s1, 'Quarterly')) < 200, `text colours: dark slide ${colour(s2, 'Hiring')}, light slide ${colour(s1, 'Quarterly')}`)
+      await read.ctx.close()
     })
 
     await s.check('a 301-page PDF is refused with a clear message', null, async () => {

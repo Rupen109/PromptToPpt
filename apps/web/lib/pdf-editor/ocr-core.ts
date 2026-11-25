@@ -46,9 +46,32 @@ export function guessLook(text: string, widthPx: number, sizePx: number, measure
 
 /** Tesseract lines (pixels of the copy that was read) → runs in page space (points). `k` = pixels per point of that copy. */
 /** `weight(bbox, sizePx)` = stroke thickness as a share of the font size, for the bold guess; optional */
+/**
+ * Two columns side by side often come back as ONE line (their words share a baseline): "[insert range]" on the left and "[insert" in the next card.
+ * A gap between two words far wider than a space (more than 0.8 × the words' height; a space is about a quarter of it) starts a new line, so each column keeps its own text.
+ */
+export function splitAtGaps(lines: OcrLine[]): OcrLine[] {
+  return lines.flatMap((l) => {
+    const words = [...l.words].filter((w) => w.text.trim()).sort((a, b) => a.bbox.x0 - b.bbox.x0)
+    if (words.length < 2) return [l]
+    const hs = words.map((w) => w.bbox.y1 - w.bbox.y0).sort((a, b) => a - b)
+    const gapMax = hs[hs.length >> 1]! * 0.8
+    const parts: OcrWord[][] = [[words[0]!]]
+    for (let i = 1; i < words.length; i++) {
+      if (words[i]!.bbox.x0 - words[i - 1]!.bbox.x1 > gapMax) parts.push([])
+      parts.at(-1)!.push(words[i]!)
+    }
+    if (parts.length === 1) return [l]
+    return parts.map((ws) => {
+      const bbox = { x0: Math.min(...ws.map((w) => w.bbox.x0)), y0: Math.min(...ws.map((w) => w.bbox.y0)), x1: Math.max(...ws.map((w) => w.bbox.x1)), y1: Math.max(...ws.map((w) => w.bbox.y1)) }
+      return { ...l, text: ws.map((w) => w.text).join(' '), words: ws, bbox, baseline: { ...l.baseline, x0: bbox.x0, x1: bbox.x1 } }
+    })
+  })
+}
+
 export function linesToRuns(lines: OcrLine[], k: number, measure: Measure, weight?: (b: Bbox, sizePx: number) => number, opt: ReadingOptions = {}): Run[] {
   const out: Run[] = []
-  for (const l of lines) {
+  for (const l of splitAtGaps(lines)) {
     let words = l.words.filter((w) => w.text.trim() && w.confidence >= 30)
     // a list bullet is read as a stray letter or symbol ("e", "¢", "«"): leave it out so the cover and the new text start at the words
     if (words.length > 1 && words[0]!.text.trim().length === 1 && /[^\p{L}\p{N}]|[eocs]/u.test(words[0]!.text.trim())) words = words.slice(1)
