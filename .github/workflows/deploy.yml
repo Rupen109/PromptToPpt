@@ -54,7 +54,7 @@ jobs:
       NEXT_PUBLIC_MICROSOFT_AUTH: 'false'
     steps:
       # full history: the website's page dates (sitemap, structured data) come from git (apps/web/scripts/gen-page-dates.mjs)
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: { fetch-depth: 0 }
       - uses: aws-actions/configure-aws-credentials@v4
         with:
