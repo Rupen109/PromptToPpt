@@ -23,22 +23,26 @@ api.{$DOMAIN} {
 }
 app.{$DOMAIN} {
 	encode zstd gzip
-	# the API and the editor are not pages for search: a robots.txt that says so, and noindex on every answer (the website itself is slidesdone.app)
+	# the editor is not a page for search: noindex on every answer, and its own robots.txt (the website itself is slidesdone.app)
 	header X-Robots-Tag "noindex, nofollow"
-	@robots path /robots.txt
-	header @robots Content-Type "text/plain; charset=utf-8"
-	respond @robots <<TXT
-		User-agent: *
-		Disallow: /
-		TXT 200
 	# the editor's security headers (CSP, HSTS, frame and referrer rules), from the same rule as the website's (scripts/csp.mjs), written by the deploy
 	import /etc/caddy/editor-headers.caddy
-	root * /srv/editor
-	# a single-page app: unknown paths are the app itself; hashed files are cached for a year, the entry page never
-	@hashed path /assets/*
-	header @hashed Cache-Control "public, max-age=31536000, immutable"
-	@entry path / /index.html
-	header @entry Cache-Control "no-cache"
-	try_files {path} /index.html
-	file_server
+	# in its own handle: the single-page app below sends every unknown path to index.html, and that rewrite runs before a plain respond would
+	handle /robots.txt {
+		header Content-Type "text/plain; charset=utf-8"
+		respond <<TXT
+			User-agent: *
+			Disallow: /
+			TXT 200
+	}
+	handle {
+		root * /srv/editor
+		# a single-page app: unknown paths are the app itself; hashed files are cached for a year, the entry page never
+		@hashed path /assets/*
+		header @hashed Cache-Control "public, max-age=31536000, immutable"
+		@entry path / /index.html
+		header @entry Cache-Control "no-cache"
+		try_files {path} /index.html
+		file_server
+	}
 }
