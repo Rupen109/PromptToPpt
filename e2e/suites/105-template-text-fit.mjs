@@ -54,6 +54,42 @@ export default async function () {
       expect(blank.length === 0, `${blank.length} blank cards: ${blank.slice(0, 8).join(' | ')}`)
       await p.close()
     })
+
+    await s.check('the templates page shows 12 at a time: numbered pages, the page in the address, back from a template returns to it, a category or search starts at page 1', null, async () => {
+      const p = await ctx.newPage()
+      const total = (await ids()).length
+      const cards = () => p.locator('ul li h3').allInnerTexts()
+      const pager = p.getByRole('navigation', { name: 'Template pages' })
+      await p.goto(`${WEB}/templates`, { waitUntil: 'networkidle' })
+      const first = await cards()
+      expect(first.length === 12, `page 1 shows ${first.length} templates`)
+      expect(await pager.getByText(`Showing 1–12 of ${total} templates`).isVisible(), 'no "Showing 1–12 of N" line')
+      expect(await pager.getByRole('button', { name: 'Previous page' }).isDisabled(), 'Prev works on page 1')
+      await pager.getByRole('button', { name: 'Next page' }).click()
+      await p.waitForFunction(() => new URLSearchParams(location.search).get('page') === '2')
+      const second = await cards()
+      expect(second.length === 12 && !second.some((n) => first.includes(n)), 'page 2 repeats page 1')
+      expect(await pager.getByRole('button', { name: 'Page 2' }).getAttribute('aria-current') === 'page', 'page 2 not marked current')
+      // back from a template lands on the same page
+      await p.locator('ul li a').first().click(); await p.waitForURL(/\/templates\/[^/?]+$/)
+      await p.goBack(); await p.waitForLoadState('networkidle')
+      expect(JSON.stringify(await cards()) === JSON.stringify(second), 'back from a template did not return to page 2')
+      // the last page holds the rest; a page past the end shows the last one
+      const pages = Math.ceil(total / 12)
+      await p.goto(`${WEB}/templates?page=999`, { waitUntil: 'networkidle' })
+      expect((await cards()).length === total - (pages - 1) * 12, `last page shows ${(await cards()).length}`)
+      expect(await pager.getByRole('button', { name: 'Next page' }).isDisabled(), 'Next works on the last page')
+      // a category starts at page 1 and only shows its own templates
+      await p.getByRole('tab', { name: 'Technology & Architecture' }).click()
+      await p.waitForFunction(() => new URLSearchParams(location.search).get('category') && !new URLSearchParams(location.search).get('page'))
+      expect((await cards()).length > 0 && (await cards()).length <= 12, 'category page 1 is not 1–12 templates')
+      // a search starts at page 1
+      await p.getByRole('tab', { name: 'All templates' }).click()
+      await p.getByLabel('Search templates').fill('review')
+      await p.waitForFunction(() => new URLSearchParams(location.search).get('q') === 'review' && !new URLSearchParams(location.search).get('page'))
+      expect((await cards()).every((n) => n.length > 0), 'search shows no templates')
+      await p.close()
+    })
   } finally {
     await b.close()
   }
