@@ -1,4 +1,5 @@
 import { ArrowRight, Layers, MousePointerClick, Sparkles, Wand2 } from '@prompttoppt/ui/icons'
+import { modified } from '@/lib/page-dates'
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { MORPH_TEMPLATES } from '@prompttoppt/theme/morph-templates'
@@ -26,7 +27,7 @@ export default function MorphTemplatesPage() {
   const ld = [
     breadcrumbLd([['Home', '/'], ['Morph animation templates', PATH]]),
     {
-      '@context': 'https://schema.org', '@type': 'CollectionPage', '@id': `${SITE_URL}${PATH}#page`, name: TITLE, description: DESCRIPTION, url: `${SITE_URL}${PATH}`, inLanguage: 'en',
+      '@context': 'https://schema.org', '@type': 'CollectionPage', '@id': `${SITE_URL}${PATH}#page`, ...modified(PATH), name: TITLE, description: DESCRIPTION, url: `${SITE_URL}${PATH}`, inLanguage: 'en',
       isPartOf: { '@id': `${SITE_URL}/#website` }, about: { '@type': 'Thing', name: 'Morph transition' }, publisher: { '@id': `${SITE_URL}/#organization` },
       mainEntity: { '@type': 'ItemList', name: 'Morph animation templates', numberOfItems: MORPH_TEMPLATES.length, itemListElement: MORPH_TEMPLATES.map((t, i) => ({ '@type': 'ListItem', position: i + 1, item: { '@type': 'CreativeWork', '@id': `${SITE_URL}${PATH}/${categoryById(t.category!).slug}#${t.id}`, name: `${t.name} Morph template`, description: t.description, url: `${SITE_URL}${PATH}/${categoryById(t.category!).slug}#${t.id}`, keywords: t.topics.join(', ') } })) },
     },

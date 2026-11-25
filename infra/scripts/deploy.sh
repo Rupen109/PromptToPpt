@@ -46,6 +46,8 @@ if has api; then
 fi
 if has web; then
   echo "== building website ($TAG)"
+  # page dates from git, here where the history is (the image build has none and keeps this file)
+  node apps/web/scripts/gen-page-dates.mjs
   docker build --platform linux/arm64 -f apps/web/Dockerfile \
     --build-arg NEXT_PUBLIC_SITE_URL="https://$DOMAIN" --build-arg NEXT_PUBLIC_API_URL="https://api.$DOMAIN" --build-arg NEXT_PUBLIC_EDITOR_URL="https://app.$DOMAIN" \
     --build-arg NEXT_PUBLIC_GOOGLE_AUTH="${NEXT_PUBLIC_GOOGLE_AUTH:-false}" --build-arg NEXT_PUBLIC_MICROSOFT_AUTH="${NEXT_PUBLIC_MICROSOFT_AUTH:-false}" -t "$ECR_WEB:$TAG" .

@@ -149,6 +149,8 @@ export default function StudioMockupSection() {
           </div>
         </div>
       </Card>
+      {/* the figures in this mock-up belong to a made-up company: said plainly, so no reader (or AI) takes them for facts about SlidesDone */}
+      <p className="mt-3 text-center text-xs font-medium text-[#64748b]">Example deck for a fictional company. All figures are sample data.</p>
     </Section>
   )
 }

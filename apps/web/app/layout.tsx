@@ -6,7 +6,7 @@ import { SiteTranslate } from '@/components/layout/SiteTranslate'
 import { JsonLd } from '@/components/seo/JsonLd'
 import { CookieConsent } from '@/components/legal/CookieConsent'
 import { IS_PUBLIC_SITE, SITE_URL } from '@/lib/env'
-import { siteGraph } from '@/lib/seo'
+import { SITE_DESCRIPTION, siteGraph } from '@/lib/seo'
 
 // ─── Fonts ────────────────────────────────────────────────────────────────
 
@@ -45,8 +45,7 @@ export const metadata: Metadata = {
     default: 'SlidesDone — AI Presentation Maker',
     template: '%s | SlidesDone',
   },
-  description:
-    'Create stunning presentations in seconds with AI. Enter a topic or detailed prompt and get a beautiful, editable presentation — powered by AI.',
+  description: SITE_DESCRIPTION,
   keywords: [
     'AI presentation maker',
     'AI PPT maker',
@@ -76,8 +75,7 @@ export const metadata: Metadata = {
     locale: 'en_US',
     siteName: 'SlidesDone',
     title: 'SlidesDone — AI Presentation Maker',
-    description:
-      'Create stunning presentations in seconds with AI. Enter a topic and get a beautiful, editable deck.',
+    description: SITE_DESCRIPTION,
     images: [
       {
         url: '/og-image.png',
@@ -90,8 +88,7 @@ export const metadata: Metadata = {
   twitter: {
     card: 'summary_large_image',
     title: 'SlidesDone — AI Presentation Maker',
-    description:
-      'Create stunning presentations in seconds with AI.',
+    description: SITE_DESCRIPTION,
     images: ['/og-image.png'],
     creator: '@slidesdone',
     site: '@slidesdone',

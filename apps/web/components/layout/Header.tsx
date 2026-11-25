@@ -17,7 +17,7 @@ const MOBILE_ITEMS = [
   { label: 'Tech news', href: '/news' },
   { label: 'Guides', href: '/guides' },
   { label: 'Support', href: '/support' },
-  { label: 'FAQ', href: '/#faq' },
+  { label: 'FAQ', href: '/faq' },
 ]
 
 const LINK = 'relative inline-flex items-center rounded-lg px-3 py-2 font-heading font-bold text-sm text-[#475569] whitespace-nowrap transition-colors hover:bg-[#f1f5f9] hover:text-primary'

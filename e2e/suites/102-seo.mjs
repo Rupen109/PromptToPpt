@@ -54,7 +54,10 @@ export default async function () {
 
   await s.check('the sitemap gives only real dates (never "now" for every page), robots.txt names the AI crawlers, llms.txt lists every free tool', null, async () => {
     const dates = [...sitemap.text.matchAll(/<lastmod>([^<]+)<\/lastmod>/g)].map((m) => m[1])
-    expect(dates.length < paths.length / 2, `${dates.length} of ${paths.length} pages carry a date`)
+    // real dates come from git (apps/web/scripts/gen-page-dates.mjs): valid, never in the future, and not one shared "now" stamped on every page
+    const t = dates.map((d) => Date.parse(d))
+    expect(t.every((x) => Number.isFinite(x) && x <= Date.now() + 60000), `a sitemap date is invalid or in the future: ${dates.find((d, i) => !(t[i] <= Date.now() + 60000))}`)
+    expect(new Set(dates).size > 1 || dates.length < 2, `every page carries the same date (${dates[0]}): that is a build stamp, not when the pages changed`)
     const robots = (await get('/robots.txt')).text
     // only the real site (https://slidesdone.app) is open to crawlers; a local or test build keeps every crawler out (apps/web lib/env.ts IS_PUBLIC_SITE)
     if (WEB.startsWith('https://slidesdone.app')) {

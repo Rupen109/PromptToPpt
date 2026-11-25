@@ -6,6 +6,7 @@ import { SITE_URL } from '@/lib/env'
 import { BASE_PATH, type Kind, fetchContent } from '@/lib/content'
 import { LANDINGS } from '@/lib/template-landing'
 import { FREE_TOOLS } from '@/lib/free-tool-list'
+import { pageDate } from '@/lib/page-dates'
 
 const BASE_URL = SITE_URL
 
@@ -20,6 +21,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${BASE_URL}/free-tools`, priority: 0.8, changeFrequency: 'weekly' as const },
     ...FREE_TOOLS.map((t) => ({ url: `${BASE_URL}${t.href}`, priority: 0.8, changeFrequency: 'monthly' as const })),
     { url: `${BASE_URL}/support`, priority: 0.5, changeFrequency: 'yearly' as const },
+    { url: `${BASE_URL}/about`, priority: 0.6, changeFrequency: 'monthly' as const },
+    { url: `${BASE_URL}/faq`, priority: 0.7, changeFrequency: 'monthly' as const },
     ...['/legal', '/terms', '/privacy', '/cookies', '/refunds'].map((p) => ({ url: `${BASE_URL}${p}`, priority: 0.3, changeFrequency: 'yearly' as const })),
     { url: `${BASE_URL}/pricing`, priority: 0.8, changeFrequency: 'weekly' as const },
     ...LANDINGS.map((l) => ({ url: `${BASE_URL}/free-templates/${l.slug}`, priority: 0.8, changeFrequency: 'monthly' as const })),
@@ -35,7 +38,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ...(posts.ok ? posts.data.map((p) => ({ url: `${BASE_URL}${BASE_PATH[p.kind]}/${p.slug}`, priority: p.kind === 'news' ? 0.5 : 0.7, changeFrequency: 'weekly' as const, lastModified: new Date(p.updatedAt) })) : []),
   ]
 
-  // Static pages carry NO lastModified: "now" on every request told search engines every page changed every time, so they learn to ignore the dates.
-  // Only real dates are given (articles: their own update time).
-  return [...staticPages, ...content]
+  // Only REAL dates: a page's last change from git (lib/page-dates.ts), an article's own update time; a page whose date is unknown carries none
+  // ("now" on every request told search engines every page changed every time, so they learned to ignore the dates).
+  const dated = staticPages.map((p) => { const d = pageDate(new URL(p.url).pathname || '/'); return d ? { ...p, lastModified: d } : p })
+  return [...dated, ...content]
 }

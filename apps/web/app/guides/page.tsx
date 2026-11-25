@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
-import { withShare } from '@/lib/seo'
+import { postListLd, withShare } from '@/lib/seo'
+import { JsonLd } from '@/components/seo/JsonLd'
 import Link from 'next/link'
 import { ArrowRight } from '@prompttoppt/ui/icons'
 import { ContentPage, Empty, Unavailable } from '@/components/content/parts'
@@ -20,6 +21,7 @@ export default async function GuidesPage() {
     <ContentPage eyebrow="Guides" title="How to use SlidesDone" intro="Step-by-step help for every part of the product, from your first deck to sharing and exporting.">
       {!g.ok ? <Unavailable what="guides" /> : g.data.length === 0 ? <Empty>The first guides are coming soon.</Empty> : (
         <div className="flex flex-col gap-14">
+          <JsonLd data={postListLd('CollectionPage', '/guides', 'How to use SlidesDone', g.data.flatMap((s) => s.items))} />
           {g.data.map((s) => (
             <section key={s.name} aria-labelledby={`s-${s.name}`}>
               <h2 id={`s-${s.name}`} className="font-heading font-extrabold text-2xl text-foreground">{s.name}</h2>

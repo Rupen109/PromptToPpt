@@ -142,14 +142,14 @@ export function HeroSection() {
 
       <h1 className="text-[1.9rem] min-[400px]:text-[2.15rem] sm:text-5xl lg:text-6xl leading-[1.18] sm:leading-tight mb-5 sm:mb-6 max-w-[900px] mx-auto font-heading font-extrabold text-balance">
         {/* the page's search phrase is part of the H1 (a small first line), so the headline below stays as designed */}
-        <span className="block font-heading font-extrabold text-sm sm:text-base uppercase tracking-wide text-primary mb-3 sm:mb-4">AI Presentation Maker</span>
+        <span className="block font-heading font-extrabold text-sm sm:text-base uppercase tracking-wide text-primary mb-3 sm:mb-4">SlidesDone · AI Presentation Maker</span>
         Turn Messy Documents into <br/>
         <span className="bg-secondary px-2 rounded-sm inline-block max-w-full shadow-solid border-2 border-foreground my-1">Boardroom-Ready</span><br/>
         Presentations in Seconds.
       </h1>
       
       <p className="text-base sm:text-lg md:text-xl max-w-[700px] mx-auto mb-8 sm:mb-12 text-slate-600">
-        Stop agonizing over PowerPoint formatting. Type a prompt, drop in a PDF or PowerPoint, or paste a website link. SlidesDone is the AI slide generator that builds a designed, editable deck for you in seconds.
+        SlidesDone is an AI presentation maker and slide generator: type a prompt, drop in a PDF or PowerPoint, or paste a website link, and it builds a designed, editable deck for you in seconds.
       </p>
 
       {/* Dynamic Prompt Builder */}

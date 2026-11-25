@@ -1,4 +1,5 @@
 import { LayoutList, Clapperboard, Ruler, Pencil } from '@prompttoppt/ui/icons'
+import { modified } from '@/lib/page-dates'
 import { HoverLink } from '@/components/ui/HoverLink'
 import type { Metadata } from 'next'
 import { JsonLd } from '@/components/seo/JsonLd'
@@ -47,7 +48,7 @@ export default async function TemplatePage({ params }: { params: Promise<{ id: s
       <JsonLd data={{
         '@context': 'https://schema.org',
         '@graph': [
-          { '@type': 'PresentationDigitalDocument', '@id': `${SITE_URL}/templates/${d.id}#template`, url: `${SITE_URL}/templates/${d.id}`, name: `${d.name} ${cat.name.toLowerCase()} presentation template`,
+          { '@type': 'PresentationDigitalDocument', '@id': `${SITE_URL}/templates/${d.id}#template`, ...modified(`/templates/${d.id}`), url: `${SITE_URL}/templates/${d.id}`, name: `${d.name} ${cat.name.toLowerCase()} presentation template`,
             description: `${d.tagline}. ${slides.length} slides covering ${cat.covers}.`, genre: cat.name, inLanguage: 'en', isAccessibleForFree: !d.premium,
             numberOfPages: slides.length, hasPart: slides.map((x, i) => ({ '@type': 'CreativeWork', position: i + 1, name: slideTitle(x) })), publisher: { '@id': ORG_ID } },
           { ...breadcrumbLd([['Home', '/'], ['Templates', '/templates'], [d.name, `/templates/${d.id}`]]), '@context': undefined },

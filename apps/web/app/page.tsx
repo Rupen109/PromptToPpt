@@ -1,6 +1,6 @@
 import { Zap } from '@prompttoppt/ui/icons'
 import type { Metadata } from 'next'
-import { withShare } from '@/lib/seo'
+import { SITE_DESCRIPTION, withShare } from '@/lib/seo'
 import Link from 'next/link'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
@@ -16,8 +16,7 @@ import { ReviewsSection } from '@/components/sections/ReviewsSection'
 
 export const metadata: Metadata = withShare({
   title: 'SlidesDone: AI Presentation Maker | Slides in Seconds',
-  description:
-    'AI presentation maker and AI deck generator: type a topic or add a PDF, Word file or YouTube link and get a designed, editable deck in seconds. Start free.',
+  description: SITE_DESCRIPTION,
   alternates: {
     canonical: '/',
   },

@@ -1,4 +1,5 @@
 import { ArrowRight, Check } from '@prompttoppt/ui/icons'
+import { modified } from '@/lib/page-dates'
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Footer } from '@/components/layout/Footer'
@@ -53,7 +54,7 @@ export default function Page() {
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: ldJson({
           '@context': 'https://schema.org',
           '@graph': [
-            { '@type': 'CollectionPage', '@id': `${SITE_URL}/free-tools#page`, url: `${SITE_URL}/free-tools`, name: 'Free presentation tools', description: metadata.description,
+            { '@type': 'CollectionPage', '@id': `${SITE_URL}/free-tools#page`, ...modified('/free-tools'), url: `${SITE_URL}/free-tools`, name: 'Free presentation tools', description: metadata.description,
               mainEntity: { '@type': 'ItemList', itemListElement: CARDS.map((t, i) => ({ '@type': 'ListItem', position: i + 1, name: t.name, url: `${SITE_URL}${t.href}`, description: t.text })) } },
             { ...breadcrumbLd([['Home', '/'], ['Free tools', '/free-tools']]), '@context': undefined },
           ],

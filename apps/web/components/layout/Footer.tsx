@@ -3,7 +3,7 @@ import { Logo } from '@prompttoppt/ui/logo'
 
 const COLS = [
   { title: 'Product', links: [['Ingestion Modes', '/#modalities'], ['Interactive Studio', '/#studio'], ['Curated Templates', '/templates'], ['Morph animation templates', '/morph-animation-templates'], ['AI PPT maker', '/ai-ppt-maker'], ['SaaS Pricing', '/pricing']] },
-  { title: 'Resources', links: [['Blog', '/blog'], ['Tech news', '/news'], ['Guides: how to use SlidesDone', '/guides'], ['Free tools', '/free-tools'], ['Support', '/support']] },
+  { title: 'Resources', links: [['About SlidesDone', '/about'], ['FAQ', '/faq'], ['Blog', '/blog'], ['Tech news', '/news'], ['Guides: how to use SlidesDone', '/guides'], ['Free tools', '/free-tools'], ['Support', '/support']] },
   { title: 'Formats & Sources', links: [['PDF & PowerPoint input', '/#modalities'], ['Website link sources', '/#modalities'], ['Animated templates', '/templates'], ['Export on Pro & Gold', '/pricing']] },
 ] as const
 

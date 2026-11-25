@@ -1,4 +1,5 @@
 import { ArrowRight, FileText, LayoutTemplate, MessageSquare, PencilRuler, Presentation, Sparkles } from '@prompttoppt/ui/icons'
+import { modified } from '@/lib/page-dates'
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Footer } from '@/components/layout/Footer'
@@ -32,7 +33,7 @@ export default function AIPPTMakerPage() {
   return (
     <div className="flex flex-col min-h-screen bg-background">
       <JsonLd data={breadcrumbLd([['Home', '/'], ['AI PPT maker', '/ai-ppt-maker']])} />
-      <JsonLd data={{ '@context': 'https://schema.org', '@type': 'WebPage', name: 'AI PPT Maker', url: `${SITE_URL}/ai-ppt-maker`, isPartOf: { '@id': `${SITE_URL}/#website` }, about: { '@id': `${SITE_URL}/#software` } }} />
+      <JsonLd data={{ '@context': 'https://schema.org', '@type': 'WebPage', name: 'AI PPT Maker', url: `${SITE_URL}/ai-ppt-maker`, ...modified('/ai-ppt-maker'), isPartOf: { '@id': `${SITE_URL}/#website` }, about: { '@id': `${SITE_URL}/#software` } }} />
       <Header />
       <main>
         <section className="bg-gradient-to-b from-[#f8f9fc] to-[#f0f4f8] border-b-2 border-foreground px-5 md:px-10 py-14 md:py-20">

@@ -34,3 +34,6 @@ infra/tofu/*.tfplan
 
 # owner-only documents (kept on the owner's computer, never pushed)
 /owner-docs/
+
+# written before every build from git history (scripts/gen-page-dates.mjs)
+apps/web/lib/page-dates.generated.json

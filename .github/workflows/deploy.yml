@@ -53,7 +53,9 @@ jobs:
       NEXT_PUBLIC_GOOGLE_AUTH: 'true'
       NEXT_PUBLIC_MICROSOFT_AUTH: 'false'
     steps:
+      # full history: the website's page dates (sitemap, structured data) come from git (apps/web/scripts/gen-page-dates.mjs)
       - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}

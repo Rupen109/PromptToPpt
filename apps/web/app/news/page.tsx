@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
-import { withShare } from '@/lib/seo'
+import { postListLd, withShare } from '@/lib/seo'
+import { JsonLd } from '@/components/seo/JsonLd'
 import { Flame } from '@prompttoppt/ui/icons'
 import { ContentPage, Empty, NewsItem, Pager, TagBar, Unavailable } from '@/components/content/parts'
 import { getTags, getTrending, listPosts } from '@/lib/content'
@@ -22,6 +23,7 @@ export default async function NewsPage({ searchParams }: { searchParams: Promise
     <ContentPage eyebrow="Tech news" title="Tech news in a minute" intro="Short, clear updates from the world of AI and software, each with a link to the original story.">
       {!list.ok ? <Unavailable what="news" /> : (
         <>
+          <JsonLd data={postListLd('CollectionPage', '/news', 'SlidesDone tech news', list.data.items)} />
           {showTrending && trending.ok && (
             <section aria-labelledby="trending" className="mb-12">
               <h2 id="trending" className="flex items-center gap-2 font-heading font-extrabold text-2xl text-foreground"><Flame aria-hidden size={22} className="text-accent" />Trending now</h2>

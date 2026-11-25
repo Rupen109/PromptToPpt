@@ -114,6 +114,7 @@ export function LiveSimulatorSection() {
               </li>
             ))}
           </ul>
+          <figcaption className="mt-6 text-center text-xs font-medium text-[#64748b]">Example with sample figures for a fictional company.</figcaption>
         </figure>
       </div>
     </div>

@@ -1,4 +1,5 @@
 import { ArrowRight } from '@prompttoppt/ui/icons'
+import { modified } from '@/lib/page-dates'
 import { HoverLink } from '@/components/ui/HoverLink'
 import type { Metadata } from 'next'
 import { fit, firstFit, withShare } from '@/lib/seo'
@@ -39,7 +40,7 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
   const slides = SKELETONS[l.category].length
   const others = LANDINGS.filter((x) => x.slug !== l.slug)
   const ld = [
-    { '@context': 'https://schema.org', '@type': 'ItemList', name: `${l.keyword}`, alternateName: l.also, itemListElement: designs.map((d, i) => ({ '@type': 'ListItem', position: i + 1, name: d.name, url: `${SITE_URL}/templates/${d.id}` })) },
+    { '@context': 'https://schema.org', '@type': 'ItemList', name: `${l.keyword}`, ...modified(`/free-templates/${l.slug}`), alternateName: l.also, itemListElement: designs.map((d, i) => ({ '@type': 'ListItem', position: i + 1, name: d.name, url: `${SITE_URL}/templates/${d.id}` })) },
     { '@context': 'https://schema.org', '@type': 'FAQPage', mainEntity: l.faqs.map((f) => ({ '@type': 'Question', name: f.q, acceptedAnswer: { '@type': 'Answer', text: f.a } })) },
   ]
   return (

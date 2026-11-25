@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
-import { withShare } from '@/lib/seo'
+import { postListLd, withShare } from '@/lib/seo'
+import { JsonLd } from '@/components/seo/JsonLd'
 import { ContentPage, Empty, Pager, PostCard, TagBar, Unavailable } from '@/components/content/parts'
 import { getTags, listPosts } from '@/lib/content'
 
@@ -20,6 +21,7 @@ export default async function BlogPage({ searchParams }: { searchParams: Promise
     <ContentPage eyebrow="The SlidesDone blog" title="Ideas for better presentations" intro="Practical articles on structure, design and storytelling, and how to get a great deck done in less time.">
       {!list.ok ? <Unavailable what="blog" /> : (
         <>
+          <JsonLd data={postListLd('Blog', '/blog', 'The SlidesDone blog', list.data.items)} />
           {tags.ok && <TagBar kind="blog" tags={tags.data} {...(tag ? { active: tag } : {})} />}
           {list.data.items.length === 0 ? <Empty>{tag ? `No articles about “${tag}” yet.` : 'The first articles are coming soon.'}</Empty> : (
             <ul className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">

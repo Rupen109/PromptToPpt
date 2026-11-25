@@ -1,8 +1,17 @@
 import type { Metadata } from 'next'
 import { SITE_URL } from './env'
+import { modified } from './page-dates'
 
 export const SITE_NAME = 'SlidesDone'
 export const SUPPORT_MAIL = 'support@slidesdone.app'
+/** THE one description of SlidesDone: the home page's meta description and the description in the organisation, website and product data (they must not differ) */
+/** what SlidesDone does, one line each: the product's structured data and the About page */
+export const FEATURES = ['AI presentation generation from a prompt, document, web page or video',
+        'Editable slides (text, shapes, tables, charts, pictures) in the browser',
+        'Designer templates, light and dark',
+        'Export to PowerPoint (PPTX), PDF, PNG, JPG and HTML on paid plans',
+        'Share links and live collaboration',] as const
+export const SITE_DESCRIPTION = 'AI presentation maker and AI deck generator: type a topic or add a PDF, Word file or YouTube link and get a designed, editable deck in seconds. Start free.'
 
 /** JSON for a <script type="application/ld+json">: "<" is escaped so content can never close the tag. */
 export const ldJson = (data: unknown): string => JSON.stringify(data).replace(/</g, '\\u003c')
@@ -16,6 +25,19 @@ export const faqLd = (faqs: readonly Faq[]) => ({
 })
 
 /** Breadcrumb trail: [name, path] pairs, first is Home. */
+/** a list page of articles (blog, news, guides) for search and answer engines: what the page is, who publishes it, and the articles on it */
+export const postListLd = (type: 'Blog' | 'CollectionPage', path: string, name: string, posts: readonly { title: string; kind: 'blog' | 'news' | 'guide'; slug: string; publishedAt: string | null; updatedAt: string; authorName: string }[]) => ({
+  '@context': 'https://schema.org',
+  '@type': type,
+  '@id': `${SITE_URL}${path}#page`, url: `${SITE_URL}${path}`, name, publisher: { '@id': ORG_ID },
+  ...(posts.length ? { dateModified: posts.map((p) => p.updatedAt).sort().at(-1) } : {}),
+  [type === 'Blog' ? 'blogPost' : 'hasPart']: posts.map((p) => ({
+    '@type': type === 'Blog' ? 'BlogPosting' : p.kind === 'news' ? 'NewsArticle' : 'Article',
+    headline: p.title, url: `${SITE_URL}${{ blog: '/blog', news: '/news', guide: '/guides' }[p.kind]}/${p.slug}`,
+    ...(p.publishedAt ? { datePublished: p.publishedAt } : {}), dateModified: p.updatedAt, author: { '@type': 'Person', name: p.authorName },
+  })),
+})
+
 export const breadcrumbLd = (trail: readonly (readonly [string, string])[]) => ({
   '@context': 'https://schema.org',
   '@type': 'BreadcrumbList',
@@ -35,10 +57,11 @@ export const siteGraph = () => ({
       '@id': ORG_ID,
       name: SITE_NAME,
       url: SITE_URL,
+      description: SITE_DESCRIPTION,
       logo: { '@type': 'ImageObject', url: `${SITE_URL}/android-chrome-512x512.png`, width: 512, height: 512 },
       contactPoint: [{ '@type': 'ContactPoint', contactType: 'customer support', email: SUPPORT_MAIL, url: `${SITE_URL}/support`, availableLanguage: ['English'] }],
     },
-    { '@type': 'WebSite', '@id': SITE_ID, url: SITE_URL, name: SITE_NAME, inLanguage: 'en', publisher: { '@id': ORG_ID } },
+    { '@type': 'WebSite', '@id': SITE_ID, url: SITE_URL, name: SITE_NAME, description: SITE_DESCRIPTION, inLanguage: 'en', publisher: { '@id': ORG_ID } },
     {
       '@type': 'SoftwareApplication',
       '@id': APP_ID,
@@ -46,14 +69,8 @@ export const siteGraph = () => ({
       url: SITE_URL,
       applicationCategory: 'BusinessApplication',
       operatingSystem: 'Web',
-      description: 'AI presentation maker: describe a topic or add a PDF, Word, Excel, PowerPoint, email, web link or video, and get a designed, editable deck in seconds.',
-      featureList: [
-        'AI presentation generation from a prompt, document, web page or video',
-        'Editable slides (text, shapes, tables, charts, pictures) in the browser',
-        'Designer templates, light and dark',
-        'Export to PowerPoint (PPTX), PDF, PNG, JPG and HTML on paid plans',
-        'Share links and live collaboration',
-      ],
+      description: SITE_DESCRIPTION,
+      featureList: [...FEATURES],
       offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD', description: 'Free plan with monthly credits' },
       publisher: { '@id': ORG_ID },
     },
@@ -79,7 +96,7 @@ export const toolGraph = (t: { path: string; title: string; intro: string; steps
     '@context': 'https://schema.org',
     '@graph': [
       {
-        '@type': 'WebApplication', '@id': `${url}#tool`, name: t.title, url, description: t.intro,
+        '@type': 'WebApplication', '@id': `${url}#tool`, name: t.title, url, description: t.intro, ...modified(t.path),
         applicationCategory: 'BusinessApplication', operatingSystem: 'Any (runs in the browser)', browserRequirements: 'Requires JavaScript',
         isAccessibleForFree: true, offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
         provider: { '@id': ORG_ID }, isPartOf: { '@id': SITE_ID },
@@ -115,6 +132,8 @@ export function withShare(m: Metadata): Metadata {
   const tw = (m.twitter ?? {}) as Record<string, unknown>
   return {
     ...m,
+    // the page's language (the site is written in English; the header's translation happens in the browser) and the blog's feed, on every page
+    alternates: { ...m.alternates, ...(url ? { languages: { en: url, 'x-default': url } } : {}), types: { 'application/rss+xml': [{ url: '/blog/rss.xml', title: `${SITE_NAME} Blog` }] } },
     openGraph: { type: 'website', siteName: SITE_NAME, locale: 'en_US', ...(title ? { title } : {}), ...(description ? { description } : {}), ...(url ? { url } : {}), images: [OG_IMAGE], ...og } as Metadata['openGraph'],
     twitter: { card: 'summary_large_image', ...(title ? { title } : {}), ...(description ? { description } : {}), images: [OG_IMAGE.url], ...tw } as Metadata['twitter'],
   }

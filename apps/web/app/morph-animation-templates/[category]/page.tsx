@@ -1,4 +1,5 @@
 import { ArrowRight } from '@prompttoppt/ui/icons'
+import { modified } from '@/lib/page-dates'
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
@@ -37,7 +38,7 @@ export default async function MorphCategoryPage({ params }: { params: Promise<{ 
   const ld = [
     breadcrumbLd([['Home', '/'], ['Morph animation templates', HUB], [c.name, path]]),
     {
-      '@context': 'https://schema.org', '@type': 'CollectionPage', '@id': `${SITE_URL}${path}#page`, name: c.title, description: c.description, url: `${SITE_URL}${path}`, inLanguage: 'en',
+      '@context': 'https://schema.org', '@type': 'CollectionPage', '@id': `${SITE_URL}${path}#page`, ...modified(path), name: c.title, description: c.description, url: `${SITE_URL}${path}`, inLanguage: 'en',
       isPartOf: { '@id': `${SITE_URL}${HUB}#page` }, publisher: { '@id': `${SITE_URL}/#organization` },
       mainEntity: { '@type': 'ItemList', name: c.title, numberOfItems: templates.length, itemListElement: templates.map((t, i) => ({ '@type': 'ListItem', position: i + 1, item: { '@type': 'CreativeWork', '@id': `${SITE_URL}${path}#${t.id}`, name: `${t.name} Morph template`, description: t.description, url: `${SITE_URL}${path}#${t.id}` } })) },
     },

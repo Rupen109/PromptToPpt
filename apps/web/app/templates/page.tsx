@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { modified } from '@/lib/page-dates'
 import { breadcrumbLd, withShare } from '@/lib/seo'
 import { SITE_URL } from '@/lib/env'
 import { CATEGORIES, DESIGNS } from '@prompttoppt/theme'
@@ -32,7 +33,7 @@ export default function TemplatesIndexPage() {
         <JsonLd data={{
           '@context': 'https://schema.org',
           '@graph': [
-            { '@type': 'CollectionPage', '@id': `${SITE_URL}/templates#page`, url: `${SITE_URL}/templates`, name: 'Presentation templates',
+            { '@type': 'CollectionPage', '@id': `${SITE_URL}/templates#page`, ...modified('/templates'), url: `${SITE_URL}/templates`, name: 'Presentation templates',
               mainEntity: { '@type': 'ItemList', numberOfItems: DESIGNS.length, itemListElement: DESIGNS.map((d, i) => ({ '@type': 'ListItem', position: i + 1, url: `${SITE_URL}/templates/${d.id}`, name: `${d.name} (${CATEGORIES.find((c) => c.id === d.category)?.name ?? d.category})` })) } },
             { ...breadcrumbLd([['Home', '/'], ['Templates', '/templates']]), '@context': undefined },
           ],
