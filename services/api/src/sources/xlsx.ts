@@ -1,3 +1,4 @@
+import { SOURCE_MAX_BYTES } from '@prompttoppt/validation/source-limits' // (its own entry: the file-reading worker loads no other workspace code)
 import type { Extracted } from './extract.ts'
 import { SourceError } from './errors.ts'
 import { MAX_ROWS, newBudget, sheetParts, type SheetRows } from './table.ts'
@@ -8,7 +9,7 @@ import { decodeXml, readZip, utf8 } from './zip.ts'
  * the person sees them: dates as dates, percentages as percentages, formulas as their last calculated value, no floating-point noise. A sheet is
  * cut at MAX_ROWS rows with an honest note. No XML parser is used.
  */
-export const XLSX_MAX_BYTES = 15 * 1024 * 1024
+export const XLSX_MAX_BYTES = SOURCE_MAX_BYTES.xlsx // packages/validation/src/source-limits.ts
 const LIMITS = { maxEntryBytes: 40 * 1024 * 1024, maxTotalBytes: 80 * 1024 * 1024, maxEntries: 400 }
 const WANT = /^xl\/(workbook\.xml|_rels\/workbook\.xml\.rels|sharedStrings\.xml|styles\.xml|worksheets\/[^/]+\.xml)$/
 const MAX_COLS = 60

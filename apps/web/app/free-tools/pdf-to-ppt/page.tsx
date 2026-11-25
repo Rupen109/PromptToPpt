@@ -1,3 +1,5 @@
+import { PPT_MAX_BYTES, PPT_MAX_PAGES } from '@/lib/pdf-limits'
+import { SOURCE_MAX_BYTES } from '@prompttoppt/validation'
 import type { Metadata } from 'next'
 import { withShare } from '@/lib/seo'
 import { PdfToPptTool } from '@/components/free-tools/PdfToPptTool'
@@ -16,7 +18,7 @@ export default function Page() {
       title="Free PDF to PPT Converter"
       intro="Convert a PDF to PowerPoint (.pptx) online, free, with no sign-up and no watermark. It runs on your device, so your document is not uploaded. Want something that looks professionally designed? One click hands it to our AI."
       steps={[
-        { title: 'Choose your PDF', text: 'Drop in a report, a set of notes or a presentation you only have as a PDF. Up to 60 pages.' },
+        { title: 'Choose your PDF', text: `Drop in a report, a set of notes or a presentation you only have as a PDF. Up to ${PPT_MAX_PAGES} pages.` },
         { title: 'Pick how it converts', text: 'Exact look keeps every page as it is. Editable text turns the words into text boxes you can change.' },
         { title: 'Download or redesign', text: 'Download the .pptx, or let AI rebuild the content as a clean, designed presentation you can edit and present.' },
       ]}
@@ -53,7 +55,7 @@ export default function Page() {
         },
         {
           title: 'Limits',
-          points: ['Up to 60 pages and 30 MB per PDF.', 'No daily limit: convert as many files as you like.', 'The .pptx opens in PowerPoint, and in apps that open PowerPoint files, such as Google Slides and Keynote.'],
+          points: [`Up to ${PPT_MAX_PAGES} pages and ${PPT_MAX_BYTES / 1024 / 1024} MB per PDF.`, `The optional AI redesign reads PDFs up to ${SOURCE_MAX_BYTES.pdf / 1024 / 1024} MB.`, 'No daily limit: convert as many files as you like.', 'The .pptx opens in PowerPoint, and in apps that open PowerPoint files, such as Google Slides and Keynote.'],
         },
       ]}
       faqs={[

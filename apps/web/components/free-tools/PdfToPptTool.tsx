@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { api } from '@/lib/api'
 import { openInEditor, toolError } from '@/lib/free-tools'
-import { MAX_PAGES, PdfConvertError, type PdfMode } from '@/lib/pdf-to-pptx'
+import { PPT_MAX_BYTES, PPT_MAX_PAGES, PdfConvertError, type PdfMode } from '@/lib/pdf-to-pptx'
+import { SOURCE_MAX_BYTES } from '@prompttoppt/validation'
 
 const MODES: [PdfMode, string, string][] = [
   ['image', 'Exact look', 'Every page becomes a slide that looks just like the PDF. Text is part of the picture.'],
@@ -56,7 +57,7 @@ export function PdfToPptTool() {
         <button type="button" onClick={() => input.current?.click()} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); pick(e.dataTransfer.files[0]) }}
           className="w-full rounded-2xl border-2 border-dashed border-foreground bg-[#f8f9fc] px-6 py-10 text-center hover:bg-[#f0f4f8] focus:outline-none focus:ring-2 focus:ring-primary">
           <span className="block font-heading font-extrabold text-lg text-foreground">{file ? file.name : 'Drop your PDF here, or click to choose'}</span>
-          <span className="mt-1 block text-sm font-medium text-[#64748b]">{file ? `${(file.size / 1024 / 1024).toFixed(1)} MB` : `Up to ${MAX_PAGES} pages · converted on your device — your file is not uploaded`}</span>
+          <span className="mt-1 block text-sm font-medium text-[#64748b]">{file ? `${(file.size / 1024 / 1024).toFixed(1)} MB` : `Up to ${PPT_MAX_PAGES} pages and ${PPT_MAX_BYTES / 1024 / 1024} MB · converted on your device — your file is not uploaded`}</span>
         </button>
         <input ref={input} type="file" accept="application/pdf,.pdf" className="sr-only" aria-label="Choose a PDF" onChange={(e) => pick(e.target.files?.[0])} />
 
@@ -87,8 +88,13 @@ export function PdfToPptTool() {
           <div className="mt-8 rounded-2xl border-2 border-foreground bg-[#fffbe6] p-5">
             <h3 className="font-heading font-extrabold text-lg text-foreground">Want it to look professionally designed?</h3>
             <p className="mt-1 text-sm leading-6 font-medium text-[#475569]">A plain conversion keeps your layout. Our AI can read the document and build a clean, designed, fully editable presentation from it instead.</p>
-            <Button variant="accent" size="lg" arrow disabled={opening} onClick={() => void redesign()} className="mt-4">{opening ? 'Opening the editor…' : 'Redesign it with AI'}</Button>
-            <p className="mt-2 text-xs font-medium text-[#64748b]">This uploads the PDF so we can read it. Free to start.</p>
+            {file && file.size > SOURCE_MAX_BYTES.pdf
+              // the AI reads PDFs up to the server's limit: say so here instead of a button that would be refused after the upload
+              ? <p className="mt-3 text-sm font-bold text-[#475569]">AI redesign reads PDFs up to {SOURCE_MAX_BYTES.pdf / 1024 / 1024} MB, and this one is {(file.size / 1024 / 1024).toFixed(1)} MB. To redesign it, use a smaller PDF, such as the chapters that matter most.</p>
+              : <>
+                <Button variant="accent" size="lg" arrow disabled={opening} onClick={() => void redesign()} className="mt-4">{opening ? 'Opening the editor…' : 'Redesign it with AI'}</Button>
+                <p className="mt-2 text-xs font-medium text-[#64748b]">This uploads the PDF so we can read it. Free to start.</p>
+              </>}
           </div>
         </Card>
       )}

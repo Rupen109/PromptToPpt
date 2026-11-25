@@ -1,9 +1,10 @@
+import { SOURCE_MAX_BYTES } from '@prompttoppt/validation/source-limits' // (its own entry: the file-reading worker loads no other workspace code)
 import type { Extracted } from './extract.ts'
 import { SourceError } from './errors.ts'
 import { MAX_ROWS, newBudget, sheetParts } from './table.ts'
 
 /** CSV / TSV: comma, semicolon, tab or pipe; quotes and line breaks inside quotes; BOM, UTF-16 (Excel's "Unicode text") and Windows-1252 files. */
-export const CSV_MAX_BYTES = 15 * 1024 * 1024
+export const CSV_MAX_BYTES = SOURCE_MAX_BYTES.csv // packages/validation/src/source-limits.ts
 const MAX_COLS = 60
 
 function decode(bytes: Uint8Array): string {

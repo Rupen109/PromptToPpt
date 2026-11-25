@@ -1,4 +1,5 @@
 import sharp from 'sharp'
+import { xmlSafeFile } from './xml-safe.ts'
 import PptxGenJS from 'pptxgenjs'
 import { resolveColor, slideBase, slideTheme } from '@prompttoppt/theme'
 import { CANVAS, PICTURE_SHADOWS, patternSvg, pictureRadius, pptRoundAdj, TEXT_SHADOWS, flipOf, pptDash, pptLineMultiple, turnOf, canStack, chartColor, chartLookOn, chartShowsFigures, isRunBold, isRunItalic, deckChartColors, highlightText, cellSpans, alignOf, scatterXs, legendPlace, linearTrend, flattenShape, shapeDef, type Presentation, type Slide, type SlideElement, type TextElement, type Theme } from '@prompttoppt/validation'
@@ -388,5 +389,5 @@ export async function buildPptx(doc: Presentation, load: ImageLoader, opts: { sl
     const pairs = new Set(motion[i]!.elements!.filter((e) => before.get(e.id) === e.type).map((e) => e.id))
     for (const k of [i - 1, i]) motion[k]!.morphPairs = new Set([...(motion[k]!.morphPairs ?? []), ...pairs])
   })
-  return scatterTrendlines(inkStackedLabels(roundPictures(injectMotion((await pptx.write({ outputType: 'nodebuffer' })) as Buffer, motion), rounded)), scatterTrends)
+  return xmlSafeFile(scatterTrendlines(inkStackedLabels(roundPictures(injectMotion((await pptx.write({ outputType: 'nodebuffer' })) as Buffer, motion), rounded)), scatterTrends))
 }

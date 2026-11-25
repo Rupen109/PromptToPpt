@@ -1,3 +1,4 @@
+import { SOURCE_MAX_BYTES } from '@prompttoppt/validation/source-limits' // (its own entry: the file-reading worker loads no other workspace code)
 import { Readability } from '@mozilla/readability'
 import { parseHTML } from 'linkedom'
 import { extractText, getDocumentProxy } from 'unpdf'
@@ -103,7 +104,7 @@ export async function fetchPage(rawUrl: string, fetchImpl?: FetchLike): Promise<
   throw new Error('Too many redirects')
 }
 
-export const PDF_MAX_BYTES = 10 * 1024 * 1024
+export const PDF_MAX_BYTES = SOURCE_MAX_BYTES.pdf // packages/validation/src/source-limits.ts
 export const PDF_MAX_PAGES = 100
 const PDF_PARSE_MS = 25_000
 
@@ -126,7 +127,7 @@ export async function fromPdf(bytes: Uint8Array, filename: string): Promise<Extr
   return { title: filename.replace(/\.pdf$/i, '').slice(0, 200) || 'PDF', parts: parts.map((p) => ({ ...p, text: p.text.slice(0, Math.max(0, (budget -= p.text.length) + p.text.length)) })).filter((p) => p.text) }
 }
 
-export const PPTX_MAX_BYTES = 15 * 1024 * 1024
+export const PPTX_MAX_BYTES = SOURCE_MAX_BYTES.pptx // packages/validation/src/source-limits.ts
 export const PPTX_MAX_SLIDES = 200
 export const TXT_MAX_BYTES = 1024 * 1024
 const MAX_TOTAL_INFLATED = 40 * 1024 * 1024

@@ -1,3 +1,4 @@
+import { SOURCE_MAX_BYTES } from '@prompttoppt/validation/source-limits' // (its own entry: the file-reading worker loads no other workspace code)
 import type { Extracted } from './extract.ts'
 import { SourceError } from './errors.ts'
 import { clean, MAX_TEXT_CHARS } from './limits.ts'
@@ -8,7 +9,7 @@ import { decodeXml, readZip, utf8 } from './zip.ts'
  * (once), footnotes — and leaves out what is not the document's content: comments, headers/footers, deleted tracked changes, hidden text, field
  * codes. Parts are located by heading so a citation can say "Market size". No XML parser is used (nothing the file defines is ever expanded).
  */
-export const DOCX_MAX_BYTES = 15 * 1024 * 1024
+export const DOCX_MAX_BYTES = SOURCE_MAX_BYTES.docx // packages/validation/src/source-limits.ts
 const LIMITS = { maxEntryBytes: 30 * 1024 * 1024, maxTotalBytes: 60 * 1024 * 1024, maxEntries: 400 }
 const WANT = /^(word\/(document|footnotes|endnotes|styles|numbering)\.xml|docProps\/core\.xml)$/
 
