@@ -126,6 +126,23 @@ export function resetPassword(o: { name: string; url: string }): Rendered {
   }
 }
 
+/** a reset was asked for an address with no account: say so to that mailbox (the page itself never tells, so nobody can test which addresses exist) */
+export function noAccount(o: { email: string }): Rendered {
+  const signup = `${site()}/signup`
+  const again = `${site()}/forgot-password`
+  const addr = oneLine(o.email, 200)
+  return {
+    subject: 'No SlidesDone account uses this email',
+    text: `Hi,\n\nSomeone asked to reset the SlidesDone password for ${addr}, but no SlidesDone account uses this address.\n\nIf you have an account under another email, or you signed up with Google, try that instead:\n${again}\n\nNew to SlidesDone? Create a free account:\n${signup}\n\nIf you did not ask for this, ignore this email: nothing has changed.${sign}`,
+    html: shell({
+      preheader: 'No account uses this address. Try another email or create a free account.',
+      body: h1('No account uses this email') + p(`Someone asked to reset the SlidesDone password for <b>${esc(addr)}</b>, but no SlidesDone account uses this address.`) +
+        p(`If you have an account under another email, or you signed up with Google, <a href="${esc(again)}" style="color:${BLUE};">try that instead</a>.`) + button('Create a free account', signup) +
+        note('If you did not ask for this, ignore this email: nothing has changed.'),
+    }),
+  }
+}
+
 export function passwordChanged(o: { name: string }): Rendered {
   const hi = first(o.name)
   const url = `${site()}/login`

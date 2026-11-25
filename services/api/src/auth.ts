@@ -1,5 +1,5 @@
 import { betterAuth } from 'better-auth'
-import { APIError } from 'better-auth/api'
+import { APIError, createAuthMiddleware } from 'better-auth/api'
 import { haveIBeenPwned } from 'better-auth/plugins'
 import { eq } from 'drizzle-orm'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
@@ -77,6 +77,25 @@ export const auth = betterAuth({
   socialProviders: {
     ...(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET ? { google: { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET, prompt: 'select_account' as const, mapProfileToUser: existingAddressFor } } : {}),
     ...(env.MICROSOFT_CLIENT_ID && env.MICROSOFT_CLIENT_SECRET ? { microsoft: { clientId: env.MICROSOFT_CLIENT_ID, clientSecret: env.MICROSOFT_CLIENT_SECRET, tenantId: env.MICROSOFT_TENANT_ID, prompt: 'select_account' as const, mapProfileToUser: existingAddressFor } } : {}),
+  },
+  // A reset asked for an address Better Auth does not know (it looks up the exact address, says nothing, sends nothing): the person would wait for a mail that never
+  // comes. So: the same mailbox under another form (a+x@ / dots in Gmail, the account's canonical address) gets the real reset link at the account's own address,
+  // and an address with no account gets a "no account uses this email" mail. The page answer stays the same either way (nothing tells a visitor which addresses
+  // exist), the mails go out after the answer, and auth-guard's per-address and per-IP reset limits have already counted this request.
+  hooks: {
+    after: createAuthMiddleware(async (ctx) => {
+      if (ctx.path !== '/request-password-reset' && ctx.path !== '/forget-password') return
+      const body = (ctx.body ?? {}) as { email?: unknown; redirectTo?: unknown }
+      const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
+      if (!email.includes('@') || email.length > 254) return
+      void (async () => {
+        const [exact] = await db.select({ id: schema.user.id }).from(schema.user).where(eq(schema.user.email, email)).limit(1)
+        if (exact) return // Better Auth sent the reset link
+        const [same] = await db.select({ email: schema.user.email }).from(schema.user).where(eq(schema.user.emailCanonical, canonicalEmail(email))).limit(1)
+        if (same) await auth.api.requestPasswordReset({ body: { email: same.email, ...(typeof body.redirectTo === 'string' ? { redirectTo: body.redirectTo } : {}) } })
+        else await sendMail({ to: email, ...mail.noAccount({ email }) })
+      })().catch((e) => console.error('[reset: no exact account]', (e as Error).message))
+    }),
   },
   databaseHooks: {
     user: {

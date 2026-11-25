@@ -94,6 +94,44 @@ describe('email verification gate (security S2)', () => {
     vi.unstubAllEnvs()
   })
 
+  it('a reset for an address without an exact account still gets a mail: the account\'s own address for another form of the same mailbox, "no account" otherwise; the page answer is the same', async () => {
+    vi.resetModules()
+    vi.stubEnv('REQUIRE_EMAIL_VERIFICATION', 'false')
+    const { app } = await import('../app.ts')
+    const { mailOutbox } = await import('../lib/mailer.ts')
+    const origin = process.env['WEB_URL'] ?? 'http://localhost:3000'
+    const post = (path: string, body: unknown, ip: string) => app.request(path, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: origin, 'x-forwarded-for': ip }, body: JSON.stringify(body) })
+    const id = Math.random().toString(36).slice(2, 10)
+    const account = `same.${id}+old@gmail.com` // Gmail: dots and +tags reach the same mailbox
+    expect((await post('/api/auth/sign-up/email', { email: account, password: 'a-long-password-1', name: 'S' }, '198.51.100.41')).status).toBe(200)
+    const redirectTo = `${origin}/reset-password`
+    const mails = (to: string) => mailOutbox.filter((m) => m.to === to)
+
+    // exact address: Better Auth's own reset mail, nothing extra
+    const exact = await post('/api/auth/request-password-reset', { email: account, redirectTo }, '198.51.100.42')
+    await vi.waitFor(() => expect(mails(account).filter((m) => /Reset your SlidesDone password/.test(m.subject))).toHaveLength(1))
+
+    // another form of the same mailbox: the reset link goes to the account's own address, never to the typed one
+    const typed = `same${id}@gmail.com`
+    const other = await post('/api/auth/request-password-reset', { email: typed.toUpperCase(), redirectTo }, '198.51.100.43')
+    await vi.waitFor(() => expect(mails(account).filter((m) => /Reset your SlidesDone password/.test(m.subject))).toHaveLength(2))
+    expect(mails(account).at(-1)!.text).toMatch(/reset-password/)
+    expect(mails(typed)).toHaveLength(0)
+
+    // no account at all: a "no account uses this email" mail to that address, with the sign-up link and no reset link
+    const nobody = `nobody-${id}@example.com`
+    const none = await post('/api/auth/request-password-reset', { email: nobody, redirectTo }, '198.51.100.44')
+    await vi.waitFor(() => expect(mails(nobody)).toHaveLength(1))
+    expect(mails(nobody)[0]!.subject).toBe('No SlidesDone account uses this email')
+    expect(mails(nobody)[0]!.text).toMatch(/\/signup/)
+    expect(mails(nobody)[0]!.text).not.toMatch(/reset-password/)
+
+    // the page cannot tell the three apart
+    const answers = await Promise.all([exact, other, none].map(async (r) => `${r.status} ${await r.text()}`))
+    expect(new Set(answers).size).toBe(1)
+    vi.unstubAllEnvs()
+  })
+
   it('right up to the limit the links still work: a confirmation link 29 minutes old confirms the account', async () => {
     vi.resetModules()
     vi.stubEnv('REQUIRE_EMAIL_VERIFICATION', 'true')
