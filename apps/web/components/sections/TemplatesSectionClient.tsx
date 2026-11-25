@@ -1,5 +1,6 @@
 'use client'
 
+import { HoverLink } from '@/components/ui/HoverLink'
 import { ArrowRight } from '@prompttoppt/ui/icons'
 import Link from 'next/link'
 import { useState } from 'react'
@@ -44,7 +45,7 @@ export function TemplatesSectionClient({ filters, cards }: { filters: TemplateFi
           const a = ACCENTS[i % 3]!
           return (
             <Card key={id} as="article" index={i} className="flex flex-col h-full group/card">
-              <Link href={`/templates/${id}`} className="p-6 pb-0 flex-1 block" aria-label={`${d.name} template`}>
+              <HoverLink href={`/templates/${id}`} className="p-6 pb-0 flex-1 block" aria-label={`${d.name} template`}>
                 <div className="relative rounded-2xl border-2 border-foreground overflow-hidden bg-[#eef1fe] [&_svg]:transition-transform">
                   <TemplateThumb designId={id} />
                   <span className={`absolute top-3 right-3 ${a.badge} text-white border border-white rounded-lg px-2.5 py-[3px] font-heading font-extrabold text-xs uppercase`}>{d.slides} slides</span>
@@ -52,7 +53,7 @@ export function TemplatesSectionClient({ filters, cards }: { filters: TemplateFi
                 <div className={`mt-6 font-heading font-extrabold text-xs uppercase tracking-[0.6px] ${a.label}`}>{d.category}</div>
                 <h3 className="mt-2 font-heading font-extrabold text-xl leading-7 text-foreground">{d.name}</h3>
                 <p className="mt-2 text-sm leading-5 text-[#475569] line-clamp-3">{d.tagline}. {d.blurb}</p>
-              </Link>
+              </HoverLink>
               <div className="p-6 pt-5">
                 <Button href={`/templates/${id}`} variant={a.button} block arrow>Use this blueprint</Button>
               </div>

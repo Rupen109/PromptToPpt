@@ -1,6 +1,6 @@
 'use client'
 
-import Link from 'next/link'
+import { HoverLink } from '@/components/ui/HoverLink'
 import { useMemo, useState } from 'react'
 import { CATEGORIES, DESIGNS, type CategoryId } from '@prompttoppt/theme'
 import { Button } from '@/components/ui/Button'
@@ -29,14 +29,14 @@ export function TemplateGallery({ initialCategory = 'all' }: { initialCategory?:
           {shown.map((d, i) => (
             <li key={d.id}>
               <Card index={i % 6} className="group/card overflow-hidden h-full">
-                <Link href={`/templates/${d.id}`} className="block" aria-label={`${d.name} — ${d.tagline}`}>
+                <HoverLink href={`/templates/${d.id}`} className="block" aria-label={`${d.name} — ${d.tagline}`}>
                   <div className="p-5 pb-0"><div className="border-2 border-foreground rounded-2xl overflow-hidden"><TemplateThumb designId={d.id} className="transition-transform duration-500 motion-safe:group-hover/card:scale-[1.04]" /></div></div>
                   <div className="p-5">
                     <div className="font-heading font-extrabold text-xs tracking-wide uppercase text-primary">{CATEGORIES.find((c) => c.id === d.category)?.name}{d.premium ? ' · Pro' : ' · Free'}</div>
                     <h3 className="font-heading font-extrabold text-xl text-foreground mt-1">{d.name}</h3>
                     <p className="text-sm text-slate-600 mt-1">{d.tagline}</p>
                   </div>
-                </Link>
+                </HoverLink>
               </Card>
             </li>
           ))}

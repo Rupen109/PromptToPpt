@@ -1,4 +1,5 @@
 import { LayoutList, Clapperboard, Ruler, Pencil } from '@prompttoppt/ui/icons'
+import { HoverLink } from '@/components/ui/HoverLink'
 import type { Metadata } from 'next'
 import { JsonLd } from '@/components/seo/JsonLd'
 import { ORG_ID, breadcrumbLd, fit, firstFit, withShare } from '@/lib/seo'
@@ -104,10 +105,10 @@ export default async function TemplatePage({ params }: { params: Promise<{ id: s
             {related.map((r, i) => (
               <li key={r.id}>
                 <Card index={i} className="group/card overflow-hidden h-full">
-                  <Link href={`/templates/${r.id}`} className="block">
+                  <HoverLink href={`/templates/${r.id}`} className="block">
                     <div className="p-4 pb-0"><div className="border-2 border-foreground rounded-xl overflow-hidden"><TemplateThumb designId={r.id} className="transition-transform duration-500 motion-safe:group-hover/card:scale-[1.04]" /></div></div>
                     <div className="p-4"><div className="font-heading font-extrabold text-lg">{r.name}</div><div className="text-sm text-slate-600">{r.tagline}</div></div>
-                  </Link>
+                  </HoverLink>
                 </Card>
               </li>
             ))}

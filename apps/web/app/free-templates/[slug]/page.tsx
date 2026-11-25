@@ -1,4 +1,5 @@
 import { ArrowRight } from '@prompttoppt/ui/icons'
+import { HoverLink } from '@/components/ui/HoverLink'
 import type { Metadata } from 'next'
 import { fit, firstFit, withShare } from '@/lib/seo'
 import Link from 'next/link'
@@ -64,7 +65,7 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
               {designs.map((d, i) => (
                 <li key={d.id}>
                   <Card index={i % 6} className="group/card overflow-hidden h-full">
-                    <Link href={`/templates/${d.id}`} className="block" aria-label={`${d.name} — ${d.tagline}`}>
+                    <HoverLink href={`/templates/${d.id}`} className="block" aria-label={`${d.name} — ${d.tagline}`}>
                       <div className="p-5 pb-0"><div className="border-2 border-foreground rounded-2xl overflow-hidden"><TemplateThumb designId={d.id} index={i} /></div></div>
                       <div className="p-5">
                         <div className="font-heading font-extrabold text-xs tracking-wide uppercase text-primary">{d.premium ? 'Pro' : 'Free'}</div>
@@ -72,7 +73,7 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
                         <p className="text-sm text-slate-600 mt-1">{d.tagline}</p>
                         <span className="mt-3 inline-flex items-center gap-1.5 font-heading font-extrabold text-sm text-primary">Use this template<ArrowRight aria-hidden size={14} /></span>
                       </div>
-                    </Link>
+                    </HoverLink>
                   </Card>
                 </li>
               ))}

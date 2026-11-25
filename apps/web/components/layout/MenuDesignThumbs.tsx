@@ -1,6 +1,6 @@
 'use client'
 
-import Link from 'next/link'
+import { HoverLink } from '@/components/ui/HoverLink'
 import { TemplateThumb } from '@/components/templates/TemplateThumb'
 
 export interface MenuDesign { id: string; name: string; tagline: string }
@@ -14,9 +14,9 @@ export default function MenuDesignThumbs({ designs, onNavigate }: { designs: Men
     <ul className="mt-3 grid grid-cols-3 gap-x-2 gap-y-3">
       {designs.map((d) => (
         <li key={d.id} className="list-none">
-          <Link href={`/templates/${d.id}`} onClick={onNavigate} className="block overflow-hidden rounded-lg border-2 border-foreground bg-white" aria-label={`${d.name}: ${d.tagline}`}>
+          <HoverLink href={`/templates/${d.id}`} onClick={onNavigate} className="block overflow-hidden rounded-lg border-2 border-foreground bg-white" aria-label={`${d.name}: ${d.tagline}`}>
             <TemplateThumb designId={d.id} />
-          </Link>
+          </HoverLink>
           <span className="mt-1 block truncate text-center text-xs font-semibold text-[#475569]">{d.name}</span>
         </li>
       ))}

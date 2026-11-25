@@ -11,7 +11,7 @@ import { slidesFor } from './slides-for'
 /** Big interactive preview: every slide of the starter deck in this design, with animations you can replay. */
 export function TemplatePreview({ designId }: { designId: string }) {
   const design = designById(designId)!
-  const slides = useMemo(() => slidesFor(designId), [designId])
+  const slides = useMemo(() => slidesFor(designId, 'preview'), [designId])
   const [i, setI] = useState(0)
   const [play, setPlay] = useState(0)
   return (
