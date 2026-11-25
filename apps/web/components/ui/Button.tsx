@@ -2,6 +2,7 @@ import { ArrowRight } from '@prompttoppt/ui/icons'
 import Link from 'next/link'
 import type { AnchorHTMLAttributes, ButtonHTMLAttributes, ReactNode } from 'react'
 import { cn } from './cn'
+import { LinkBusy } from './LinkBusy'
 
 /**
  * THE call-to-action. Every button on the landing page is this component, so the motion is written once:
@@ -72,17 +73,18 @@ export function Button(props: AsLink | AsButton) {
     block && 'w-full',
     className,
   )
-  const inner = (
+  const content = (
     <>
       {!flat && <span aria-hidden className={cn('pointer-events-none absolute inset-y-0 -left-[60%] w-1/2 -skew-x-[20deg] opacity-0 transition-[left,opacity] duration-700 ease-out motion-safe:group-hover:left-[130%] motion-safe:group-hover:opacity-100', variant === 'white' ? 'bg-foreground/5' : 'bg-white/30')} />}
       {loading && <span aria-hidden className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />}
       <span className="relative inline-flex items-center gap-2">{children}</span>
-      {arrow && <span aria-hidden className="relative inline-block transition-transform duration-200 motion-safe:group-hover:translate-x-1"><ArrowRight size={16} strokeWidth={2.5} /></span>}
     </>
   )
+  const arrowEl = arrow && <span aria-hidden className="relative inline-block transition-transform duration-200 motion-safe:group-hover:translate-x-1"><ArrowRight size={16} strokeWidth={2.5} /></span>
+  const inner = <>{content}{arrowEl}</>
   if ('href' in props && props.href !== undefined) {
     const { href, ...a } = rest as AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }
-    return /^(https?:)?\/\//.test(href) ? <a href={href} className={classes} {...a}>{inner}</a> : <Link href={href} className={classes} {...a}>{inner}</Link>
+    return /^(https?:)?\/\//.test(href) ? <a href={href} className={classes} {...a}>{inner}</a> : <Link href={href} className={classes} {...a}>{content}<LinkBusy arrow={!!arrow} /></Link>
   }
   const { type = 'button', ...b } = rest as ButtonHTMLAttributes<HTMLButtonElement>
   return <button type={type} className={classes} aria-busy={loading || undefined} {...b} disabled={b.disabled || loading}>{inner}</button>

@@ -38,6 +38,7 @@ import { loadSession, requireAuth, type AppEnv } from './middleware/session.ts'
 import { clientIp, rateLimit } from './middleware/rate-limit.ts'
 import { freeTools } from './routes/free-tools.ts'
 import { originCheck } from './middleware/origin-check.ts'
+import { MARKER, markerFor } from './security/signed-in-marker.ts'
 import { authGuard } from './security/auth-guard.ts'
 import { bodyLimit } from 'hono/body-limit'
 
@@ -124,8 +125,15 @@ app.on(['GET', 'POST'], '/api/auth/*', async (c) => {
   const res = await auth.handler(c.req.raw)
   const headers = new Headers(res.headers)
   headers.set('Cache-Control', 'no-store')
-  if (!/json/i.test(headers.get('content-type') ?? '')) return new Response(res.body, { status: res.status, headers })
-  const text = await res.text()
+  const isJson = /json/i.test(headers.get('content-type') ?? '')
+  const text = isJson ? await res.text() : ''
+  // the readable "signed in" marker follows the login cookie (security/signed-in-marker.ts); a session check that finds no session clears it too
+  const checked = isJson && new URL(c.req.url).pathname === '/api/auth/get-session'
+  const gone = checked && (text.trim() === 'null' || text.trim() === '')
+  const unmarked = checked && !gone && res.ok && !new RegExp(`(?:^|;\\s*)${MARKER}=1`).test(c.req.header('cookie') ?? '')
+  const marker = markerFor(res.headers.getSetCookie(), gone ? 'gone' : unmarked ? 'found-unmarked' : null)
+  if (marker) headers.append('Set-Cookie', marker)
+  if (!isJson) return new Response(res.body, { status: res.status, headers })
   headers.delete('content-length')
   try { return new Response(JSON.stringify(withoutTokens(JSON.parse(text))), { status: res.status, headers }) } catch { return new Response(text, { status: res.status, headers }) }
 })

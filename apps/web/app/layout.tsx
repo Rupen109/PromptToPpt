@@ -123,9 +123,14 @@ export default function RootLayout({
   return (
     <html
       lang="en"
+      // data-auth is set by the script below before React loads (the API's sd_signed_in marker), so it differs from the server HTML on purpose
+      suppressHydrationWarning
       className={`${inter.variable} ${plusJakartaSans.variable} ${caveat.variable} ${sora.variable}`}
     >
       <head>
+        {/* Signed in or not, BEFORE the first paint: the API keeps a readable marker next to the login cookie (services/api security/signed-in-marker.ts), so the
+            header shows the right buttons at once instead of waiting for a session request (components/layout/AuthActions.tsx corrects it if the session is gone). */}
+        <script dangerouslySetInnerHTML={{ __html: "try{document.documentElement.dataset.auth=/(?:^|;\\s*)sd_signed_in=1/.test(document.cookie)?'in':'out'}catch(e){}" }} />
         {/* Preconnect to Google Fonts for performance */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />

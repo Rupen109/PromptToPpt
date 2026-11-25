@@ -137,3 +137,7 @@ body { top: 0 !important; }
 
 /* the dim behind an open header menu fades in */
 @keyframes menu-dim { from { opacity: 0 } to { opacity: 1 } }
+
+/* The header's two states (app/layout.tsx sets data-auth before the first paint; components/layout/AuthActions.tsx): only the right one is ever shown, no blank wait */
+html[data-auth='in'] .auth-out { display: none !important; }
+html:not([data-auth='in']) .auth-in { display: none !important; }
