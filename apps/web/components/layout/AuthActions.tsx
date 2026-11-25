@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, CreditCard, LayoutGrid, LogOut } from '@prompttoppt/ui/icons'
+import { SigningOut, useSignOut } from '@prompttoppt/ui/sign-out'
 import { Button } from '@/components/ui/Button'
 import { API_URL, EDITOR_URL } from '@/lib/env'
 
@@ -25,11 +26,10 @@ export function useViewer(): Viewer {
   return v
 }
 
-/** Ends the session (the login cookie belongs to the API) and shows the signed-out header. */
-async function signOut() {
-  try { await fetch(`${API_URL}/api/auth/sign-out`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: '{}' }) } catch { /* the page reload below shows the real state */ }
-  window.location.assign('/')
-}
+/** Ends the session (the login cookie belongs to the API), then loads the home page signed out; "Signing out…" covers the page meanwhile. */
+const endSession = () => fetch(`${API_URL}/api/auth/sign-out`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+const toHome = () => window.location.assign('/')
+const useWebSignOut = () => useSignOut(endSession, toHome)
 
 /** keeps <html data-auth> in step with the real session once it has answered */
 function useAuthState(v: Viewer) {
@@ -40,6 +40,7 @@ function useAuthState(v: Viewer) {
 function AccountMenu({ email }: { email: string | null }) {
   const [open, setOpen] = useState(false)
   const box = useRef<HTMLDivElement>(null)
+  const { busy, signOut } = useWebSignOut()
   useEffect(() => {
     if (!open) return
     const onDown = (e: MouseEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false) }
@@ -50,6 +51,7 @@ function AccountMenu({ email }: { email: string | null }) {
   const item = 'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left font-heading font-bold text-sm text-foreground hover:bg-[#f1f5f9]'
   return (
     <div ref={box} className="relative hidden sm:block">
+      {busy && <SigningOut />}
       <button type="button" data-testid="account-menu" aria-haspopup="menu" aria-expanded={open} aria-label={email ? `Account menu, signed in as ${email}` : 'Account menu'} title={email ?? undefined} onClick={() => setOpen((o) => !o)} className="inline-flex items-center gap-1.5 h-11 pl-1.5 pr-2.5 rounded-full !border-2 !border-solid !border-foreground !bg-white hover:!bg-[#f8f9fc] focus:outline-none focus-visible:ring-2 focus-visible:ring-primary">
         <span aria-hidden className="w-8 h-8 rounded-full bg-foreground text-white grid place-items-center text-sm font-extrabold uppercase">{email ? email[0] : ''}</span>
         <ChevronDown aria-hidden size={14} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
@@ -62,7 +64,7 @@ function AccountMenu({ email }: { email: string | null }) {
           </div>
           <Link role="menuitem" href={EDITOR_URL} onClick={() => setOpen(false)} className={item}><LayoutGrid aria-hidden size={16} />My decks</Link>
           <Link role="menuitem" href={`${EDITOR_URL}/billing`} onClick={() => setOpen(false)} className={item}><CreditCard aria-hidden size={16} />Plan & billing</Link>
-          <button role="menuitem" type="button" onClick={() => void signOut()} className={item}><LogOut aria-hidden size={16} />Sign out</button>
+          <button role="menuitem" type="button" onClick={() => void signOut()} disabled={busy} className={item}><LogOut aria-hidden size={16} />Sign out</button>
         </div>
       )}
     </div>
@@ -89,12 +91,14 @@ export function DesktopAuth() {
 export function MobileAuth({ onNavigate }: { onNavigate: () => void }) {
   const v = useViewer()
   useAuthState(v)
+  const { busy, signOut } = useWebSignOut()
   return (
     <>
+      {busy && <SigningOut />}
       <div className="auth-in flex flex-col gap-3 pt-4">
         <p className="text-sm text-slate-600 truncate" data-testid="signed-in-email-mobile">Signed in as <b className="text-foreground">{v?.email ?? '…'}</b></p>
         <Link href={EDITOR_URL} onClick={onNavigate} className="text-center py-3 rounded-xl border-2 border-foreground bg-accent text-white font-heading font-bold text-sm">My decks</Link>
-        <button type="button" onClick={() => void signOut()} className="inline-flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-foreground bg-white font-heading font-bold text-sm text-foreground"><LogOut aria-hidden size={16} />Sign out</button>
+        <button type="button" onClick={() => void signOut()} disabled={busy} className="inline-flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-foreground bg-white font-heading font-bold text-sm text-foreground"><LogOut aria-hidden size={16} />Sign out</button>
       </div>
       <div className="auth-out flex gap-3 pt-4">
         <Button href="/login" variant="white" size="md" block onClick={onNavigate} className="flex-1 !normal-case !tracking-normal !text-sm">Log In</Button>

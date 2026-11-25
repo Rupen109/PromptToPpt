@@ -1,4 +1,4 @@
-import { API, WEB, expect, launch, suite } from '../lib.mjs'
+import { API, EDITOR, WEB, expect, launch, suite } from '../lib.mjs'
 import { person } from '../kits-lib.mjs'
 
 /**
@@ -60,6 +60,57 @@ export default async function () {
       await cta.getByTestId('link-busy').waitFor({ timeout: 1500 })
       await p.waitForURL(/\/signup/, { timeout: HOLD + 15000 })
       await ctx.close()
+    })
+
+    // sign-out request held back: the "Signing out…" cover must show at once (website header and editor sidebar alike), then the person is really signed out
+    const holdSignOut = (ctx) => ctx.route(`${API}/api/auth/sign-out`, async (r) => { await new Promise((ok) => setTimeout(ok, HOLD)); await r.continue() })
+    const signedOut = async (ctx) => {
+      const r = await ctx.request.get(`${API}/api/auth/get-session`)
+      return !((await r.json().catch(() => null))?.user)
+    }
+
+    await s.check('website: "Sign out" shows the "Signing out…" cover at once, ignores a second click, and lands signed out on the home page', null, async () => {
+      const A = await person(b, 'hdrout')
+      await holdSignOut(A.ctx)
+      await A.p.goto(`${WEB}/pricing`, { waitUntil: 'networkidle' }) // the menu works once the page is live
+      await A.p.getByTestId('account-menu').click()
+      const out = A.p.getByRole('menuitem', { name: 'Sign out' })
+      await out.click()
+      await A.p.getByTestId('signing-out').waitFor({ timeout: 1000 })
+      expect(await A.p.getByTestId('signing-out').innerText() === 'Signing out…', 'the cover does not say "Signing out…"')
+      expect(await out.isDisabled(), 'the Sign out button can be clicked again while signing out')
+      await A.p.waitForURL((u) => u.pathname === '/', { timeout: HOLD + 15000 })
+      await A.p.locator('header').getByRole('link', { name: 'Log In', exact: true }).first().waitFor({ timeout: 10000 })
+      expect(await signedOut(A.ctx), 'the session is still there after signing out')
+      await A.ctx.close()
+    })
+
+    await s.check('website, phone menu: "Sign out" shows the same cover', null, async () => {
+      const A = await person(b, 'hdroutm')
+      await A.p.setViewportSize({ width: 390, height: 844 })
+      await holdSignOut(A.ctx)
+      await A.p.goto(`${WEB}/`, { waitUntil: 'networkidle' })
+      await A.p.getByRole('button', { name: /menu/i }).first().click()
+      await A.p.getByRole('button', { name: 'Sign out', exact: true }).last().click()
+      await A.p.getByTestId('signing-out').waitFor({ timeout: 1000 })
+      // already on "/": done when the new page has replaced the cover (not when the address matches)
+      await A.p.getByTestId('signing-out').waitFor({ state: 'detached', timeout: HOLD + 15000 })
+      expect(await signedOut(A.ctx), 'the session is still there after signing out')
+      await A.ctx.close()
+    })
+
+    await s.check('editor: "Log out" shows the "Signing out…" cover at once and ends signed out', null, async () => {
+      const A = await person(b, 'edout')
+      await holdSignOut(A.ctx)
+      await A.p.goto(`${EDITOR}/`, { waitUntil: 'networkidle' })
+      const out = A.p.locator('aside').getByRole('button', { name: 'Log out' })
+      await out.waitFor({ timeout: 20000 })
+      await out.click()
+      await A.p.getByTestId('signing-out').waitFor({ timeout: 1000 })
+      expect(await out.isDisabled(), 'the Log out button can be clicked again while signing out')
+      await A.p.getByTestId('signing-out').waitFor({ state: 'detached', timeout: HOLD + 20000 })
+      expect(await signedOut(A.ctx), 'the session is still there after logging out')
+      await A.ctx.close()
     })
   } finally {
     await b.close()

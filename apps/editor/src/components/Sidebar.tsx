@@ -10,6 +10,7 @@ import { WEB_URL } from '@/lib/env'
 import { useUser } from '@/lib/session'
 import { useDialog } from '@/lib/useDialog'
 import { Logo } from '@prompttoppt/ui/logo'
+import { SigningOut, useSignOut } from '@prompttoppt/ui/sign-out'
 import { ReviewDialog } from '@/components/ReviewDialog'
 
 const item = 'flex items-center gap-3 px-3 py-2.5 rounded-lg text-[15px] hover:bg-black/5'
@@ -70,8 +71,13 @@ function NewProjectDialog({ onClose }: { onClose: () => void }) {
   )
 }
 
+/** ends the session, then reloads (the app shows the signed-out screen); "Signing out…" covers the page meanwhile */
+const endSession = () => api.auth.signOut()
+const reload = () => window.location.reload()
+
 export function Sidebar() {
   const user = useUser()
+  const { busy: signingOut, signOut } = useSignOut(endSession, reload)
   const { ent, upgrade, refresh } = useEntitlements()
   const { projects, loaded, load } = useProjects()
   const [newProject, setNewProject] = useState(false)
@@ -157,13 +163,7 @@ export function Sidebar() {
         {user.role === 'admin' && <Link to="/admin" className={`${item} text-primary font-medium`}><Icon name="admin" />Owner dashboard</Link>}
       </nav>
       <button onClick={() => setReviewing(true)} className={`${item} text-left`}><Star size={20} strokeWidth={1.8} aria-hidden className="shrink-0 text-slate-500" />Rate SlidesDone</button>
-      <button
-        onClick={async () => {
-          await api.auth.signOut()
-          window.location.reload()
-        }}
-        className={`${item} text-left`}
-      >
+      <button onClick={() => void signOut()} disabled={signingOut} className={`${item} text-left`}>
         <Icon name="logout" />Log out
       </button>
     </>
@@ -171,6 +171,7 @@ export function Sidebar() {
 
   return (
     <>
+      {signingOut && <SigningOut />}
       <aside className="hidden lg:flex w-[240px] shrink-0 border-r border-border bg-white h-screen sticky top-0 flex-col p-3 text-slate-800">{body}</aside>
 
       {/* phone / tablet: a slim top bar + a slide-in drawer with the same menu */}
