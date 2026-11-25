@@ -59,6 +59,19 @@ function writable(ctx: RunCtx, ids: string[]): { ok: string[]; notes: string[]; 
 /** PREFLIGHT of the writing families: which slides will not be written, before any writing call */
 const writingPreflight = (ctx: RunCtx, ids: string[]): Preflight => { const w = writable(ctx, ids); return { blocked: w.blocked, doable: w.ok.length } }
 
+/**
+ * Groups written AT THE SAME TIME (at most WRITE_AT_ONCE calls in flight, which keeps within the model's rate limits): each group's prompt, model and checks are
+ * exactly what they were one by one, so the answers are the same; only the waiting is shorter. Results come back in the groups' order.
+ */
+const WRITE_AT_ONCE = 3
+export async function inParallel<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out = new Array<R>(items.length)
+  let next = 0
+  const lane = async () => { while (next < items.length) { const i = next++; out[i] = await fn(items[i]!) } }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, lane))
+  return out
+}
+
 /** slides in groups that fit one call's budget (a 30-slide translation becomes a few calls, never one huge prompt) */
 function batches(ctx: RunCtx, ids: string[]): string[][] {
   const out: string[][] = [[]]
@@ -171,8 +184,11 @@ export const text: Capability<z.infer<typeof VALUES.text>> = {
       return { ops: [], ask: { text: `This ${notesOnly ? 'writes the speaker notes of' : 'rewrites the words of'} ${ok.length} of the ${total} slides ("${v.request.slice(0, 160)}${v.request.length > 160 ? '…' : ''}"). It counts as two edits instead of one, and Ctrl+Z puts ${notesOnly ? 'the old notes' : 'the old words'} back right after. Go ahead?`, options: [{ label: notesOnly ? 'Yes, write the notes' : 'Yes, rewrite them', reply: notesOnly ? 'Yes, write those notes' : 'Yes, rewrite those slides', confirm: { kind: 'text_bulk', request: v.request, ...goal, ...(v.notesSeconds ? { notesSeconds: v.notesSeconds } : {}), ...(v.notesOnly ? { notesOnly: true } : {}), slideIds: ok } }, { label: 'No, leave them', reply: 'No, leave my slides as they are' }] } }
     }
     const ops: Step['ops'] = []
-    for (const group of batches(ctx, ok)) {
-      const { good, failed } = await writeValid(ctx, group, problems,
+    const groups = batches(ctx, ok)
+    let finished = 0
+    const say = () => ctx.progress?.(`${v.notesOnly ? 'Writing speaker notes for' : 'Rewriting'} ${ok.length} ${ok.length === 1 ? 'slide' : 'slides'}`, finished, groups.length)
+    say()
+    const results = await inParallel(groups, WRITE_AT_ONCE, (group) => writeValid(ctx, group, problems,
         (sub, why) => ctx.write({
           card: 'text', rules: TEXT_RULES, route: 'quality', schema: slidesOut,
           input: { request: v.request, slides: sub.map((id) => slideInput(ctx, id, goal)), ...(v.notesSeconds ? { speakerNotesWords: notesWordRange(v.notesSeconds) } : {}), ...(why.length ? { problems: why } : {}) },
@@ -192,7 +208,9 @@ export const text: Capability<z.infer<typeof VALUES.text>> = {
           if (v.notesOnly) return { ...(slideOf(ctx, id)!.content as object), speakerNotes: String((raw as { speakerNotes?: unknown } | null)?.speakerNotes ?? '').slice(0, 1500) }
           return raw && typeof raw === 'object' && !Array.isArray(raw) && !(LAYOUT_IDS as readonly string[]).includes(String((raw as { layout?: unknown }).layout)) ? { ...(raw as object), layout: slideOf(ctx, id)!.layoutId } : raw
         },
-      )
+      ).then((r) => { finished++; say(); return r }))
+    for (const [gi, group] of groups.entries()) {
+      const { good, failed } = results[gi]!
       for (const slideId of group) { const c = good.get(slideId); const lists = allowedLists(slideOf(ctx, slideId)!.content as SlideContent, goal); if (c) ops.push({ op: 'edit_slide', slideId, content: c, ...(lists?.length ? { lists } : {}) }) } // in the order asked; the lists the goal is about may change length
       notes.push(...couldNotFit(ctx, failed))
     }
@@ -245,8 +263,11 @@ export const layout: Capability<z.infer<typeof VALUES.layout>> = {
     const { ok, notes: n0 } = writable(ctx, ids)
     const notes = [...pre, ...n0]
     const ops: Step['ops'] = []
-    for (const group of batches(ctx, ok)) {
-      const { good, failed } = await writeValid(ctx, group, problems,
+    const groups = batches(ctx, ok)
+    let finished = 0
+    const say = () => ctx.progress?.(`Choosing new layouts for ${ok.length} ${ok.length === 1 ? 'slide' : 'slides'}`, finished, groups.length)
+    say()
+    const results = await inParallel(groups, WRITE_AT_ONCE, (group) => writeValid(ctx, group, problems,
         (sub, why) => ctx.write({
           card: 'layout', rules: LAYOUT_RULES, route: 'quality', schema: slidesOut,
           input: { ...(v.layout ? { layout: v.layout } : {}), slides: sub.map((id) => slideInput(ctx, id)), ...(why.length ? { problems: why } : {}) },
@@ -258,7 +279,9 @@ export const layout: Capability<z.infer<typeof VALUES.layout>> = {
           if (PICTURE_LAYOUTS.has(c.layout) && !v.layout && !hasPicture(slideOf(ctx, id)!)) return `the ${c.layout} layout needs a picture and this slide has none: choose a layout without a picture`
           return null
         },
-      )
+      ).then((r) => { finished++; say(); return r }))
+    for (const [gi, group] of groups.entries()) {
+      const { good, failed } = results[gi]!
       for (const slideId of group) { const c = good.get(slideId); if (c) ops.push({ op: 'restructure_slide', slideId, content: c }) }
       notes.push(...couldNotFit(ctx, failed))
     }

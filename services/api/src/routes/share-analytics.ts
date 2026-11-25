@@ -1,6 +1,6 @@
 import { createHmac } from 'node:crypto'
 import { Hono } from 'hono'
-import { zValidator } from '@hono/zod-validator'
+import { zValidator } from '../lib/validate.ts'
 import { and, count, desc, eq, gte, lt, max, sql } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { z } from 'zod'

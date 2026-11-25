@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
-import { zValidator } from '@hono/zod-validator'
+import { zValidator } from '../../lib/validate.ts'
 import { and, count, desc, eq, ilike, or, sql } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { z } from 'zod'

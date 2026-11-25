@@ -1,3 +1,4 @@
+import { AccountButton } from '@/components/AccountButton'
 import { AlertTriangle, Ban, ChevronDown, ChevronRight, Home, Lock, MessageSquare, MoreVertical, Palette, Play, Sparkles, Users } from '@prompttoppt/ui/icons'
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
@@ -321,6 +322,7 @@ export function EditorPage() {
                 onExport={(f, numbers) => void doExport(f, numbers ? numbers.map((n) => doc.slides[n - 1]!.id) : undefined)} />
             )}
           </div>}
+          <AccountButton />
         </div>
       </header>
       {writing > 0 && (

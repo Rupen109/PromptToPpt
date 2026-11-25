@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { zValidator } from '@hono/zod-validator'
+import { zValidator } from '../../lib/validate.ts'
 import { rangeSchema } from '../range.ts'
 import { breakdown, imageBreakdownSchema, imagesQuery, limitSchema, pageSchema, perDeck, quota, quotaSchema, recent, summary, timeseries, topUsers } from '../images.ts'
 import type { AppEnv } from '../../middleware/session.ts'

@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { nanoid } from 'nanoid'
-import { zValidator } from '@hono/zod-validator'
+import { zValidator } from '../lib/validate.ts'
 import { and, eq, isNull } from 'drizzle-orm'
 import { z } from 'zod'
 import { exportFormatSchema, presentationSchema, slidesFileSuffix } from '@prompttoppt/validation'

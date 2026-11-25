@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { DESIGNS, FONT_PAIRS, MAX_WEIGHT, MOTIONS, PREMIUM_THEME_IDS, THEMES, designById, isDark, makeColors, slideTitle, validateSlide, type FontKey, type MotionKey } from '@prompttoppt/theme'
-import { slideContentSchema, themeSchema, type Entitlements, type Presentation, type SlideContent, type Theme } from '@prompttoppt/validation'
+import { ASSIST_LIMITS, clipConversation, clipRecent, slideContentSchema, themeSchema, type Entitlements, type Presentation, type SlideContent, type Theme } from '@prompttoppt/validation'
 import { figuresNotInSources, hasNumbers, sanitizeContent } from '../generation/policy.ts'
 import { textOf } from '../generation/quality.ts'
 import { changedMaterially } from './enrich.ts'
@@ -9,7 +9,7 @@ import { commonBackground, deckLook } from '../assistant/state.ts'
 import { LAYOUT_SHAPES, neutralise, sourceBlock } from './prompts.ts'
 
 export const aiAssistInput = z.object({
-  instruction: z.string().trim().min(2).max(1000),
+  instruction: z.string().trim().min(2, 'Type a little more: what should change?').max(ASSIST_LIMITS.instruction, `That message is longer than ${ASSIST_LIMITS.instruction.toLocaleString('en')} characters. Attach long text as a source and say what to do with it.`),
   /** 'deck' = may restyle and edit any slide; 'slide' = edit only `slideId` */
   scope: z.enum(['deck', 'slide']).default('deck'),
   slideId: z.string().max(64).optional(),
@@ -23,8 +23,10 @@ export const aiAssistInput = z.object({
   confirm: z.discriminatedUnion('kind', [z.object({ kind: z.literal('remove'), slideIds: z.array(z.string().max(64)).min(1).max(60) }), z.object({ kind: z.literal('reorder'), order: z.array(z.string().max(64)).min(2).max(60) }), z.object({ kind: z.literal('refresh_pictures') }), z.object({ kind: z.literal('clear_pictures') }), z.object({ kind: z.literal('clear_animations') }), z.object({ kind: z.literal('add_bulk'), about: z.string().max(400).optional(), count: z.number().int().min(4).max(15), where: z.enum(['end', 'start', 'spread']), layout: z.string().max(40).optional() }), z.object({ kind: z.literal('text_bulk'), request: z.string().min(2).max(400), addPoints: z.number().int().min(1).max(6).optional(), totalPoints: z.number().int().min(1).max(12).optional(), length: z.enum(['longer', 'shorter']).optional(), notesOnly: z.boolean().optional(), notesSeconds: z.number().int().min(10).max(1800).optional(), slideIds: z.array(z.string().max(64)).min(1).max(60) }), z.object({ kind: z.literal('rewrite'), brief: z.string().min(10).max(3000) }), z.object({ kind: z.literal('sections'), items: z.array(z.object({ title: z.string().min(1).max(60), beforeSlideId: z.string().max(64) })).min(1).max(8) }), /** "do the rest": the very tasks the person was asked about, sent back; the pipeline checks every task again as if it were new (taskSchema): nothing here is trusted */ z.object({ kind: z.literal('proceed'), tasks: z.array(z.object({ family: z.string().max(40), targets: z.array(z.unknown()).max(20), values: z.record(z.string(), z.unknown()), phrase: z.string().max(160).optional() })).min(1).max(4), /** the parts of a long message left for the next step (the person's words): still offered after "Go ahead" */ later: z.array(z.string().max(160)).max(12).optional() })]).optional(),
   /** what the assistant changed earlier in THIS editing session (newest first); the editor still holds the "before" of each, so it can be put back */
   /** the last few turns of this chat (what the user asked, what was done), so follow-ups like "revert it" or "again" can be understood */
-  conversation: z.array(z.object({ role: z.enum(['user', 'assistant']), text: z.string().max(600) })).max(8).default([]),
-  recent: z.array(z.object({ theme: z.boolean(), slideIds: z.array(z.string().max(64)).max(40), summary: z.array(z.string().max(160)).max(8) })).max(5).default([]),
+  // CONTEXT the assistant wrote itself (earlier turns, the changes still undoable): trimmed to the shared limits, never a reason to refuse a new message.
+  // The hard caps only stop a broken or hostile request from sending unbounded data.
+  conversation: z.array(z.object({ role: z.enum(['user', 'assistant']), text: z.string().max(20_000) })).max(100).default([]).transform(clipConversation),
+  recent: z.array(z.object({ theme: z.boolean(), slideIds: z.array(z.string().max(64)).max(200), summary: z.array(z.string().max(20_000)).max(100) })).max(50).default([]).transform(clipRecent),
   /** what is selected in the editor right now (the objects "this" and "it" mean); ids are checked against the deck, never trusted */
   selection: z.object({ slideIds: z.array(z.string().max(64)).max(50).default([]), elementIds: z.array(z.string().max(64)).max(200).default([]) }).optional(),
 })

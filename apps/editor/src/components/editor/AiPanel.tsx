@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ApiError, isGateError, type AiEditCommand, type AiImageProposal, type ModelOption, type SourceSummary } from '@prompttoppt/api-client'
 import { SourcesDialog } from '@/components/SourcesDialog'
 import { AskDeck } from '@/components/editor/AskDeck'
-import { compactSlides, findUrls, type Presentation, type Restructure, type Slide } from '@prompttoppt/validation'
+import { ASSIST_LIMITS, clip, clipConversation, clipRecent, compactSlides, findUrls, type Presentation, type Restructure, type Slide } from '@prompttoppt/validation'
 import { expectationsFromChanges } from '@prompttoppt/theme'
 import { applyAssistVerified, type AssistAnswer } from '@/editor/assist-apply'
 import * as C from '@/editor/commands'
@@ -35,10 +35,45 @@ function rebuildUndo(rows: Msg[]): C.AssistUndo[] {
 }
 /** The last few turns, in words, so "revert it", "again" or "the same for slide 3" can be understood. */
 function conversationOf(msgs: Msg[]) {
-  return msgs.filter((m) => m.role !== 'error').slice(-8).map((m) => (m.role === 'user'
-    ? { role: 'user' as const, text: m.text.slice(0, 500) }
-    : { role: 'assistant' as const, text: [m.reply, m.applied.length ? `Changes made: ${m.applied.join('; ')}` : '', ...m.notes].filter(Boolean).join(' ').slice(0, 500) }))
+  // sized by the limits the server uses (ASSIST_LIMITS): the history can never be the reason a new message is refused
+  return clipConversation(msgs.filter((m) => m.role !== 'error').map((m) => (m.role === 'user'
+    ? { role: 'user' as const, text: m.text }
+    : { role: 'assistant' as const, text: [m.reply, m.applied.length ? `Changes made: ${m.applied.join('; ')}` : '', ...m.notes].filter(Boolean).join(' ') })))
 }
+/** an error saved before errors were written for people (a raw list of validation issues) is shown in words */
+const errorText = (t: string) => (/^\s*[[{]/.test(t) ? 'Something went wrong with that request, so nothing was changed. Please try again.' : t)
+/**
+ * Follow what a request is doing (its progress stream) and pass each stage on; returns the way to stop. Best-effort: without the stream (an old
+ * browser, a proxy that buffers) the bubble just says "Working on it…" with the seconds.
+ */
+function followProgress(deckId: string, requestId: string, onStage: (s: { text: string; done?: number; total?: number } | null) => void): () => void {
+  if (typeof EventSource === 'undefined') return () => {}
+  const es = new EventSource(api.assistProgressUrl(deckId, requestId), { withCredentials: true })
+  es.addEventListener('stage', (e) => { try { const s = JSON.parse((e as MessageEvent).data); onStage({ text: String(s.text), ...(s.total ? { done: s.done ?? 0, total: s.total } : {}) }) } catch { /* a stage that does not parse is skipped */ } })
+  es.addEventListener('end', () => es.close())
+  es.onerror = () => es.close() // no retries: the answer comes with the request itself
+  return () => es.close()
+}
+
+/** the bubble while a request runs: what it is doing now and for how long (a silent wait looked like nothing was happening) */
+function Working({ stage }: { stage: { text: string; done?: number; total?: number } | null }) {
+  // it appears when the request is sent, so its own count is the request's time
+  const [secs, setSecs] = useState(0)
+  useEffect(() => { const t = setInterval(() => setSecs((n) => n + 1), 1000); return () => clearInterval(t) }, [])
+  return (
+    <div className="mr-4 bg-slate-100 rounded-2xl px-3 py-2 text-sm text-slate-600 flex items-center gap-2" role="status" aria-live="polite" data-testid="assist-working">
+      <span aria-hidden className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-slate-400 border-t-transparent" />
+      <span className="flex-1 min-w-0">
+        <span className="block">Working on it…</span>
+        {stage && <span className="block text-xs text-slate-500" data-testid="assist-stage">{stage.text}{stage.total && stage.total > 1 ? ` (${stage.done ?? 0} of ${stage.total} done)` : ''}</span>}
+      </span>
+      {secs >= 2 && <span className="text-xs text-slate-400 tabular-nums">{secs}s</span>}
+    </div>
+  )
+}
+
+/** pasted text longer than a message can be: attached as a source instead (it is read in full), with its first line as the title */
+const pastedTitle = (t: string) => clip(t.trim().split('\n')[0]!.trim() || 'Pasted text', 60)
 
 /** A few words that tell slides apart in the "Which slide?" list: the slide's title text. */
 const slideLabel = (sl: { elements: { type: string; role?: string; paragraphs?: { runs: { text: string }[] }[] }[] }) => {
@@ -78,6 +113,12 @@ export function AiPanel({ doc, slide, presentationId, onClose, onBeforeSend, onR
   const [pending, setPending] = useState(false)
   const [attached, setAttached] = useState<SourceSummary[]>([])
   const [sourcesOpen, setSourcesOpen] = useState(false)
+  /** text pasted that is longer than a message can be, waiting for "attach it as a source" */
+  const [longPaste, setLongPaste] = useState<string | null>(null)
+  /** what the running request is doing now (its progress stream), and when it started */
+  const [stage, setStage] = useState<{ text: string; done?: number; total?: number } | null>(null)
+  const [attaching, setAttaching] = useState(false)
+  const [attachError, setAttachError] = useState<string | null>(null)
   const [historyLoaded, setHistoryLoaded] = useState(false)
   // the quick actions: asked of the server, which builds them from what the assistant can really do for this person, deck and slide (nothing typed here can be offered by mistake)
   const [chips, setChips] = useState<{ group: string; text: string }[]>([])
@@ -140,9 +181,12 @@ export function AiPanel({ doc, slide, presentationId, onClose, onBeforeSend, onR
     setMsgs((m) => [...m, userMsg])
     setText('')
     setPending(true)
+    let stopFollow = () => {}
     try {
       await onBeforeSend().catch(() => {}) // the server reads the saved deck, so save what's on screen first
-      const res = await api.aiAssist(presentationId, { instruction: t, scope, activeSlideId: slide.id, selection: { slideIds: [slide.id], elementIds: useUi.getState().selection.slice(0, 200) }, ...(model ? { model } : {}), requestId: crypto.randomUUID(), ...(attached.length ? { sourceIds: attached.map((a) => a.id) } : {}), ...(undoStack().length ? { recent: [...undoStack()].reverse().map((u) => ({ theme: !!u.theme, slideIds: C.undoSlideIds(u), summary: u.summary })) } : {}), conversation: conversationOf(msgs), ...(confirm ? { confirm } : {}) })
+      const requestId = crypto.randomUUID()
+      stopFollow = followProgress(presentationId, requestId, setStage)
+      const res = await api.aiAssist(presentationId, { instruction: t, scope, activeSlideId: slide.id, selection: { slideIds: [slide.id], elementIds: useUi.getState().selection.slice(0, 200) }, ...(model ? { model } : {}), requestId, ...(attached.length ? { sourceIds: attached.map((a) => a.id) } : {}), ...(undoStack().length ? { recent: clipRecent([...undoStack()].reverse().map((u) => ({ theme: !!u.theme, slideIds: C.undoSlideIds(u), summary: u.summary }))) } : {}), conversation: conversationOf(msgs), ...(confirm ? { confirm } : {}) })
       setAttached([])
       if (res.sources?.length) apply('Attach sources', (d) => C.addSources(d, res.sources!))
       let undoInfo: { undo?: string; revertedUndo?: string[] } = {}
@@ -200,6 +244,7 @@ export function AiPanel({ doc, slide, presentationId, onClose, onBeforeSend, onR
       if (isGateError(e)) upgrade.show(e.message)
       else { const em: Msg = { role: 'error', text: e instanceof ApiError ? e.message : 'Something went wrong. You were not charged.' }; setMsgs((m) => [...m, em]); remember(userMsg, em) }
     } finally {
+      stopFollow(); setStage(null)
       setPending(false)
     }
   }
@@ -270,7 +315,7 @@ export function AiPanel({ doc, slide, presentationId, onClose, onBeforeSend, onR
           m.role === 'user' ? (
             <div key={i} className="ml-8 bg-primary text-white rounded-2xl rounded-br-sm px-3 py-2 text-sm whitespace-pre-wrap">{m.text}</div>
           ) : m.role === 'error' ? (
-            <div key={i} role="alert" className="mr-4 bg-red-50 text-red-700 rounded-2xl px-3 py-2 text-sm">{m.text}</div>
+            <div key={i} role="alert" className="mr-4 bg-red-50 text-red-700 rounded-2xl px-3 py-2 text-sm">{errorText(m.text)}</div>
           ) : (
             <div key={i} className="mr-4 bg-slate-100 rounded-2xl rounded-bl-sm px-3 py-2 text-sm space-y-2">
               <p className="whitespace-pre-line">{m.reply}</p>
@@ -305,7 +350,7 @@ export function AiPanel({ doc, slide, presentationId, onClose, onBeforeSend, onR
             </div>
           ),
         )}
-        {pending && <div className="mr-4 bg-slate-100 rounded-2xl px-3 py-2 text-sm text-slate-500" role="status">Working on it…</div>}
+        {pending && <Working stage={stage} />}
         <div ref={endRef} />
       </div>
 
@@ -322,9 +367,30 @@ export function AiPanel({ doc, slide, presentationId, onClose, onBeforeSend, onR
             {attached.map((a) => <li key={a.id} className="inline-flex items-center gap-1 bg-slate-100 rounded-full pl-2.5 pr-1 py-0.5 text-xs max-w-[220px]"><span className="truncate">{a.title}</span><button type="button" aria-label={`Remove ${a.title}`} onClick={() => setAttached((x) => x.filter((y) => y.id !== a.id))} className="w-4 h-4 rounded-full hover:bg-slate-300 leading-none"><X aria-hidden size={16} /></button></li>)}
           </ul>
         )}
+        {longPaste !== null && (
+          // a paste that does not fit a message is never cut off silently: it is offered as a source, read in full
+          <div role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-900 space-y-2" data-testid="long-paste">
+            <p>That text is {longPaste.length.toLocaleString('en')} characters, longer than a message can be ({ASSIST_LIMITS.instruction.toLocaleString('en')}). Attach it as a source and it is read in full; then say what to do with it.</p>
+            {attachError && <p className="text-red-700">{attachError}</p>}
+            <div className="flex gap-2">
+              <button type="button" disabled={attaching} onClick={async () => {
+                setAttaching(true); setAttachError(null)
+                try { const src = await api.addTextSource(longPaste, pastedTitle(longPaste)); setAttached((x) => [...x, src]); setLongPaste(null); if (!text.trim()) setText('Use the attached text to ') }
+                catch (e) { setAttachError(e instanceof ApiError ? e.message : 'Could not attach it. Please try again.') }
+                finally { setAttaching(false) }
+              }} className="bg-primary text-white rounded-lg px-2.5 py-1 font-semibold disabled:opacity-50">{attaching ? 'Attaching…' : 'Attach it as a source'}</button>
+              <button type="button" onClick={() => { setLongPaste(null); setAttachError(null) }} className="border border-amber-300 rounded-lg px-2.5 py-1">Cancel</button>
+            </div>
+          </div>
+        )}
         <form onSubmit={(e) => { e.preventDefault(); void send(text) }} className="flex items-end gap-2">
           <textarea
-            value={text} onChange={(e) => setText(e.target.value)} rows={2} maxLength={1000} aria-label="Message to the AI assistant" disabled={waiting}
+            value={text} onChange={(e) => setText(e.target.value)} rows={2} maxLength={ASSIST_LIMITS.instruction} aria-label="Message to the AI assistant" disabled={waiting}
+            onPaste={(e) => {
+              const pasted = e.clipboardData.getData('text')
+              const el = e.currentTarget
+              if (text.length - (el.selectionEnd - el.selectionStart) + pasted.length > ASSIST_LIMITS.instruction) { e.preventDefault(); setLongPaste(pasted) }
+            }}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(text) } }}
             placeholder={`e.g. make slide ${slideNo} shorter`}
             className="flex-1 border border-border rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:border-primary"
@@ -332,6 +398,7 @@ export function AiPanel({ doc, slide, presentationId, onClose, onBeforeSend, onR
           <button type="button" onClick={() => setSourcesOpen(true)} aria-label="Attach a file or link" title="Attach a PDF, website or notes" disabled={waiting} className="border border-border rounded-xl px-2.5 py-2 text-sm hover:border-primary disabled:opacity-40"><Paperclip aria-hidden size={16} /></button>
           <button type="submit" disabled={waiting || !text.trim()} aria-label="Send" className="bg-primary text-white rounded-xl px-3 py-2 text-sm font-semibold disabled:opacity-40">Send</button>
         </form>
+        {text.length > ASSIST_LIMITS.instruction * 0.8 && <p className={`text-[11px] ${text.length >= ASSIST_LIMITS.instruction ? 'text-red-700' : 'text-slate-500'}`} aria-live="polite">{text.length.toLocaleString('en')} / {ASSIST_LIMITS.instruction.toLocaleString('en')} characters · attach longer text as a source</p>}
         <p className="text-[11px] text-slate-500">Enter to send · Shift+Enter for a new line{links.length > 0 && <> (includes reading {links.length === 1 ? 'the linked page' : `${links.length} linked pages`})</>} · changes apply live (⌘Z to undo)</p>
       </div>
       </>)}

@@ -65,6 +65,8 @@ export interface AssistantDeps {
   /** called once, after planning and BEFORE any writing call, with the price units of the whole message; throws when the person cannot pay */
   authorize?: ((units: number) => Promise<void>) | undefined
   newId?: (() => string) | undefined
+  /** what the request is doing now, for the person waiting (assistant/progress.ts); optional, never part of the answer */
+  progress?: ((text: string, done?: number, total?: number) => void) | undefined
 }
 
 export type AssistantOutcome =
@@ -121,7 +123,7 @@ export async function runAssistant(input: AssistantInput, deps: AssistantDeps): 
     // a confirmation that does not hold up any more (an edited or tampered payload) changes nothing and is said plainly, never an error
     if (!parsed.success) { const t = 'That confirmation does not match what I can do any more, so nothing was changed. Please ask again.'; return done(input, state, [], emptySlideOps(), [], [t], { refused: [t], already: [] }, 0, [], 0) }
     intent = parsed.data
-  } else intent = await deps.understand(understandPrompt(state, input.instruction, input.conversation ?? []))
+  } else { deps.progress?.('Reading your request'); intent = await deps.understand(understandPrompt(state, input.instruction, input.conversation ?? [])) }
   // "I can't do that yet" must never be a mistake: when the model returned ONLY unsupported parts, it gets one second look at the list of what can really be done for this person now (made by code from the registry)
   if (!input.confirm && intent.kind === 'edit' && intent.tasks.length === 0 && intent.unsupported.length > 0) {
     const first = understandPrompt(state, input.instruction, input.conversation ?? [])
@@ -138,6 +140,7 @@ export async function runAssistant(input: AssistantInput, deps: AssistantDeps): 
   // STEP 2 for objects: the first step only found that the message is about objects; which objects and what to do to them is decided now, with the full operation list
   const needOps = !input.confirm && intent.kind === 'edit' && deps.understandOps ? intent.tasks.map((t, i) => ({ t, i })).filter(({ t }) => t.family === 'element' && !(t.values as { ops?: unknown[] }).ops?.length) : []
   if (needOps.length && deps.understandOps) {
+    deps.progress?.('Finding the objects you mean')
     const got = await deps.understandOps(objectsPrompt(state, input.instruction, needOps.map(({ t, i }) => ({ index: i, targets: t.targets })), input.conversation ?? []))
     const byIndex = new Map(got.tasks.map((r) => [r.index, r]))
     const asked = got.tasks.find((r) => r.ask && needOps.some((n) => n.i === r.index))
@@ -198,6 +201,7 @@ export async function runAssistant(input: AssistantInput, deps: AssistantDeps): 
     state, virtual, ent: input.ent, instruction: said, material: input.material ?? [], newId, selection: state.selection, uploads: input.uploads ?? [], brand: input.brand ?? null, isOwner: input.isOwner ?? true, brandKits: input.brandKits, brandThemeList: input.brandThemeList, kits: input.kits, comments: input.comments, previousVersion: input.previousVersion, siteBrand: input.siteBrand, logoBrand: input.logoBrand, picture: input.picture, findSubject: input.findSubject, confirm: input.confirm,
     resolveAnchor: (refs) => resolveTargets(state, refs, { instruction: input.instruction, addedByTask, anchor: true }),
     write: <T,>(req: WriteRequest<T>) => deps.write(writePrompt(req, state.look, input.doc.language), req.schema, req.route, req.card),
+    ...(deps.progress ? { progress: deps.progress } : {}),
   })
 
   // PLAN PREVIEW: three or more separate changes in one message are listed first, in the person's own words, and confirmed; nothing runs or is charged before "Go ahead" (the confirm carries the very same tasks: no second reading)
@@ -238,8 +242,9 @@ export async function runAssistant(input: AssistantInput, deps: AssistantDeps): 
   let ui: UiAction | undefined
   const outside: string[] = []
   const answers: string[] = []
-  for (const p of planned) {
+  for (const [pi, p] of planned.entries()) {
     const ctx = ctxFor()
+    deps.progress?.(planned.length > 1 ? `${META[p.task.family].label} (${pi + 1} of ${planned.length})` : META[p.task.family].label)
     const r = targetsOf(state, p.task, p.cap, input.instruction, addedByTask)
     if (!r.ok) { refuse('refuse' in r ? r.refuse : r.ask.text); continue }
     notes.push(...r.notes)

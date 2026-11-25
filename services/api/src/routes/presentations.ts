@@ -1,13 +1,16 @@
+import { streamSSE } from 'hono/streaming'
+import type { MiddlewareHandler } from 'hono'
+import { followProgress, progressFor } from '../assistant/progress.ts'
 import { Hono } from 'hono'
 import { nothingChangedReply } from '../assistant/replies.ts'
 import { bodyLimit } from 'hono/body-limit'
-import { zValidator } from '@hono/zod-validator'
+import { zValidator } from '../lib/validate.ts'
 import { and, desc, eq, gte, isNull, notInArray, sql } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { z } from 'zod'
 import { AIUnavailableError } from '@prompttoppt/ai'
 import { PREMIUM_THEME_IDS, composeSlide, designById, expectationsFromChanges, getTheme, templateSlides } from '@prompttoppt/theme'
-import { aspectRatioSchema, compactSlides, findUrls, presentationSchema, type AccessTier, type Presentation, type SlideContent } from '@prompttoppt/validation'
+import { aspectRatioSchema, compactSlides, findUrls, presentationSchema, type AccessTier, type Presentation, type SlideContent, ASSIST_LIMITS, clip } from '@prompttoppt/validation'
 import { aiAssistInput, aiAssistOutput, aiAssistPrompt, compileAssist, isSmallTalk, LIST_SHORTFALL, morePointsAsked, aimsAtOneSlide, namesOneSlide, needsSlideChoice, photoApplied } from '../ai/ai-assist.ts'
 import { resolvePhoto } from '../ai/photo-resolve.ts'
 import { readLinkedPages } from '../ai/linked-pages.ts'
@@ -460,7 +463,42 @@ function kitActions(userId: string, ent: Awaited<ReturnType<typeof getEntitlemen
 
 const nothingAppliedReply = (notes: string[]) => (notes.length ? "I couldn't do that — see the note below." : CAPABILITIES_REPLY)
 
-presentations.post('/:id/ai-assist', rateLimit({ windowMs: 60_000, max: 15, key: (c) => `assist:${(c.get('session') as { user: { id: string } }).user.id}` }), zValidator('json', aiAssistInput), async (c) => {
+/**
+ * How long one assistant model call may take before the gateway moves on to the next model in its chain. A person is waiting in the chat, so the
+ * general 60 s is too long: one stuck call once held a chat for a minute. Set from the ledger (60 days, successful calls): understanding p99.9 = 27 s,
+ * writing p99.9 = 24 s; so these only ever stop calls that are already outliers, and the answer comes from the next model instead.
+ */
+const ASSIST_TIMEOUT_MS = { understand: 25_000, write: 30_000 } as const
+
+/** the request's progress is always ended when it answers, however it answers (the editor's progress stream then closes) */
+const endsProgress: MiddlewareHandler<AppEnv> = async (c, next) => {
+  try { await next() } finally { const rid = (c.req as unknown as { valid: (t: 'json') => { requestId?: string } }).valid('json')?.requestId; if (rid) progressFor(c.get('session')!.user.id, rid).end() }
+}
+
+/**
+ * What an assist request is doing right now (Server-Sent Events), for the person who sent it: "Reading your request", "Rewriting 12 slides (1 of 2)".
+ * Only that person's own request (the key is their account + the request id they chose); it closes when the request answers, or after 3 minutes.
+ */
+presentations.get('/:id/ai-assist/:requestId/progress', async (c) => {
+  const rid = c.req.param('requestId')
+  if (!/^[A-Za-z0-9_-]{8,64}$/.test(rid)) return c.json({ success: false, error: { code: 'BAD_REQUEST', message: 'Not a request id' } }, 400)
+  const viewer = c.get('session')!.user.id
+  c.header('X-Accel-Buffering', 'no'); c.header('Cache-Control', 'no-store')
+  return streamSSE(c, async (stream) => {
+    let open = true
+    const stop = followProgress(viewer, rid, (st) => {
+      if (!open) return
+      if (st === null) { open = false; void stream.writeSSE({ event: 'end', data: '{}' }).catch(() => {}).then(() => stream.close()); return }
+      void stream.writeSSE({ event: 'stage', data: JSON.stringify(st) }).catch(() => { open = false })
+    })
+    stream.onAbort(() => { open = false; stop() })
+    const until = Date.now() + 3 * 60_000
+    while (open && !stream.aborted && Date.now() < until) { await stream.sleep(15_000); if (open) void stream.writeSSE({ event: 'ping', data: '{}' }).catch(() => { open = false }) }
+    stop(); if (open) await stream.close()
+  })
+})
+
+presentations.post('/:id/ai-assist', rateLimit({ windowMs: 60_000, max: 15, key: (c) => `assist:${(c.get('session') as { user: { id: string } }).user.id}` }), zValidator('json', aiAssistInput), endsProgress, async (c) => {
   if (!aiConfigured) return c.json({ success: false, error: { code: 'AI_NOT_CONFIGURED', message: 'AI is not configured on this server' } }, 503)
   const id = c.req.param('id')
   const access = await resolveAccess(id, c.get('session')!.user.id)
@@ -483,7 +521,9 @@ presentations.post('/:id/ai-assist', rateLimit({ windowMs: 60_000, max: 15, key:
     if (s.locked) return c.json({ success: false, error: { code: 'SLIDE_LOCKED', message: 'This slide is locked. Unlock it to use AI.' } }, 409)
   }
 
-  if (await isFlagOn('assistant_v2', { userId })) return assistV2(c, { id, userId, isOwner, input, ent, doc, baseVersion: p.latestVersion })
+  const progress = progressFor(c.get('session')!.user.id, input.requestId)
+  progress.stage('Reading your request')
+  if (await isFlagOn('assistant_v2', { userId })) return assistV2(c, { id, userId, isOwner, input, ent, doc, baseVersion: p.latestVersion, progress: progress.stage })
 
   // A request about ONE slide that does not say which: ask before anything is read, charged or guessed (see needsSlideChoice)
   if (needsSlideChoice(input.instruction, input.scope, Boolean(input.activeSlideId))) {
@@ -571,7 +611,7 @@ presentations.post('/:id/ai-assist', rateLimit({ windowMs: 60_000, max: 15, key:
  * Credits: one AI-edit unit (plus one per link read) is reserved before anything runs; a second unit is reserved before any writing call when
  * more than one slide will be written. Nothing applied, a question back, or putting back the assistant's own change = refunded.
  */
-async function assistV2(c: any, o: { id: string; userId: string; isOwner: boolean; input: z.infer<typeof aiAssistInput>; ent: Awaited<ReturnType<typeof getEntitlements>>; doc: Presentation; baseVersion: number }) {
+async function assistV2(c: any, o: { id: string; userId: string; isOwner: boolean; input: z.infer<typeof aiAssistInput>; ent: Awaited<ReturnType<typeof getEntitlements>>; doc: Presentation; baseVersion: number; progress?: (text: string, done?: number, total?: number) => void }) {
   const { id, userId, isOwner, input, ent, doc, baseVersion } = o
   const empty = { theme: null, edits: [], additions: [], reverts: [], images: [], applied: [], notes: [], rewrite: null, creditsCharged: 0, sources: [] as unknown[] }
   const { rows } = await catalog()
@@ -601,10 +641,11 @@ async function assistV2(c: any, o: { id: string; userId: string; isOwner: boolea
     const outcome = await runAssistant(
       { doc: { ...doc, sources: [...(doc.sources ?? []), ...added] }, ent, instruction: input.instruction, conversation: input.conversation, activeSlideId: input.activeSlideId, onlySlideId: input.scope === 'slide' ? input.slideId : undefined, recent: input.recent, material, hasSources: sources.length > 0, selection: input.selection, uploads: await loadUploads(userId), confirm: input.confirm, brand: brandAllowed(ent) ? await loadBrand(userId) : null, brandKits: brandAllowed(ent) ? await loadBrandKits(userId) : [], brandThemeList: brandAllowed(ent) ? await listBrandThemes(userId) : [], comments: assistantComments(id, userId, c.get('session')!.user), previousVersion: () => previousVersionOf(id), kits: brandAllowed(ent) && isOwner ? kitActions(userId, ent) : undefined, siteBrand: brandAllowed(ent) ? (u: string) => readSiteBrandForAssist(userId, u) : undefined, picture: (u: string) => storedPicture(userId, u), findSubject: async (pic, subject) => cleanBox(await gateway.run({ route: 'fast', requestType: 'assist_vision', ...subjectBoxPrompt(subject), images: [{ mimeType: pic.mime, data: pic.bytes }], schema: subjectBoxOutput, ctx, maxOutputTokens: 200, thinkingBudget: 0 })), logoBrand: brandAllowed(ent) ? async (u: string) => { const bytes = await pictureBytes(userId, u); return bytes ? readLogo(bytes) : { ok: false as const, say: 'I can only use one of your own uploaded pictures as the logo.' } } : undefined, isOwner, planName: ent.plan?.name, flags: { background_removal: await isFlagOn('background_removal', { userId }), image_generation: await isFlagOn('image_generation', { userId }) } },
       {
-        understand: (p) => gateway.run({ route: 'fast', requestType: 'assist_understand', ...p, schema: intentSchema, ctx, maxOutputTokens: 900, thinkingBudget: 0 }),
-        understandOps: (p) => gateway.run({ route: 'fast', requestType: 'assist_understand', ...p, schema: elementOpsAnswer, ctx, maxOutputTokens: 1200, thinkingBudget: 0 }),
-        write: (p, schema, route) => { if (p.prompt.includes('<source')) materialSeen = true; return gateway.run({ route, ...(route === 'quality' ? { model: picked.id } : {}), requestType: 'assist_write', ...p, schema, ctx, maxOutputTokens: 8000 }) },
+        understand: (p) => gateway.run({ route: 'fast', requestType: 'assist_understand', ...p, schema: intentSchema, ctx, maxOutputTokens: 900, thinkingBudget: 0, timeoutMs: ASSIST_TIMEOUT_MS.understand }),
+        understandOps: (p) => gateway.run({ route: 'fast', requestType: 'assist_understand', ...p, schema: elementOpsAnswer, ctx, maxOutputTokens: 1200, thinkingBudget: 0, timeoutMs: ASSIST_TIMEOUT_MS.understand }),
+        write: (p, schema, route) => { if (p.prompt.includes('<source')) materialSeen = true; return gateway.run({ route, ...(route === 'quality' ? { model: picked.id } : {}), requestType: 'assist_write', ...p, schema, ctx, maxOutputTokens: 8000, timeoutMs: ASSIST_TIMEOUT_MS.write }) },
         authorize: async (units) => { if (units > 1) { extra = unit * (units - 1); await reserveCredits(userId, extra, 'ai_assist', `${input.requestId}:more`, { strict: true }) } },
+        progress: o.progress,
       },
     )
     const reply = (data: Record<string, unknown>) => c.json({ success: true, data: { ...empty, model: picked.id, sources: added, ...data } })
@@ -758,7 +799,9 @@ presentations.post('/:id/ai-assist/:requestId/outcome', rateLimit({ windowMs: 60
 })
 
 // ─── AI assistant conversation (persisted per presentation) ──────────────────────────────────────────────
-const chatBody = z.object({ role: z.enum(['user', 'ai', 'error']), text: z.string().max(4000).optional(), reply: z.string().max(4000).optional(), applied: z.array(z.string().max(300)).max(30).optional(), notes: z.array(z.string().max(400)).max(20).optional(), credits: z.number().optional(), undo: z.string().max(100_000).optional(), revertedUndo: z.array(z.string().max(64)).max(10).optional(), images: z.array(z.record(z.string().max(40), z.union([z.string().max(600), z.number(), z.boolean(), z.null()])).refine((o) => Object.keys(o).length <= 12, 'too many fields')).max(6).optional() })
+/** a saved chat message. What the assistant wrote (reply, change lines, notes) is trimmed to the sizes kept, never a reason to lose the message; hard caps stop unbounded data */
+const kept = (max: number) => z.string().max(20_000).transform((t) => clip(t, max))
+const chatBody = z.object({ role: z.enum(['user', 'ai', 'error']), text: kept(ASSIST_LIMITS.instruction).optional(), reply: kept(4000).optional(), applied: z.array(kept(300)).max(200).transform((a) => a.slice(0, 30)).optional(), notes: z.array(kept(400)).max(200).transform((a) => a.slice(0, 20)).optional(), credits: z.number().optional(), undo: z.string().max(100_000).optional(), revertedUndo: z.array(z.string().max(64)).max(10).optional(), images: z.array(z.record(z.string().max(40), z.union([z.string().max(600), z.number(), z.boolean(), z.null()])).refine((o) => Object.keys(o).length <= 12, 'too many fields')).max(6).optional() })
 const MAX_CHAT = 200
 const MAX_VERSIONS = 100
 const MAX_FREE_PLANNING_PER_DAY = 25

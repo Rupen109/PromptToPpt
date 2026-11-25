@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { zValidator } from '@hono/zod-validator'
+import { zValidator } from '../lib/validate.ts'
 import { nanoid } from 'nanoid'
 import { ipOf } from '../lib/audit.ts'
 import { z } from 'zod'

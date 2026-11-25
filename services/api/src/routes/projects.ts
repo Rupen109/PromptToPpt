@@ -1,4 +1,4 @@
-import { zValidator } from '@hono/zod-validator'
+import { zValidator } from '../lib/validate.ts'
 import { and, count, desc, eq, isNull } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { nanoid } from 'nanoid'

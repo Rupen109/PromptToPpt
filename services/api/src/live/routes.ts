@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { streamSSE } from 'hono/streaming'
-import { zValidator } from '@hono/zod-validator'
+import { zValidator } from '../lib/validate.ts'
 import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { resolveAccess } from '../collab/access.ts'

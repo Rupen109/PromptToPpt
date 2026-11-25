@@ -542,6 +542,8 @@ export function createApiClient({ apiUrl, sessionUser, onSessionChanged }: ApiCl
     renameProject: (id: string, name: string) => request<{ id: string; name: string }>(`/api/v1/projects/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
     deleteProject: (id: string) => request<null>(`/api/v1/projects/${encodeURIComponent(id)}`, { method: 'DELETE' }),
     /** Server-Sent Events URL for live editing of one deck (EventSource must be opened with `withCredentials`). */
+    /** Server-Sent Events of what one AI assistant request is doing now ("stage" events, then "end"); open with `withCredentials` before sending the request */
+    assistProgressUrl: (id: string, requestId: string) => `${base}/api/v1/presentations/${encodeURIComponent(id)}/ai-assist/${encodeURIComponent(requestId)}/progress`,
     liveUrl: (id: string, clientId: string) => `${base}/api/v1/presentations/${encodeURIComponent(id)}/live?client=${encodeURIComponent(clientId)}`,
     sendPresence: (id: string, body: { clientId: string; slideId: string | null; selection: string[]; editing: string | null; cursor: { x: number; y: number } | null }) =>
       request<{ ok: true }>(`/api/v1/presentations/${encodeURIComponent(id)}/live/presence`, { method: 'POST', body: JSON.stringify(body), keepalive: true }),

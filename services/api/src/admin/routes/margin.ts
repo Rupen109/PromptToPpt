@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
-import { zValidator } from '@hono/zod-validator'
+import { zValidator } from '../../lib/validate.ts'
 import type { AppEnv } from '../../middleware/session.ts'
 import { marginBucketSchema, plans, summary, timeseries, topUsers, topUsersSchema } from '../margin.ts'
 import { activity, planEconomics, sinceLastCheckin } from '../activity.ts'

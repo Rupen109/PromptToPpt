@@ -35,7 +35,11 @@ describe('assistant chat history', () => {
     expect(list[0].text).toBe('hello')
     expect((await api(other.cookie, 'GET', `/presentations/${deck}/chat`)).status).toBe(404)
     expect((await post(other.cookie, [{ role: 'user', text: 'x' }])).status).toBe(404)
-    expect((await post(u.cookie, [{ role: 'user', text: 'x'.repeat(5000) }])).status).toBe(400)
+    // what the assistant or the person wrote is kept trimmed to the shared limit (a long line never loses the message); only absurd sizes are refused
+    expect((await post(u.cookie, [{ role: 'ai', reply: 'ok', applied: ['y'.repeat(900)], notes: [] }])).status).toBe(200)
+    const trimmed = (await json(await api(u.cookie, 'GET', `/presentations/${deck}/chat`))).data.at(-1)
+    expect(trimmed.applied[0].length).toBeLessThanOrEqual(300)
+    expect((await post(u.cookie, [{ role: 'user', text: 'x'.repeat(30_000) }])).status).toBe(400)
     expect((await api(u.cookie, 'DELETE', `/presentations/${deck}/chat`)).status).toBe(200)
     expect((await json(await api(u.cookie, 'GET', `/presentations/${deck}/chat`))).data).toEqual([])
   })

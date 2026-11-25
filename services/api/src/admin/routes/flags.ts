@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { zValidator } from '@hono/zod-validator'
+import { zValidator } from '../../lib/validate.ts'
 import { flagBody, listFlags, resetFlag, setFlag } from '../flags.ts'
 import { isFlagKey } from '../../flags/registry.ts'
 import { audit, ipOf } from '../../lib/audit.ts'

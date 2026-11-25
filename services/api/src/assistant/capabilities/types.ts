@@ -78,6 +78,8 @@ export interface Step {
 }
 
 export interface RunCtx {
+  /** say what this step is doing now, for the person waiting ("Rewriting 12 slides"); optional */
+  progress?: ((text: string, done?: number, total?: number) => void) | undefined
   /** the owner of the presentation (an invited editor cannot export or share) */
   isOwner?: boolean | undefined
   /** the deck's comment threads and the Comments panel's own actions (as the person) */

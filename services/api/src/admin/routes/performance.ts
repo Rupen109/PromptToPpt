@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { zValidator } from '@hono/zod-validator'
+import { zValidator } from '../../lib/validate.ts'
 import type { AppEnv } from '../../middleware/session.ts'
 import { generation, overview, perfQuery, queue, timeseries, timeseriesQuery } from '../performance.ts'
 

@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
-import { zValidator } from '@hono/zod-validator'
+import { zValidator } from '../lib/validate.ts'
 import { z } from 'zod'
 import { AIUnavailableError } from '@prompttoppt/ai'
 import { aiConfigured, gateway } from '../ai/gateway.ts'
