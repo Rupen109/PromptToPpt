@@ -1,5 +1,8 @@
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { and, eq } from 'drizzle-orm'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, onTestFinished } from 'vitest'
 import { app } from '../app.ts'
 import { db } from '../db/index.ts'
 import { aiUsageEvent, creditBalance, generatedAsset } from '../db/schema.ts'
@@ -194,7 +197,8 @@ describe('prompt + storage helpers', () => {
     expect(extensionFor('image/jpeg')).toBe('jpg')
   })
   it('local disk round-trips and S3 storage speaks the SDK shape (fake client)', async () => {
-    const dir = `/private/tmp/claude-502/assets-test-${rid()}`
+    const dir = await mkdtemp(join(tmpdir(), 'assets-test-')) // the system's own temp folder (CI runs as a normal user on Linux)
+    onTestFinished(() => rm(dir, { recursive: true, force: true }))
     const local = new LocalDiskStorage(dir)
     const key = `${'b'.repeat(32)}.png`
     await local.put(key, new Uint8Array([1, 2, 3]))
