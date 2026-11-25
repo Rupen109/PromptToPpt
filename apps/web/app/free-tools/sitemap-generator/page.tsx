@@ -27,7 +27,7 @@ export default function Page() {
         { q: 'Why is a page I expected missing?', a: 'Pages are found by following links from your home page (and from your existing sitemap). A page that nothing links to, a page behind a login, or a page that needs JavaScript to show its links may not be found.' },
         { q: 'Is it free?', a: 'Yes, with no sign-up. To keep it fair for everyone there is a limit on how many sites one person can scan each hour.' },
       ]}
-      related={[{ href: '/free-tools/pdf-to-jpg', label: 'PDF to JPG converter' }, { href: '/free-tools/presentation-outline-generator', label: 'Presentation outline generator' }, { href: '/templates', label: 'Presentation templates' }]}
+      related={[{ href: '/free-tools/pdf-to-jpg', label: 'Free PDF to JPG converter' }, { href: '/free-tools/presentation-outline-generator', label: 'Free presentation outline generator' }, { href: '/templates', label: 'Free presentation templates' }]}
     >
       <SitemapTool />
     </ToolShell>

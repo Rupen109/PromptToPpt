@@ -27,7 +27,7 @@ export default function Page() {
         { q: 'What happens to my recording?', a: 'It is sent to our AI provider to be transcribed and is not stored by us. The text is kept for one hour so the editor can use it, and removed if you do not continue. We do not train models on it.' },
         { q: 'Can I use a video from YouTube or Instagram?', a: 'This tool is for recordings you made or have the right to use. We do not download videos from other websites.' },
       ]}
-      related={[{ href: '/free-tools/youtube-transcript-to-slides', label: 'YouTube transcript to slides' }, { href: '/free-tools/pdf-to-presentation', label: 'PDF to presentation' }, { href: '/templates', label: 'Presentation templates' }]}
+      related={[{ href: '/free-tools/youtube-transcript-to-slides', label: 'Free YouTube transcript to slides' }, { href: '/free-tools/pdf-to-presentation', label: 'Free PDF to presentation' }, { href: '/templates', label: 'Free presentation templates' }]}
     >
       <MediaTool />
     </ToolShell>

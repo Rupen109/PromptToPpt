@@ -26,7 +26,7 @@ export default function Page() {
         { q: 'What happens to my PDF?', a: 'It is read for this request and removed within an hour if you do not continue. We do not train models on it.' },
         { q: 'Which PDFs work best?', a: 'PDFs with selectable text. Scanned image-only PDFs are not supported yet.' },
       ]}
-      related={[{ href: '/free-tools/pdf-editor', label: 'Free PDF editor' }, { href: '/free-tools/presentation-outline-generator', label: 'Presentation outline generator' }, { href: '/templates', label: 'Presentation templates' }]}
+      related={[{ href: '/free-tools/pdf-editor', label: 'Free PDF editor' }, { href: '/free-tools/presentation-outline-generator', label: 'Free presentation outline generator' }, { href: '/templates', label: 'Free presentation templates' }]}
     >
       <PdfTool />
     </ToolShell>

@@ -26,7 +26,7 @@ export default function Page() {
         { q: 'Can I edit the outline?', a: 'Copy it anywhere, or open it in the editor where every title and bullet can be changed before and after the slides are designed.' },
         { q: 'Does it make up numbers?', a: 'No. The outline is built from your topic and avoids inventing statistics, quotes or customer names.' },
       ]}
-      related={[{ href: '/free-tools/pdf-to-presentation', label: 'PDF to presentation' }, { href: '/templates', label: 'Presentation templates' }]}
+      related={[{ href: '/free-tools/pdf-to-presentation', label: 'Free PDF to presentation' }, { href: '/templates', label: 'Free presentation templates' }]}
     >
       <OutlineTool />
     </ToolShell>

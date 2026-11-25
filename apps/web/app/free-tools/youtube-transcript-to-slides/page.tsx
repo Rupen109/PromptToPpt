@@ -26,7 +26,7 @@ export default function Page() {
         { q: 'What happens to my transcript?', a: 'It is kept for one hour so the editor can use it, and removed if you do not continue. We do not train models on it.' },
         { q: 'Does it work for videos without captions?', a: 'You need some text to start from. Many videos have automatic captions; if a video has none, there is no transcript to copy.' },
       ]}
-      related={[{ href: '/free-tools/pdf-to-presentation', label: 'PDF to presentation' }, { href: '/free-tools/presentation-outline-generator', label: 'Presentation outline generator' }, { href: '/templates', label: 'Presentation templates' }]}
+      related={[{ href: '/free-tools/pdf-to-presentation', label: 'Free PDF to presentation' }, { href: '/free-tools/presentation-outline-generator', label: 'Free presentation outline generator' }, { href: '/templates', label: 'Free presentation templates' }]}
     >
       <TranscriptTool />
     </ToolShell>

@@ -35,7 +35,7 @@ export async function GET() {
 ${FREE_TOOLS.map((t) => `- [${t.name}](${SITE_URL}${t.href}): ${t.text}`).join('\n')}
 
 ## Free template collections
-${LANDINGS.map((l) => `- [${l.keyword}](${SITE_URL}/free-templates/${l.slug}): also ${l.also.join(', ')}`).join('\n')}
+${LANDINGS.map((l) => `- [Free ${l.keyword}](${SITE_URL}/free-templates/${l.slug}): also ${l.also.join(', ')}`).join('\n')}
 
 ## Answers to common questions
 ${GENERAL_FAQS.map((f) => `### ${f.q}\n${f.a}`).join('\n\n')}

@@ -110,7 +110,7 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
         <section className="px-5 md:px-10 py-12" aria-labelledby="more-h">
           <div className="max-w-[1280px] mx-auto">
             <h2 id="more-h" className="font-heading font-extrabold text-xl text-foreground">More template collections</h2>
-            <ul className="mt-4 flex flex-wrap gap-3">{others.map((o) => <li key={o.slug}><Link href={`/free-templates/${o.slug}`} className="inline-block rounded-full border-2 border-foreground bg-white px-4 py-2 text-sm font-bold text-foreground hover:bg-secondary">{o.keyword}</Link></li>)}</ul>
+            <ul className="mt-4 flex flex-wrap gap-3">{others.map((o) => <li key={o.slug}><Link href={`/free-templates/${o.slug}`} className="inline-block rounded-full border-2 border-foreground bg-white px-4 py-2 text-sm font-bold text-foreground hover:bg-secondary">Free {o.keyword}</Link></li>)}</ul>
           </div>
         </section>
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(ld).replace(/</g, '\\u003c') }} />

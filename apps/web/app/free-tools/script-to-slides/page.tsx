@@ -27,7 +27,7 @@ export default function Page() {
         { q: 'Is it free?', a: 'Yes, no sign-up is needed for the outline. There is a daily limit per visitor. Making the full designed deck uses the free plan credits.' },
         { q: 'What happens to my script?', a: 'It is read by AI for this request and removed within an hour if you do not continue. We do not train models on it.' },
       ]}
-      related={[{ href: '/free-tools/video-to-slides', label: 'Audio & video to slides' }, { href: '/free-tools/youtube-transcript-to-slides', label: 'YouTube transcript to slides' }, { href: '/free-tools/presentation-outline-generator', label: 'Presentation outline generator' }]}
+      related={[{ href: '/free-tools/video-to-slides', label: 'Free audio & video to slides' }, { href: '/free-tools/youtube-transcript-to-slides', label: 'Free YouTube transcript to slides' }, { href: '/free-tools/presentation-outline-generator', label: 'Free presentation outline generator' }]}
     >
       <ScriptTool />
     </ToolShell>

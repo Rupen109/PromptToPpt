@@ -25,7 +25,7 @@ const LINK = 'relative inline-flex items-center rounded-lg px-3 py-2 font-headin
 export function Header() {
   // plain data only: the header is on every page, so the menu must not import the template designs itself
   const collections = LANDINGS.map((l) => ({
-    href: `/free-templates/${l.slug}`, label: l.keyword, blurb: CATEGORIES.find((c) => c.id === l.category)?.blurb ?? '',
+    href: `/free-templates/${l.slug}`, label: `Free ${l.keyword}`, blurb: CATEGORIES.find((c) => c.id === l.category)?.blurb ?? '',
     designs: DESIGNS.filter((d) => d.category === l.category).slice(0, 6).map((d) => ({ id: d.id, name: d.name, tagline: d.tagline })),
   }))
   return (

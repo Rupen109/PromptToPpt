@@ -35,7 +35,7 @@ export default function Page() {
         { q: 'How do I sign a PDF?', a: 'Choose "Sign", draw your signature with your mouse, finger or pen, and click "Add signature". It is placed on the page as a picture with a see-through background. Drag it where you want it and resize it with the corners.' },
         { q: 'How do I reorder, rotate or delete pages?', a: 'Click a page in the list of thumbnails and use the buttons under it to rotate, move up or down, duplicate, add a blank page after it or delete it. On a computer you can also drag thumbnails.' },
       ]}
-      related={[{ href: '/free-tools/pdf-to-jpg', label: 'PDF to JPG converter' }, { href: '/free-tools/pdf-to-ppt', label: 'PDF to PPT converter' }, { href: '/free-tools/pdf-to-presentation', label: 'AI PDF to presentation' }, { href: '/templates', label: 'Presentation templates' }]}
+      related={[{ href: '/free-tools/pdf-to-jpg', label: 'Free PDF to JPG converter' }, { href: '/free-tools/pdf-to-ppt', label: 'Free PDF to PPT converter' }, { href: '/free-tools/pdf-to-presentation', label: 'Free AI PDF to presentation' }, { href: '/templates', label: 'Free presentation templates' }]}
     >
       <PdfEditorTool />
     </ToolShell>

@@ -23,7 +23,10 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   if (!d) return {}
   const cat = categoryOf(d.category)
   return withShare({
-    title: firstFit([`${d.name}: ${cat.name} presentation template`, `${d.name}: ${cat.name} template`, `${d.name} presentation template`], 47),
+    // "Free" only on the templates that are free (3 per category); a Pro template is never called free
+    title: d.premium
+      ? firstFit([`${d.name}: ${cat.name} presentation template`, `${d.name}: ${cat.name} template`, `${d.name} presentation template`], 47)
+      : firstFit([`Free ${d.name}: ${cat.name} presentation template`, `Free ${d.name} ${cat.name} template`, `Free ${d.name} presentation template`, `Free ${d.name} template`], 47),
     description: fit(`${d.tagline}. A ready-made ${SKELETONS[d.category].length}-slide ${cat.name.toLowerCase()} deck with animated transitions. Open it in the editor and make it yours.`, 155),
     alternates: { canonical: `/templates/${d.id}` },
   })
@@ -56,7 +59,7 @@ export default async function TemplatePage({ params }: { params: Promise<{ id: s
           <TemplatePreview designId={d.id} />
           <aside className="lg:sticky lg:top-28">
             <div className="font-heading font-extrabold text-xs uppercase tracking-wide text-primary mb-2">{cat.name} · {d.premium ? 'Pro' : 'Free'}</div>
-            <h1 className="font-heading font-extrabold text-4xl text-foreground leading-tight mb-3">{d.name}</h1>
+            <h1 className="font-heading font-extrabold text-4xl text-foreground leading-tight mb-3">{d.premium ? d.name : `Free ${d.name} template`}</h1>
             <p className="text-slate-700 text-lg mb-6">{d.tagline}.</p>
             <ul className="text-sm text-slate-700 space-y-2 mb-8">
               <li className="flex items-start gap-2"><LayoutList aria-hidden size={16} className="mt-1 shrink-0" /><span><b>{slides.length} slides</b>: {cat.covers}.</span></li>
