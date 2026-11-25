@@ -136,10 +136,14 @@ export function scaledSize(role: TextElement['role'], size: number): number {
   }
 }
 
+/** the weight a role is drawn at in this design (undefined = the role's default, see textBaseWeight) */
+const roleWeight = (c: Ctx, role: TextElement['role']) => (role === 'title' ? c.style.headingWeight : role === 'metric' ? Math.max(700, c.style.headingWeight) : role === 'heading' ? Math.max(600, c.style.headingWeight - 100) : undefined)
+
 /** Height a block of text needs at the scale's size for `role` (what `text()` would choose when the box is roomy). */
 export function textNeed(c: Ctx, role: TextElement['role'], paragraphs: Para, width: number, size: number): number {
   const s = scaledSize(role, size)
-  const proto = { role, uppercase: HEADINGS.has(role) && role !== 'metric' ? c.style.uppercaseHeadings : false, letterSpacing: role === 'title' || role === 'heading' ? c.style.headingTracking : 0 }
+  const weight = roleWeight(c, role)
+  const proto = { role, uppercase: HEADINGS.has(role) && role !== 'metric' ? c.style.uppercaseHeadings : false, letterSpacing: role === 'title' || role === 'heading' ? c.style.headingTracking : 0, ...(weight ? { weight } : {}) }
   return estimateTextHeight(paragraphs, s, width, metricOptsFor(proto as TextElement, c.theme))
 }
 /**
@@ -156,8 +160,9 @@ export function text(c: Ctx, role: TextElement['role'], paragraphs: Para, x: num
   const heading = HEADINGS.has(role)
   const uppercase = o.uppercase ?? (heading && role !== 'metric' ? c.style.uppercaseHeadings : false)
   const tracking = o.tracking ?? (role === 'title' || role === 'heading' ? c.style.headingTracking : 0)
-  const weight = o.weight ?? (role === 'title' ? c.style.headingWeight : role === 'metric' ? Math.max(700, c.style.headingWeight) : role === 'heading' ? Math.max(600, c.style.headingWeight - 100) : undefined)
-  const proto = { role, uppercase, letterSpacing: tracking, lineHeight: o.lineHeight }
+  const weight = o.weight ?? roleWeight(c, role)
+  // measured at the weight it is drawn at (bold figures and headings are wider than body text)
+  const proto = { role, uppercase, letterSpacing: tracking, lineHeight: o.lineHeight, ...(weight ? { weight } : {}) }
   // the smallest size the fitter may shrink to: what the layout asked for, else the role's floor from the scale. Text that still does not fit is flagged `small_text` by the
   // validator, and the generator then shortens that slide's words instead of living with tiny type.
   const floor = Math.min(size, o.min ?? TYPE_FLOOR[role] ?? Math.round(size * 0.5))

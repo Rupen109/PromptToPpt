@@ -1,8 +1,9 @@
-import type { TextElement, Theme } from '@prompttoppt/validation'
+import { textBaseWeight, type TextElement, type Theme } from '@prompttoppt/validation'
+import { FONT_ADVANCES, GLYPHS, WEIGHTS } from './font-widths'
 
 /**
- * Average glyph advance as a fraction of the font size. Display and geometric fonts differ a lot (Bebas Neue is narrow,
- * Poppins/Montserrat wide), so overflow estimation uses a per-family factor. Unknown fonts get a conservative default.
+ * Average glyph advance as a fraction of the font size, for fonts and characters the measured table (font-widths.ts) does not cover. The table is what normally
+ * decides: real per-character widths at the weight the text is drawn, so a short bold figure like "99.95%" is measured as wide as it really is.
  */
 export const FONT_WIDTH: Record<string, number> = {
   Inter: 0.54, 'Plus Jakarta Sans': 0.56, 'DM Sans': 0.55, Manrope: 0.56, Outfit: 0.54, 'Space Grotesk': 0.56, Sora: 0.58, Poppins: 0.6, Montserrat: 0.62,
@@ -23,35 +24,58 @@ export interface MetricOpts {
   lineHeight?: number | undefined
   /** the gap between paragraphs, in multiples of the size (the slide draws `paraGap ?? 0.5`) */
   paraGap?: number | undefined
+  /** the weight the text is drawn at (bold text is wider); default 400 */
+  weight?: number | undefined
 }
 
 const HEADING_ROLES = new Set<TextElement['role']>(['title', 'heading', 'metric', 'subtitle'])
 /** Metric options for an element, derived the same way the renderer picks fonts — so estimator and renderer agree. */
-export function metricOptsFor(el: Pick<TextElement, 'role' | 'uppercase' | 'letterSpacing' | 'lineHeight'> & { paraGap?: number | undefined }, theme: Pick<Theme, 'fonts'>): MetricOpts {
-  return { font: HEADING_ROLES.has(el.role) ? theme.fonts.heading : theme.fonts.body, uppercase: el.uppercase, tracking: el.letterSpacing, lineHeight: el.lineHeight, paraGap: el.paraGap }
+export function metricOptsFor(el: Pick<TextElement, 'role' | 'uppercase' | 'letterSpacing' | 'lineHeight'> & { weight?: number | undefined; paraGap?: number | undefined }, theme: Pick<Theme, 'fonts'>): MetricOpts {
+  return { font: HEADING_ROLES.has(el.role) ? theme.fonts.heading : theme.fonts.body, uppercase: el.uppercase, tracking: el.letterSpacing, lineHeight: el.lineHeight, paraGap: el.paraGap, weight: textBaseWeight(el) }
 }
 
-const charW = (fontSize: number, o: MetricOpts) => fontSize * ((FONT_WIDTH[o.font ?? ''] ?? DEFAULT_WIDTH) * (o.uppercase ? 1.14 : 1)) + (o.tracking ?? 0)
+const GLYPH_INDEX = new Map([...GLYPHS].map((ch, i) => [ch, i]))
+const parsed = new Map<string, number[] | null>()
+/** the measured widths (thousandths of the size) for a font at the nearest measured weight, or null when the font is not in the table */
+function advances(font: string | undefined, weight: number): number[] | null {
+  const w = WEIGHTS.reduce((best, x) => (Math.abs(x - weight) < Math.abs(best - weight) || (Math.abs(x - weight) === Math.abs(best - weight) && x > best) ? x : best), WEIGHTS[0])
+  const key = `${font}|${w}`
+  if (!parsed.has(key)) { const row = font ? FONT_ADVANCES[font]?.[w] : undefined; parsed.set(key, row ? row.match(/../g)!.map((x) => parseInt(x, 36)) : null) }
+  return parsed.get(key)!
+}
+
+/** how wide this text is drawn on one line, in px */
+export function textWidth(text: string, fontSize: number, o: MetricOpts = {}): number {
+  const t = o.uppercase ? text.toUpperCase() : text
+  const table = advances(o.font, o.weight ?? 400)
+  const avg = (FONT_WIDTH[o.font ?? ''] ?? DEFAULT_WIDTH) * (table || !o.uppercase ? 1 : 1.14)
+  let units = 0
+  let n = 0
+  for (const ch of t) {
+    const i = table ? GLYPH_INDEX.get(ch) : undefined
+    units += i !== undefined ? table![i]! / 1000 : avg
+    n++
+  }
+  return units * fontSize + (o.tracking ?? 0) * n
+}
 
 export function estimateLines(text: string, fontSize: number, width: number, o: MetricOpts = {}): number {
-  const perLine = Math.max(1, Math.floor(width / charW(fontSize, o)))
+  const space = textWidth(' ', fontSize, o)
   let lines = 0
   for (const hard of text.split('\n')) {
-    // greedy word-wrap simulation — much closer to real layout than length / perLine
+    // greedy word wrap on measured widths, as the browser does it; a word wider than the line breaks across lines (the slide allows breaking anywhere)
     let cur = 0
     let n = 1
-    for (const w of hard.split(/\s+/).filter(Boolean)) {
-      const len = w.length
-      if (cur === 0) cur = len
-      else if (cur + 1 + len <= perLine) cur += 1 + len
-      else {
-        n++
-        cur = len
-      }
-      while (cur > perLine) {
-        n++
-        cur -= perLine
-      }
+    for (const word of hard.split(/\s+/).filter(Boolean)) {
+      // a hyphen is a break opportunity too ("MONTH-ON-" / "MONTH"), with no space before the next piece
+      word.match(/[^-]*-+|[^-]+$/g)!.forEach((piece, k) => {
+        const w = textWidth(piece, fontSize, o)
+        const gap = k === 0 ? space : 0
+        if (cur === 0) cur = w
+        else if (cur + gap + w <= width) cur += gap + w
+        else { n++; cur = w }
+        while (cur > width) { n++; cur -= width }
+      })
     }
     lines += n
   }

@@ -67,7 +67,7 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
                 <li key={d.id}>
                   <Card index={i % 6} className="group/card overflow-hidden h-full">
                     <HoverLink href={`/templates/${d.id}`} className="block" aria-label={`${d.name} — ${d.tagline}`}>
-                      <div className="p-5 pb-0"><div className="border-2 border-foreground rounded-2xl overflow-hidden"><TemplateThumb designId={d.id} index={i} /></div></div>
+                      <div className="p-5 pb-0"><div className="border-2 border-foreground rounded-2xl overflow-hidden"><TemplateThumb designId={d.id} /></div></div>
                       <div className="p-5">
                         <div className="font-heading font-extrabold text-xs tracking-wide uppercase text-primary">{d.premium ? 'Pro' : 'Free'}</div>
                         <h3 className="font-heading font-extrabold text-xl text-foreground mt-1">{d.name}</h3>

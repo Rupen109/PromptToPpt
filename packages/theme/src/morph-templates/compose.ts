@@ -1,5 +1,5 @@
-import type { Slide, SlideContent, SlideElement, Theme } from '@prompttoppt/validation'
-import { FONT_WIDTH, estimateTextHeight, fitFontSize, metricOptsFor } from '../text-metrics'
+import { textBaseWeight, type Slide, type SlideContent, type SlideElement, type Theme } from '@prompttoppt/validation'
+import { estimateTextHeight, fitFontSize, metricOptsFor, textWidth } from '../text-metrics'
 import type { MorphTemplate, TemplateObject, TemplatePara, TemplatePicture, TemplateRun } from './types'
 
 /**
@@ -67,7 +67,8 @@ function keepOnOneLine(el: TextEl, o: TemplateObject, tpl: MorphTemplate, r0: Te
   const face = el.role === 'title' || el.role === 'heading' ? tpl.fonts.heading : tpl.fonts.body
   const text = el.paragraphs[0]!.runs.map((r) => r.text).join('')
   const capitals = r0.cap === 'all' || el.uppercase || (text === text.toUpperCase() && /[A-Z]/.test(text))
-  const needed = text.length * el.fontSize * (FONT_WIDTH[face] ?? 0.58) * (capitals ? 1.3 : 1.16) + Math.abs(el.letterSpacing ?? 0) * text.length + 6
+  // measured width at the weight it is drawn (font-widths.ts), with a small margin for rendering differences
+  const needed = textWidth(text, el.fontSize, { font: face, uppercase: capitals, tracking: Math.abs(el.letterSpacing ?? 0), weight: textBaseWeight(el) }) * 1.04 + 6
   if (needed <= el.width) return
   const grow = needed - el.width
   el.x = el.align === 'center' ? el.x - grow / 2 : el.align === 'right' ? el.x - grow : el.x

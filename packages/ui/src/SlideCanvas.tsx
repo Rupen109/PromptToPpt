@@ -128,7 +128,7 @@ export function ElementView({ el: given, theme, slide, play = false, fx }: { el:
       }
       const isCount = el.animation?.type === 'count-up'
       return wrap(
-        <div style={style} {...(el.animation && play ? { 'data-pt-anim': '' } : {})}>
+        <div style={style} data-pt-text={el.role} {...(el.animation && play ? { 'data-pt-anim': '' } : {})}>
           {el.paragraphs.map((p, i) => (
             <div key={i} {...(byP ? { 'data-pt-anim': '' } : {})} {...(fx?.parts ? { 'data-pt-part': 'p' } : {})} style={{ marginBottom: i < el.paragraphs.length - 1 ? el.fontSize * (el.paraGap ?? 0.5) : 0, unicodeBidi: 'plaintext', paddingInlineStart: p.list && p.runs.some((r) => r.text !== '') ? el.fontSize * 0.9 : 0, position: 'relative', // each paragraph reads in the direction of its own first strong letter
           ...(byP ? anim(el.animation, true, i * (el.animation?.stagger ?? 100)) : {}) }}>

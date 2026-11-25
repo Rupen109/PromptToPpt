@@ -418,7 +418,8 @@ describe('the words never copy the sample (buildDeck)', () => {
     for (const s of doc.slides) for (const e of s.elements) if (e.type === 'text') {
       const txt = e.paragraphs.map((p) => p.runs.map((r) => r.text).join('')).join(' ')
       expect(txt).not.toContain('4521')
-      expect(txt.length).toBeLessThan(560) // the biggest box of the fixture holds about 500 letters; 300 words were asked for
+      // 300 words were asked for: the text is cut to what the box holds (how much that is comes from the fonts' measured widths), and the check below proves it fits
+      expect(txt.length).toBeLessThan(long.length / 2)
     }
     expect(validateDeck(doc).slides.flatMap((s) => s.issues).filter((i) => i.code === 'overflow')).toEqual([])
   })
