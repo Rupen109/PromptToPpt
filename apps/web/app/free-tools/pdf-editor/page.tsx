@@ -5,7 +5,7 @@ import { ToolShell } from '@/components/free-tools/ToolShell'
 
 export const metadata: Metadata = withShare({
   title: 'Free PDF Editor — Edit PDF Online, No Sign-up',
-  description: 'Edit a PDF free in your browser: change text, add text, whiteout, highlight, draw, add shapes, pictures and your signature, and rotate, reorder or delete pages. Your file is not uploaded.',
+  description: 'Edit PDF online free: change and add text, whiteout, highlight, draw, sign, add pictures, and rotate, reorder or delete pages. Your file is not uploaded.',
   alternates: { canonical: '/free-tools/pdf-editor' },
 })
 

@@ -9,8 +9,8 @@ import { SITE_URL } from '@/lib/env'
 import { breadcrumbLd, ldJson, withShare } from '@/lib/seo'
 
 export const metadata: Metadata = withShare({
-  title: 'Free Presentation & PDF Tools',
-  description: 'Free tools for presentations: outline generator, PDF to presentation, PDF to PPT, YouTube and video to slides, script to slides. No sign-up needed.',
+  title: 'Free PDF Tools & Presentation Tools',
+  description: 'Free online PDF and presentation tools: PDF to PPT, PDF to JPG, PDF editor, AI outline generator, PDF to presentation, YouTube and video to slides. No sign-up.',
   alternates: { canonical: '/free-tools' },
 })
 
@@ -41,7 +41,7 @@ export default function Page() {
       <Header />
       <main className="px-5 md:px-10 py-14 md:py-20">
         <div className="max-w-[1160px] mx-auto">
-          <h1 className="font-heading font-extrabold text-4xl md:text-5xl text-foreground text-center">Free presentation tools</h1>
+          <h1 className="font-heading font-extrabold text-4xl md:text-5xl text-foreground text-center">Free PDF and presentation tools</h1>
           <p className="mt-4 text-lg font-medium text-[#475569] text-center max-w-[640px] mx-auto">Small, fast tools for the jobs that come before a great deck. No sign-up needed.</p>
           <ul className="mt-12 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
             {CARDS.map((t, i) => (

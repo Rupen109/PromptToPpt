@@ -11,7 +11,7 @@ import { SITE_URL } from '@/lib/env'
 
 export const metadata: Metadata = withShare({
   title: 'AI PPT Maker: Make a PowerPoint with AI',
-  description: 'Describe your topic or add a PDF, Word file or web link and get a designed, editable PowerPoint presentation in seconds. Start free, no design skills needed.',
+  description: 'AI PPT maker and AI PowerPoint generator: describe a topic or add a PDF, Word file or web link and get an editable PowerPoint deck in seconds. Start free.',
   alternates: { canonical: '/ai-ppt-maker' },
 })
 
@@ -41,7 +41,7 @@ export default function AIPPTMakerPage() {
             <h1 className="mt-3 font-heading font-extrabold text-4xl md:text-5xl leading-[1.05] text-foreground">AI PPT Maker: make a PowerPoint presentation in seconds</h1>
             {/* the answer first: what it is, in plain words (also what an AI assistant will quote) */}
             <p className="mt-5 text-lg leading-7 font-medium text-[#475569] max-w-[700px] mx-auto">
-              {SITE_NAME} is an AI PPT maker. Describe your topic or add a document, and it writes the slides, picks a design and gives you an editable presentation you can open in your browser or export to PowerPoint.
+              {SITE_NAME} is an AI PPT maker and AI deck generator. Describe your topic or add a document, and it writes the slides, picks a design and gives you an editable presentation you can open in your browser or export to PowerPoint.
             </p>
             <div className="mt-8 flex flex-wrap justify-center gap-3">
               <Link href="/signup" className="inline-flex items-center gap-2 bg-primary text-white font-heading font-extrabold px-6 py-3 rounded-lg border-2 border-foreground shadow-solid">Create a free deck <ArrowRight aria-hidden size={18} /></Link>
@@ -67,7 +67,7 @@ export default function AIPPTMakerPage() {
 
         <section className="px-5 md:px-10 pb-14 md:pb-20">
           <div className="max-w-[1000px] mx-auto">
-            <h2 className="font-heading font-extrabold text-2xl md:text-3xl text-foreground text-center">What you can do with it</h2>
+            <h2 className="font-heading font-extrabold text-2xl md:text-3xl text-foreground text-center">What you can do with the AI PowerPoint generator</h2>
             <ul className="mt-8 grid gap-5 md:grid-cols-2">
               {FEATURES.map((f) => (
                 <li key={f.title} className="rounded-2xl border-2 border-foreground bg-white p-6 flex gap-4">

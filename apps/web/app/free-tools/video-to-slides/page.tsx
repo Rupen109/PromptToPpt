@@ -5,7 +5,7 @@ import { ToolShell } from '@/components/free-tools/ToolShell'
 
 export const metadata: Metadata = withShare({
   title: 'Free Audio & Video to Slides Converter',
-  description: 'Upload a lecture, meeting or voice recording, get a timed transcript in its own language, then turn it into an editable presentation. Free to try.',
+  description: 'Video to PPT and audio to slides: upload a lecture, meeting or voice note, get a timed transcript, then an editable presentation. Free to try.',
   alternates: { canonical: '/free-tools/video-to-slides' },
 })
 

@@ -26,7 +26,7 @@ export default function TemplatesIndexPage() {
         <TemplateGallery />
         <nav aria-labelledby="collections" className="mt-16">
           <h2 id="collections" className="font-heading font-extrabold text-2xl text-foreground mb-4">Browse by use</h2>
-          <ul className="flex flex-wrap gap-3">{LANDINGS.map((l) => <li key={l.slug}><Link href={`/free-templates/${l.slug}`} className="inline-block rounded-full border-2 border-foreground bg-white px-4 py-2 text-sm font-bold text-foreground hover:bg-secondary">{l.noun} templates</Link></li>)}</ul>
+          <ul className="flex flex-wrap gap-3">{LANDINGS.map((l) => <li key={l.slug}><Link href={`/free-templates/${l.slug}`} className="inline-block rounded-full border-2 border-foreground bg-white px-4 py-2 text-sm font-bold text-foreground hover:bg-secondary">{l.keyword}</Link></li>)}</ul>
         </nav>
         {/* every template with its address, for search and answer engines (the gallery itself is drawn in the browser) */}
         <JsonLd data={{

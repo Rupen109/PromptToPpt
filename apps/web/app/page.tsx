@@ -17,7 +17,7 @@ import { ReviewsSection } from '@/components/sections/ReviewsSection'
 export const metadata: Metadata = withShare({
   title: 'SlidesDone: AI Presentation Maker | Slides in Seconds',
   description:
-    'Transform any topic or prompt into a beautiful, editable presentation with AI. Upload PDFs, paste text, or enter a YouTube URL — get a professional deck in seconds.',
+    'AI presentation maker and AI deck generator: type a topic or add a PDF, Word file or YouTube link and get a designed, editable deck in seconds. Start free.',
   alternates: {
     canonical: '/',
   },

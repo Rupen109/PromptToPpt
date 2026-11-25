@@ -106,7 +106,8 @@ export function withShare(m: Metadata): Metadata {
   const t = m.title
   const own = typeof t === 'string' ? t : t && typeof t === 'object' ? ('absolute' in t && t.absolute) || ('default' in t && t.default) || '' : ''
   const absolute = !!t && typeof t === 'object' && 'absolute' in t
-  const title = own ? (absolute ? own : `${own} | ${SITE_NAME}`) : undefined
+  // (a title that already names the brand, like the home page's, is not given it twice)
+  const title = own ? (absolute || own.includes(SITE_NAME) ? own : `${own} | ${SITE_NAME}`) : undefined
   const description = typeof m.description === 'string' ? m.description : undefined
   const canonical = m.alternates?.canonical
   const url = typeof canonical === 'string' ? canonical : canonical instanceof URL ? canonical.toString() : undefined

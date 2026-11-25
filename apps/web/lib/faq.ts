@@ -7,7 +7,7 @@ import type { Faq } from './seo'
 export const GENERAL_FAQS: readonly Faq[] = [
   {
     q: 'What is SlidesDone?',
-    a: 'SlidesDone is an AI presentation maker. You describe a topic, or add a PDF, Word, Excel, PowerPoint, email, web link, Google Doc or YouTube video, and it builds a designed, editable slide deck in seconds. You can then edit every slide in your browser, ask the AI to change slides, share the deck, and export it on paid plans.',
+    a: 'SlidesDone is an AI presentation maker (an AI PPT maker and AI deck generator). You describe a topic, or add a PDF, Word, Excel, PowerPoint, email, web link, Google Doc or YouTube video, and it builds a designed, editable slide deck in seconds. You can then edit every slide in your browser, ask the AI to change slides, share the deck, and export it on paid plans.',
   },
   {
     q: 'How do I make a presentation with AI?',

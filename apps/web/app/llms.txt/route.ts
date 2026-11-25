@@ -18,7 +18,7 @@ export async function GET() {
   const post = (p: { kind: Kind; slug: string; title?: string }) => `- [${p.title ?? p.slug}](${SITE_URL}${BASE_PATH[p.kind]}/${p.slug})`
   const body = `# ${SITE_NAME}
 
-> ${SITE_NAME} is an AI presentation maker. You describe a topic, or add a PDF, Word, Excel, PowerPoint, email, web link, Google Doc or YouTube video, and it builds a designed, editable slide deck in seconds. Decks are edited in the browser, shared by link, and exported to PowerPoint (PPTX), PDF, PNG, JPG and HTML on paid plans. There is a free plan.
+> ${SITE_NAME} is an AI presentation maker (an AI PPT maker and AI deck generator). You describe a topic, or add a PDF, Word, Excel, PowerPoint, email, web link, Google Doc or YouTube video, and it builds a designed, editable slide deck in seconds. Decks are edited in the browser, shared by link, and exported to PowerPoint (PPTX), PDF, PNG, JPG and HTML on paid plans. There is a free plan.
 
 ## Key pages
 - [Home](${SITE_URL}/): what ${SITE_NAME} does and how to start
@@ -35,7 +35,7 @@ export async function GET() {
 ${FREE_TOOLS.map((t) => `- [${t.name}](${SITE_URL}${t.href}): ${t.text}`).join('\n')}
 
 ## Free template collections
-${LANDINGS.map((l) => `- [${l.noun} presentation templates](${SITE_URL}/free-templates/${l.slug})`).join('\n')}
+${LANDINGS.map((l) => `- [${l.keyword}](${SITE_URL}/free-templates/${l.slug}): also ${l.also.join(', ')}`).join('\n')}
 
 ## Answers to common questions
 ${GENERAL_FAQS.map((f) => `### ${f.q}\n${f.a}`).join('\n\n')}

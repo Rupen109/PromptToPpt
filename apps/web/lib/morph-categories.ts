@@ -18,7 +18,7 @@ export interface MorphCategoryInfo {
 export const MORPH_CATEGORIES: readonly MorphCategoryInfo[] = [
   {
     id: 'business', slug: 'business-strategy', name: 'Business & Strategy', short: 'Plans, roadmaps, strategy reviews and annual reports',
-    title: 'Business & Strategy Morph Animation Templates',
+    title: 'Business Morph Templates for PowerPoint',
     description: 'Morph animation templates for business plans, strategy reviews, roadmaps and annual reports. Watch them play, then build yours with AI.',
     intro: 'Business and strategy Morph templates turn a plan into one continuous movement: a strategy matrix that zooms into each quadrant, a roadmap that pans from milestone to milestone, an annual report whose photographs and numbers trade places. They keep a long, serious story easy to follow.',
     faqs: [
@@ -28,7 +28,7 @@ export const MORPH_CATEGORIES: readonly MorphCategoryInfo[] = [
   },
   {
     id: 'pitch', slug: 'pitch-investor', name: 'Pitch & Investor', short: 'Fundraising decks, market stories and startup pitches',
-    title: 'Pitch & Investor Morph Animation Templates',
+    title: 'Pitch Deck Morph Templates for PowerPoint',
     description: 'Morph animation templates for pitch decks and investor presentations: market size, traction, business model and the ask. Watch them play, then build yours with AI.',
     intro: 'Pitch and investor Morph templates give a fundraising story momentum: market circles that zoom into the next slide, a positioning map where your dot travels to the top, cards that fly off one by one. Investors follow one object through the whole story instead of starting again on every slide.',
     faqs: [
@@ -38,7 +38,7 @@ export const MORPH_CATEGORIES: readonly MorphCategoryInfo[] = [
   },
   {
     id: 'marketing', slug: 'marketing-campaigns', name: 'Marketing & Campaigns', short: 'Campaign decks, social feeds, brand moodboards and portfolios',
-    title: 'Marketing & Campaign Morph Animation Templates',
+    title: 'Marketing Morph Templates for PowerPoint',
     description: 'Morph animation templates for marketing plans, campaign decks, brand moodboards and creative portfolios. Watch them play, then build yours with AI.',
     intro: 'Marketing and campaign Morph templates bring a campaign to life: poster-size headlines and stickers that pop, a social feed that scrolls through your posts, a moodboard whose photographs rearrange to show the brand. They suit work that has to look as good as the product it sells.',
     faqs: [
@@ -48,7 +48,7 @@ export const MORPH_CATEGORIES: readonly MorphCategoryInfo[] = [
   },
   {
     id: 'launch', slug: 'product-launch', name: 'Product Launch', short: 'Unboxings, feature tours and launch countdowns',
-    title: 'Product Launch Morph Animation Templates',
+    title: 'Product Launch Morph Templates for PowerPoint',
     description: 'Morph animation templates for product launches: unboxings, feature tours and countdowns. Watch them play, then build yours with AI.',
     intro: 'Product launch Morph templates keep the product on stage: it tumbles, grows and travels from slide to slide, spec call-outs point at it, a spotlight opens onto each feature, a countdown turns into the reveal. The audience watches the product, not the slides.',
     faqs: [
@@ -58,7 +58,7 @@ export const MORPH_CATEGORIES: readonly MorphCategoryInfo[] = [
   },
   {
     id: 'technology', slug: 'technology', name: 'Technology', short: 'AI, software, dashboards and hardware',
-    title: 'Technology Morph Animation Templates',
+    title: 'Technology Morph Templates for PowerPoint',
     description: 'Morph animation templates for technology, AI, software and hardware presentations. Watch them play, then build yours with AI.',
     intro: 'Technology Morph templates show how a system works by moving it: a neural network whose nodes regroup from layer to layer, a dashboard whose widgets rearrange and expand, a circuit board that boots line by line. They make complex ideas easier to follow.',
     faqs: [
@@ -68,7 +68,7 @@ export const MORPH_CATEGORIES: readonly MorphCategoryInfo[] = [
   },
   {
     id: 'education', slug: 'education', name: 'Education', short: 'Classrooms, science labs and learning paths',
-    title: 'Education Morph Animation Templates',
+    title: 'Education Morph Templates for PowerPoint',
     description: 'Morph animation templates for lessons, classrooms, science and training. Watch them play, then build yours with AI.',
     intro: 'Education Morph templates make a lesson feel alive: illustrated creatures and plants glide across a storybook page, a chalkboard fills with doodles, element tiles regroup into a molecule, a map path leads a class from one topic to the next. They keep attention while the content stays simple.',
     faqs: [

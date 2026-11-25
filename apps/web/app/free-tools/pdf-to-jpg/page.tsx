@@ -5,7 +5,7 @@ import { ToolShell } from '@/components/free-tools/ToolShell'
 
 export const metadata: Metadata = withShare({
   title: 'Free PDF to JPG Converter — Online, No Sign-up',
-  description: 'Convert PDF pages to JPG pictures free, right in your browser. Pick the quality and the pages, download one by one or all in a zip. Your file is not uploaded.',
+  description: 'Free PDF to JPG and PDF to image converter: pick the quality and pages, download one by one or as a zip. It runs in your browser; nothing is uploaded.',
   alternates: { canonical: '/free-tools/pdf-to-jpg' },
 })
 

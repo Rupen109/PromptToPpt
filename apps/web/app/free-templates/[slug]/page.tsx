@@ -20,11 +20,10 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const l = landingBySlug(slug)
   if (!l) return {}
   const n = DESIGNS.filter((d) => d.category === l.category).length
-  // ("Sales Presentation" is already a presentation: never "Sales Presentation Presentation Templates")
-  const noun = /presentation$/i.test(l.noun) ? l.noun.replace(/\s*presentation$/i, '') : l.noun
   return withShare({
-    title: firstFit([`Free ${noun} Presentation Templates`, `Free ${noun} Templates`, `${noun} Presentation Templates`, `${noun} Templates`], 47),
-    description: fit(`${n} designed ${l.noun.toLowerCase()} presentation templates. Edit one in your browser and let AI fill it in for your topic. No design skills needed.`, 155),
+    // the page's own search phrase in the title, the H1 and the first words of the description
+    title: firstFit([`Free ${l.keyword}`, l.keyword], 47),
+    description: fit(`Free ${l.keyword.toLowerCase()}: ${n} designed ${l.noun.toLowerCase()} decks to edit in your browser, with AI that fills them in for your topic. Also ${l.also[0]}.`, 155),
     alternates: { canonical: `/free-templates/${l.slug}` },
   })
 }
@@ -39,7 +38,7 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
   const slides = SKELETONS[l.category].length
   const others = LANDINGS.filter((x) => x.slug !== l.slug)
   const ld = [
-    { '@context': 'https://schema.org', '@type': 'ItemList', name: `${l.noun} presentation templates`, itemListElement: designs.map((d, i) => ({ '@type': 'ListItem', position: i + 1, name: d.name, url: `${SITE_URL}/templates/${d.id}` })) },
+    { '@context': 'https://schema.org', '@type': 'ItemList', name: `${l.keyword}`, alternateName: l.also, itemListElement: designs.map((d, i) => ({ '@type': 'ListItem', position: i + 1, name: d.name, url: `${SITE_URL}/templates/${d.id}` })) },
     { '@context': 'https://schema.org', '@type': 'FAQPage', mainEntity: l.faqs.map((f) => ({ '@type': 'Question', name: f.q, acceptedAnswer: { '@type': 'Answer', text: f.a } })) },
   ]
   return (
@@ -49,7 +48,7 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
         <section className="px-5 md:px-10 pt-10 md:pt-14 pb-8">
           <div className="max-w-[1280px] mx-auto">
             <nav aria-label="Breadcrumb" className="text-sm text-slate-600 mb-5"><Link href="/templates" className="text-primary underline underline-offset-2 hover:no-underline">Templates</Link> <span aria-hidden>/</span> {cat.name}</nav>
-            <h1 className="font-heading font-extrabold text-4xl md:text-5xl leading-[1.05] text-foreground max-w-[860px]">Free {l.noun} Presentation Templates</h1>
+            <h1 className="font-heading font-extrabold text-4xl md:text-5xl leading-[1.05] text-foreground max-w-[860px]">Free {l.keyword}</h1>
             <div className="mt-5 max-w-[760px] flex flex-col gap-3 text-lg leading-7 font-medium text-[#475569]">{l.intro.map((p) => <p key={p}>{p}</p>)}</div>
             <div className="mt-7 flex flex-wrap items-center gap-4">
               <Button href="#templates" variant="accent" size="lg" arrow>Browse templates</Button>
@@ -111,7 +110,7 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
         <section className="px-5 md:px-10 py-12" aria-labelledby="more-h">
           <div className="max-w-[1280px] mx-auto">
             <h2 id="more-h" className="font-heading font-extrabold text-xl text-foreground">More template collections</h2>
-            <ul className="mt-4 flex flex-wrap gap-3">{others.map((o) => <li key={o.slug}><Link href={`/free-templates/${o.slug}`} className="inline-block rounded-full border-2 border-foreground bg-white px-4 py-2 text-sm font-bold text-foreground hover:bg-secondary">{o.noun}</Link></li>)}</ul>
+            <ul className="mt-4 flex flex-wrap gap-3">{others.map((o) => <li key={o.slug}><Link href={`/free-templates/${o.slug}`} className="inline-block rounded-full border-2 border-foreground bg-white px-4 py-2 text-sm font-bold text-foreground hover:bg-secondary">{o.keyword}</Link></li>)}</ul>
           </div>
         </section>
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(ld).replace(/</g, '\\u003c') }} />

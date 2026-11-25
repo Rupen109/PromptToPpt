@@ -13,8 +13,8 @@ import { MORPH_FAQS, MORPH_POINTS, MORPH_STEPS } from '@/lib/morph-page'
 import { SITE_NAME, breadcrumbLd, withShare } from '@/lib/seo'
 
 const PATH = '/morph-animation-templates'
-const TITLE = 'Morph Animation Templates for Presentations'
-const DESCRIPTION = 'Morph animation templates make every slide change one smooth movement. Watch Morph templates for business, pitch decks, marketing, product launches, technology and education play, and build yours with AI.'
+const TITLE = 'PowerPoint Morph Templates & Morph Animations'
+const DESCRIPTION = 'PowerPoint Morph templates where every slide change is one smooth movement. Business, pitch deck, marketing, launch, tech and education templates, built with AI.'
 
 export const metadata: Metadata = withShare({
   title: TITLE,
@@ -40,7 +40,7 @@ export default function MorphTemplatesPage() {
         <section className="bg-gradient-to-b from-[#f8f9fc] to-[#f0f4f8] border-b-2 border-foreground px-5 md:px-10 py-14 md:py-20">
           <div className="max-w-[880px] mx-auto text-center">
             <p className="font-heading font-extrabold text-xs uppercase tracking-wide text-primary">Morph animation</p>
-            <h1 className="mt-3 font-heading font-extrabold text-4xl md:text-5xl leading-[1.05] text-foreground">Morph Animation Templates for Presentations</h1>
+            <h1 className="mt-3 font-heading font-extrabold text-4xl md:text-5xl leading-[1.05] text-foreground">PowerPoint Morph Templates: Morph Animation Templates for Presentations</h1>
             {/* the answer first: what it is, in plain words (also what an AI assistant will quote) */}
             <p className="mt-5 text-lg leading-7 font-medium text-[#475569] max-w-[720px] mx-auto">
               A Morph animation template is a presentation design where every slide change is one smooth movement: the same picture, product or headline grows, shrinks and glides from slide to slide instead of cutting. {SITE_NAME} has Morph templates for different topics, and the AI writes your slides into the one that fits.

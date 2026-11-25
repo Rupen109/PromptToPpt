@@ -5,7 +5,7 @@ import { ToolShell } from '@/components/free-tools/ToolShell'
 
 export const metadata: Metadata = withShare({
   title: 'Free PDF to PPT Converter — Online, No Sign-up',
-  description: 'Convert a PDF to a PowerPoint (.pptx) file free, right in your browser. Keep the exact look or get editable text. Your file is not uploaded.',
+  description: 'Free PDF to PPT and PDF to PowerPoint converter: get a .pptx in your browser, with the exact look or editable text. Your file is not uploaded.',
   alternates: { canonical: '/free-tools/pdf-to-ppt' },
 })
 

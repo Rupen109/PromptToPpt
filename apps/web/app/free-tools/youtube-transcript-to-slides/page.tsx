@@ -5,7 +5,7 @@ import { TranscriptTool } from '@/components/free-tools/TranscriptTool'
 
 export const metadata: Metadata = withShare({
   title: 'Free YouTube Transcript to Slides Converter',
-  description: 'Paste a YouTube transcript, clean it up (time stamps, repeats, [Music]), copy or download it, and turn it into a designed, editable presentation. Free, no sign-up.',
+  description: 'YouTube to PPT, free: paste a transcript, clean out time stamps and repeats, then turn it into a designed, editable presentation. No sign-up.',
   alternates: { canonical: '/free-tools/youtube-transcript-to-slides' },
 })
 
