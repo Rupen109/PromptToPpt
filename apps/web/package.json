@@ -3,11 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --port 3000",
+    "dev": "node scripts/gen-page-dates.mjs && next dev --port 3000",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "node scripts/gen-page-dates.mjs && tsc --noEmit",
     "test": "echo \"no tests yet\"",
     "prebuild": "node scripts/gen-page-dates.mjs"
   },
