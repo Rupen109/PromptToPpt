@@ -26,7 +26,7 @@
     "review-account": "tsx --env-file-if-exists=.env scripts/make-review-account.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1145.0",
+    "@aws-sdk/client-s3": "^3.1175.0",
     "@hono/node-server": "^2.1.8",
     "@hono/zod-validator": "^0.9.1",
     "@mozilla/readability": "^0.6.0",
