@@ -117,9 +117,11 @@ comments.get('/:id/comments', rateLimit({ windowMs: 60_000, max: 120, key: byUse
 /** "I have read them": clears the unread dot. */
 comments.post('/:id/comments/seen', rateLimit({ windowMs: 60_000, max: 60, key: byUser('comments-seen') }), async (c) => {
   const a = await access(c); if (!a) return notFound(c)
-  const now = new Date()
-  await db.insert(commentSeen).values({ userId: a.actor.id, presentationId: a.id, seenAt: now }).onConflictDoUpdate({ target: [commentSeen.userId, commentSeen.presentationId], set: { seenAt: now } })
-  return c.json({ success: true, data: { seenAt: now.toISOString() } })
+  // ONE clock: comments are stamped by the database (created_at default now()), so "seen" must be too. With the app's clock (new Date(), milliseconds,
+  // another machine) a comment written just before "seen" could still count as unread whenever the two clocks differ by a few milliseconds.
+  const seenAt = sql`clock_timestamp()`
+  const [row] = await db.insert(commentSeen).values({ userId: a.actor.id, presentationId: a.id, seenAt }).onConflictDoUpdate({ target: [commentSeen.userId, commentSeen.presentationId], set: { seenAt } }).returning({ seenAt: commentSeen.seenAt })
+  return c.json({ success: true, data: { seenAt: row!.seenAt.toISOString() } })
 })
 
 // ─── write ───────────────────────────────────────────────────────────────────
