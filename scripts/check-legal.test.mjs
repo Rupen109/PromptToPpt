@@ -7,8 +7,8 @@ const filled = Object.fromEntries(OWNER_FIELDS.map((f) => [f.key, 'x']))
 const full = { ...LEGAL, ...filled }
 const partial = { ...full, gstin: TODO, entityName: '  ' }
 
-test('every owner field is listed and starts as TODO in the repo (nothing pre-filled by guesswork)', () => {
-  assert.equal(OWNER_FIELDS.length, 10)
+test('every owner field is listed and is text (the owner filled them on 2026-11-27; the phone number was added for Razorpay)', () => {
+  assert.equal(OWNER_FIELDS.length, 11)
   for (const f of OWNER_FIELDS) assert.equal(typeof LEGAL[f.key], 'string')
 })
 test('missingOwnerFields finds TODO, empty and lower-case todo', () => {
