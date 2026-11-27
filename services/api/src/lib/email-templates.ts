@@ -244,6 +244,23 @@ export function paymentFailed(o: { name: string; planId: string | null; amountMi
   }
 }
 
+export function creditsToppedUp(o: { name: string; credits: number; amountMinor: number; currency: string; balance: number }): Rendered {
+  const hi = first(o.name), amount = money(o.amountMinor, o.currency)
+  const added = o.credits.toLocaleString('en-US'), left = o.balance.toLocaleString('en-US')
+  const url = `${app()}/billing`
+  return {
+    subject: `${added} credits added to your SlidesDone account`,
+    text: `Hi ${hi},\n\nThank you. We received ${amount} and added ${added} credits to your account. You now have ${left} credits.\n\nCredits you buy do not expire at your monthly reset: your plan's own credits are used first, and these wait until you need them. Your plan and renewal date are unchanged.\n\nYour credits and payment history: ${url}\n\nKeep this email as your receipt. Questions? ${site()}/support${sign}`,
+    html: shell({
+      preheader: `${added} credits added. You now have ${left}.`,
+      body: h1('Credits added') + p(`Hi ${esc(hi)}, thank you. We received <strong>${esc(amount)}</strong> and added <strong>${esc(added)} credits</strong> to your account.`) +
+        rows([['Credits added', added], ['Credits now', left], ['Amount paid', amount]]) +
+        p("Credits you buy do not expire at your monthly reset: your plan's own credits are used first, and these wait until you need them. Your plan and renewal date are unchanged.") +
+        button('See my credits', url) + note('Keep this email as your receipt.'),
+    }),
+  }
+}
+
 export function subscriptionEnding(o: { name: string; planId: string | null; endsOn: Date }): Rendered {
   const hi = first(o.name), plan = planName(o.planId), until = day(o.endsOn)
   const url = `${app()}/billing`

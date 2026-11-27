@@ -17,29 +17,31 @@ export const LEGAL = {
 
   // ── Owner fields: replace every 'TODO' ───────────────────────────────────
   /** full legal name of whoever runs SlidesDone, as on the Razorpay account: a registered company's name, or, for an individual, the person's own full name */
-  entityName: TODO,
-  /** registered office or principal place of business, one line */
-  registeredAddress: TODO,
+  entityName: 'Rupen Bhimani',
+  /** registered office or principal place of business, one line (for an individual: the Indian address on the Razorpay account) */
+  registeredAddress: '4th Floor, Binori B Square 3, Sindhu Bhavan Marg, Bodakdev, Ahmedabad, Gujarat 380059, India',
+  /** a working support phone number, with the country code (Razorpay requires one on the Contact us page) */
+  phone: '+91 93138 26043',
   /** GST registration number, or NOT_REGISTERED when not registered for GST (then no GSTIN is shown and the terms say no GST is charged) */
   gstin: NOT_REGISTERED,
   /** Grievance Officer (India IT Rules, Consumer Protection E-Commerce Rules, DPDP Act) */
-  grievanceOfficerName: TODO,
-  grievanceOfficerEmail: TODO,
+  grievanceOfficerName: 'Rupen Bhimani',
+  grievanceOfficerEmail: 'support@slidesdone.app',
   /** where privacy / data requests (access, export, deletion) go; may be the same address as support */
-  dataProtectionEmail: TODO,
+  dataProtectionEmail: 'support@slidesdone.app',
   /** city whose courts have jurisdiction, e.g. "Mumbai, Maharashtra" */
-  governingLawCity: TODO,
+  governingLawCity: 'Ahmedabad, Gujarat',
   /** date these texts take effect, YYYY-MM-DD */
-  effectiveDate: TODO,
+  effectiveDate: '2026-11-27',
   /** write the date (YYYY-MM-DD) you confirmed the refund rules below are the ones you want to offer */
-  refundPolicyConfirmed: TODO,
+  refundPolicyConfirmed: '2026-11-27',
   /** write the date you checked that the production AI keys are paid-tier / data-not-used-for-training terms with every AI provider in use */
-  aiNoTrainingConfirmed: TODO,
+  aiNoTrainingConfirmed: '2026-11-27',
 
   // ── Defaults that are policy decisions (documented in docs/LEGAL_PAGES.md; change here if you decide otherwise) ──
   /** public support address; defaults to the same address the support page shows */
   supportEmail: process.env.NEXT_PUBLIC_SUPPORT_EMAIL ?? 'support@slidesdone.app',
-  /** first-payment refund window and the share of credits that may be used (docs/PRICING_PLANS_V4.md suggestion, not yet owner-approved) */
+  /** first-payment refund window and the share of credits that may be used (owner-confirmed 2026-11-27; a credit top-up: same window, no credits used) */
   refundWindowDays: 7,
   refundMaxCreditsUsedPercent: 20,
   /** how fast we act on an account-deletion or data-export request */
@@ -52,12 +54,13 @@ export const LEGAL = {
 }
 
 export type LegalConfig = typeof LEGAL
-export type OwnerField = 'entityName' | 'registeredAddress' | 'gstin' | 'grievanceOfficerName' | 'grievanceOfficerEmail' | 'dataProtectionEmail' | 'governingLawCity' | 'effectiveDate' | 'refundPolicyConfirmed' | 'aiNoTrainingConfirmed'
+export type OwnerField = 'entityName' | 'registeredAddress' | 'phone' | 'gstin' | 'grievanceOfficerName' | 'grievanceOfficerEmail' | 'dataProtectionEmail' | 'governingLawCity' | 'effectiveDate' | 'refundPolicyConfirmed' | 'aiNoTrainingConfirmed'
 
 /** The fields that block a release while they are TODO, with the wording used in the visible marker. */
 export const OWNER_FIELDS: readonly { key: OwnerField; label: string }[] = [
   { key: 'entityName', label: 'legal entity name' },
   { key: 'registeredAddress', label: 'registered address' },
+  { key: 'phone', label: 'support phone number' },
   { key: 'gstin', label: 'GSTIN' },
   { key: 'grievanceOfficerName', label: 'grievance officer name' },
   { key: 'grievanceOfficerEmail', label: 'grievance officer email' },

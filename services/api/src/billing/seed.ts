@@ -30,9 +30,9 @@ const PAID_MODELS = ['gemini-3.6-flash', 'gemini-3.8-flash']
  *  · `maxSlides` for Premium is the system's per-deck ceiling (60): credits are what really limit it.
  */
 export const PLAN_SEED = [
-  { id: 'starter', name: 'Starter', sortOrder: 0, monthlyCredits: 100, maxSlides: 10, maxPresentationsPerMonth: 5, maxImagesPerPresentation: 0, maxImagesPerMonth: 0, features: { ...base, fixedModels: STARTER_MODELS } },
+  { id: 'starter', name: 'Starter', sortOrder: 0, monthlyCredits: 150, maxSlides: 10, maxPresentationsPerMonth: 5, maxImagesPerPresentation: 0, maxImagesPerMonth: 0, features: { ...base, fixedModels: STARTER_MODELS } },
   {
-    id: 'pro', name: 'Pro', sortOrder: 1, monthlyCredits: 900, maxSlides: 15, maxPresentationsPerMonth: 15, maxImagesPerPresentation: 10, maxImagesPerMonth: 60,
+    id: 'pro', name: 'Pro', sortOrder: 1, monthlyCredits: 1150, maxSlides: 15, maxPresentationsPerMonth: 15, maxImagesPerPresentation: 10, maxImagesPerMonth: 60,
     features: { ...base, watermark: false, exportFormats: ['pdf', 'pptx', 'jpg'], aiEdits: true, premiumTemplates: true, advancedSharing: true, support: 'whatsapp', speed: 'fast', projects: true, askDeck: true, webData: 'wikipedia', livePreview: true, fixedModels: PAID_MODELS, templateFromFile: true },
   },
   {
@@ -60,25 +60,30 @@ export const PRICE_SEED = [
   { planId: 'pro', currency: 'INR', interval: 'year', amountMinor: 288000 },
   { planId: 'gold', currency: 'USD', interval: 'month', amountMinor: 1900 },
   { planId: 'gold', currency: 'USD', interval: 'year', amountMinor: 18240 },
-  { planId: 'gold', currency: 'INR', interval: 'month', amountMinor: 65000 },
-  { planId: 'gold', currency: 'INR', interval: 'year', amountMinor: 624000 },
+  { planId: 'gold', currency: 'INR', interval: 'month', amountMinor: 70000 },
+  { planId: 'gold', currency: 'INR', interval: 'year', amountMinor: 672000 },
   { planId: 'premium', currency: 'USD', interval: 'month', amountMinor: 3500 },
   { planId: 'premium', currency: 'USD', interval: 'year', amountMinor: 33600 },
-  { planId: 'premium', currency: 'INR', interval: 'month', amountMinor: 120000 },
-  { planId: 'premium', currency: 'INR', interval: 'year', amountMinor: 1152000 },
+  { planId: 'premium', currency: 'INR', interval: 'month', amountMinor: 130000 },
+  { planId: 'premium', currency: 'INR', interval: 'year', amountMinor: 1248000 },
 ] as const
 
 /**
- * Credits per action × model tier. The tier is the model's CREDIT CLASS (docs/PLANS_AND_FEATURES_V5.md, section 5): starter = the Gemini Flash models (2 a slide), premium = Gemini 3.1 Pro
- * (5 a slide), frontier = no text model now (Sonnet/Opus switched off 2026-11-24; 12 a slide kept for the Studio picture model's class).
+ * Credits per action × model tier. Priced by docs/MARGIN_POLICY.md (2026-11-26): credits = ceil(measured cost ÷ $0.00115), so a plan spent in full keeps its margin.
+ * Credits per action × model tier. The tier is the model's CREDIT CLASS (docs/PLANS_AND_FEATURES_V5.md, section 5): starter = the Gemini Flash models (3 a slide), premium = Gemini 3.1 Pro
+ * (12 a slide), frontier = no text model now (Sonnet/Opus switched off 2026-11-24; 12 a slide kept for the Studio picture model's class).
  */
 export const CREDIT_COST_SEED = [
-  { action: 'generate_slide', tier: 'starter', credits: 2 },
-  { action: 'generate_slide', tier: 'premium', credits: 5 }, // Gemini 3.1 Pro: 2.5x Flash (it costs about 3x per token); was 3 for Haiku/GLM (migration 0048)
+  { action: 'generate_slide', tier: 'starter', credits: 3 },
+  { action: 'generate_slide', tier: 'premium', credits: 12 }, // Gemini 3.1 Pro: measured $0.0115-0.0205 a slide (its thinking tokens); was 5 (migration 0052)
   { action: 'generate_slide', tier: 'frontier', credits: 12 },
-  { action: 'ai_edit', tier: 'starter', credits: 2 },
-  { action: 'ai_edit', tier: 'premium', credits: 4 },
+  { action: 'ai_edit', tier: 'starter', credits: 4 },
+  { action: 'ai_edit', tier: 'premium', credits: 12 },
   { action: 'ai_edit', tier: 'frontier', credits: 10 },
+  // each slide the assistant writes after the first (the first is inside ai_edit): the same work as a deck slide, so the same price (docs/MARGIN_POLICY.md)
+  { action: 'ai_write_slide', tier: 'starter', credits: 3 },
+  { action: 'ai_write_slide', tier: 'premium', credits: 12 },
+  { action: 'ai_write_slide', tier: 'frontier', credits: 12 },
   { action: 'ask_deck', tier: 'starter', credits: 1 },
   { action: 'ask_deck', tier: 'premium', credits: 2 },
   { action: 'ask_deck', tier: 'frontier', credits: 5 },
@@ -94,7 +99,7 @@ export const CREDIT_COST_SEED = [
   { action: 'web_research', tier: 'starter', credits: 60 },
   { action: 'web_research', tier: 'premium', credits: 60 },
   { action: 'web_research', tier: 'frontier', credits: 60 },
-  { action: 'image', tier: 'starter', credits: 20 },
+  { action: 'image', tier: 'starter', credits: 30 },
   { action: 'image', tier: 'premium', credits: 60 },
   { action: 'image', tier: 'frontier', credits: 200 },
 ] as const

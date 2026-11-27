@@ -35,7 +35,12 @@ const FORMATS: Record<string, string> = { pptx: 'PPTX', pdf: 'PDF', png: 'PNG', 
 export function planHighlights(plan: PlanView, previous?: PlanView): { lead: string | null; items: string[] } {
   const f = plan.features
   const items: string[] = [`${plan.monthlyCredits.toLocaleString('en-US')} credits / month`]
-  items.push(f.modelChoice ? 'Pro AI models: pick fast or most capable for each deck' : f.modelTiers.includes('premium') ? 'Premium AI models' : 'Fast, high-quality AI models picked for you')
+  // Editing never asks which model: we route each job ourselves (a fast model reads your message, our best writes the slides, an image model makes the pictures).
+  // Premium is the only plan that may ALSO pick the model a whole deck is written with, in the create flow (`modelChoice` + the frontier tier,
+  // services/api/src/billing/seed.ts and routes/models.ts) — so it is the only plan whose line may say "most capable".
+  items.push(f.modelTiers.includes('frontier') ? 'Best AI models: fast and most capable for each deck' : 'AI models chosen for each job: fast for edits, our best for writing slides and pictures')
+  // the queue really has lanes (laneOfSpeed, services/api/src/generation/queue.ts): ultra is served first, then fast, then everyone else
+  if (f.speed !== 'standard') items.push(f.speed === 'ultra' ? 'Top of the queue: your decks are built first, however busy we are' : 'Fast lane: your decks are built ahead of free ones')
   items.push(plan.maxPresentationsPerMonth ? `${plan.maxPresentationsPerMonth} presentations / month` : `Up to ${plan.maxSlides} slides per presentation`)
   if (plan.maxPresentationsPerMonth) items.push(`Up to ${plan.maxSlides} slides per presentation`)
   if (f.premiumTemplates) items.push('Premium templates')
@@ -57,7 +62,6 @@ export function planHighlights(plan: PlanView, previous?: PlanView): { lead: str
   // brand kits: Pro 1, Gold 5 (the server's limit is MAX_KITS in services/api/src/brand/kits.ts). The shared knowledge base is not built yet, so it is not advertised.
   const kits = plan.id === 'gold' || plan.id === 'premium' ? 5 : plan.id === 'pro' ? 1 : 0
   if (kits) items.push(kits === 1 ? 'Brand kit: your logo, colours and fonts' : `Up to ${kits} brand kits (logo, colours, fonts)`)
-  if (f.speed !== 'standard') items.push(`Generation speed: ${f.speed}`)
   if (f.support === 'whatsapp') items.push('24/7 support · WhatsApp')
 
   if (!previous) return { lead: null, items }

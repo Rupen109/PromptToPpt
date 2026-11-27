@@ -41,6 +41,7 @@ models.get('/', async (c) => {
   const [ent, { rows }] = await Promise.all([getEntitlements(c.get('session')!.user.id), catalog()])
   const perSlide: Record<AccessTier, number> = { starter: await creditPrice('generate_slide', 'starter'), premium: await creditPrice('generate_slide', 'premium'), frontier: await creditPrice('generate_slide', 'frontier') }
   const editPrice: Record<AccessTier, number> = { starter: await creditPrice('ai_edit', 'starter'), premium: await creditPrice('ai_edit', 'premium'), frontier: await creditPrice('ai_edit', 'frontier') }
+  const writePrice: Record<AccessTier, number> = { starter: await creditPrice('ai_write_slide', 'starter'), premium: await creditPrice('ai_write_slide', 'premium'), frontier: await creditPrice('ai_write_slide', 'frontier') }
   const kind = c.req.query('kind') === 'image' ? 'image' : 'text'
   const imagePrice: Record<AccessTier, number> = { starter: await creditPrice('image', 'starter'), premium: await creditPrice('image', 'premium'), frontier: await creditPrice('image', 'frontier') }
   const text = rows.filter((r) => r.kind === kind)
@@ -52,7 +53,7 @@ models.get('/', async (c) => {
       default: (kind === 'image' ? rows.find((r) => r.kind === 'image' && ent.features.modelTiers.includes(r.accessTier as AccessTier)) : chooseModel(ent, rows))?.id ?? null,
       models: text.map((r) => ({
         id: r.id, displayName: r.displayName, vendor: r.vendor, description: r.description, tier: r.accessTier,
-        allowed: ent.features.modelTiers.includes(r.accessTier as AccessTier), creditsPerSlide: perSlide[r.accessTier as AccessTier], creditsPerEdit: editPrice[r.accessTier as AccessTier], creditsPerImage: imagePrice[r.accessTier as AccessTier],
+        allowed: ent.features.modelTiers.includes(r.accessTier as AccessTier), creditsPerSlide: perSlide[r.accessTier as AccessTier], creditsPerEdit: editPrice[r.accessTier as AccessTier], creditsPerWrittenSlide: writePrice[r.accessTier as AccessTier], creditsPerImage: imagePrice[r.accessTier as AccessTier],
       })),
     },
   })

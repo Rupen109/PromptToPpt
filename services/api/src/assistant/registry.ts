@@ -111,7 +111,7 @@ const CHIP_GROUP: Record<Family, ChipGroup | null> = {
   text: 'Edit', layout: 'Design', add_slide: 'Create', remove_slide: 'Edit', move_slide: 'Edit', duplicate_slide: 'Edit', lock_slide: null,
   background: 'Design', readability: 'Edit', picture: 'Create', refresh_pictures: 'Create',
   palette: 'Design', template: 'Design', fonts: 'Design', motion: 'Animations', transition: 'Animations', restructure: 'Edit', combine: null, repair: 'Edit', footer: 'Design',
-  undo: null, rewrite_deck: null, enrich: 'Create', element: 'Edit', brand: 'Design', workflow: null, brand_kit: null, comment: null, history: null,
+  undo: null, rewrite_deck: null, transform: 'Edit', enrich: 'Create', element: 'Edit', brand: 'Design', workflow: null, brand_kit: null, comment: null, history: null,
 }
 export interface Chip { group: ChipGroup; family: Family | 'review'; text: string }
 

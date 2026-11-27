@@ -104,7 +104,7 @@ describe('POST /billing/checkout', () => {
     })
     const body = await json(res)
     expect(res.status).toBe(200)
-    expect(body.data).toMatchObject({ keyId: 'rzp_test_unitkey00000', subscriptionId: 'sub_new', currency: 'INR', amountMinor: 624000, interval: 'year', testMode: true })
+    expect(body.data).toMatchObject({ keyId: 'rzp_test_unitkey00000', subscriptionId: 'sub_new', currency: 'INR', amountMinor: 672000, interval: 'year', testMode: true })
     expect(body.data).not.toHaveProperty('keySecret')
     expect(razorpay.createSubscription).toHaveBeenCalledWith({ planId: 'plan_gold_y', totalCount: 10, notes: { userId: u.id, planId: 'gold', interval: 'year', currency: 'INR' } })
   })
@@ -203,7 +203,7 @@ describe('POST /billing/verify (browser callback)', () => {
     const body = await json(res)
     expect(res.status).toBe(200)
     expect(body.data.plan.id).toBe('pro')
-    expect(body.data.credits.balance).toBe(900)
+    expect(body.data.credits.balance).toBe(1150)
     expect(body.data.features.watermark).toBe(false)
     expect((await call(u.cookie, s.id, p.id, sig)).status).toBe(200) // user double-clicks / retries
     const pays = await db.select().from(payment).where(eq(payment.userId, u.id))

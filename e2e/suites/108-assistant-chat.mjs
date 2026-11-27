@@ -71,7 +71,6 @@ export default async function () {
     })
 
     await s.check('a bulk rewrite of 14 slides: the stages show while it works, both groups are written, and it finishes', p, async () => {
-      await panel().getByLabel('AI model').selectOption({ label: 'Gemini 3.6 Flash' }).catch(() => {})
       await box.fill('make the text of every slide shorter'); await p.getByRole('button', { name: 'Send' }).click()
       // more than half the deck: it is confirmed first (nothing is written or charged before "Yes")
       const yes = panel().getByRole('button', { name: /^Yes/ }).last()

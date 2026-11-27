@@ -103,16 +103,23 @@ freeTools.post(
 /** Visitors may transcribe only a few small recordings a day (a recording costs real money; signed-in people pay with credits instead). */
 const mediaDaily = new Map<string, { day: number; n: number }>()
 export const resetFreeMediaLimit = () => mediaDaily.clear()
-const mediaVisitorCap = (c: any, next: () => Promise<void>) => {
-  const ip = clientIp(c)
+const mediaToday = (ip: string) => {
   const day = Math.floor(Date.now() / 86_400_000)
   const hit = mediaDaily.get(ip)
-  const entry = hit && hit.day === day ? hit : { day, n: 0 }
-  if (entry.n >= env.FREE_MEDIA_IP_DAY) return c.json({ success: false, error: { code: 'DAILY_LIMIT', message: "You've used today's free recordings. Sign up free to keep going (100 credits included), or come back tomorrow." } }, 429)
-  entry.n++ // counted before the model call so a failing request cannot be retried for free forever
+  return hit && hit.day === day ? hit : { day, n: 0 }
+}
+/** refuses a visitor who has used today's recordings; it does not count (a file refused before any AI runs costs nothing and must not use one up) */
+const mediaVisitorCap = (c: any, next: () => Promise<void>) => {
+  if (mediaToday(clientIp(c)).n >= env.FREE_MEDIA_IP_DAY) return c.json({ success: false, error: { code: 'DAILY_LIMIT', message: "You've used today's free recordings. Sign up free to keep going (100 credits included), or come back tomorrow." } }, 429)
+  return next()
+}
+/** one of today's recordings is used: called once the file is known to be a real recording, right BEFORE the model call (so a failing model call cannot be retried for free forever) */
+const spendFreeMedia = (c: any) => {
+  const ip = clientIp(c)
+  const entry = mediaToday(ip)
+  entry.n++
   mediaDaily.set(ip, entry)
   if (mediaDaily.size > 20_000) mediaDaily.clear()
-  return next()
 }
 
 /** Free "audio / video → slides" helper: a small recording of the visitor's own is transcribed; the text is kept for an hour for the editor hand-off. */
@@ -128,6 +135,7 @@ freeTools.post(
     const bytes = new Uint8Array(await file.arrayBuffer())
     let info
     try { info = inspectMedia(bytes, FREE_MEDIA_MAX_BYTES) } catch (e) { return fail(c, 422, 'PARSE_FAILED', e instanceof MediaError ? e.message.replace('12 MB', '4 MB') : 'Could not read that recording') }
+    spendFreeMedia(c) // a real recording: from here the model runs, so it counts
     try {
       const out = await gateway.run({ route: 'fast', requestType: 'free_media', ...mediaReadPrompt(file.name || 'recording', info.kind), media: [{ kind: info.kind, mimeType: info.mime, data: bytes }], schema: mediaReadOutput, maxOutputTokens: 12_000, timeoutMs: 120_000, ctx: {} })
       if (!out.hasSpeech || out.text.trim().length < 20) return fail(c, 422, 'NO_SPEECH', "I couldn't hear any speech in that recording. Try a clearer one with someone talking.")

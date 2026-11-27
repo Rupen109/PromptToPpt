@@ -1,11 +1,12 @@
 import { z } from 'zod'
 import { DESIGNS, FONT_PAIRS, MAX_WEIGHT, MOTIONS, PREMIUM_THEME_IDS, THEMES, designById, isDark, makeColors, slideTitle, validateSlide, type FontKey, type MotionKey } from '@prompttoppt/theme'
-import { ASSIST_LIMITS, clipConversation, clipRecent, slideContentSchema, themeSchema, type Entitlements, type Presentation, type SlideContent, type Theme } from '@prompttoppt/validation'
+import { QUICK_EDIT_IDS, ASSIST_LIMITS, clipConversation, clipRecent, slideContentSchema, themeSchema, type Entitlements, type Presentation, type SlideContent, type Theme } from '@prompttoppt/validation'
 import { figuresNotInSources, hasNumbers, sanitizeContent } from '../generation/policy.ts'
 import { textOf } from '../generation/quality.ts'
 import { changedMaterially } from './enrich.ts'
 import type { LinkedPage } from './linked-pages.ts'
 import { commonBackground, deckLook } from '../assistant/state.ts'
+import { transformPlanSchema } from '../assistant/transform-plan.ts'
 import { LAYOUT_SHAPES, neutralise, sourceBlock } from './prompts.ts'
 
 export const aiAssistInput = z.object({
@@ -20,7 +21,7 @@ export const aiAssistInput = z.object({
   /** sources (PDF, link, text) attached to THIS message; the deck's earlier sources are always included server-side */
   sourceIds: z.array(z.string().max(64)).max(10).default([]),
   /** a deck-level plan the person confirmed (delete these slides / use this order): checked against the deck again before anything happens */
-  confirm: z.discriminatedUnion('kind', [z.object({ kind: z.literal('remove'), slideIds: z.array(z.string().max(64)).min(1).max(60) }), z.object({ kind: z.literal('reorder'), order: z.array(z.string().max(64)).min(2).max(60) }), z.object({ kind: z.literal('refresh_pictures') }), z.object({ kind: z.literal('clear_pictures') }), z.object({ kind: z.literal('clear_animations') }), z.object({ kind: z.literal('add_bulk'), about: z.string().max(400).optional(), count: z.number().int().min(4).max(15), where: z.enum(['end', 'start', 'spread']), layout: z.string().max(40).optional() }), z.object({ kind: z.literal('text_bulk'), request: z.string().min(2).max(400), addPoints: z.number().int().min(1).max(6).optional(), totalPoints: z.number().int().min(1).max(12).optional(), length: z.enum(['longer', 'shorter']).optional(), notesOnly: z.boolean().optional(), notesSeconds: z.number().int().min(10).max(1800).optional(), slideIds: z.array(z.string().max(64)).min(1).max(60) }), z.object({ kind: z.literal('rewrite'), brief: z.string().min(10).max(3000) }), z.object({ kind: z.literal('sections'), items: z.array(z.object({ title: z.string().min(1).max(60), beforeSlideId: z.string().max(64) })).min(1).max(8) }), /** "do the rest": the very tasks the person was asked about, sent back; the pipeline checks every task again as if it were new (taskSchema): nothing here is trusted */ z.object({ kind: z.literal('proceed'), tasks: z.array(z.object({ family: z.string().max(40), targets: z.array(z.unknown()).max(20), values: z.record(z.string(), z.unknown()), phrase: z.string().max(160).optional() })).min(1).max(4), /** the parts of a long message left for the next step (the person's words): still offered after "Go ahead" */ later: z.array(z.string().max(160)).max(12).optional() })]).optional(),
+  confirm: z.discriminatedUnion('kind', [z.object({ kind: z.literal('remove'), slideIds: z.array(z.string().max(64)).min(1).max(60) }), z.object({ kind: z.literal('reorder'), order: z.array(z.string().max(64)).min(2).max(60) }), z.object({ kind: z.literal('refresh_pictures') }), z.object({ kind: z.literal('clear_pictures') }), z.object({ kind: z.literal('clear_animations') }), z.object({ kind: z.literal('add_bulk'), about: z.string().max(400).optional(), count: z.number().int().min(4).max(15), where: z.enum(['end', 'start', 'spread']), layout: z.string().max(40).optional() }), z.object({ kind: z.literal('text_bulk'), request: z.string().min(2).max(400), addPoints: z.number().int().min(1).max(6).optional(), totalPoints: z.number().int().min(1).max(12).optional(), length: z.enum(['longer', 'shorter']).optional(), notesOnly: z.boolean().optional(), notesSeconds: z.number().int().min(10).max(1800).optional(), slideIds: z.array(z.string().max(64)).min(1).max(60) }), z.object({ kind: z.literal('rewrite'), brief: z.string().min(10).max(3000) }), z.object({ kind: z.literal('transform'), plan: transformPlanSchema }), z.object({ kind: z.literal('sections'), items: z.array(z.object({ title: z.string().min(1).max(60), beforeSlideId: z.string().max(64) })).min(1).max(8) }), /** "do the rest": the very tasks the person was asked about, sent back; the pipeline checks every task again as if it were new (taskSchema): nothing here is trusted */ z.object({ kind: z.literal('proceed'), tasks: z.array(z.object({ family: z.string().max(40), targets: z.array(z.unknown()).max(20), values: z.record(z.string(), z.unknown()), phrase: z.string().max(160).optional() })).min(1).max(10), /** the parts of a long message left for the next step (the person's words): still offered after "Go ahead" */ later: z.array(z.string().max(160)).max(12).optional() })]).optional(),
   /** what the assistant changed earlier in THIS editing session (newest first); the editor still holds the "before" of each, so it can be put back */
   /** the last few turns of this chat (what the user asked, what was done), so follow-ups like "revert it" or "again" can be understood */
   // CONTEXT the assistant wrote itself (earlier turns, the changes still undoable): trimmed to the shared limits, never a reason to refuse a new message.
@@ -29,6 +30,8 @@ export const aiAssistInput = z.object({
   recent: z.array(z.object({ theme: z.boolean(), slideIds: z.array(z.string().max(64)).max(200), summary: z.array(z.string().max(20_000)).max(100) })).max(50).default([]).transform(clipRecent),
   /** what is selected in the editor right now (the objects "this" and "it" mean); ids are checked against the deck, never trusted */
   selection: z.object({ slideIds: z.array(z.string().max(64)).max(50).default([]), elementIds: z.array(z.string().max(64)).max(200).default([]) }).optional(),
+  /** a quick edit from the editor's menu (packages/validation quick-edits.ts): the server runs its one fixed task on the slide on screen; any `confirm` sent with it is ignored */
+  quick: z.enum(QUICK_EDIT_IDS).optional(),
 })
 export type RecentChange = AiAssistInput['recent'][number]
 export type ConversationTurn = AiAssistInput['conversation'][number]
@@ -113,6 +116,19 @@ const NAMES_A_SLIDE = new RegExp(
 /** "hey", "thanks", "ok": small talk, never a request. Decided here so it is free and can never be mistaken for "do the last thing again". */
 const SMALL_TALK = /^\s*(?:hey+|hi+|hello+|hiya|yo|sup|good (?:morning|afternoon|evening)|thanks?(?: you)?(?: so much| a lot)?|thank u|thx|ty|ok(?:ay)?|k|cool|great|nice|good|perfect|awesome|wow|hmm+|hm+|got it|alright|fine|yes|yeah|yep|no|nope|lol)\s*[.!?🙂👍🙏]*\s*$/i
 export const isSmallTalk = (instruction: string) => SMALL_TALK.test(instruction)
+
+/**
+ * The answer to small talk: ONE short line, never the long list of what the assistant can do (that is for "what can you do?").
+ * A greeting is greeted, a thank-you is welcomed, a plain "ok / great" is acknowledged; each invites the next change.
+ */
+export function smallTalkReply(instruction: string): string {
+  const t = instruction.trim().toLowerCase()
+  if (/^(thanks?|thank u|thx|ty)\b/.test(t)) return "You're welcome! Anything else you'd like to change?"
+  if (/^(hey+|hi+|hello+|hiya|yo|sup|good (morning|afternoon|evening))\b/.test(t)) return 'Hi! What would you like to change in your presentation?'
+  return 'Great. Tell me what you would like to change next.'
+}
+/** a message that is chat, not a change (the model's own reading): one line that says what to do, not the whole list */
+export const CHAT_REPLY = 'Hi! Tell me what you would like to change, for example "make slide 2 shorter".'
 
 /** The message names ONE slide ("slide 3", "the thank-you page", "(slide 16)", "this slide"): priced as a single-slide edit, not a whole-deck one. */
 const NAMES_ONE_SLIDE = new RegExp(

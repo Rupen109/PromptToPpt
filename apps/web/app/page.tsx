@@ -27,7 +27,7 @@ export default function HomePage() {
     <div className="flex flex-col min-h-screen bg-background font-sans text-foreground selection:bg-highlight selection:text-foreground">
       {/* ─── Top Promo Banner ─── */}
       <div className="bg-secondary text-foreground border-b-2 border-foreground text-center min-h-[38px] py-2 px-4 font-heading text-sm font-extrabold flex flex-wrap justify-center items-center gap-3 relative z-50">
-        <span className="inline-flex items-center gap-1.5"><Zap aria-hidden size={14} />New: make a deck from a PDF, Word, Excel or PowerPoint file, an email, a Google Doc, a YouTube video or a web page</span>
+        <span className="inline-flex items-center gap-1.5"><Zap aria-hidden size={14} />New: make a deck from a PDF, Word, Excel or PowerPoint file, an email, a shared Google Doc, a web page, your own recording or a YouTube transcript</span>
         <Link href="/signup" className="bg-foreground text-white py-1 px-3 rounded-sm text-xs font-bold uppercase hover:bg-slate-800 transition-colors">Try Free</Link>
       </div>
 
@@ -45,7 +45,6 @@ export default function HomePage() {
         <FaqSection />
         <ReviewsSection />
       </main>
-
       <Footer />
     </div>
   )

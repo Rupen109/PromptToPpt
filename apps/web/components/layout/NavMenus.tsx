@@ -3,7 +3,7 @@
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { ArrowRight, BookOpen, ChevronDown, FileText, Newspaper, Sparkles } from '@prompttoppt/ui/icons'
+import { ArrowRight, BookOpen, ChevronDown, FileText, Newspaper, Sparkles, Wrench } from '@prompttoppt/ui/icons'
 import { MORPH_CATEGORIES } from '@/lib/morph-categories'
 import type { MenuDesign } from './MenuDesignThumbs'
 
@@ -128,9 +128,10 @@ export function TemplatesMenu({ items }: { items: TemplateCollection[] }) {
   )
 }
 
-/** Resources: the blog, tech news and the how-to guides */
+/** Resources: the blog, tech news, the how-to guides and the free tools */
 export function ResourcesMenu() {
   const items = [
+    { href: '/free-tools', label: 'Free tools', text: 'PDF tools and presentation helpers, no sign-up', Icon: Wrench },
     { href: '/blog', label: 'Blog', text: 'Articles on better presentations', Icon: FileText },
     { href: '/news', label: 'Tech news', text: 'Short AI and software updates', Icon: Newspaper },
     { href: '/guides', label: 'Guides', text: 'How to use SlidesDone, step by step', Icon: BookOpen },
@@ -148,6 +149,70 @@ export function ResourcesMenu() {
             </li>
           ))}
         </ul>
+      )}
+    </HoverMenu>
+  )
+}
+
+/**
+ * Features: what SlidesDone does, in three groups, each linking to its own page (or the home page section that shows it). Only features that exist and can be used
+ * today are listed (landing rules: nothing promised that is not built).
+ */
+export const FEATURE_GROUPS: { title: string; items: { href: string; label: string; text: string }[] }[] = [
+  {
+    title: 'Create with AI',
+    items: [
+      { href: '/ai-ppt-maker', label: 'Topic to PPT', text: 'Describe a topic and get an editable PowerPoint deck' },
+      { href: '/free-tools/pdf-to-presentation', label: 'PDF to presentation', text: 'Turn a PDF into a designed, editable deck' },
+      { href: '/#modalities', label: 'Word, notes and website links', text: 'Build a deck from a document, your notes or a web page' },
+      { href: '/free-tools/video-to-slides', label: 'Video to slides', text: 'Make slides from a recording you upload' },
+      { href: '/free-tools/youtube-transcript-to-slides', label: 'YouTube transcript to slides', text: 'Paste a transcript and get a deck from it' },
+      { href: '/free-tools/script-to-slides', label: 'Script to slides', text: 'Split a talk script into slides' },
+    ],
+  },
+  {
+    title: 'PDF and file tools',
+    items: [
+      { href: '/free-tools/pdf-to-ppt', label: 'PDF to PPT', text: 'A PowerPoint file with editable text, page by page' },
+      { href: '/free-tools/pdf-editor', label: 'PDF editor', text: 'Edit text and pictures in a PDF' },
+      { href: '/free-tools/merge-pdf', label: 'Merge and split PDF', text: 'Combine PDFs or take pages out of one' },
+      { href: '/free-tools/compress-pdf', label: 'Compress PDF', text: 'Make a PDF smaller, in your browser' },
+      { href: '/free-tools/pdf-to-jpg', label: 'PDF to JPG', text: 'Save each page as a picture' },
+      { href: '/free-tools/presentation-outline-generator', label: 'Outline generator', text: 'A slide-by-slide outline for any topic' },
+    ],
+  },
+  {
+    title: 'Edit and present',
+    items: [
+      { href: '/#studio', label: 'AI presentation editor', text: 'Change slides by asking in plain words' },
+      { href: '/morph-animation-templates', label: 'Morph animation templates', text: 'Slides that flow smoothly into the next' },
+      { href: '/templates', label: 'Presentation templates', text: 'Designs for every kind of deck' },
+      { href: '/pricing', label: 'Export to PowerPoint and PDF', text: 'Download as PPTX, PDF, images or HTML' },
+    ],
+  },
+]
+
+export function FeaturesMenu() {
+  return (
+    <HoverMenu label="Features" href="/ai-ppt-maker" width="w-[min(940px,calc(100vw-48px))]" align="page">
+      {(close) => (
+        <div className="grid grid-cols-3 gap-2">
+          {FEATURE_GROUPS.map((g) => (
+            <div key={g.title}>
+              <p className="px-3 pt-2 pb-1 font-heading font-extrabold text-[11px] uppercase tracking-wide text-primary">{g.title}</p>
+              <ul>
+                {g.items.map((i) => (
+                  <li key={i.href + i.label} className="list-none">
+                    <Link href={i.href} onClick={close} className="block rounded-xl px-3 py-2.5 hover:bg-[#f1f5f9] focus:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                      <span className="block font-heading font-extrabold text-sm text-foreground">{i.label}</span>
+                      <span className="block text-xs font-medium text-[#475569]">{i.text}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
       )}
     </HoverMenu>
   )

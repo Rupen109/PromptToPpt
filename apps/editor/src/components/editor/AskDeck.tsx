@@ -16,7 +16,7 @@ const STARTERS = ['Summarise this deck in 3 bullets', 'What are the key numbers?
  * "Chat with your presentation": ask about the deck's own words, get a short answer plus buttons that jump to the slides it came from.
  * Read-only — it never edits the deck (the Edit tab does that). Paid plans; each question costs a few credits and failed ones are refunded.
  */
-export function AskDeck({ doc, presentationId, onEdit }: { doc: Presentation; presentationId: string; /** an edit typed into Ask: switch to Edit and send the same words (only when the person clicks) */ onEdit?: ((text: string) => void) | undefined }) {
+export function AskDeck({ doc, presentationId, slideId, onEdit }: { doc: Presentation; presentationId: string; /** the slide on screen right now */ slideId: string; /** an edit typed into Ask: switch to Edit and send the same words (only when the person clicks) */ onEdit?: ((text: string) => void) | undefined }) {
   const { ent, refresh, upgrade } = useEntitlements()
   const setActiveSlide = useUi((s) => s.setActiveSlide)
   const [turns, setTurns] = useState<Turn[]>(() => KEPT.get(presentationId) ?? [])
@@ -38,11 +38,12 @@ export function AskDeck({ doc, presentationId, onEdit }: { doc: Presentation; pr
     setText('')
     setPending(true)
     try {
-      const r = await api.askDeck(presentationId, { question, history, requestId: crypto.randomUUID() })
+      // the context is read at SEND time, so switching slide or selection while the panel is open is always right
+      const r = await api.askDeck(presentationId, { question, history, requestId: crypto.randomUUID(), activeSlideId: slideId, selection: { slideIds: [slideId], elementIds: useUi.getState().selection.slice(0, 200) } })
       setTurns((t) => [...t, { role: 'ai', text: r.answer, slides: r.slides, credits: r.creditsCharged, ...(r.editRequest ? { editRequest: r.editRequest } : {}) }])
       void refresh()
     } catch (e) {
-      if (isGateError(e)) upgrade.show(e.message)
+      if (isGateError(e)) upgrade.show(e.message, e.code)
       setTurns((t) => [...t, { role: 'error', text: e instanceof ApiError ? e.message : 'Something went wrong. You were not charged — please try again.' }])
     } finally {
       setPending(false)

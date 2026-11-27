@@ -102,7 +102,7 @@ export default async function () {
     await s.check('B1/B2 REAL Wikipedia + REAL AI: Pro finds articles, builds a deck from them and cites them', A.p, async () => {
       await A.p.goto(EDITOR + '/', { waitUntil: 'load' })
       const before = balance(A.email)
-      await A.p.getByRole('button', { name: /Upload files, or links/ }).click()
+      await A.p.getByRole('button', { name: /Add files or links/ }).click()
       const dlg = A.p.getByRole('dialog', { name: 'Add sources' }); await dlg.waitFor()
       await dlg.getByRole('tab', { name: /Wikipedia/ }).click()
       await dlg.getByLabel('Topic to research').fill('Chandrayaan-3')
@@ -144,7 +144,7 @@ export default async function () {
     await s.check('B5 REAL Google grounding: Gold web search → brief with pages used, 60 credits, search fee in the ledger', G.p, async () => {
       await G.p.goto(EDITOR + '/', { waitUntil: 'load' })
       const before = balance(G.email)
-      await G.p.getByRole('button', { name: /Upload files, or links/ }).click()
+      await G.p.getByRole('button', { name: /Add files or links/ }).click()
       const dlg = G.p.getByRole('dialog', { name: 'Add sources' }); await dlg.waitFor()
       await dlg.getByRole('tab', { name: /Wikipedia/ }).click()
       await dlg.getByRole('radio', { name: /Live web search/ }).check()
@@ -168,7 +168,7 @@ export default async function () {
       const r = await api.post(A, '/sources/research', { query: 'anything at all', mode: 'web', requestId: `r-${Date.now()}-locked01` })
       expect(r.status === 403, `status ${r.status}`)
       await A.p.goto(EDITOR + '/', { waitUntil: 'load' })
-      await A.p.getByRole('button', { name: /Upload files, or links/ }).click()
+      await A.p.getByRole('button', { name: /Add files or links/ }).click()
       const dlg = A.p.getByRole('dialog', { name: 'Add sources' }); await dlg.waitFor()
       await dlg.getByRole('tab', { name: /Wikipedia/ }).click()
       await dlg.getByRole('radio', { name: /Live web search/ }).check()

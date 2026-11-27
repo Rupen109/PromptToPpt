@@ -1,5 +1,6 @@
 import { join } from 'node:path'
 import { API, EDITOR, WEB, expect, launch, suite } from '../lib.mjs'
+import { person } from '../kits-lib.mjs'
 
 /** Header menus (Templates, Resources), the language picker's visible effect on the landing page, and the Google sign-in button. No AI is called. */
 const SHOTS = new URL('../results/', import.meta.url).pathname
@@ -38,7 +39,8 @@ export default async function () {
       const cta = panel.getByRole('link', { name: /View all templates/ }); expect(await cta.isVisible(), 'no View all templates button')
       expect((await bg(cta)) !== 'rgba(0, 0, 0, 0)', 'the button has no fill')
       await p.screenshot({ path: join(SHOTS, '42-templates.png'), clip: { x: 0, y: 0, width: 1440, height: 420 } })
-      await p.mouse.move(700, 600); await p.waitForTimeout(400)
+      const box = await panel.boundingBox() // (the panel is tall: the pointer leaves it below its bottom edge)
+      await p.mouse.move(700, Math.min(890, box.y + box.height + 60)); await p.waitForTimeout(400)
       expect(await p.getByRole('region', { name: 'Templates links' }).count() === 0, 'the panel stays open when the mouse leaves')
       await header().getByRole('link', { name: 'Templates', exact: true }).hover(); await cta.click()
       await p.waitForURL(/\/templates$/, { timeout: 10000 })
@@ -48,7 +50,7 @@ export default async function () {
       await p.goto(WEB + '/', { waitUntil: 'networkidle' })
       await header().getByRole('button', { name: 'Resources menu' }).focus(); await p.keyboard.press('Enter')
       await p.getByRole('region', { name: 'Resources links' }).waitFor({ timeout: 4000 })
-      await p.keyboard.press('Tab'); expect(await p.evaluate(() => document.activeElement?.textContent?.includes('Blog')), 'Tab does not move into the panel')
+      await p.keyboard.press('Tab'); expect(await p.evaluate(() => document.activeElement?.textContent?.includes('Free tools')), 'Tab does not move into the panel')
       expect((await header().getByRole('link', { name: 'Templates', exact: true }).getAttribute('href')) === '/templates', 'label link')
       const plain = header().getByRole('link', { name: 'Pricing' }); const b0 = await bg(plain); await plain.hover(); await p.waitForTimeout(250)
       expect((await bg(plain)) !== b0, 'Pricing has no hover highlight')
@@ -58,11 +60,11 @@ export default async function () {
       await p.setViewportSize({ width: 390, height: 800 }); await p.goto(WEB + '/', { waitUntil: 'networkidle' })
       await p.getByRole('button', { name: 'Open menu' }).click()
       const nav = p.locator('#mobile-nav')
-      for (const l of ['Templates', 'Blog', 'Tech news', 'Guides']) expect(await nav.getByRole('link', { name: l }).count() === 1, `${l} missing in the phone menu`)
+      for (const l of ['Templates', 'Blog', 'Tech news', 'Guides']) expect(await nav.getByRole('link', { name: l, exact: true }).count() === 1, `${l} missing in the phone menu`)
       await p.setViewportSize({ width: 1440, height: 900 })
     })
 
-    await s.check('B1 Language: only the 13 offered languages, English first and by default; the choice shows in the header AND the prompt box, stays in sync, and the editor hand-off carries it', p, async () => {
+    await s.check('B1 Language: only the 14 offered languages, English first and by default; the choice shows in the header AND the prompt box, stays in sync, and the editor hand-off carries it', p, async () => {
       const send = async (text) => { await p.locator('main textarea').first().fill(text); await p.locator('main button:has(svg.lucide-send)').click(); await p.waitForTimeout(3000) } // (labels may be translated)
       const English = () => p.waitForFunction(() => /Turn Messy Documents/.test(document.querySelector('h1')?.innerText ?? ''), null, { timeout: 25000 })
       await p.goto(WEB + '/', { waitUntil: 'networkidle' })
@@ -70,7 +72,7 @@ export default async function () {
       expect((await chip.innerText()).includes('English'), `the default is not English: ${await chip.innerText()}`)
       expect((await header().innerText()).includes('EN'), 'the header does not show English by default')
       const opts = await chip.getByLabel('Presentation language').locator('option').allInnerTexts()
-      expect(opts.join('|') === 'English|Deutsch|Español|Français|हिन्दी|Bahasa Indonesia|Italiano|中文|Polski|Português|Tiếng Việt|Magyar|Svenska', `languages offered: ${opts.join('|')}`)
+      expect(opts.join('|') === 'English|العربية|Deutsch|Español|Français|हिन्दी|Bahasa Indonesia|Italiano|中文|Polski|Português|Tiếng Việt|Magyar|Svenska' /* OFFERED_LANGUAGE_CODES, packages/validation/src/languages.ts (Arabic added in 254ad23) */, `languages offered: ${opts.join('|')}`)
       expect(!opts.some((o) => /auto/i.test(o)), 'Auto-detect is still offered')
       await chip.getByLabel('Presentation language').selectOption('hi'); await p.waitForTimeout(300)
       expect((await chip.innerText()).includes('हिन्दी'), `prompt box does not show Hindi: ${await chip.innerText()}`)
@@ -96,12 +98,12 @@ export default async function () {
     })
 
     await s.check('B2 Editor home: the deck language starts on English too', p, async () => {
-      const q = await (await b.newContext({ viewport: { width: 1440, height: 900 } })).newPage()
-      const email = `lang${Date.now()}@example.com`
-      const su = await q.context().request.post(`${API}/api/auth/sign-up/email`, { headers: { Origin: WEB, 'Content-Type': 'application/json' }, data: { email, password: 'Passw0rd!qa-test', name: 'Lang QA' } }); expect(su.ok(), `sign-up ${su.status()}`)
+      // a signed-in new account (person(): signs up, verifies the e-mail as the server requires, signs in)
+      const L = await person(b, 'lang')
+      const q = L.p
       await q.goto(EDITOR + '/', { waitUntil: 'load' }); await q.getByLabel('Deck language').waitFor({ timeout: 15000 })
       expect(await q.getByLabel('Deck language').inputValue() === 'en', `editor default is "${await q.getByLabel('Deck language').inputValue()}"`)
-      await q.close()
+      await L.ctx.close()
     })
 
     await s.check('C1 Login page: "Continue with Google" is a real button (border, shadow, Google logo, full width) and "OR" has divider lines', p, async () => {

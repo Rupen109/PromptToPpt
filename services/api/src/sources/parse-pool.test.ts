@@ -30,7 +30,7 @@ describe('file reading happens in worker threads', () => {
     }
   })
   it('a file that cannot be read keeps its plain-language message through the worker; unexpected errors become the generic line', async () => {
-    await expect(parseUpload(strToU8('MZ\u0090\u0000\u0003'), 'setup.docx')).rejects.toThrow(/not a valid Office document/)
+    await expect(parseUpload(strToU8('MZ\u0090\u0000\u0003'), 'setup.docx')).rejects.toThrow(/named like a Word document but is not one inside/)
     await expect(parseUpload(strToU8('MZ\u0090\u0000\u0003'), 'setup.docx')).rejects.toBeInstanceOf(SourceError)
     await expect(parseUpload(strToU8('x'), 'a.exe')).rejects.toThrow(/Unsupported file type/)
   })
@@ -59,7 +59,7 @@ describe('file reading happens in worker threads', () => {
   }, 30_000)
   it('a reused worker still answers a refusal in plain words and a later good file is read correctly (one bad file does not poison it)', async () => {
     await parseUpload(copy(small()), 'a.docx')
-    await expect(parseUpload(strToU8('MZ\u0090\u0000\u0003'), 'setup.docx')).rejects.toThrow(/not a valid Office document/)
+    await expect(parseUpload(strToU8('MZ\u0090\u0000\u0003'), 'setup.docx')).rejects.toThrow(/named like a Word document but is not one inside/)
     expect((await parseUpload(copy(small()), 'b.docx')).extracted.parts[0]!.text).toContain('Heading text')
   })
   it('a file that takes too long is stopped with a plain message, and the next file is read normally', async () => {

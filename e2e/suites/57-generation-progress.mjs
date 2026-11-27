@@ -24,10 +24,15 @@ export default async function () {
   const editorState = () => p.evaluate(() => ({ placeholders: document.querySelectorAll('[data-writing]').length, slides: document.querySelectorAll('[aria-label^="Slide "]').length }))
 
   try {
-    await s.check('A1 the progress screen shows the stages, a bar and the slides ticking off with real titles; the editor opens only when the deck is complete, by itself, with every slide written', p, async () => {
+    await s.check('A1 the progress screen shows "Thought for Ns" with what was understood, the steps with their times and the slides ticking off with real titles (no orb, no shimmer); the editor opens only when the deck is complete, by itself, with every slide written', p, async () => {
       await begin()
-      await p.getByRole('progressbar').waitFor({ timeout: 10000 })
+      await p.getByRole('list', { name: 'Steps' }).waitFor({ timeout: 10000 })
       expect(await p.getByRole('list', { name: 'Steps' }).count() === 1, 'no steps')
+      const thought = p.getByTestId('thought')
+      expect(/^Thought for \d+s/.test((await thought.innerText()).trim()), `no "Thought for": ${await thought.count() ? await thought.innerText() : 'missing'}`)
+      await thought.getByRole('button').click()
+      expect(/About/.test(await thought.innerText()), 'the thought does not open to what was understood')
+      expect(await p.locator('.pt-orb, .pt-shimmer, [role=progressbar]').count() === 0, 'the old orb / shimmer / bar is still on the page')
       let sawTitles = false, sawDone = false
       for (let i = 0; i < 200 && !/\/edit\//.test(p.url()); i++) {
         const r = await rows()
@@ -52,7 +57,7 @@ export default async function () {
         await route.fulfill({ response: res, json: j })
       })
       await begin()
-      await p.getByRole('progressbar').waitFor({ timeout: 10000 })
+      await p.getByRole('list', { name: 'Steps' }).waitFor({ timeout: 10000 })
       const open = p.getByRole('button', { name: 'Open the editor now' })
       await open.waitFor({ timeout: 120000 })
       expect(/\/create/.test(p.url()), 'the editor opened by itself although the page was told the job is not finished')

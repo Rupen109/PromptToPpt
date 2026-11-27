@@ -294,10 +294,17 @@ describe('what a file IS is decided by its content', () => {
     for (const name of ['x.pdf', 'x.xlsx', 'x.docm', 'noextension']) expect((await fromFile(D, name)).kind).toBe('docx')
     for (const name of ['x.docx', 'x.pptx', 'x.csv']) expect((await fromFile(X, name)).kind).toBe('xlsx')
   })
+  it('G0 an empty file says it is empty, and a file named .pdf / .pptx that is not one says that — never "upload a PDF" to someone who did', async () => {
+    for (const name of ['report.pdf', 'deck.pptx', 'notes.txt', 'data.csv']) await expect(fromFile(new Uint8Array(0), name)).rejects.toThrow(/That file is empty/)
+    await expect(fromFile(enc('<html><script>x</script></html>'), 'report.pdf')).rejects.toThrow(/named like a PDF but is not one inside/)
+    await expect(fromFile(enc('<html><script>x</script></html>'), 'deck.pptx')).rejects.toThrow(/named like a PowerPoint file but is not one inside/)
+    await expect(fromFile(enc('<html><script>x</script></html>'), 'book.xlsx')).rejects.toThrow(/named like an Excel workbook but is not one inside/)
+  })
   it('G1 an executable, a picture or a random zip named .docx are refused in plain words', async () => {
-    await expect(fromFile(new Uint8Array([0x4d, 0x5a, 0x90, 0, 3, 0, 0, 0, 4, 0]), 'setup.docx')).rejects.toThrow(/not a valid Office document/)
-    await expect(fromFile(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0]), 'pic.docx')).rejects.toThrow(/not a valid Office document/)
-    await expect(fromFile(zipSync({ 'a.txt': enc('hello') }), 'archive.docx')).rejects.toThrow(/Unsupported file type/)
+    await expect(fromFile(new Uint8Array([0x4d, 0x5a, 0x90, 0, 3, 0, 0, 0, 4, 0]), 'setup.docx')).rejects.toThrow(/named like a Word document but is not one inside/)
+    await expect(fromFile(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0]), 'pic.docx')).rejects.toThrow(/named like a Word document but is not one inside/)
+    await expect(fromFile(zipSync({ 'a.txt': enc('hello') }), 'archive.docx')).rejects.toThrow(/named like a Word document but is not one inside/)
+    await expect(fromFile(zipSync({ 'a.txt': enc('hello') }), 'archive.zip')).rejects.toThrow(/Unsupported file type/)
     await expect(fromFile(enc('plain words'), 'notes.xyz')).rejects.toThrow(new RegExp(FILE_TYPES_HELP.slice(0, 20).replace(/[()]/g, '.')))
   })
   it('G4 every message a user can see comes from SourceError (plain sentences, no paths, no stack)', async () => {

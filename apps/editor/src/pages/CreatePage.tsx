@@ -1,11 +1,10 @@
-import { ArrowLeft, Check, LayoutTemplate, Lock, Sparkles } from '@prompttoppt/ui/icons'
+import { ArrowLeft, LayoutTemplate, Lock, Sparkles } from '@prompttoppt/ui/icons'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Navigate, useNavigate } from 'react-router'
-import { ApiError, isGateError, type AnalyzeResult, type BrandKit, type BrandTheme, type JobStatus, type JobView, type ModelOption } from '@prompttoppt/api-client'
-import type { Direction, MorphDecision } from '@prompttoppt/validation'
+import { ApiError, isGateError, type AnalyzeResult, type BrandKit, type BrandTheme, type JobView, type ModelOption } from '@prompttoppt/api-client'
+import type { Direction, MorphDecision, PromptAnalysis } from '@prompttoppt/validation'
 import { BriefCard } from '@/components/BriefCard'
-import { BuildProgress } from '@/components/BuildProgress'
-import { ThinkingLoader } from '@/components/ThinkingLoader'
+import { BuildProgress, ThoughtRow } from '@/components/BuildProgress'
 import { ModelPicker } from '@/components/ModelPicker'
 import { MorphTemplatePicker } from '@/components/MorphTemplatePicker'
 import { MORPH_TEMPLATES } from '@prompttoppt/theme/morph-templates'
@@ -22,14 +21,6 @@ type Phase =
   | { kind: 'pick-direction'; result: AnalyzeResult }
   | { kind: 'pick-length'; result: AnalyzeResult; direction?: Direction }
   | { kind: 'generating'; job: JobView | null }
-
-const STAGES: Record<JobStatus, string> = {
-  queued: 'Waiting for a free slot…', analyzing: 'Understanding your request…', outlining: 'Building the outline…', generating: 'Writing the slides…',
-  rendering: 'Designing layouts…', validating: 'Checking quality…', completed: 'Done', failed: 'Failed', cancelled: 'Cancelled',
-}
-
-/** The visible steps of a generation, in order (queued shows none as active yet). */
-const STEPS: [JobStatus, string][] = [['analyzing', 'Understand'], ['outlining', 'Outline'], ['generating', 'Write slides'], ['rendering', 'Design'], ['validating', 'Check']]
 
 /** A deck from a template has the template's own slides: one fixed length. */
 const templateLength = (id: string): readonly (readonly [string, number])[] => { const t = MORPH_TEMPLATES.find((x) => x.id === id); return t ? [[t.name, t.scenes.length]] : [] }
@@ -171,6 +162,8 @@ export function CreatePage() {
   const [phase, setPhase] = useState<Phase>(getPendingJob() ? { kind: 'generating', job: null } : fileTpl ? { kind: 'template' } : { kind: 'analyzing' })
   /** how many slides of the deck being built are written (reported by the progress list): the editor can be opened early once there is one */
   const [written, setWritten] = useState(0)
+  /** "Thinking" → "Thought for 6s": when the request was sent to be understood, how long that took and what came back (shown above every later step) */
+  const [thought, setThought] = useState<{ startedAt: number; tookMs: number | null; analysis: PromptAnalysis | null } | null>(null)
   /** The deck is being opened. The editor loads on demand, so for a moment this screen is still shown after the pending request is cleared: it must not take that for "nothing to do here" and send the person Home. */
   const [leaving, setLeaving] = useState(false)
   const openDeck = useCallback((deckId: string) => { setLeaving(true); clearPending(); void refresh(); navigate(`/edit/${deckId}`, { replace: true }) }, [navigate, refresh])
@@ -208,10 +201,14 @@ export function CreatePage() {
   const analyze = useCallback(async () => {
     if (!prompt) return
     setPhase({ kind: 'analyzing' })
+    const startedAt = Date.now()
+    setThought({ startedAt, tookMs: null, analysis: null })
     try {
       const result = await api.analyze(prompt, getPendingSources(), getPendingLanguage())
+      setThought({ startedAt, tookMs: Date.now() - startedAt, analysis: result.analysis })
       setPhase(result.mode === 'broad' && result.directions ? { kind: 'pick-direction', result } : { kind: 'pick-length', result })
     } catch (e) {
+      setThought(null)
       setPhase({ kind: 'error', message: errMessage(e), retry: { type: 'analyze' } })
     }
   }, [prompt])
@@ -230,7 +227,7 @@ export function CreatePage() {
       setPendingJob(job.id)
       setPhase({ kind: 'generating', job })
     } catch (e) {
-      if (isGateError(e)) { upgrade.show(e.message); setPhase({ kind: 'template' }); return }
+      if (isGateError(e)) { upgrade.show(e.message, e.code); setPhase({ kind: 'template' }); return }
       setPhase({ kind: 'error', message: errMessage(e), retry: { type: 'home' } })
     }
   }, [prompt, fileTpl, modelId, upgrade])
@@ -343,7 +340,7 @@ export function CreatePage() {
       <main className="max-w-[820px] mx-auto pt-8 sm:pt-16 pb-16 sm:pb-24 px-4 sm:px-6">
         {prompt && <div className="ml-auto max-w-[85%] bg-[#ececec] rounded-2xl px-5 py-4 text-[17px] leading-relaxed whitespace-pre-wrap break-words">{prompt}</div>}
 
-        {phase.kind === 'analyzing' && <ThinkingLoader messages={['Reading your request…', 'Working out the topic and audience…', 'Looking for the best angle…', 'Planning the story of your deck…']} />}
+        {thought && phase.kind !== 'error' && <ThoughtRow startedAt={thought.startedAt} tookMs={thought.tookMs} analysis={thought.analysis} sources={getPendingSources().length} />}
 
         {phase.kind === 'error' && (
           <Card>
@@ -385,40 +382,17 @@ export function CreatePage() {
         )}
 
         {phase.kind === 'generating' && (
-          <Card>
-            <div className="flex items-center justify-between gap-3 mb-4">
-              <div className="flex items-center gap-3 min-w-0">
-                <span className="pt-orb" aria-hidden><i /><b /></span>
-                <p className="font-heading font-bold text-base truncate" role="status"><span className="pt-shimmer">{phase.job ? STAGES[phase.job.status] : 'Starting…'}</span></p>
-              </div>
-              {phase.job && (
-                <button onClick={() => void api.cancelJob(phase.job!.id)} className="text-sm text-slate-500 underline shrink-0">Cancel</button>
+          <section aria-label="Building your presentation" className="mt-2">
+            {morph && morphTpl && <p className="mt-5 text-sm text-slate-600" data-testid="building-from-template">Building from the <b>{MORPH_TEMPLATES.find((t) => t.id === morphTpl)?.name ?? morphTpl}</b> template</p>}
+            <BuildProgress status={phase.job?.status ?? null} deckId={phase.job?.presentationId ?? null} onCount={(w) => setWritten(w)} />
+            <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-3 pl-7">
+              {phase.job?.presentationId && written > 0 && (
+                <button onClick={() => openDeck(phase.job!.presentationId!)} className="bg-white border border-slate-300 text-slate-900 rounded-lg px-4 py-2 text-sm font-semibold hover:bg-slate-50">Open the editor now</button>
               )}
+              {phase.job && <button onClick={() => void api.cancelJob(phase.job!.id)} className="text-sm text-slate-500 hover:text-slate-700 underline underline-offset-2">Cancel</button>}
+              {phase.job?.presentationId && written > 0 && <p className="w-full text-xs text-slate-500">The editor opens by itself when the deck is complete.</p>}
             </div>
-            {morph && morphTpl && <p className="mb-3 text-sm text-slate-600" data-testid="building-from-template">Building from the <b>{MORPH_TEMPLATES.find((t) => t.id === morphTpl)?.name ?? morphTpl}</b> template</p>}
-            <div className="h-2.5 rounded-full bg-slate-200 overflow-hidden" role="progressbar" aria-valuenow={phase.job?.progress ?? 0} aria-valuemin={0} aria-valuemax={100}>
-              <div className="h-full pt-bar rounded-full transition-all duration-700" style={{ width: `${Math.max(4, phase.job?.progress ?? 0)}%` }} />
-            </div>
-            <ol className="mt-5 grid grid-cols-5 gap-1 text-center" aria-label="Steps">
-              {STEPS.map(([status, label], n) => {
-                const at = phase.job ? STEPS.findIndex(([k]) => k === phase.job!.status) : -1
-                const state = n < at ? 'done' : n === at ? 'now' : 'next'
-                return (
-                  <li key={status} className="flex flex-col items-center gap-1.5" aria-current={state === 'now' ? 'step' : undefined}>
-                    <span className={`w-6 h-6 rounded-full grid place-items-center text-[11px] font-bold transition-colors ${state === 'done' ? 'bg-primary text-white' : state === 'now' ? 'bg-white text-primary border-2 border-primary pt-step-now' : 'bg-slate-100 text-slate-400'}`}>{state === 'done' ? <Check aria-hidden size={13} strokeWidth={3} /> : n + 1}</span>
-                    <span className={`text-[11px] sm:text-xs leading-tight ${state === 'next' ? 'text-slate-400' : 'text-slate-700 font-medium'}`}>{label}</span>
-                  </li>
-                )
-              })}
-            </ol>
-            {phase.job?.presentationId && <BuildProgress deckId={phase.job.presentationId} onCount={(w) => setWritten(w)} />}
-            {phase.job?.presentationId && written > 0 && (
-              <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
-                <p className="text-xs text-slate-500">The editor opens by itself when the deck is complete.</p>
-                <button onClick={() => openDeck(phase.job!.presentationId!)} className="bg-white border-2 border-slate-900 text-slate-900 rounded-lg px-4 py-2 text-sm font-semibold hover:bg-slate-50">Open the editor now</button>
-              </div>
-            )}
-          </Card>
+          </section>
         )}
       </main>
     </div>

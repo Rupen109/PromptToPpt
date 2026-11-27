@@ -69,7 +69,7 @@ export function BrandTab({ doc, slideId }: { doc: Presentation; slideId: string 
   }
   const branded = doc.slides.flatMap((x, i) => (x.brand ? [i + 1] : []))
   const fail = useCallback((e: unknown) => {
-    if (isGateError(e) && e.code === 'UPGRADE_REQUIRED') upgrade.show(e.message)
+    if (isGateError(e) && e.code === 'UPGRADE_REQUIRED') upgrade.show(e.message, e.code)
     else setError(e instanceof ApiError ? e.message : 'Something went wrong. Please try again.')
   }, [upgrade])
   const choose = (k: BrandKit | null) => { setSel(k?.id ?? null); setForm(k ? formOf(k) : null) }

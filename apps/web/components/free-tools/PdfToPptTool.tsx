@@ -69,7 +69,7 @@ export function PdfToPptTool() {
           <span className="block font-heading font-extrabold text-lg text-foreground">{file ? file.name : 'Drop your PDF here, or click to choose'}</span>
           <span className="mt-1 block text-sm font-medium text-[#64748b]">{file ? `${(file.size / 1024 / 1024).toFixed(1)} MB` : `Up to ${PPT_MAX_PAGES} pages and ${PPT_MAX_BYTES / 1024 / 1024} MB · converted on your device — your file is not uploaded`}</span>
         </button>
-        <input ref={input} type="file" accept="application/pdf,.pdf" className="sr-only" aria-label="Choose a PDF" onChange={(e) => pick(e.target.files?.[0])} />
+        <input ref={input} type="file" accept="application/pdf,.pdf" className="sr-only" aria-label="Choose a PDF" onChange={(e) => { pick(e.target.files?.[0]); e.target.value = '' }} />
 
         <fieldset className="mt-5" disabled={busy}>
           <legend className="sr-only">How to read the text</legend>

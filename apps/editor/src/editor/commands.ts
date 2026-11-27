@@ -859,6 +859,7 @@ export function assistSteps(r: AssistChanges): AssistStep[] {
     for (const k of ['textShadow', 'textOutline', 'border'] as const) if (own[k] === null) own[k] = undefined // (an effect taken off)
     if (own['strokeDash'] === null) own['strokeDash'] = undefined // (a solid border or line again: the field is taken off)
     if (own['legend'] === null) own['legend'] = undefined // (an automatic legend: the field is taken off)
+    if (own['colors'] === null) own['colors'] = undefined // (a chart back in the deck's own colours)
     if (own['stack'] === null) own['stack'] = undefined // (bars side by side again)
     if (own['merges'] === null) own['merges'] = undefined // (a table with no merged cells left)
     if (own['aligns'] === null) own['aligns'] = undefined // (no cell with its own alignment left)

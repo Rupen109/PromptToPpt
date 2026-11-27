@@ -41,3 +41,15 @@ Built 2026-10-31 as the test environment. Domain `slidesdone.app` (bought at Hos
 - There is no CloudFront in front of the API or website yet, so no country header: prices use the default currency until an edge is added (`EDGE_SHARED_SECRET` is set but unused). Add it before real launch (see PRODUCTION_RELEASE_CHECKLIST).
 - A single server means no failover; backups are database dumps only, twice a day (02:30 and 13:00 India time).
 - OpenTofu state is a local file (`infra/tofu/terraform.tfstate`, git-ignored): back it up.
+
+## Review account for Razorpay (international payments)
+
+Razorpay asks for a login to review the site. The account is made by the owner, not through the sign-up form (the site is invite-only, and the form would e-mail a confirmation link): it is created verified, as a plain Starter account, with the first-visit question answered. Code: `services/api/src/admin/review-account.ts`; the command is built into the API image as `dist/review-account.js`.
+
+1. The password lives in `services/api/.env` as `Razorpay_Test` (at least 10 characters). It is never typed into a command or shown.
+2. Put it in Parameter Store: `infra/scripts/put-secrets.sh goldenhour test --from-env-file services/api/.env` and answer **y** for `Razorpay_Test` (keep the others).
+3. Refresh the server's settings: `infra/scripts/deploy.sh config`.
+4. Create the account on the server (through `aws ssm start-session`, or `send-command`):
+   `cd /opt/slidesdone && docker compose --env-file .env --env-file images.env run --rm api node dist/review-account.js razorpayreviewer@slidesdone.app Razorpay_Test`
+5. Running step 4 again only resets the password. Locally: `pnpm --filter @prompttoppt/api review-account razorpayreviewer@slidesdone.app Razorpay_Test`.
+

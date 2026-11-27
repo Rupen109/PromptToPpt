@@ -35,6 +35,21 @@ describe('auth', () => {
     expect(me.data.role).toBe('user')
   })
 
+  it('"which of these best describes you": not asked yet = null; one of the fixed answers is saved on the person\'s own row; anything else is refused', async () => {
+    const { cookie } = await signUp({ persona: 'sales' }) // cannot be set at sign-up
+    const get = async () => (await (await app.request('/api/v1/me', { headers: { Cookie: cookie } })).json()) as { data: { persona: string | null } }
+    expect((await get()).data.persona).toBeNull()
+    const put = (b: unknown, headers: Record<string, string> = { ...json, Cookie: cookie }) => app.request('/api/v1/me/persona', { method: 'PUT', headers, body: JSON.stringify(b) })
+    expect((await put({ persona: 'business' })).status).toBe(200)
+    expect((await get()).data.persona).toBe('business')
+    expect((await put({ persona: 'student' })).status).toBe(200) // answering again changes it
+    expect((await get()).data.persona).toBe('student')
+    expect((await put({ persona: 'hacker' })).status).toBe(400)
+    expect((await put({ persona: 'other', role: 'admin' })).status).toBe(400) // nothing else rides along
+    expect((await put({ persona: 'other' }, json)).status).toBe(401) // signed in only
+    expect((await get()).data.persona).toBe('student')
+  })
+
 })
 
 describe('prompt drafts', () => {

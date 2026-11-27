@@ -70,6 +70,11 @@ export const META: Record<Family, CapabilityMeta> = {
   },
   motion: { label: 'set one animation style for the whole deck', description: 'Chooses the deck-wide entrance animation (or none).', examples: ['animate every slide', 'remove all animations'], scopes: ['deck'], ready: true, verifiedBy: ['theme'] },
   undo: { label: 'put back my last change', description: 'Undoes the assistant\'s own earlier change.', examples: ['undo that'], scopes: ['deck'], ready: true, verifiedBy: ['revert'] },
+  transform: {
+    label: 'improve the whole deck toward a goal: more professional, for executives, an investor pitch, a better story, simpler, more engaging, fit a talk length, a stronger ending (I show the plan and you confirm)',
+    description: 'Reads the whole deck and plans one change per slide (keep, rewrite, shorten, expand, a new layout, delete), new slides where they belong, a new order and section dividers, toward the goal you give. You see the plan with its price before anything changes. Every figure in your deck is kept (a figure can only go with a slide the plan deletes, and the plan says so); nothing is invented; the theme and fonts stay.',
+    examples: ['make the whole deck more professional for senior executives', 'turn this into an investor pitch deck', 'optimise it for a 15-minute talk'], scopes: ['deck'], ready: true, verifiedBy: ['edit', 'addition', 'removal', 'move'],
+  },
   rewrite_deck: { label: 'rebuild every slide from details you give', description: 'Rewrites the whole deck from new details (owner only; it runs as a separate job).', examples: ['rebuild this deck for a bank'], scopes: ['deck'], ready: true, verifiedBy: ['rewrite'], ownerOnly: true },
   element: {
     label: 'change objects on a slide (bigger or smaller, move, align, text size, bold, colour, delete) add simple shapes and animate objects', description: 'Resizes, moves, aligns, restyles or deletes particular objects of a slide: the one you select, or the title, the picture, the text. Adds an entrance, emphasis or exit animation to an object (or takes its animations off), adds a rectangle, circle, line, triangle, ring or arrow, and changes a shape\'s colour, outline, corners and see-through. Never on a locked slide or a locked object; on animated-template slides only the words and the text style.',

@@ -25,8 +25,8 @@ describe('plan catalogue (matches the owner\'s spec, docs/PLANS_AND_FEATURES_V5.
     const [starter, pro, gold, premium] = res.data.plans
     expect(res.data.plans.map((p: any) => p.id)).toEqual(['starter', 'pro', 'gold', 'premium'])
     // Starter: free, 5 decks of 10 slides, watermark, no export, no AI edits, no live preview (no present / share), no model choice
-    expect(starter).toMatchObject({ monthlyCredits: 100, maxSlides: 10, maxPresentationsPerMonth: 5, maxImagesPerPresentation: 0, maxImagesPerMonth: 0, features: { watermark: true, exportFormats: [], aiEdits: false, advancedEditor: true, advancedSharing: false, livePreview: false, modelChoice: false, modelTiers: ['starter'], fixedModels: ['gemini-3.6-flash', 'gemini-3.1-flash-lite'] } })
-    expect(pro).toMatchObject({ monthlyCredits: 900, maxSlides: 15, maxPresentationsPerMonth: 15, features: { watermark: false, aiEdits: true, advancedEditor: true, premiumTemplates: true, advancedSharing: true, livePreview: true, exportFormats: ['pdf', 'pptx', 'jpg'], modelChoice: false, modelTiers: ['starter'], fixedModels: ['gemini-3.6-flash', 'gemini-3.8-flash'], support: 'whatsapp' } })
+    expect(starter).toMatchObject({ monthlyCredits: 150, maxSlides: 10, maxPresentationsPerMonth: 5, maxImagesPerPresentation: 0, maxImagesPerMonth: 0, features: { watermark: true, exportFormats: [], aiEdits: false, advancedEditor: true, advancedSharing: false, livePreview: false, modelChoice: false, modelTiers: ['starter'], fixedModels: ['gemini-3.6-flash', 'gemini-3.1-flash-lite'] } })
+    expect(pro).toMatchObject({ monthlyCredits: 1150, maxSlides: 15, maxPresentationsPerMonth: 15, features: { watermark: false, aiEdits: true, advancedEditor: true, premiumTemplates: true, advancedSharing: true, livePreview: true, exportFormats: ['pdf', 'pptx', 'jpg'], modelChoice: false, modelTiers: ['starter'], fixedModels: ['gemini-3.6-flash', 'gemini-3.8-flash'], support: 'whatsapp' } })
     expect(gold).toMatchObject({ monthlyCredits: 2000, maxSlides: 25, maxPresentationsPerMonth: 50, features: { exportFormats: ['pptx', 'pdf', 'png', 'jpg', 'html'], livePreview: true, modelChoice: false, modelTiers: ['starter'], brandKit: true, knowledgeBase: true, speed: 'ultra', fixedModels: ['gemini-3.6-flash', 'gemini-3.8-flash'] } })
     expect(premium).toMatchObject({ monthlyCredits: 3700, maxSlides: 60, maxPresentationsPerMonth: 50, features: { exportFormats: ['pptx', 'pdf', 'png', 'jpg', 'html'], livePreview: true, modelChoice: true, modelTiers: ['starter', 'premium', 'frontier'], aiEdits: true } })
   })
@@ -41,8 +41,8 @@ describe('plan catalogue (matches the owner\'s spec, docs/PLANS_AND_FEATURES_V5.
     const inr = await json(await app_get('/plans', { 'x-debug-country': 'IN' }))
     expect(inr.data.currency).toBe('INR')
     expect(inr.data.plans[1].prices).toEqual([{ interval: 'month', amountMinor: 30000, currency: 'INR' }, { interval: 'year', amountMinor: 288000, currency: 'INR' }]) // ₹300/mo
-    expect(inr.data.plans[2].prices[0]).toEqual({ interval: 'month', amountMinor: 65000, currency: 'INR' }) // ₹650/mo
-    expect(inr.data.plans[3].prices[0]).toEqual({ interval: 'month', amountMinor: 120000, currency: 'INR' }) // ₹1,200/mo
+    expect(inr.data.plans[2].prices[0]).toEqual({ interval: 'month', amountMinor: 70000, currency: 'INR' }) // ₹700/mo
+    expect(inr.data.plans[3].prices[0]).toEqual({ interval: 'month', amountMinor: 130000, currency: 'INR' }) // ₹1,300/mo
     // a query-string "currency" is simply ignored
     const spoof = await json(await app_get('/plans?currency=INR'))
     expect(spoof.data.currency).toBe('USD')
@@ -50,18 +50,18 @@ describe('plan catalogue (matches the owner\'s spec, docs/PLANS_AND_FEATURES_V5.
 })
 
 describe('entitlements & gates', () => {
-  it('new users are Starter with 100 credits, granted exactly once', async () => {
+  it('new users are Starter with 150 credits, granted exactly once', async () => {
     const u = await signUp('ent')
     const a = await getEntitlements(u.id)
     const b = await getEntitlements(u.id)
     expect(a.plan.id).toBe('starter')
-    expect(a.credits.balance).toBe(100)
-    expect(b.credits.balance).toBe(100)
+    expect(a.credits.balance).toBe(150)
+    expect(b.credits.balance).toBe(150)
     expect((await db.select().from(creditLedger).where(eq(creditLedger.userId, u.id))).filter((r) => r.reason === 'plan_grant')).toHaveLength(1)
   })
 
   it('upgrading grants the new plan allowance and removes the watermark', async () => {
-    for (const [plan, credits] of [['pro', 900], ['gold', 2000], ['premium', 3700]] as const) {
+    for (const [plan, credits] of [['pro', 1150], ['gold', 2000], ['premium', 3700]] as const) {
       const u = await signUp('ent')
       await getEntitlements(u.id)
       await setPlan(u.id, plan)
@@ -152,14 +152,14 @@ describe('entitlements & gates', () => {
 })
 
 describe('credits', () => {
-  it('never overdraws under concurrency: 10 parallel reserves of 30 on 100 credits → exactly 3 succeed', async () => {
+  it('never overdraws under concurrency: 10 parallel reserves of 40 on 150 credits → exactly 3 succeed', async () => {
     const u = await signUp('cc')
     await getEntitlements(u.id)
-    const results = await Promise.allSettled(Array.from({ length: 10 }, (_, i) => reserveCredits(u.id, 30, 'job', `race-${u.id}-${i}`)))
+    const results = await Promise.allSettled(Array.from({ length: 10 }, (_, i) => reserveCredits(u.id, 40, 'job', `race-${u.id}-${i}`)))
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(3)
     const rejected = results.filter((r) => r.status === 'rejected') as PromiseRejectedResult[]
     expect(rejected.every((r) => r.reason instanceof GateError && r.reason.code === 'INSUFFICIENT_CREDITS')).toBe(true)
-    expect(await balance(u.id)).toBe(10)
+    expect(await balance(u.id)).toBe(30)
   })
 
   it('reserve is idempotent per ref; refund restores once; refunding nothing is a no-op', async () => {
@@ -168,12 +168,12 @@ describe('credits', () => {
     const ref = `j-${u.id}` // unique per run: ledger keys are global and permanent
     await reserveCredits(u.id, 40, 'job', ref)
     await reserveCredits(u.id, 40, 'job', ref) // retry of the same job
-    expect(await balance(u.id)).toBe(60)
+    expect(await balance(u.id)).toBe(110)
     await refundCredits(u.id, 'job', ref)
     await refundCredits(u.id, 'job', ref)
-    expect(await balance(u.id)).toBe(100)
+    expect(await balance(u.id)).toBe(150)
     await refundCredits(u.id, 'job', `never-${u.id}`)
-    expect(await balance(u.id)).toBe(100)
+    expect(await balance(u.id)).toBe(150)
   })
 
   it('the balance can never go negative, even if application code is wrong (CHECK constraint)', async () => {
@@ -192,20 +192,20 @@ describe('credits', () => {
   it('jobs charge up front, refuse when short (402), and cancelling refunds', async () => {
     const u = await signUp('job')
     const mk = (n: number) => api(u.cookie, 'POST', '/generation/jobs', { prompt: 'A 10 slide deck about onboarding customers', slideCount: n, idempotencyKey: `k-${rid()}-${rid()}` })
-    const a = await mk(10) // 10 slides × 2 credits (the Gemini Flash credit class) = 20
+    const a = await mk(10) // 10 slides × 3 credits (the Gemini Flash credit class) = 30
     const b = await mk(10)
     expect([a.status, b.status]).toEqual([201, 201])
-    expect(await balance(u.id)).toBe(60)
+    expect(await balance(u.id)).toBe(90)
     expect((await mk(10)).status).toBe(429) // at most two presentations in progress per account: the queue is shared
     await db.update(generationJob).set({ status: 'completed' }).where(eq(generationJob.id, (await json(b)).data.id)) // b finishes: a slot frees up
-    await reserveCredits(u.id, 50, 'job', `drain-${u.id}`) // the person spent most of what was left
+    await reserveCredits(u.id, 70, 'job', `drain-${u.id}`) // the person spent most of what was left
     const c = await mk(10)
     expect(c.status).toBe(402)
-    expect((await json(c)).error).toMatchObject({ code: 'INSUFFICIENT_CREDITS', details: { needed: 20, balance: 10 } })
+    expect((await json(c)).error).toMatchObject({ code: 'INSUFFICIENT_CREDITS', details: { needed: 30, balance: 20 } })
 
     const jobId = (await json(a)).data.id
     expect((await api(u.cookie, 'POST', `/generation/jobs/${jobId}/cancel`)).status).toBe(200)
-    expect(await balance(u.id)).toBe(30) // 10 left + the 20 of the cancelled deck refunded
+    expect(await balance(u.id)).toBe(50) // 20 left + the 30 of the cancelled deck refunded
     await db.update(generationJob).set({ status: 'cancelled' }).where(eq(generationJob.userId, u.id))
   })
 
@@ -214,7 +214,7 @@ describe('credits', () => {
     const body = { prompt: 'An 8 slide deck about security basics', slideCount: 8, idempotencyKey: `k-${rid()}-${rid()}` }
     await api(u.cookie, 'POST', '/generation/jobs', body)
     await api(u.cookie, 'POST', '/generation/jobs', body)
-    expect(await balance(u.id)).toBe(100 - 16)
+    expect(await balance(u.id)).toBe(150 - 24)
     await db.update(generationJob).set({ status: 'cancelled' }).where(eq(generationJob.userId, u.id))
   })
 })

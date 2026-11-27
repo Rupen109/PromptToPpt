@@ -42,11 +42,11 @@ export function MediaTool() {
           <span className="block font-heading font-extrabold text-lg text-foreground">{file ? file.name : 'Drop your recording here, or click to choose'}</span>
           <span className="mt-1 block text-sm font-medium text-[#64748b]">{file ? `${(file.size / 1024 / 1024).toFixed(1)} MB` : `Your own lecture, meeting or voice note · MP3, M4A, WAV, MP4… · up to ${MAX_MB} MB`}</span>
         </button>
-        <input ref={input} type="file" accept=".mp3,.m4a,.wav,.ogg,.flac,.aac,.mp4,.mov,.webm,audio/*,video/*" className="sr-only" aria-label="Choose a recording" onChange={(e) => pick(e.target.files?.[0])} />
+        <input ref={input} type="file" accept=".mp3,.m4a,.wav,.ogg,.flac,.aac,.mp4,.mov,.webm,audio/*,video/*" className="sr-only" aria-label="Choose a recording" onChange={(e) => { pick(e.target.files?.[0]); e.target.value = '' }} />
         <Button variant="accent" size="lg" arrow disabled={busy || !file} onClick={() => void run()} className="mt-6">{busy ? 'Listening… this can take a minute' : 'Transcribe my recording'}</Button>
         {busy && <p role="status" className="mt-3 text-sm font-medium text-[#475569]">Writing down what is said. Please keep this page open.</p>}
         {error && <p role="alert" className="mt-4 text-sm font-bold text-red-700">{error}</p>}
-        <p className="mt-4 text-xs font-medium text-[#64748b]">Only recordings you made or have the right to use. The file is sent to our AI provider to be transcribed and is not stored. Free visitors get a few recordings a day; signing up gives 100 credits and files up to 12 MB.</p>
+        <p className="mt-4 text-xs font-medium text-[#64748b]">Only recordings you made or have the right to use. The file is sent to our AI provider to be transcribed and is not stored. Free visitors get a few recordings a day; signing up gives 150 credits and files up to 12 MB.</p>
       </Card>
       {out && <TranscriptResult out={out} what="transcript" />}
     </div>

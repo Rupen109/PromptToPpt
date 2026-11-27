@@ -6,6 +6,7 @@ import type { Capability } from './types.ts'
 import { addSlide, combine, layout, text } from './writing.ts'
 import { transition } from './transitions.ts'
 import { restructure } from './restructure.ts'
+import { transform } from './transform.ts'
 import { repair } from './repair.ts'
 import { footer } from './footer.ts'
 import { workflow } from './workflow.ts'
@@ -18,6 +19,6 @@ export const CAPABILITIES: Record<Family, Capability<any>> = {
   remove_slide: removeSlide, move_slide: moveSlide, duplicate_slide: duplicateSlide, lock_slide: lockSlide,
   background, readability, picture, refresh_pictures: refreshPictures,
   palette, template, fonts, motion, transition, restructure, combine, repair, footer,
-  undo, rewrite_deck: rewriteDeck, enrich,
+  undo, rewrite_deck: rewriteDeck, enrich, transform,
   element, brand, workflow, brand_kit: brandKit, comment: commentCap, history: historyCap,
 }

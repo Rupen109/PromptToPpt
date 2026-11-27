@@ -1,11 +1,11 @@
 import { ArrowLeft } from '@prompttoppt/ui/icons'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
-import { formatMoney, type BillingOverview } from '@prompttoppt/api-client'
+import { formatMoney, type BillingOverview, type TopUpOffer } from '@prompttoppt/api-client'
 import { paidPlanIdSchema } from '@prompttoppt/validation'
 import { Sidebar } from '@/components/Sidebar'
 import { api } from '@/lib/api'
-import { checkoutErrorMessage, setSimulatorMode, subscribe, testModeHint } from '@/lib/checkout'
+import { buyCredits, checkoutErrorMessage, setSimulatorMode, subscribe, testModeHint } from '@/lib/checkout'
 import { useEntitlements } from '@/lib/entitlements'
 import { WEB_URL } from '@/lib/env'
 import { SlideLoader } from '../components/SlideLoader'
@@ -38,10 +38,16 @@ export function BillingPage() {
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
   const [testHint, setTestHint] = useState(false)
+  /** buying credits: this plan's own credits again, at this plan's own price */
+  const [topUp, setTopUp] = useState<TopUpOffer | null>(null)
 
-  const load = useCallback(() => api.billing().then(setData).catch(() => setMsg({ kind: 'err', text: 'Could not load billing details.' })), [])
+  const load = useCallback(async () => {
+    await api.billing().then(setData).catch(() => setMsg({ kind: 'err', text: 'Could not load billing details.' }))
+    await api.topUpOffer().then(setTopUp).catch(() => setTopUp(null))
+  }, [])
   useEffect(() => {
     void api.billing().then((b) => { setSimulatorMode(!!b.simulator); setData(b); setTestHint(b.testMode) }).catch(() => setMsg({ kind: 'err', text: 'Could not load billing details.' }))
+    void api.topUpOffer().then(setTopUp).catch(() => setTopUp(null))
   }, [])
 
   const run = useCallback(async (fn: () => Promise<unknown>, ok: string) => {
@@ -59,6 +65,12 @@ export function BillingPage() {
     }
   }, [refresh, load])
 
+  /** Buy this plan's credits again, now. The plan, the price and the credits are all the server's; this only opens the window. */
+  const addCredits = useCallback(
+    () => run(() => buyCredits((c) => setTestHint(c.testMode)), 'Payment successful — your credits have been added.'),
+    [run],
+  )
+
   // Deep link from the pricing page: open checkout once.
   const started = useRef(false)
   useEffect(() => {
@@ -72,7 +84,7 @@ export function BillingPage() {
 
   const sub = data?.subscription
   const credits = ent?.credits
-  const used = credits ? Math.max(0, credits.monthlyAllowance - credits.balance) : 0
+  const used = credits ? Math.max(0, credits.monthlyAllowance - (credits.balance - credits.bought)) : 0
   return (
     <div className="flex min-h-screen pt-14 lg:pt-0 bg-[#f6f7fb]">
       <Sidebar />
@@ -125,11 +137,23 @@ export function BillingPage() {
           <div className="flex items-end justify-between gap-4 flex-wrap">
             <div>
               <div className="text-sm text-slate-600">Credits left</div>
-              <div className="font-heading font-bold text-4xl">{credits ? credits.balance.toLocaleString() : '…'} {credits && <span className="text-base font-medium text-slate-600">of {credits.monthlyAllowance.toLocaleString()}</span>}</div>
+              <div className="font-heading font-bold text-4xl">{credits ? credits.balance.toLocaleString() : '…'} {credits && <span className="text-base font-medium text-slate-600">{credits.bought ? `(${(credits.balance - credits.bought).toLocaleString()} of this month's ${credits.monthlyAllowance.toLocaleString()} + ${credits.bought.toLocaleString()} bought)` : `of ${credits.monthlyAllowance.toLocaleString()}`}</span>}</div>
             </div>
             {credits && <div className="text-sm text-slate-600 text-right">Resets on <b>{when(credits.resetsAt)}</b><br /><span className="text-slate-600">{used.toLocaleString()} used this period</span></div>}
           </div>
-          {credits && <div className="mt-4"><Bar label="Credits left this period" value={credits.balance} max={credits.monthlyAllowance} tone={credits.balance / Math.max(1, credits.monthlyAllowance) < 0.1 ? 'bg-red-500' : 'bg-primary'} /></div>}
+          {credits && <div className="mt-4"><Bar label="Credits left this period" value={credits.balance - credits.bought} max={credits.monthlyAllowance} tone={(credits.balance - credits.bought) / Math.max(1, credits.monthlyAllowance) < 0.1 ? 'bg-red-500' : 'bg-primary'} /></div>}
+          {!!credits?.bought && <p className="mt-2 text-sm text-slate-600" data-testid="credits-bought">{credits.bought.toLocaleString()} credits were bought as a top-up — those do not expire when this month&apos;s reset.</p>}
+          {topUp?.available && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-slate-50 p-4">
+              <p className="text-sm text-slate-700">Run out before the reset? Buy your {topUp.planName} credits again: <b>{topUp.credits.toLocaleString()} credits</b> for <b>{formatMoney(topUp.amountMinor, topUp.currency)}</b>. Your plan and renewal date stay the same.</p>
+              <button disabled={busy} data-testid="billing-topup" onClick={() => void addCredits()} className="shrink-0 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50">Buy credits</button>
+            </div>
+          )}
+          {!!data?.topUps?.length && (
+            <ul className="mt-3 text-sm text-slate-600" aria-label="Credits bought">
+              {data.topUps.map((t) => <li key={t.id}>{when(t.at)} — {t.credits.toLocaleString()} credits for {formatMoney(t.amountMinor, t.currency)}{t.status === 'refunded' ? ' (refunded)' : ''}</li>)}
+            </ul>
+          )}
         </section>
 
         {ent && (

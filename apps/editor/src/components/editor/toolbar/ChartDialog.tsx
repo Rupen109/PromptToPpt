@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Plus, Trash2, X } from '@prompttoppt/ui/icons'
-import { CHART_TYPES, canStack, chartLookOn, chartShowsFigures, chartTypeProblem, type SlideElement } from '@prompttoppt/validation'
+import { CHART_TYPES, canStack, chartLookOn, chartShowsFigures, chartTypeProblem, type SlideElement, type Theme } from '@prompttoppt/validation'
+import { Chart } from '@prompttoppt/ui'
 import { slideBase } from '@prompttoppt/theme'
 import { Portal } from '@/components/Portal'
 import * as T from '@/editor/toolbar-commands'
@@ -28,26 +29,40 @@ export function ChartDialog({ slideId, elementId, onClose }: { slideId: string; 
   if (!el || el.type !== 'chart' || !theme || !slide) return null
   const circular = el.chartType === 'pie' || el.chartType === 'doughnut'
   // what the chart shows now for each series or slice (the deck's own colours on this slide, chart-style.ts, unless the person chose)
-  const deck = chartLookOn(slideBase(theme, slide).colors, slide).palette // (the slide's own brand, then its own look)
+  const deckLook = chartLookOn(slideBase(theme, slide).colors, slide) // (the slide's own brand, then its own look)
+  const deck = deckLook.palette
+  // the preview is the chart AT ITS REAL SIZE, scaled down: every label sits exactly where the slide puts it (a chart re-drawn at preview size would crowd its labels differently)
+  const previewW = 340
+  const previewScale = previewW / el.width
   const marks = circular ? el.labels : el.series.map((s, i) => s.name || `Series ${i + 1}`)
   const shown = marks.map((_, i) => el.colors?.[i] ?? deck[i % deck.length]!)
   return (
     <Portal><div className="fixed inset-0 z-[70] bg-black/40 grid place-items-center p-4" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Edit chart data" data-testid="chart-dialog" className="bg-white rounded-2xl w-full max-w-3xl max-h-[86vh] overflow-auto p-5 shadow-xl outline-none">
         <div className="flex items-center justify-between mb-3"><h2 className="font-heading font-bold text-xl">Edit chart data</h2><button onClick={onClose} aria-label="Close" className="text-slate-500"><X aria-hidden size={20} /></button></div>
+        <p className="mb-3 text-sm text-slate-600">{circular ? 'Each row is one slice of the circle.' : 'Each row is a category (what you compare), each column a series (what you compare it across).'} The chart on the right updates as you type.</p>
         {el.placeholder && <p data-testid="chart-dialog-sample" className="mb-3 text-sm rounded-lg bg-amber-50 text-amber-900 border border-amber-200 px-3 py-2">These are sample figures, not real ones. Type your own, then press Done.</p>}
-        <div className="overflow-x-auto">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+        <div className="overflow-x-auto lg:flex-1">
           <table className="border-separate border-spacing-1">
             <thead>
               <tr>
-                <th className="p-0 text-left text-xs text-slate-500 font-medium pr-2">Category</th>
+                <th className="p-0 pr-2 text-left align-bottom">
+                  <div className="flex items-center gap-1.5 pb-1">
+                    <span className="text-xs font-medium text-slate-500">{circular ? 'Slice' : 'Category'}</span>
+                    {/* adding a category belongs where the categories are, not at the far bottom of the window */}
+                    <button onClick={() => apply('Add category', (d) => T.addChartRow(d, slideId, elementId))} disabled={el.labels.length >= T.CHART_MAX_LABELS} aria-label={circular ? 'Add slice' : 'Add category'} title={circular ? 'Add a slice' : 'Add a category'} className="grid h-6 w-6 place-items-center rounded-md border border-border text-slate-600 hover:border-primary hover:text-primary disabled:opacity-40"><Plus aria-hidden size={13} /></button>
+                  </div>
+                </th>
                 {el.series.map((s, si) => (
                   <th key={si} className="p-0 align-top"><div className="flex items-center gap-1">
                     <Field label={`Series ${si + 1} name`} value={s.name} onSave={(v) => apply('Edit chart', (d) => T.setChartSeriesName(d, slideId, elementId, si, v))} />
                     {!circular && <button aria-label={`Delete series ${si + 1}`} disabled={el.series.length <= 1} onClick={() => apply('Delete series', (d) => T.removeChartSeries(d, slideId, elementId, si))} className="text-slate-500 disabled:opacity-30"><Trash2 aria-hidden size={14} /></button>}
                   </div></th>
                 ))}
-                <th />
+                <th className="p-0 align-bottom">
+                  {!circular && <button onClick={() => apply('Add series', (d) => T.addChartSeries(d, slideId, elementId))} disabled={el.series.length >= T.CHART_MAX_SERIES} aria-label="Add series" title="Add a series (another column)" className="mb-1 ml-1 grid h-6 w-6 place-items-center rounded-md border border-border text-slate-600 hover:border-primary hover:text-primary disabled:opacity-40"><Plus aria-hidden size={13} /></button>}
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -60,8 +75,23 @@ export function ChartDialog({ slideId, elementId, onClose }: { slideId: string; 
                   <td className="pl-1"><button aria-label={`Delete category ${i + 1}`} disabled={el.labels.length <= 1} onClick={() => apply('Delete category', (d) => T.removeChartRow(d, slideId, elementId, i))} className="text-slate-500 disabled:opacity-30"><Trash2 aria-hidden size={14} /></button></td>
                 </tr>
               ))}
+              <tr>
+                <td className="p-0 pt-1">
+                  <button onClick={() => apply('Add category', (d) => T.addChartRow(d, slideId, elementId))} disabled={el.labels.length >= T.CHART_MAX_LABELS} className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-sm text-slate-600 hover:bg-slate-100 disabled:opacity-40"><Plus aria-hidden size={14} />{circular ? 'Add slice' : 'Add category'}</button>
+                </td>
+              </tr>
             </tbody>
           </table>
+        </div>
+        {/* the chart exactly as the slide draws it (same renderer, same colours): what the figures mean is easier to see than to imagine */}
+        <figure data-testid="chart-preview" className="shrink-0 overflow-hidden rounded-xl border border-border p-2" style={{ background: deckLook.backdrop[0] ?? '#fff' }}>
+          <div style={{ width: previewW, height: Math.round(el.height * previewScale) }}>
+            <div style={{ width: el.width, height: el.height, transform: `scale(${previewScale})`, transformOrigin: 'top left' }}>
+              <Chart chartType={el.chartType} labels={el.labels} series={el.series} unit={el.unit} width={el.width} height={el.height} theme={{ ...theme, colors: deckLook.colors as Theme['colors'] }} backdrop={deckLook.backdrop} colors={el.colors} legend={el.legend} trendline={el.trendline} dataLabels={el.dataLabels} stack={el.stack} />
+            </div>
+          </div>
+          <figcaption className="sr-only">This chart as the slide draws it</figcaption>
+        </figure>
         </div>
         <section aria-label="Chart style" data-testid="chart-style" className="mt-5 border-t border-border pt-4">
           <h3 className="font-heading font-bold text-base mb-2">Style</h3>
@@ -97,9 +127,7 @@ export function ChartDialog({ slideId, elementId, onClose }: { slideId: string; 
           </div>
         </section>
         <div className="flex flex-wrap items-center gap-2 mt-4">
-          <button onClick={() => apply('Add category', (d) => T.addChartRow(d, slideId, elementId))} disabled={el.labels.length >= T.CHART_MAX_LABELS} className="h-9 px-3 rounded-lg border border-border text-sm inline-flex items-center gap-1.5 disabled:opacity-40"><Plus aria-hidden size={14} />Category</button>
-          {!circular && <button onClick={() => apply('Add series', (d) => T.addChartSeries(d, slideId, elementId))} disabled={el.series.length >= T.CHART_MAX_SERIES} className="h-9 px-3 rounded-lg border border-border text-sm inline-flex items-center gap-1.5 disabled:opacity-40"><Plus aria-hidden size={14} />Series</button>}
-          <label className="text-sm text-slate-600 inline-flex items-center gap-2 ml-2">Unit <Field narrow max={16} label="Unit" value={el.unit ?? ''} onSave={(v) => apply('Edit chart', (d) => T.setChartUnit(d, slideId, elementId, v))} /></label>
+          <label className="text-sm text-slate-600 inline-flex items-center gap-2">Unit <Field narrow max={16} label="Unit" value={el.unit ?? ''} onSave={(v) => apply('Edit chart', (d) => T.setChartUnit(d, slideId, elementId, v))} /></label>
           <button data-testid="chart-dialog-done" onClick={() => { apply('Edit chart', (d) => T.confirmChartData(d, slideId, elementId)); onClose() }} className="ml-auto h-9 px-5 rounded-lg bg-foreground text-white text-sm font-semibold">Done</button>
         </div>
       </div>

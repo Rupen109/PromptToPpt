@@ -5,6 +5,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { ApiError, isGateError } from '@prompttoppt/api-client'
 import { describeSlides, type ExportFormat } from '@prompttoppt/validation'
 import { ExportMenu } from '@/components/editor/ExportMenu'
+import { QuickEditsButton } from '@/components/editor/QuickEditsMenu'
 import { AiPanel } from '@/components/editor/AiPanel'
 import { CommentsPanel } from '@/components/editor/CommentsPanel'
 import { ImageDialog } from '@/components/editor/ImageDialog'
@@ -52,7 +53,7 @@ const STATUS: Record<SaveStatus, { text: string; cls: string }> = {
   offline: { text: 'Offline — will sync', cls: 'text-amber-700' }, conflict: { text: 'Conflict', cls: 'text-red-700' }, error: { text: 'Could not save', cls: 'text-red-700' },
 }
 const typing = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName))
-const tb = 'h-10 sm:h-9 px-3 shrink-0 rounded-lg text-sm font-medium hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent flex items-center gap-1.5'
+const tb = 'h-10 sm:h-9 px-3 shrink-0 whitespace-nowrap rounded-lg text-sm font-medium hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent flex items-center gap-1.5'
 
 export function EditorPage() {
   const { id = '' } = useParams()
@@ -132,6 +133,12 @@ export function EditorPage() {
       setRole(p.role ?? 'owner')
       useUi.setState({ canExport: (p.role ?? 'owner') === 'owner' }) // only the owner exports (the slide menu offers "Download this slide" to the owner only)
       useDoc.getState().load(p.document, p.revision)
+      // ?open=share / ?open=export: the slideshow's Share and Download buttons land here with that window open (the owner's only, like the buttons themselves)
+      const open = new URLSearchParams(window.location.search).get('open')
+      if ((p.role ?? 'owner') === 'owner' && (open === 'share' || open === 'export')) {
+        if (open === 'share') setShareOpen(true); else useUi.getState().openExport('all')
+        const u = new URL(window.location.href); u.searchParams.delete('open'); window.history.replaceState(window.history.state, '', u)
+      }
       // a viewer's copy refuses every change (the server refuses their saves too); they look, present and comment
       useDoc.getState().setReadOnly(p.role === 'viewer')
       const backup = p.role === 'viewer' ? null : readBackup(id)
@@ -266,7 +273,7 @@ export function EditorPage() {
     { label: 'Save version', hint: '⌘S', onClick: () => { void autosave.saveNow(true); flash('Version saved.') } },
     { label: 'Version history…', onClick: () => setVersions(true) },
     { type: 'divider' },
-    ...(role === 'owner' ? [{ label: 'Duplicate presentation', onClick: () => { void autosave.saveNow(false).catch(() => {}).then(() => api.duplicatePresentation(id)).then((r) => { navigate(`/edit/${r.id}`); flash('Copy created.') }).catch((e) => (isGateError(e) ? upgrade.show(e.message) : flash(e instanceof ApiError ? e.message : 'Could not copy the presentation.'))) } },
+    ...(role === 'owner' ? [{ label: 'Duplicate presentation', onClick: () => { void autosave.saveNow(false).catch(() => {}).then(() => api.duplicatePresentation(id)).then((r) => { navigate(`/edit/${r.id}`); flash('Copy created.') }).catch((e) => (isGateError(e) ? upgrade.show(e.message, e.code) : flash(e instanceof ApiError ? e.message : 'Could not copy the presentation.'))) } },
     { label: 'Remix this presentation…', onClick: () => setRemix(true) }] as MenuItem[] : []),
     { type: 'divider' },
     { label: 'Delete presentation', danger: true, onClick: () => { if (confirm(`Delete "${doc.title}"? This can't be undone.`)) void api.deletePresentation(id).then(() => navigate('/')) } },
@@ -294,7 +301,7 @@ export function EditorPage() {
       }
       flash(`${format.toUpperCase()}${part} downloaded.`)
     } catch (e) {
-      if (isGateError(e)) upgrade.show(e.message)
+      if (isGateError(e)) upgrade.show(e.message, e.code)
       else if (e instanceof ApiError && e.code === 'SLIDES_GONE') flash(e.message)
       else flash('Export failed. Please try again.')
     } finally {
@@ -353,9 +360,12 @@ export function EditorPage() {
       <div className="flex-1 flex max-md:flex-col min-h-0 relative">
         <SlideRail doc={doc} watermark={watermark} />
         <main className="flex-1 min-w-0 flex flex-col relative">
-          <div className="flex-1 overflow-y-auto p-3 sm:p-6 pb-24">
-            <div className="max-w-[1100px] mx-auto">
+          <div data-stage-scroll className="flex-1 overflow-y-auto p-3 sm:p-6 pb-24 flex flex-col">
+            {/* the slide sits in the middle of the room it has (sized by EditorCanvas to fit both ways), the notes toggle under it */}
+            <div className="w-full max-w-[1600px] mx-auto my-auto">
               <EditorCanvas slide={slide} theme={doc.theme} aspect={doc.aspectRatio} watermark={watermark} requireAdvanced={requireAdvanced} />
+              {/* everything under the slide is as wide as the slide and lines up with its edges (EditorCanvas publishes the width as --stage-w) */}
+              <div className="mx-auto" style={{ maxWidth: 'var(--stage-w, 100%)' }}>
               {slide.locked && <p className="mt-2 text-xs text-slate-500 flex items-center gap-1.5"><Lock aria-hidden size={14} className="shrink-0" />This slide is locked — unlock it from the More menu to edit.</p>}
               {slide.validation.issues.length > 0 && (
                 <ul className="mt-3 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-1">{slide.validation.issues.map((x, i) => <li key={i} className="flex items-start gap-1.5">{x.severity === 'error' ? <Ban aria-hidden size={14} className="mt-0.5 shrink-0" /> : <AlertTriangle aria-hidden size={14} className="mt-0.5 shrink-0" />}{x.message}</li>)}</ul>
@@ -366,12 +376,14 @@ export function EditorPage() {
                   <textarea aria-label="Speaker notes" readOnly={viewer} value={slide.speakerNotes} maxLength={5000} rows={4} placeholder="What you'll say on this slide…" onChange={(e) => apply('Speaker notes', (d) => C.setSpeakerNotes(d, slide.id, e.target.value), { mergeKey: `notes:${slide.id}` })} className="mt-2 w-full bg-white border border-border rounded-xl p-3 text-sm" />
                 )}
               </div>
+              </div>
             </div>
           </div>
           <div role="toolbar" aria-label="Editor toolbar" data-floating-dock className="absolute bottom-3 sm:bottom-4 left-1/2 -translate-x-1/2 max-w-[calc(100%-1rem)] overflow-x-auto flex items-center gap-0.5 sm:gap-1 bg-white border border-border rounded-2xl shadow-lg px-1.5 sm:px-2 py-1.5 z-20">
             {!viewer && <button className={tb} aria-haspopup="menu" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu({ x: r.left, y: r.top - 330, kind: 'insert' }) }}>＋<span className="max-sm:sr-only"> Insert</span></button>}
             {!viewer && <button className={`${tb} ${drawer === 'style' ? 'bg-slate-100' : ''}`} aria-pressed={drawer === 'style'} onClick={() => setDrawer('style')}><Palette aria-hidden size={16} /><span className="max-sm:sr-only">Style</span></button>}
             {!viewer && <button className={`${tb} ${drawer === 'ai' ? 'bg-slate-100' : ''}`} aria-pressed={drawer === 'ai'} onClick={() => setDrawer('ai')}><Sparkles aria-hidden size={16} /><span className="max-sm:sr-only">Edit with AI</span></button>}
+            {!viewer && <QuickEditsButton className={tb} locked={!!slide.locked} />}
             <button className={`${tb} relative ${drawer === 'comments' ? 'bg-slate-100' : ''}`} aria-pressed={drawer === 'comments'} aria-label={`Comments${openCount(cThreads) ? `, ${openCount(cThreads)} open` : ''}${unreadCount(cThreads, cSeen) ? ', unread' : ''}`} onClick={() => setDrawer('comments')}><MessageSquare aria-hidden size={16} /><span className="max-sm:sr-only">Comments</span>{openCount(cThreads) > 0 && <span data-testid="comments-count" className="ml-1 text-[11px] font-bold bg-primary text-white rounded-full px-1.5">{openCount(cThreads)}</span>}{unreadCount(cThreads, cSeen) > 0 && drawer !== 'comments' && <i data-testid="comments-unread" aria-hidden className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-500" />}</button>
             <button className={tb} aria-label="More" aria-haspopup="menu" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu({ x: r.left, y: r.top - 300, kind: 'more' }) }}><MoreVertical aria-hidden size={18} /></button>
           </div>

@@ -64,7 +64,7 @@ export function ScratchPage() {
       const { id } = await api.createPresentation({ blank: true, templateId: look, title: title.trim() || 'Untitled presentation', aspectRatio: aspect })
       navigate(`/edit/${id}`)
     } catch (e) {
-      if (isGateError(e)) upgrade.show(e.message)
+      if (isGateError(e)) upgrade.show(e.message, e.code)
       else setError(e instanceof ApiError ? e.message : 'Could not create the presentation.')
       setBusy(false)
     }

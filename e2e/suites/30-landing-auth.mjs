@@ -38,18 +38,20 @@ export default async function () {
       await p.setViewportSize({ width: 1500, height: 950 })
     })
 
-    await s.check('the header has no "Ingest Modes" and no "Free Tools" link; Interactive Studio, Templates, Pricing, Resources and Support remain', p, async () => {
+    await s.check('the header has no "Ingest Modes", no "Interactive Studio" and no top-level "Free Tools" link (free tools sit under Resources); Features, Templates, Pricing, Resources and Support remain', p, async () => {
       await goHome()
       const nav = await header().locator('nav').first().innerText()
       expect(!/Ingest Modes/i.test(nav), `nav: ${nav.replace(/\n/g, ' | ')}`)
-      for (const l of ['Interactive Studio', 'Templates', 'Pricing', 'Resources', 'Support']) expect(nav.includes(l), `${l} missing`)
+      for (const l of ['Features', 'Templates', 'Pricing', 'Resources', 'Support']) expect(nav.includes(l), `${l} missing`)
+      expect(!/Interactive Studio/i.test(nav), 'Interactive Studio is still in the header')
       expect(!/Free Tools/i.test(nav), 'Free Tools is still in the header')
     })
 
     await s.check('Sign out in the menu ends the session and the header goes back to "Log In" + "Create Free Deck"', p, async () => {
       await goHome(); await p.getByTestId('account-menu').click(); await p.getByRole('menuitem', { name: 'Sign out' }).click()
       await header().getByRole('link', { name: 'Log In' }).waitFor({ timeout: 10000 })
-      expect(await p.getByTestId('account-menu').count() === 0, 'still shows the account menu')
+      // the menu stays in the page by design (both states are drawn from the first paint; <html data-auth> shows one), so what matters is that it is not SHOWN
+      expect(!(await p.getByTestId('account-menu').isVisible()), 'still shows the account menu')
       // sign back in for the checks below
       const si = await A.ctx.request.post(`${API}/api/auth/sign-in/email`, { headers: JSON_HEADERS, data: { email: A.email, password: 'Passw0rd!qa-test' } }); expect(si.ok(), `sign-in ${si.status()}`)
     })

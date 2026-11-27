@@ -27,7 +27,7 @@ export default async function () {
     await s.check('A1 Home screen: choose a recording → chip settles, 6 credits spent (one 4 MB block), stored as a transcript with time locators', P.p, async () => {
       await P.p.goto(EDITOR + '/', { waitUntil: 'load' })
       const before = balance()
-      await P.p.getByRole('button', { name: /Upload files, or links/ }).click()
+      await P.p.getByRole('button', { name: /Add files or links/ }).click()
       const dlg = P.p.getByRole('dialog', { name: 'Add sources' }); await dlg.waitFor()
       expect((await dlg.getByLabel('File').getAttribute('accept')).includes('.m4a'), 'picker does not offer recordings')
       await dlg.getByText('More about file types and credits').click() // the price is in the folded details so the dialog stays short

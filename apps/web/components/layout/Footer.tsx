@@ -7,7 +7,8 @@ const COLS = [
   { title: 'Formats & Sources', links: [['PDF & PowerPoint input', '/#modalities'], ['Website link sources', '/#modalities'], ['Animated templates', '/templates'], ['Export on Pro & Gold', '/pricing']] },
 ] as const
 
-const LEGAL_LINKS = [['Terms of Service', '/terms'], ['Privacy Policy', '/privacy'], ['Cookie notice', '/cookies'], ['Cancellation & refunds', '/refunds']] as const
+// the pages a payment provider (Razorpay) checks are all here, in one row: contact, about, pricing, terms, privacy, refunds
+const LEGAL_LINKS = [['Contact us', '/support'], ['About us', '/about'], ['Pricing', '/pricing'], ['Terms of Service', '/terms'], ['Privacy Policy', '/privacy'], ['Cancellation & refunds', '/refunds'], ['Cookie notice', '/cookies']] as const
 
 export function Footer() {
   return (

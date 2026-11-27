@@ -1,10 +1,11 @@
-import { Clapperboard, FileSpreadsheet, FileText, FileUp, Globe, Image as ImageIcon, LayoutTemplate, Link2, Lock, Mail, Mic, NotebookPen, PencilRuler, Presentation, Send, Sparkles, Table, X, type LucideIcon } from '@prompttoppt/ui/icons'
+import { Clapperboard, FileSpreadsheet, FileText, Globe, Image as ImageIcon, LayoutTemplate, Link2, Mail, Mic, NotebookPen, Paperclip, PencilRuler, Presentation, Send, Sparkles, Table, X, type LucideIcon } from '@prompttoppt/ui/icons'
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 import { MORPH_TEMPLATES } from '@prompttoppt/theme/morph-templates'
 import { ApiError, type PresentationSummary, type SourceSummary } from '@prompttoppt/api-client'
-import { OFFERED_DECK_LANGUAGES } from '@prompttoppt/validation'
+import { DECK_PROMPT_LIMIT, OFFERED_DECK_LANGUAGES, deckPromptTooLong } from '@prompttoppt/validation'
 import { SourcesDialog, isYouTubeLink } from '@/components/SourcesDialog'
+import { StartFromMenu } from '@/components/StartFromMenu'
 import { FileTemplatePicker, asPending, uploadDesign } from '@/components/FileTemplatePicker'
 import { RemixFileDialog } from '@/components/RemixFileDialog'
 import { useEntitlements } from '@/lib/entitlements'
@@ -86,6 +87,8 @@ export function HomePage() {
   const [pending, setPending] = useState<{ key: string; label: string; icon: LucideIcon; note?: string }[]>([])
   const aborts = useRef(new Map<string, AbortController>())
   const [attachError, setAttachError] = useState<string | null>(null)
+  /** said when a paste was too long for the box and became a source instead */
+  const [pasteNote, setPasteNote] = useState<string | null>(null)
   const sourcesRef = useRef<SourceSummary[]>([])
   const jobs = useRef(new Set<Promise<boolean>>())
   const cancelled = useRef(new Set<string>())
@@ -152,7 +155,17 @@ export function HomePage() {
   function onPaste(e: ClipboardEvent<HTMLTextAreaElement>) {
     const files = [...e.clipboardData.files]
     if (files.length) { e.preventDefault(); files.forEach(attachFile); return }
-    const parts = e.clipboardData.getData('text').trim().split(/\s+/).filter(Boolean)
+    const pasted = e.clipboardData.getData('text')
+    // text that cannot fit in the box is NEVER cut off: it becomes a source, which is read in full (and costs less than a long prompt)
+    const el = e.currentTarget
+    if (prompt.length - (el.selectionEnd - el.selectionStart) + pasted.length > DECK_PROMPT_LIMIT && pasted.trim().length >= 20) {
+      e.preventDefault()
+      setAttachError(null)
+      setPasteNote(deckPromptTooLong(pasted.length))
+      attach('Pasted text', NotebookPen, () => api.addTextSource(pasted, 'Pasted text'))
+      return
+    }
+    const parts = pasted.trim().split(/\s+/).filter(Boolean)
     if (parts.length === 1 && isYouTubeLink(parts[0]!)) { e.preventDefault(); setYtLink(parts[0]!); setDialog(true); return }
     if (parts.length > 0 && parts.length <= MAX_SOURCES && parts.every((u) => /^https?:\/\/\S+$/i.test(u))) {
       e.preventDefault()
@@ -198,12 +211,6 @@ export function HomePage() {
           </div>
           <h1 className="font-heading font-extrabold text-2xl sm:text-4xl text-center text-foreground tracking-tight">What will you present today?</h1>
           <p className="text-center text-slate-500 mt-2 text-sm sm:text-base">Describe it, add a link or a file, and we’ll build the deck.</p>
-          {morphTpl && (
-            <p className="mt-4 mx-auto w-fit flex items-center gap-2 rounded-full bg-white ring-1 ring-black/10 pl-4 pr-2 py-1.5 text-sm" data-testid="home-morph-template">
-              <Sparkles aria-hidden size={14} /> Morph template: <b>{morphTpl.name}</b> · {morphTpl.scenes.length} slides
-              <button type="button" aria-label="Remove the template" onClick={() => { params.delete('morphTemplate'); setParams(params, { replace: true }) }} className="rounded-full p-1 hover:bg-slate-100"><X aria-hidden size={14} /></button>
-            </p>
-          )}
           <form
             onSubmit={submit}
             onDragOver={(e) => hasFiles(e) && e.preventDefault()}
@@ -215,7 +222,7 @@ export function HomePage() {
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               onPaste={onPaste}
-              maxLength={4000}
+              maxLength={DECK_PROMPT_LIMIT}
               placeholder={typed ? `${typed}|` : '|'}
               aria-label="Presentation prompt"
               className="block w-full h-28 sm:h-32 resize-none bg-transparent rounded-t-3xl px-5 sm:px-7 pt-5 sm:pt-6 text-base sm:text-[17px] leading-relaxed text-foreground placeholder:text-slate-400 focus:outline-none"
@@ -223,55 +230,65 @@ export function HomePage() {
                 if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void submit(e)
               }}
             />
-            <div className="mx-3 sm:mx-5 mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-dashed border-primary/40 bg-primary/5 px-3.5 py-2.5" data-testid="file-design-strip">
-              {fileTpl ? (
-                <span data-testid="home-file-template" className="inline-flex flex-wrap items-center gap-2 rounded-full bg-white ring-1 ring-black/10 pl-3 pr-1.5 py-1 text-sm max-w-full">
-                  <LayoutTemplate aria-hidden size={15} className="shrink-0 text-primary" />
-                  <span>Design: <b className="break-all">{fileTpl.name}</b> · {fileTpl.slideCount} slide{fileTpl.slideCount === 1 ? '' : 's'}</span>
-                  {fileTpl.fontsReplaced.length > 0 && <span className="text-xs text-amber-700" data-testid="home-file-template-fonts">fonts replaced: {fileTpl.fontsReplaced.map((f) => `${f.original} → ${f.mapped}`).join(', ')}</span>}
-                  <button type="button" aria-label="Remove the design" data-testid="home-file-template-remove" onClick={() => setFileTpl(null)} className="rounded-full p-1 hover:bg-slate-100"><X aria-hidden size={14} /></button>
-                </span>
-              ) : (
-                <button type="button" data-testid="file-tpl-open" disabled={!!morphTpl} onClick={openPicker} title={morphTpl ? 'Not available together with a Morph template' : undefined} className="inline-flex items-center gap-2 rounded-full bg-white ring-1 ring-primary/40 px-4 py-2 text-sm font-semibold text-primary hover:bg-primary/10 transition disabled:opacity-50 disabled:cursor-not-allowed disabled:text-slate-500">
-                  <LayoutTemplate aria-hidden size={16} />Use a file's design (same format)
-                  {ent && !ent.features.templateFromFile && <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 text-slate-700 text-[11px] px-2 py-0.5 font-medium"><Lock aria-hidden size={11} />Pro</span>}
+            {/* what the deck will be built from — the chosen design, a Morph template, attached files and links — only when there is something */}
+            {(fileTpl || morphTpl || sources.length > 0 || pending.length > 0) && (
+              <div className="flex flex-wrap items-center gap-2 px-4 sm:px-6 pb-3" aria-label="Attached sources">
+                {morphTpl && (
+                  <span data-testid="home-morph-template" className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 text-slate-800 pl-2.5 pr-1 py-1 text-xs max-w-[240px] !bg-primary/10 !text-primary">
+                    <Sparkles aria-hidden size={14} className="shrink-0" /><span className="truncate">Morph template: <b>{morphTpl.name}</b> · {morphTpl.scenes.length} slides</span>
+                    <button type="button" aria-label="Remove the template" onClick={() => { params.delete('morphTemplate'); setParams(params, { replace: true }) }} className="grid h-5 w-5 place-items-center rounded-full hover:bg-primary/20"><X aria-hidden size={13} /></button>
+                  </span>
+                )}
+                {fileTpl && (
+                  <span data-testid="home-file-template" className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 text-slate-800 pl-2.5 pr-1 py-1 text-xs max-w-[240px] !max-w-full flex-wrap !bg-primary/10 !text-slate-800">
+                    <LayoutTemplate aria-hidden size={14} className="shrink-0 text-primary" />
+                    <span>Design: <b className="break-all">{fileTpl.name}</b> · {fileTpl.slideCount} slide{fileTpl.slideCount === 1 ? '' : 's'}</span>
+                    {fileTpl.fontsReplaced.length > 0 && <span className="text-amber-700" data-testid="home-file-template-fonts">fonts replaced: {fileTpl.fontsReplaced.map((f) => `${f.original} → ${f.mapped}`).join(', ')}</span>}
+                    <button type="button" aria-label="Remove the design" data-testid="home-file-template-remove" onClick={() => setFileTpl(null)} className="grid h-5 w-5 place-items-center rounded-full hover:bg-primary/20"><X aria-hidden size={13} /></button>
+                  </span>
+                )}
+                {sources.map((s) => (
+                  <span key={s.id} title={s.title} className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 text-slate-800 pl-2.5 pr-1 py-1 text-xs max-w-[240px]">
+                    {(() => { const I = SOURCE_ICON[s.type]; return <I aria-hidden size={14} className="shrink-0 text-slate-500" /> })()}
+                    <span className="truncate">{s.title}</span>
+                    {pptxIds.includes(s.id) && !morphTpl && !fileTpl && <button type="button" data-testid="use-design-too" disabled={designBusy === s.id} onClick={() => void designToo(s)} className="rounded-full bg-primary text-white px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap disabled:opacity-60">{designBusy === s.id ? 'Reading…' : 'Use its design too'}</button>}
+                    <button type="button" aria-label={`Remove ${s.title}`} onClick={() => { keep(sourcesRef.current.filter((x) => x.id !== s.id)); void api.deleteSource(s.id) }} className="grid h-5 w-5 place-items-center rounded-full hover:bg-slate-200"><X aria-hidden size={13} /></button>
+                  </span>
+                ))}
+                {pending.map((c) => (
+                  <span key={c.key} title={c.label} className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 text-slate-800 pl-2.5 pr-1 py-1 text-xs max-w-[240px]">
+                    <c.icon aria-hidden size={14} className="shrink-0 text-slate-500" />
+                    <span className="truncate">{c.label}</span>
+                    {c.note && <span className="text-slate-500 whitespace-nowrap" role="status">{c.note}</span>}
+                    <button type="button" aria-label={`Remove ${c.label}`} onClick={() => { cancelled.current.add(c.key); aborts.current.get(c.key)?.abort(); setPending((p) => p.filter((x) => x.key !== c.key)) }} className="grid h-5 w-5 place-items-center rounded-full hover:bg-slate-200"><X aria-hidden size={13} /></button>
+                  </span>
+                ))}
+              </div>
+            )}
+            {/* one quiet bar: add sources · how the deck starts · language · create */}
+            <div className="flex items-center gap-2 border-t border-slate-100 px-3 sm:px-4 py-3">
+              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                <button type="button" onClick={() => setDialog(true)} title="Add a PDF, Word, PowerPoint or Excel file, a web page, a YouTube video, a recording or notes"
+                  className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-white px-3 text-sm font-medium text-slate-700 hover:border-slate-400 transition">
+                  <Paperclip aria-hidden size={16} className="shrink-0" /><span>Add files<span className="max-sm:sr-only"> or links</span></span>
                 </button>
-              )}
-              <button type="button" data-testid="remix-pptx-open" onClick={openRemixFile} className="inline-flex items-center gap-2 rounded-full bg-white ring-1 ring-primary/40 px-4 py-2 text-sm font-semibold text-primary hover:bg-primary/10 transition">
-                <FileUp aria-hidden size={16} />Remix a PowerPoint
-                {ent?.plan.id === 'starter' && <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 text-slate-700 text-[11px] px-2 py-0.5 font-medium"><Lock aria-hidden size={11} />Pro</span>}
-              </button>
-              <p className="text-xs sm:text-sm text-slate-600 min-w-0 flex-1 basis-56">{fileTpl ? 'Your new presentation keeps this file\'s colours, fonts and layouts. Describe the new content above, or add it yourself in the editor.' : morphTpl ? 'Not available together with a Morph template.' : 'Upload a PowerPoint and make a new presentation in exactly its look, with different content.'}</p>
-            </div>
-            <div className="flex items-end gap-3 px-3 sm:px-5 pb-3 sm:pb-4">
-              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 sm:gap-3">
-              <button type="button" onClick={() => setDialog(true)} className="inline-flex items-center gap-2 rounded-full border border-border bg-slate-50 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-white hover:border-primary/50 transition">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="m21 11-8.6 8.6a5 5 0 0 1-7-7L14 4a3.3 3.3 0 0 1 4.7 4.7l-8.6 8.6a1.7 1.7 0 0 1-2.4-2.4L15 7" /></svg>
-                Upload files, or links
-              </button>
-              {sources.map((s) => (
-                <span key={s.id} title={s.title} className="inline-flex items-center gap-1.5 bg-primary/10 text-slate-800 rounded-full pl-2.5 pr-1.5 py-1 text-xs max-w-[220px]">
-                  {(() => { const I = SOURCE_ICON[s.type]; return <I aria-hidden size={14} className="shrink-0" /> })()}
-                  <span className="truncate">{s.title}</span>
-                  {pptxIds.includes(s.id) && !morphTpl && !fileTpl && <button type="button" data-testid="use-design-too" disabled={designBusy === s.id} onClick={() => void designToo(s)} className="rounded-full bg-primary text-white px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap disabled:opacity-60">{designBusy === s.id ? 'Reading…' : 'Use its design too'}</button>}
-                  <button type="button" aria-label={`Remove ${s.title}`} onClick={() => { keep(sourcesRef.current.filter((x) => x.id !== s.id)); void api.deleteSource(s.id) }} className="w-4 h-4 rounded-full hover:bg-primary/20 leading-none"><X aria-hidden size={16} /></button>
-                </span>
-              ))}
-              {pending.map((c) => (
-                <span key={c.key} title={c.label} className="inline-flex items-center gap-1.5 bg-primary/10 text-slate-800 rounded-full pl-2.5 pr-1.5 py-1 text-xs max-w-[220px]">
-                  <c.icon aria-hidden size={14} className="shrink-0" />
-                  <span className="truncate">{c.label}</span>
-                  {c.note && <span className="text-slate-500 whitespace-nowrap" role="status">{c.note}</span>}
-                  <button type="button" aria-label={`Remove ${c.label}`} onClick={() => { cancelled.current.add(c.key); aborts.current.get(c.key)?.abort(); setPending((p) => p.filter((x) => x.key !== c.key)) }} className="w-4 h-4 rounded-full hover:bg-primary/20 leading-none"><X aria-hidden size={16} /></button>
-                </span>
-              ))}
-              <label className="inline-flex items-center gap-1.5 rounded-full border border-border bg-slate-50 pl-3 pr-1 py-1 text-sm text-slate-700">
-                <Globe aria-hidden size={14} className="shrink-0" />
-                <select value={language} onChange={(e) => setLanguage(e.target.value)} aria-label="Deck language" className="bg-transparent py-1 pr-2 text-sm font-medium focus:outline-none max-w-[200px]">
-                  <option value="">Auto-detect language</option>
-                  {OFFERED_DECK_LANGUAGES.map((l) => <option key={l.code} value={l.code}>{l.name === l.native ? l.name : `${l.name} — ${l.native}`}</option>)}
-                </select>
-              </label>
+                <StartFromMenu
+                  value={morphTpl ? 'morph' : fileTpl ? 'design' : 'prompt'}
+                  name={morphTpl?.name ?? fileTpl?.name}
+                  designLocked={!!ent && !ent.features.templateFromFile}
+                  remixLocked={ent?.plan.id === 'starter'}
+                  designUnavailable={morphTpl ? 'Not available together with a Morph template.' : null}
+                  onPrompt={() => { setFileTpl(null); if (morphTpl) { params.delete('morphTemplate'); setParams(params, { replace: true }) } }}
+                  onDesign={openPicker}
+                  onRemix={openRemixFile}
+                />
+                <label className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-border bg-white pl-3 pr-1 text-sm text-slate-700 hover:border-slate-400 transition" title="The language the deck is written in">
+                  <Globe aria-hidden size={16} className="shrink-0" />
+                  <select value={language} onChange={(e) => setLanguage(e.target.value)} aria-label="Deck language" className="bg-transparent py-1 pr-1 text-sm font-medium focus:outline-none max-w-[140px]">
+                    <option value="">Auto-detect language</option>
+                    {OFFERED_DECK_LANGUAGES.map((l) => <option key={l.code} value={l.code}>{l.name === l.native ? l.name : `${l.name} — ${l.native}`}</option>)}
+                  </select>
+                </label>
               </div>
               <button
                 type="submit"
@@ -283,7 +300,14 @@ export function HomePage() {
                 <Send size={20} strokeWidth={2} aria-hidden />
               </button>
             </div>
+            {fileTpl && !prompt.trim() && <p className="px-5 sm:px-7 pb-4 -mt-1 text-sm text-slate-500">Your new presentation keeps this file&apos;s colours, fonts and layouts. Describe the new content above, or press Create to add it yourself in the editor.</p>}
             {(sources.length + pending.length > 0 && !prompt.trim() && !fileTpl) && <p className="px-5 sm:px-7 pb-4 -mt-1 text-sm text-slate-500">Add a line about what the presentation should be — then press Create.</p>}
+            {prompt.length > DECK_PROMPT_LIMIT * 0.8 && (
+              <p aria-live="polite" data-testid="prompt-count" className={`px-5 sm:px-7 pb-4 -mt-1 text-xs ${prompt.length >= DECK_PROMPT_LIMIT ? 'text-red-700 font-medium' : 'text-slate-500'}`}>
+                {prompt.length.toLocaleString('en')} / {DECK_PROMPT_LIMIT.toLocaleString('en')} characters{prompt.length >= DECK_PROMPT_LIMIT ? ' — that is as much as one prompt holds. Attach the rest as a source (Add files or links → Paste text).' : ' · longer text belongs in a source, not the prompt'}
+              </p>
+            )}
+            {pasteNote && <p role="status" data-testid="paste-note" className="px-5 sm:px-7 pb-4 -mt-1 text-sm text-slate-700">{pasteNote} <button type="button" onClick={() => setPasteNote(null)} className="underline">Got it</button></p>}
             {attachError && <p role="alert" className="px-5 sm:px-7 pb-4 -mt-1 text-sm font-medium text-red-700">{attachError}</p>}
           </form>
           <div className="mt-4 flex flex-wrap justify-center gap-2" aria-label="Ideas to start from">

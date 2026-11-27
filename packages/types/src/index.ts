@@ -123,6 +123,7 @@ export type AIRequestType =
   | 'morph_match'
   | 'deck_critic'
   | 'ai_assist'
+  | 'assist_read'
   | 'assist_understand'
   | 'assist_vision'
   | 'assist_write'

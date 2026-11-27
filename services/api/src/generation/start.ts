@@ -6,7 +6,7 @@ import { getMorphTemplate } from '@prompttoppt/theme/morph-templates'
 import { planScenes, requestFacts } from './morph-scenes.ts'
 import { productPicture } from './sources.ts'
 import { markUsed } from './morph-log.ts'
-import { SCHEMA_VERSION, aspectRatioSchema, deckLanguage, directionSchema, promptAnalysisSchema, type AspectRatio } from '@prompttoppt/validation'
+import { DECK_PROMPT_LIMIT, SCHEMA_VERSION, aspectRatioSchema, deckLanguage, deckPromptTooLong, directionSchema, promptAnalysisSchema, type AspectRatio } from '@prompttoppt/validation'
 import { catalog } from '../ai/gateway.ts'
 import { chooseModel } from '../routes/models.ts'
 import { assertBrand, getKit } from '../brand/kits.ts'
@@ -33,7 +33,7 @@ import { jobView as view } from './view.ts'
  */
 export const err = (code: string, message: string) => ({ success: false as const, error: { code, message } })
 export const MAX_ACTIVE_JOBS_PER_USER = 2
-export const promptField = z.string().trim().min(3).max(4000)
+export const promptField = z.string().trim().min(3).max(DECK_PROMPT_LIMIT, deckPromptTooLong())
 export const sourceIds = z.array(z.string().max(64)).max(10).default([])
 /** a language from the deck language list (100+); anything else is a 400, so the model is never told an invented language */
 export const languageField = z.string().max(12).refine((c) => deckLanguage(c) !== undefined, 'Unknown language').optional()

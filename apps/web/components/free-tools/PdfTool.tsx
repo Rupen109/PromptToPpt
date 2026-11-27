@@ -55,7 +55,7 @@ export function PdfTool() {
           <span className="block font-heading font-extrabold text-lg text-foreground">{file ? file.name : 'Drop your PDF here, or click to choose'}</span>
           <span className="mt-1 block text-sm font-medium text-[#64748b]">{file ? `${(file.size / 1024 / 1024).toFixed(1)} MB` : `Reports, papers, plans and notes · up to ${MAX_MB} MB · text PDFs`}</span>
         </button>
-        <input ref={input} type="file" accept="application/pdf,.pdf" className="sr-only" aria-label="Choose a PDF" onChange={(e) => pick(e.target.files?.[0])} />
+        <input ref={input} type="file" accept="application/pdf,.pdf" className="sr-only" aria-label="Choose a PDF" onChange={(e) => { pick(e.target.files?.[0]); e.target.value = '' }} />
 
         <fieldset className="mt-5">
           <legend className="text-xs font-heading font-extrabold uppercase text-foreground">What should we make?</legend>

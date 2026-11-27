@@ -9,6 +9,10 @@ import { api } from '@/lib/api'
 import { SUPPORT_EMAIL, SUPPORT_WHATSAPP } from '@/lib/env'
 
 const MAX_FILES = 3
+/** PNG, JPEG or WebP by the file's first bytes (what services/api lib/image-sniff.ts accepts) */
+const isPicture = (b: Uint8Array) =>
+  (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) || (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) ||
+  (String.fromCharCode(...b.subarray(0, 4)) === 'RIFF' && String.fromCharCode(...b.subarray(8, 12)) === 'WEBP')
 const FILE_MAX = 5 * 1024 * 1024
 const FIELD = 'w-full rounded-xl border-2 border-foreground bg-white px-4 py-3 text-base font-medium text-foreground placeholder:text-[#94a3b8] focus:outline-none focus:ring-2 focus:ring-primary'
 const LABEL = 'block font-heading font-extrabold text-xl text-foreground'
@@ -33,13 +37,16 @@ export function SupportForm() {
   const [drag, setDrag] = useState(false)
   const input = useRef<HTMLInputElement>(null)
 
-  function add(list: FileList | File[] | null) {
+  async function add(list: FileList | File[] | null) {
     if (!list) return
     setError(null)
     const next = [...files]
     for (const f of [...list]) {
       if (!/^image\/(png|jpe?g|webp)$/.test(f.type) && !/\.(png|jpe?g|webp)$/i.test(f.name)) { setError(`"${f.name}" is not a PNG, JPG or WebP picture.`); continue }
+      if (f.size === 0) { setError(`"${f.name}" is empty. Take the screenshot again and attach it.`); continue }
       if (f.size > FILE_MAX) { setError(`"${f.name}" is larger than 5 MB.`); continue }
+      // the picture's own first bytes, as the server checks them: a renamed file is refused now, not after the message is written and sent
+      if (!isPicture(new Uint8Array(await f.slice(0, 12).arrayBuffer()))) { setError(`"${f.name}" is not a PNG, JPG or WebP picture.`); continue }
       if (next.length >= MAX_FILES) { setError(`You can attach up to ${MAX_FILES} pictures.`); break }
       next.push(f)
     }
@@ -68,7 +75,7 @@ export function SupportForm() {
   return (
     <form onSubmit={submit} className="flex flex-col gap-8" noValidate>
       <div>
-        <label htmlFor="support-email" className={LABEL}>Email (so we can follow up)<Required /></label>
+        <label htmlFor="support-email" className={LABEL}>Email<Required /></label>
         <input id="support-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" maxLength={200} className={`${FIELD} mt-3 sm:max-w-md`} />
       </div>
       <div>
@@ -78,11 +85,11 @@ export function SupportForm() {
       </div>
       <div>
         <p className={LABEL}>You can attach screenshots (optional)</p>
-        <button type="button" onClick={() => input.current?.click()} onDragOver={(e) => { e.preventDefault(); setDrag(true) }} onDragLeave={() => setDrag(false)} onDrop={(e) => { e.preventDefault(); setDrag(false); add(e.dataTransfer.files) }}
+        <button type="button" onClick={() => input.current?.click()} onDragOver={(e) => { e.preventDefault(); setDrag(true) }} onDragLeave={() => setDrag(false)} onDrop={(e) => { e.preventDefault(); setDrag(false); void add(e.dataTransfer.files) }}
           className={`mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-foreground px-6 py-8 font-heading font-bold text-sm text-[#475569] hover:bg-[#f8f9fc] focus:outline-none focus-visible:ring-2 focus-visible:ring-primary ${drag ? 'bg-highlight/30' : 'bg-white'}`}>
           <Upload aria-hidden size={18} />Click to choose a picture or drag it here
         </button>
-        <input ref={input} type="file" accept="image/png,image/jpeg,image/webp" multiple className="sr-only" aria-label="Choose screenshots" onChange={(e) => { add(e.target.files); e.target.value = '' }} />
+        <input ref={input} type="file" accept="image/png,image/jpeg,image/webp" multiple className="sr-only" aria-label="Choose screenshots" onChange={(e) => { void add(e.target.files); e.target.value = '' }} />
         <p className="mt-2 text-xs font-medium text-[#64748b]">Up to {MAX_FILES} pictures (PNG, JPG or WebP), 5 MB each.</p>
         {files.length > 0 && (
           <ul className="mt-3 flex flex-wrap gap-2">

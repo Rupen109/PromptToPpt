@@ -49,14 +49,14 @@ export async function ReviewsSection() {
             <h3 className="font-heading font-extrabold text-3xl md:text-4xl leading-[1.1] text-foreground max-w-[620px]">We’re new, so there are no reviews yet. Be one of the first.</h3>
             <p className="mt-5 text-lg leading-7 font-medium text-foreground max-w-[560px]">Make a presentation for free, then tell us honestly how it went. Reviews appear here after we check them, and only from people who have really used SlidesDone.</p>
             <div className="mt-8"><Link href="/signup"><Button variant="accent" size="lg" arrow>Start free</Button></Link></div>
-            <p className="mt-5 font-heading font-bold text-xs text-foreground">No credit card required • The free plan includes 100 credits</p>
+            <p className="mt-5 font-heading font-bold text-xs text-foreground">No credit card required • The free plan includes 150 credits</p>
           </Card>
         )}
 
         {items.length > 0 && (
           <div className="mt-12 text-center">
             <Link href="/signup"><Button variant="accent" size="lg" arrow>Try it free</Button></Link>
-            <p className="mt-4 font-heading font-bold text-xs text-foreground">No credit card required • The free plan includes 100 credits</p>
+            <p className="mt-4 font-heading font-bold text-xs text-foreground">No credit card required • The free plan includes 150 credits</p>
           </div>
         )}
       </div>

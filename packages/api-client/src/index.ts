@@ -1,5 +1,6 @@
 import { createAuthClient } from 'better-auth/react'
-import type { AspectRatio, Direction, ElementChange, Entitlements, Expectation, MorphDecision, ExportFormat, PaidPlanId, PlanId, PlanView, Presentation, PromptAnalysis, Restructure, Slide, SlideContent, SubscriptionSummary, Theme } from '@prompttoppt/validation'
+import { GATE_CODES } from '@prompttoppt/validation'
+import type { GateCode, Persona, QuickEditId, AspectRatio, Direction, ElementChange, Entitlements, Expectation, MorphDecision, ExportFormat, PaidPlanId, PlanId, PlanView, Presentation, PromptAnalysis, Restructure, Slide, SlideContent, SubscriptionSummary, Theme, TopUpOffer } from '@prompttoppt/validation'
 
 export interface ApiClientConfig {
   /** e.g. https://api.slidesdone.app */
@@ -16,6 +17,8 @@ export interface CurrentUser {
   name: string
   image: string | null
   role: 'user' | 'admin' | 'support'
+  /** "Which of these best describes you?" (packages/validation persona.ts); null = not asked yet */
+  persona?: Persona | null
 }
 
 export type JobStatus = 'queued' | 'analyzing' | 'outlining' | 'generating' | 'rendering' | 'validating' | 'completed' | 'failed' | 'cancelled'
@@ -49,6 +52,8 @@ export interface ModelOption {
   creditsPerSlide: number
   /** price of one AI edit with this model, in credits */
   creditsPerEdit: number
+  /** each further slide one AI edit writes (a split, a bulk rewrite), in credits */
+  creditsPerWrittenSlide?: number
   /** price of one picture with this (image) model, in credits */
   creditsPerImage: number
 }
@@ -286,7 +291,7 @@ export interface SourceSummary {
   parts?: number
 }
 
-export type { Entitlements, PlanView, SubscriptionSummary }
+export type { Entitlements, PlanView, SubscriptionSummary, TopUpOffer }
 export interface CheckoutSession {
   /** public Razorpay key id (the secret never leaves the server) */
   keyId: string
@@ -361,7 +366,23 @@ export interface BrandKitInput {
   /** one of our own asset URLs, e.g. the logo a website lookup saved */
   logoUrl?: string
 }
-export interface BillingOverview { subscription: SubscriptionSummary | null; payments: PaymentSummary[]; billingEnabled: boolean; testMode: boolean; simulator?: boolean }
+export interface TopUpRecord { id: string; credits: number; amountMinor: number; currency: string; status: string; at: string }
+export interface BillingOverview { subscription: SubscriptionSummary | null; payments: PaymentSummary[]; topUps?: TopUpRecord[]; billingEnabled: boolean; testMode: boolean; simulator?: boolean }
+/** A one-off credit purchase in the browser: the same plan's credits again, at the same plan's price. */
+export interface TopUpSession {
+  keyId: string
+  orderId: string
+  topUpId: string
+  credits: number
+  amountMinor: number
+  currency: 'INR' | 'USD'
+  planName: string
+  testMode: boolean
+  simulated?: boolean
+  prefill: { name: string; email: string }
+}
+export interface RazorpayOrderResult { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }
+export type SimulatorOrderResult = ({ outcome: 'paid' } & RazorpayOrderResult) | { outcome: 'failed'; message: string }
 export type SimulatorPayResult = ({ outcome: 'paid' } & RazorpayResult) | { outcome: 'failed'; message: string }
 export interface RazorpayResult { razorpay_payment_id: string; razorpay_subscription_id: string; razorpay_signature: string }
 export interface PlansResponse {
@@ -412,7 +433,8 @@ export class ApiError extends Error {
 type Envelope<T> = { success: true; data: T } | { success: false; error: { code: string; message: string; details?: Record<string, unknown> } }
 
 /** Plan/credit refusals the UI should answer with an upgrade or top-up prompt. */
-export const isGateError = (e: unknown): e is ApiError => e instanceof ApiError && ['UPGRADE_REQUIRED', 'INSUFFICIENT_CREDITS', 'LIMIT_REACHED'].includes(e.code)
+/** A plan gate the server named. The narrowed `code` lets the UI offer the right thing (more credits vs a bigger plan). */
+export const isGateError = (e: unknown): e is ApiError & { code: GateCode } => e instanceof ApiError && (GATE_CODES as readonly string[]).includes(e.code)
 
 export function createApiClient({ apiUrl, sessionUser, onSessionChanged }: ApiClientConfig) {
   const base = apiUrl.replace(/\/$/, '')
@@ -469,6 +491,9 @@ export function createApiClient({ apiUrl, sessionUser, onSessionChanged }: ApiCl
         throw e
       }
     },
+
+    /** Saves the answer to "Which of these best describes you?" on the signed-in person's account. */
+    setPersona: (persona: Persona) => request<{ persona: Persona }>('/api/v1/me/persona', { method: 'PUT', body: JSON.stringify({ persona }) }),
 
     /** Public free tools (no login; rate- and spend-limited server-side). */
     freeOutline: (b: { topic: string; kind?: string; audience?: string; slides?: number }) =>
@@ -703,10 +728,10 @@ export function createApiClient({ apiUrl, sessionUser, onSessionChanged }: ApiCl
     aiEdit: (id: string, body: { slideId: string; command: AiEditCommand; argument?: string; model?: string; requestId: string }) =>
       request<AiEditResult>(`/api/v1/presentations/${encodeURIComponent(id)}/ai-edit`, { method: 'POST', body: JSON.stringify(body) }),
     /** Paid plans. A question about the deck's own text: a short answer that points at slides. Read-only. */
-    askDeck: (id: string, body: { question: string; history?: { role: 'user' | 'ai'; text: string }[]; model?: string; requestId: string }) =>
+    askDeck: (id: string, body: { question: string; history?: { role: 'user' | 'ai'; text: string }[]; model?: string; requestId: string; /** the slide on screen and what is selected: "this slide", "this chart" are answered about them */ activeSlideId?: string; selection?: { slideIds: string[]; elementIds: string[] } }) =>
       request<AskDeckAnswer>(`/api/v1/presentations/${encodeURIComponent(id)}/ask`, { method: 'POST', body: JSON.stringify(body) }),
     /** Chat-style assistant: free-form instruction → validated theme/animation/content changes to apply as ONE undoable step. */
-    aiAssist: (id: string, body: { instruction: string; scope: 'deck' | 'slide'; slideId?: string; activeSlideId?: string; /** what is selected in the editor right now */ selection?: { slideIds: string[]; elementIds: string[] }; model?: string; requestId: string; sourceIds?: string[]; recent?: { theme: boolean; slideIds: string[]; summary: string[] }[]; conversation?: { role: 'user' | 'assistant'; text: string }[]; /** a plan the person confirmed (from an option of the last answer); the server checks it against the deck again */ confirm?: Restructure }) =>
+    aiAssist: (id: string, body: { instruction: string; scope: 'deck' | 'slide'; slideId?: string; /** a quick edit from the editor's menu (the server runs its fixed task on slideId) */ quick?: QuickEditId; activeSlideId?: string; /** what is selected in the editor right now */ selection?: { slideIds: string[]; elementIds: string[] }; model?: string; requestId: string; sourceIds?: string[]; recent?: { theme: boolean; slideIds: string[]; summary: string[] }[]; conversation?: { role: 'user' | 'assistant'; text: string }[]; /** a plan the person confirmed (from an option of the last answer); the server checks it against the deck again */ confirm?: Restructure }) =>
       request<AiAssistResult>(`/api/v1/presentations/${encodeURIComponent(id)}/ai-assist`, { method: 'POST', body: JSON.stringify(body) }),
     /** After applying an answer and saving: triggers the server's settlement of the credits (it checks the SAVED deck itself; `results` is only compared, never trusted). */
     aiAssistOutcome: (id: string, requestId: string, body: { results?: { key: string; status: string }[]; savedRevision?: number }) =>
@@ -747,6 +772,13 @@ export function createApiClient({ apiUrl, sessionUser, onSessionChanged }: ApiCl
     /** Send Razorpay's success payload; the server verifies the signature before activating the plan. */
     verifyPayment: (r: RazorpayResult) => request<Entitlements>('/api/v1/billing/verify', { method: 'POST', body: JSON.stringify(r) }),
     billing: () => request<BillingOverview>('/api/v1/billing/subscription'),
+    /** What buying credits now would give and cost (the plan's own credits at the plan's own price). */
+    topUpOffer: () => request<TopUpOffer>('/api/v1/billing/top-up'),
+    /** Server decides the credits and the price; the browser then pays the returned one-off order. */
+    startTopUp: () => request<TopUpSession>('/api/v1/billing/top-up/checkout', { method: 'POST', body: '{}' }),
+    /** Send the success payload; the server verifies the signature before adding the credits. */
+    verifyTopUp: (r: RazorpayOrderResult) => request<Entitlements>('/api/v1/billing/top-up/verify', { method: 'POST', body: JSON.stringify(r) }),
+    simulatorPayOrder: (orderId: string, outcome: 'success' | 'failure') => request<SimulatorOrderResult>('/api/v1/billing/simulator/pay-order', { method: 'POST', body: JSON.stringify({ orderId, outcome }) }),
     /** test payments only (the server answers 404 unless PAYMENTS_SIMULATOR is on) */
     simulatorPay: (subscriptionId: string, outcome: 'success' | 'failure') => request<SimulatorPayResult>('/api/v1/billing/simulator/pay', { method: 'POST', body: JSON.stringify({ subscriptionId, outcome }) }),
     simulatorRenew: () => request<Entitlements>('/api/v1/billing/simulator/renew', { method: 'POST', body: '{}' }),

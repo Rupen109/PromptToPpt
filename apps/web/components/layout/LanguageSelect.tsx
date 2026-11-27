@@ -22,7 +22,7 @@ export function LanguageSelect({ variant = 'header' }: { variant?: 'header' | 'f
       {variant !== 'header' && <span className="text-[#64748b] font-semibold hidden sm:inline">Language:</span>}
       <span aria-hidden className={variant === 'full' ? 'flex-1 truncate' : 'whitespace-nowrap'}>{label}</span>
       <ChevronDown aria-hidden size={14} className="shrink-0" />
-      <select aria-label="Presentation language" value={code} onFocus={preloadWidget} onPointerDown={preloadWidget} onChange={(e) => setDeckLanguage(e.target.value)} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
+      <select aria-label="Presentation language" value={code} onPointerEnter={preloadWidget} onFocus={preloadWidget} onPointerDown={preloadWidget} onChange={(e) => setDeckLanguage(e.target.value)} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
         {SITE_LANGUAGES.map((l) => <option key={l.code} value={l.code}>{l.label}</option>)}
       </select>
     </label>

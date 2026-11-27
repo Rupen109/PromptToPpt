@@ -44,7 +44,7 @@ export function DeckRewriteDialog({ presentationId, autoBrief, picturesOnly, sli
       setJob(j)
     } catch (e) {
       idem.current = crypto.randomUUID()
-      if (isGateError(e)) upgrade.show(e.message)
+      if (isGateError(e)) upgrade.show(e.message, e.code)
       setError(e instanceof ApiError ? e.message : 'Something went wrong. You were not charged.')
       setPhase(autoBrief ? 'error' : 'ask')
     }

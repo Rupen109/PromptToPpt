@@ -3,7 +3,7 @@ import { db } from '../db/index.ts'
 import { payment, planPrice, subscription } from '../db/schema.ts'
 import { BillingError } from './errors.ts'
 import { notesOf, razorpay } from './razorpay.ts'
-import { SIM_KEY_ID, simPay, simRenewal, simSignature, simulatorEnabled } from './simulator.ts'
+import { SIM_KEY_ID, simOrderSignature, simPay, simPayOrder, simRenewal, simSignature, simulatorEnabled } from './simulator.ts'
 import { applySubscription, priceId, recordPayment, revokeForPayment } from './subscriptions.ts'
 
 void SIM_KEY_ID
@@ -36,6 +36,24 @@ export async function testPay(userId: string, subscriptionId: string, outcome: '
     return { outcome: 'failed', message: pay.error_description ?? 'The test payment failed.' }
   }
   return { outcome: 'paid', razorpay_payment_id: pay.id, razorpay_subscription_id: subscriptionId, razorpay_signature: simSignature(pay.id, subscriptionId) }
+}
+
+export type TestOrderResult =
+  | { outcome: 'paid'; razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }
+  | { outcome: 'failed'; message: string }
+
+/**
+ * "Pay" or "Fail" pressed in the test payment window for a CREDIT TOP-UP (a one-off order). A success hands back what Razorpay's window would,
+ * and the browser then calls the normal /billing/top-up/verify, which grants the credits through the real code.
+ */
+export async function testPayOrder(userId: string, orderId: string, outcome: 'success' | 'failure'): Promise<TestOrderResult> {
+  guard()
+  const { payment: pay } = simPayOrder(userId, orderId, outcome)
+  if (outcome === 'failure') {
+    await recordPayment(pay, { userId })
+    return { outcome: 'failed', message: pay.error_description ?? 'The test payment failed.' }
+  }
+  return { outcome: 'paid', razorpay_order_id: orderId, razorpay_payment_id: pay.id, razorpay_signature: simOrderSignature(orderId, pay.id) }
 }
 
 /** The next billing cycle of the person's test subscription happens now: the period moves forward, a new payment is captured and recorded, credits renew. */

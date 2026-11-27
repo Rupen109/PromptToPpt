@@ -71,6 +71,7 @@ ask GOOGLE_CLIENT_ID "Google sign-in client id" optional
 ask GOOGLE_CLIENT_SECRET "Google sign-in client secret" optional
 ask MICROSOFT_CLIENT_ID "Microsoft sign-in application (client) id" optional
 ask MICROSOFT_CLIENT_SECRET "Microsoft sign-in client secret VALUE" optional
+ask Razorpay_Test "Password for the Razorpay review account (razorpayreviewer@slidesdone.app)" optional "read from services/api/.env; then run the review-account command on the server, see docs/DEPLOY_AWS_TEST.md"
 echo
 echo "Done. Names stored (values are not shown):"
 aws ssm get-parameters-by-path --profile "$PROFILE" --path "$PREFIX" --query 'Parameters[].Name' --output text | tr '\t' '\n' | sed 's/^/  /'

@@ -206,6 +206,8 @@ export type FileKind = 'pdf' | 'pptx' | 'docx' | 'xlsx' | 'csv' | 'email' | 'tex
 export const FILE_MAX_BYTES = Math.max(PDF_MAX_BYTES, PPTX_MAX_BYTES, DOCX_MAX_BYTES, XLSX_MAX_BYTES, CSV_MAX_BYTES)
 export const FILE_TYPES_HELP = 'PDF, Word (.docx), PowerPoint (.pptx), Excel (.xlsx), CSV, email (.eml), caption files (.srt, .vtt), or text/Markdown'
 
+/** a file whose NAME says one type while its contents are something else (damaged, or renamed) */
+const NOT_REALLY = (what: string) => { const a = /^[aeiou]/i.test(what) ? 'an' : 'a'; return `That file is named like ${a} ${what} but is not one inside — it may be damaged or renamed from another type. Open it and save it as ${a} ${what} again.` }
 const ext = (name: string) => /\.([a-z0-9]+)$/i.exec(name)?.[1]?.toLowerCase() ?? ''
 const tooBig = (kind: string, max: number, n: number) => { if (n > max) throw new SourceError(`That ${kind} is larger than ${Math.round(max / 1024 / 1024)} MB`) }
 
@@ -213,6 +215,8 @@ const tooBig = (kind: string, max: number, n: number) => { if (n > max) throw ne
 export async function fromFile(bytes: Uint8Array, filename: string): Promise<{ kind: FileKind; extracted: Extracted }> {
   const head = Buffer.from(bytes.subarray(0, 5)).toString('latin1')
   const e = ext(filename)
+  // said plainly, before anything else: an empty file is not an "unsupported type"
+  if (bytes.length === 0) throw new SourceError('That file is empty. Check you chose the right file and try again.')
   if (head === '%PDF-') {
     if (bytes.length > PDF_MAX_BYTES) throw new Error('PDF is larger than 10 MB')
     return { kind: 'pdf', extracted: await fromPdf(bytes, filename) }
@@ -231,6 +235,7 @@ export async function fromFile(bytes: Uint8Array, filename: string): Promise<{ k
     if (names.includes('xl/workbook.xml')) { tooBig('workbook', XLSX_MAX_BYTES, bytes.length); return { kind: 'xlsx', extracted: fromXlsx(bytes, filename) } }
     if (names.includes('xl/workbook.bin')) throw new SourceError('.xlsb workbooks are not supported — open it in Excel and save as .xlsx (or CSV)')
     if (names.some((n) => n.startsWith('ppt/slides/') || n === 'ppt/presentation.xml')) { tooBig('PowerPoint file', PPTX_MAX_BYTES, bytes.length); return { kind: 'pptx', extracted: fromPptx(bytes, filename) } }
+    if (e === 'docx' || e === 'xlsx' || e === 'pptx') throw new SourceError(NOT_REALLY(e === 'docx' ? 'Word document' : e === 'xlsx' ? 'Excel workbook' : 'PowerPoint file'))
     throw new SourceError(`Unsupported file type — upload ${FILE_TYPES_HELP}`)
   }
   if (e === 'csv' || e === 'tsv') { tooBig('file', CSV_MAX_BYTES, bytes.length); return { kind: 'csv', extracted: fromCsv(bytes, filename) } }
@@ -240,7 +245,10 @@ export async function fromFile(bytes: Uint8Array, filename: string): Promise<{ k
     if (bytes.subarray(0, 4096).includes(0)) throw new SourceError('That file does not look like a caption file')
     return { kind: 'transcript', extracted: fromTranscript(filename.replace(/\.(srt|vtt|sbv)$/i, ''), new TextDecoder('utf-8', { fatal: false }).decode(bytes)) }
   }
-  if (e === 'doc' || e === 'xls' || e === 'ppt' || e === 'docx' || e === 'xlsx' || e === 'pptx') throw new SourceError('That file is not a valid Office document — it may be damaged or renamed from another type')
+  // every content check has run (a real Word file renamed .pdf was read as Word above): what is left is named .pdf but is not one —
+  // telling this person to "upload a PDF" would make no sense to them
+  if (e === 'pdf') throw new SourceError(NOT_REALLY('PDF'))
+  if (e === 'doc' || e === 'xls' || e === 'ppt' || e === 'docx' || e === 'xlsx' || e === 'pptx') throw new SourceError(NOT_REALLY(e === 'docx' || e === 'doc' ? 'Word document' : e === 'xlsx' || e === 'xls' ? 'Excel workbook' : 'PowerPoint file'))
   if (!/\.(txt|md|markdown|text)$/i.test(filename)) throw new SourceError(`Unsupported file type — upload ${FILE_TYPES_HELP}`)
   return { kind: 'text', extracted: fromTextFile(bytes, filename) }
 }

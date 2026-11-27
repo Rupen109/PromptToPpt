@@ -141,7 +141,7 @@ describe('AI edit', () => {
     const r = await api(u.cookie, 'POST', `/presentations/${id}/ai-edit`, body(doc.slides[1]!.id))
     expect(r.status).toBe(403)
     expect((await json(r)).error).toMatchObject({ code: 'UPGRADE_REQUIRED', details: { feature: 'aiEdits' } })
-    expect(await balance(u.id)).toBe(100)
+    expect(await balance(u.id)).toBe(150)
   })
 
   it('Pro is stopped, not charged, when out of credits', async () => {
@@ -159,7 +159,7 @@ describe('AI edit', () => {
     const models = (await json(await api(u.cookie, 'GET', '/models'))).data.models
     const premium = models.find((m: any) => m.tier === 'premium')?.id
     const r = await json(await api(u.cookie, 'POST', `/presentations/${id}/ai-edit`, body(doc.slides[1]!.id, premium ? { model: premium } : {})))
-    expect(r.data.creditsCharged).toBe(2)
+    expect(r.data.creditsCharged).toBe(4)
   })
 
   it('Pro: returns a validated same-layout patch, charges the tier price, and retries are charged once', async () => {
@@ -169,10 +169,10 @@ describe('AI edit', () => {
     const r = await json(await api(u.cookie, 'POST', `/presentations/${id}/ai-edit`, payload))
     expect(r.data.content.layout).toBe(slide.layoutId)
     expect(r.data.content.title).toContain('✎')
-    expect(r.data.creditsCharged).toBe(2)
-    expect(await balance(u.id)).toBe(900 - 2)
+    expect(r.data.creditsCharged).toBe(4)
+    expect(await balance(u.id)).toBe(1150 - 4)
     await api(u.cookie, 'POST', `/presentations/${id}/ai-edit`, payload) // same requestId (client retry)
-    expect(await balance(u.id)).toBe(900 - 2)
+    expect(await balance(u.id)).toBe(1150 - 4)
   })
 
   it('respects locked slides and unknown slides; a failing model refunds the charge', async () => {

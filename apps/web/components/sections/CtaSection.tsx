@@ -24,7 +24,7 @@ export function CtaSection() {
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Enter your work email…" aria-label="Email address" className={`flex-1 min-w-0 h-12 rounded-xl border-2 border-foreground bg-white px-[18px] font-sans text-base font-semibold text-foreground placeholder:text-[#94a3b8] focus:outline-none focus:ring-2 focus:ring-primary transition-shadow focus:shadow-[4px_5px_0_0_#181b25] ${HARD.sm}`} />
           <Button type="submit" variant="accent" size="lg" arrow className="!h-12 !rounded-xl !px-[30px]">Start free</Button>
         </form>
-        <p className="mt-5 font-heading font-bold text-xs text-foreground">No credit card required • The free plan includes 100 credits</p>
+        <p className="mt-5 font-heading font-bold text-xs text-foreground">No credit card required • The free plan includes 150 credits</p>
       </Card>
     </section>
   )

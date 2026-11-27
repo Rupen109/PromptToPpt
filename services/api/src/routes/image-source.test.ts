@@ -1,5 +1,5 @@
 import { crc32, deflateSync } from 'node:zlib'
-import { eq } from 'drizzle-orm'
+import { asc, eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 import { app } from '../app.ts'
 import { db } from '../db/index.ts'
@@ -59,10 +59,10 @@ describe('POST /sources/image (image to deck)', () => {
     expect(r.status).toBe(201)
     const d = (await json(r)).data
     expect(d).toMatchObject({ type: 'image', creditsCharged: 4 })
-    expect(await balance(u.id)).toBe(96)
+    expect(await balance(u.id)).toBe(146)
     const [doc] = await db.select().from(sourceDocument).where(eq(sourceDocument.id, d.id))
     expect(doc).toMatchObject({ type: 'image', userId: u.id })
-    const text = (await db.select().from(sourceChunk).where(eq(sourceChunk.sourceId, d.id))).map((c) => c.text).join('\n')
+    const text = (await db.select().from(sourceChunk).where(eq(sourceChunk.sourceId, d.id)).orderBy(asc(sourceChunk.ordinal))).map((c) => c.text).join('\n')
     expect(text).toContain('4,200 electric bicycles')
     expect(text).not.toContain('SECRET_MARKER') // only the model's reading is kept, never the file
     const ev = (await db.select().from(aiUsageEvent).where(eq(aiUsageEvent.userId, u.id))).find((e) => e.requestType === 'image_read')
@@ -83,7 +83,7 @@ describe('POST /sources/image (image to deck)', () => {
       expect(r.status).toBe(422)
       expect((await json(r)).error.message).toMatch(hint)
     }
-    expect(await balance(u.id)).toBe(100)
+    expect(await balance(u.id)).toBe(150)
     expect(await db.select().from(aiUsageEvent).where(eq(aiUsageEvent.userId, u.id))).toHaveLength(0)
   })
 
@@ -92,14 +92,14 @@ describe('POST /sources/image (image to deck)', () => {
     expect((await upload(u.cookie, Buffer.alloc(9 * 1024 * 1024, 1))).status).toBe(413)
     const bomb = await upload(u.cookie, png(64, 64, [60_000, 60_000]))
     expect(bomb.status).toBe(422)
-    expect(await balance(u.id)).toBe(100)
+    expect(await balance(u.id)).toBe(150)
   })
 
   it('a failing model refunds the charge and stores nothing', async () => {
     const u = await signUp('img'); await json(await api(u.cookie, 'GET', '/me/entitlements'))
     const r = await upload(u.cookie, png(), 'FAIL_PLEASE.png')
     expect(r.status).toBeGreaterThanOrEqual(422)
-    expect(await balance(u.id)).toBe(100)
+    expect(await balance(u.id)).toBe(150)
     expect(await db.select().from(sourceDocument).where(eq(sourceDocument.userId, u.id))).toHaveLength(0)
   })
 

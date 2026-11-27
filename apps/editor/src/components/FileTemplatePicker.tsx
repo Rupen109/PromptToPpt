@@ -2,6 +2,7 @@ import { FileUp, Trash2, X } from '@prompttoppt/ui/icons'
 import { useEffect, useRef, useState, type DragEvent } from 'react'
 import { SlideCanvas } from '@prompttoppt/ui'
 import { ApiError, isGateError, type FileTemplateListItem, type FileTemplateSummary } from '@prompttoppt/api-client'
+import type { GateCode } from '@prompttoppt/validation'
 import { Portal } from '@/components/Portal'
 import { api } from '@/lib/api'
 import { useEntitlements } from '@/lib/entitlements'
@@ -11,13 +12,13 @@ import { useDialog } from '@/lib/useDialog'
 export const asPending = (s: Pick<FileTemplateSummary, 'id' | 'name' | 'slideCount' | 'aspect' | 'fontsReplaced'>): PendingFileTemplate => ({ id: s.id, name: s.name, slideCount: s.slideCount, aspect: s.aspect, fontsReplaced: s.fontsReplaced })
 
 /** Uploads a design file; returns its summary. Shared by the picker and the "Use its design too" button on an attached .pptx. */
-export async function uploadDesign(file: File, upgradeShow: (reason?: string) => void): Promise<{ ok: true; summary: FileTemplateSummary } | { ok: false; message: string }> {
+export async function uploadDesign(file: File, upgradeShow: (reason?: string, code?: GateCode) => void): Promise<{ ok: true; summary: FileTemplateSummary } | { ok: false; message: string }> {
   if (!/\.(pptx|pdf)$/i.test(file.name)) return { ok: false, message: /\.ppt$/i.test(file.name) ? 'Old .ppt files are not supported: open it in PowerPoint and save as .pptx.' : 'Upload a PowerPoint (.pptx) or PDF file.' }
   if (file.size > 15 * 1024 * 1024) return { ok: false, message: `${file.name} is larger than 15 MB.` }
   try {
     return { ok: true, summary: await api.uploadFileTemplate(file) }
   } catch (e) {
-    if (isGateError(e) && e.code === 'UPGRADE_REQUIRED') { upgradeShow(e.message); return { ok: false, message: e.message } }
+    if (isGateError(e) && e.code === 'UPGRADE_REQUIRED') { upgradeShow(e.message, e.code); return { ok: false, message: e.message } }
     return { ok: false, message: e instanceof ApiError ? e.message : 'Could not read that file. Please try again.' }
   }
 }

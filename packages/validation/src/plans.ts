@@ -80,7 +80,8 @@ export interface Entitlements {
   plan: { id: PlanId; name: string }
   features: PlanFeatures
   limits: { maxSlides: number; maxPresentationsPerMonth: number | null; maxImagesPerPresentation: number; maxImagesPerMonth: number }
-  credits: { balance: number; monthlyAllowance: number; resetsAt: string }
+  /** `balance` is everything spendable; `bought` is the part of it that was paid for as a top-up and does NOT expire at the reset */
+  credits: { balance: number; bought: number; monthlyAllowance: number; resetsAt: string }
   usage: { presentationsThisPeriod: number; imagesThisPeriod: number; morphDecksThisPeriod: number }
 }
 
@@ -98,6 +99,23 @@ export interface SubscriptionSummary {
   /** renewals are off; access continues until currentPeriodEnd */
   cancelAtPeriodEnd: boolean
   provider: string
+}
+
+/**
+ * What a credit top-up would be for this person: their own plan's credits, at their own plan's monthly price, bought now.
+ * `bought` is how many of `balance` were bought earlier (those never expire at the monthly reset).
+ */
+export interface TopUpOffer {
+  available: boolean
+  /** why not, when `available` is false */
+  reason?: string
+  planId: PlanId
+  planName: string
+  credits: number
+  amountMinor: number
+  currency: Currency
+  balance: number
+  bought: number
 }
 
 /** Web links in a chat message (max `limit`), de-duplicated, trailing punctuation trimmed. Shared so the UI can show the extra cost the server will charge. */

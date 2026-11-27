@@ -1,5 +1,5 @@
 import type { PaidPlanId } from '@prompttoppt/validation'
-import { ApiError, type CheckoutSession, type Entitlements, type RazorpayResult } from '@prompttoppt/api-client'
+import { ApiError, type CheckoutSession, type Entitlements, type RazorpayOrderResult, type RazorpayResult, type TopUpSession } from '@prompttoppt/api-client'
 import { api } from './api'
 
 interface RazorpayInstance {
@@ -71,6 +71,53 @@ export async function subscribe(planId: PaidPlanId, interval: 'month' | 'year', 
   return api.verifyPayment(result)
 }
 
+/**
+ * Buying credits: the plan's own credits again, at the plan's own price, paid once (a Razorpay ORDER, not a subscription).
+ * Same shape as `subscribe`: server decides what is sold → payment window → server verifies the signed result and adds the credits.
+ */
+export async function buyCredits(onSession?: (s: TopUpSession) => void): Promise<Entitlements> {
+  const session = await api.startTopUp()
+  simulatorMode = !!session.simulated
+  onSession?.(session)
+  if (!session.simulated) await loadCheckoutScript()
+  const result = session.simulated ? await openTestOrderPayment(session) : await openOrderCheckout(session)
+  return api.verifyTopUp(result)
+}
+
+function openOrderCheckout(s: TopUpSession): Promise<RazorpayOrderResult> {
+  return new Promise((resolve, reject) => {
+    const rzp = new window.Razorpay!({
+      key: s.keyId,
+      order_id: s.orderId,
+      amount: s.amountMinor,
+      currency: s.currency,
+      name: 'SlidesDone',
+      description: `${s.credits.toLocaleString()} credits (${s.planName})${s.testMode ? ' — TEST: use card 4111 1111 1111 1111' : ''}`,
+      prefill: s.prefill,
+      theme: { color: '#4f46e5' },
+      handler: (r: RazorpayOrderResult) => resolve(r),
+      modal: { ondismiss: () => reject(new CheckoutDismissed()) },
+    })
+    rzp.on('payment.failed', () => {
+      /* the window stays open so the person can try another method; the webhook records the failure */
+    })
+    rzp.open()
+  })
+}
+
+/** The test payment window for a credit top-up (PAYMENTS_SIMULATOR): the same window as a plan, with the credits as the title. */
+function openTestOrderPayment(s: TopUpSession): Promise<RazorpayOrderResult> {
+  return testWindow<RazorpayOrderResult>({
+    title: `${s.credits.toLocaleString()} credits · ${s.planName}`,
+    amount: money(s.amountMinor, s.currency),
+    explain: "This is SlidesDone's own test checkout (the server is in test-payment mode). Pressing Pay adds the credits exactly as a real payment would, without any card.",
+    pay: async (outcome) => {
+      const r = await api.simulatorPayOrder(s.orderId, outcome)
+      return r.outcome === 'paid' ? { ok: { razorpay_order_id: r.razorpay_order_id, razorpay_payment_id: r.razorpay_payment_id, razorpay_signature: r.razorpay_signature } } : { error: r.message }
+    },
+  })
+}
+
 const money = (minor: number, currency: string) => new Intl.NumberFormat(currency === 'INR' ? 'en-IN' : 'en-US', { style: 'currency', currency, maximumFractionDigits: 0 }).format(minor / 100)
 
 /**
@@ -78,7 +125,20 @@ const money = (minor: number, currency: string) => new Intl.NumberFormat(currenc
  * and history entry are real), closing leaves the person on their current plan. Built as plain DOM so it works from any call site, and labelled so nobody mistakes it for a real charge.
  */
 function openTestPayment(s: CheckoutSession): Promise<RazorpayResult> {
-  return new Promise<RazorpayResult>((resolve, reject) => {
+  return testWindow<RazorpayResult>({
+    title: `${s.planName} · ${s.interval === 'month' ? 'monthly' : 'yearly'}`,
+    amount: money(s.amountMinor, s.currency),
+    explain: "This is SlidesDone's own test checkout (the server is in test-payment mode). Pressing Pay activates the plan exactly as a real payment would, without any card.",
+    pay: async (outcome) => {
+      const r = await api.simulatorPay(s.subscriptionId, outcome)
+      return r.outcome === 'paid' ? { ok: { razorpay_payment_id: r.razorpay_payment_id, razorpay_subscription_id: r.razorpay_subscription_id, razorpay_signature: r.razorpay_signature } } : { error: r.message }
+    },
+  })
+}
+
+/** The test payment window itself (plain DOM, so it works from any call site, and clearly labelled so nobody mistakes it for a real charge). */
+function testWindow<T>(o: { title: string; amount: string; explain: string; pay: (outcome: 'success' | 'failure') => Promise<{ ok: T } | { error: string }> }): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
     const previous = document.activeElement as HTMLElement | null
     const root = document.createElement('div')
     root.className = 'fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4'
@@ -87,7 +147,7 @@ function openTestPayment(s: CheckoutSession): Promise<RazorpayResult> {
         <p class="mb-3 inline-block rounded-full bg-amber-100 px-3 py-1 text-xs font-bold uppercase tracking-wide text-amber-900">Test payment: no real money</p>
         <h2 class="font-heading text-xl font-bold" data-title></h2>
         <p class="mt-1 text-3xl font-extrabold" data-amount></p>
-        <p class="mt-2 text-sm text-slate-600">This is SlidesDone's own test checkout (the server is in test-payment mode). Pressing Pay activates the plan exactly as a real payment would, without any card.</p>
+        <p class="mt-2 text-sm text-slate-600" data-explain></p>
         <p data-error role="alert" class="mt-3 hidden rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700"></p>
         <div class="mt-5 grid gap-2">
           <button type="button" data-pay class="rounded-lg bg-primary px-4 py-3 font-bold text-white disabled:opacity-60">Pay (test)</button>
@@ -95,9 +155,10 @@ function openTestPayment(s: CheckoutSession): Promise<RazorpayResult> {
           <button type="button" data-cancel class="rounded-lg px-4 py-2 text-sm text-slate-600 underline">Cancel</button>
         </div>
       </div>`
-    const $ = <T extends HTMLElement>(sel: string) => root.querySelector<T>(sel)!
-    $('[data-title]').textContent = `${s.planName} · ${s.interval === 'month' ? 'monthly' : 'yearly'}`
-    $('[data-amount]').textContent = money(s.amountMinor, s.currency)
+    const $ = <E extends HTMLElement>(sel: string) => root.querySelector<E>(sel)!
+    $('[data-title]').textContent = o.title
+    $('[data-amount]').textContent = o.amount
+    $('[data-explain]').textContent = o.explain
     const buttons = ['[data-pay]', '[data-fail]', '[data-cancel]'].map((x) => $<HTMLButtonElement>(x))
     const show = (text: string | null) => { const e = $('[data-error]'); e.textContent = text ?? ''; e.classList.toggle('hidden', !text) }
     const finish = () => { document.removeEventListener('keydown', onKey, true); root.remove(); previous?.focus?.() }
@@ -107,9 +168,9 @@ function openTestPayment(s: CheckoutSession): Promise<RazorpayResult> {
       show(null)
       buttons.forEach((b) => (b.disabled = true))
       try {
-        const r = await api.simulatorPay(s.subscriptionId, outcome)
-        if (r.outcome === 'paid') { finish(); resolve({ razorpay_payment_id: r.razorpay_payment_id, razorpay_subscription_id: r.razorpay_subscription_id, razorpay_signature: r.razorpay_signature }); return }
-        show(`${r.message} You can try again.`)
+        const r = await o.pay(outcome)
+        if ('ok' in r) { finish(); resolve(r.ok); return }
+        show(`${r.error} You can try again.`)
       } catch (e) {
         show(e instanceof ApiError ? e.message : 'Could not reach the server. Try again.')
       }

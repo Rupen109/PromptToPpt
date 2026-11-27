@@ -54,9 +54,23 @@ export function loadWidget(): Promise<void> {
   return loading
 }
 
-/** start loading Google's widget when the visitor reaches for the language button (focus or press), so picking a language does not wait for the whole download */
+/**
+ * Start loading Google's widget ahead of the choice, so picking a language does not wait for it. Measured: a pick with the widget not loaded yet takes
+ * about 4.6 s to show the new language (download + start-up, longer far from the server); with it loaded, about 0.9 s. Called when the visitor reaches for
+ * the language button (hover, focus or press: on a computer, hover comes a second or more before the pick) and, for likely switchers only, when the page is idle.
+ */
 export function preloadWidget(): void {
   void loadWidget().catch(() => undefined)
+}
+
+/**
+ * Visitors whose browser is set to one of our other languages are the ones likely to switch, so for them the widget is loaded quietly once the page
+ * is idle. Everyone else (an English browser) still loads nothing from Google until they reach for the language button: no third-party script and
+ * no Google cookies on a plain visit, which keeps the page fast.
+ */
+export function likelyToTranslate(): boolean {
+  const langs = typeof navigator === 'undefined' ? [] : navigator.languages?.length ? navigator.languages : [navigator.language]
+  return langs.some((l) => { const code = (l ?? '').toLowerCase().split('-')[0] ?? ''; return code !== 'en' && googleCodeFor(code) !== null })
 }
 
 /** true while a translation is being set up or applied: the language button shows a spinner */
@@ -78,9 +92,27 @@ export async function translateTo(google: string): Promise<void> {
   await new Promise<void>((done) => { const tick = () => (/translated-(ltr|rtl)/.test(root.className) && Date.now() - t0 > 500) || Date.now() - t0 > 8000 ? done() : void setTimeout(tick, 100); tick() })
 }
 
-/** bring the page in line with the chosen language: translate, or go back to the original (needs a reload: Google keeps no way to undo in place) */
+/**
+ * Back to the page as written, in place: Google's own "show original" button (in its hidden toolbar) puts every text node back at once — measured 29 ms,
+ * against a full page reload before (slow far from the server). If the widget ever stops offering that button, or the text does not come back, reload.
+ */
+async function restoreOriginal(): Promise<void> {
+  writeTranslationCookie(null)
+  const root = document.documentElement
+  const frame = document.querySelector<HTMLIFrameElement>('iframe.goog-te-banner-frame, iframe[id$=".container"], iframe.skiptranslate')
+  const restore = frame?.contentDocument?.querySelector<HTMLElement>('[id$=".restore"], button[id*="restore"]')
+  if (restore) {
+    restore.click()
+    const t0 = Date.now()
+    await new Promise<void>((done) => { const tick = () => (!/translated-(ltr|rtl)/.test(root.className) || Date.now() - t0 > 1500 ? done() : void setTimeout(tick, 50)); tick() })
+    if (!/translated-(ltr|rtl)/.test(root.className)) return
+  }
+  location.reload()
+}
+
+/** bring the page in line with the chosen language: translate, or go back to the original */
 export async function syncSiteLanguage(code: string): Promise<void> {
   const g = googleCodeFor(code)
   if (g) { setBusy(true); try { await translateTo(g) } catch { /* blocked or offline: the site stays in English and the deck language still applies */ } finally { setBusy(false) } return }
-  if (currentTranslation()) { writeTranslationCookie(null); location.reload() }
+  if (currentTranslation() || /translated-(ltr|rtl)/.test(document.documentElement.className)) { setBusy(true); try { await restoreOriginal() } finally { setBusy(false) } }
 }

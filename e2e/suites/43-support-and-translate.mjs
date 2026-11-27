@@ -26,7 +26,7 @@ export default async function () {
       await v.getByRole('heading', { level: 1, name: 'Contact us' }).waitFor()
       expect(await v.getByText(/within 24–48 hours/).count() >= 1, 'no 24–48 hours note')
       expect((await v.getByRole('link', { name: /@/ }).first().getAttribute('href')).startsWith('mailto:'), 'e-mail chip is not a mailto link')
-      for (const l of [/Email \(so we can follow up\)/, /How can we help\?/]) expect(await v.getByLabel(l).count() === 1, `${l} field missing`)
+      for (const l of [/^Email/, /How can we help\?/]) expect(await v.getByLabel(l).count() === 1, `${l} field missing`)
       expect(await v.getByText(/attach screenshots \(optional\)/).count() === 1, 'no screenshot box')
       expect(await v.getByRole('button', { name: /Submit/ }).isDisabled(), 'Submit should wait for a valid form')
       await v.screenshot({ path: join(SHOTS, '43-support.png'), fullPage: true })
@@ -39,7 +39,7 @@ export default async function () {
     await s.check('A2 Sending: e-mail + message + a screenshot → "Thanks, we got your message" with a reference', v, async () => {
       await v.goto(WEB + '/support', { waitUntil: 'networkidle' })
       const email = `visitor.${run}@example.com`
-      for (let i = 0; i < 8 && !(await v.getByLabel(/Email \(so we can follow up\)/).inputValue()); i++) { await v.getByLabel(/Email \(so we can follow up\)/).fill(email); await v.waitForTimeout(250) }
+      for (let i = 0; i < 8 && !(await v.getByLabel(/^Email/).inputValue()); i++) { await v.getByLabel(/^Email/).fill(email); await v.waitForTimeout(250) }
       await v.getByLabel(/How can we help\?/).fill(`The export button does nothing on my Mac (${run}). Screenshot attached.`)
       await v.getByLabel('Choose screenshots').setInputFiles({ name: 'export-bug.png', mimeType: 'image/png', buffer: png(320, 200) })
       await v.getByText('export-bug.png').waitFor()
@@ -74,7 +74,7 @@ export default async function () {
       await v.getByLabel('Choose screenshots').setInputFiles([1, 2, 3, 4].map((n) => ({ name: `p${n}.png`, mimeType: 'image/png', buffer: png(8, 8) })))
       await v.getByRole('alert').filter({ hasText: /up to 3 pictures/ }).waitFor()
       expect(await v.getByRole('button', { name: /Remove p3.png/ }).count() === 1 && await v.getByRole('button', { name: /Remove p4.png/ }).count() === 0, 'extra pictures were kept')
-      await v.getByLabel(/Email \(so we can follow up\)/).fill('a@b.co'); await v.getByLabel(/How can we help\?/).fill('short')
+      await v.getByLabel(/^Email/).fill('a@b.co'); await v.getByLabel(/How can we help\?/).fill('short')
       expect(await v.getByRole('button', { name: /Submit/ }).isDisabled(), 'a too-short message can be submitted')
       expect((await api.get(U, '/admin/support')).status === 403, 'a customer can read the inbox')
     })
@@ -131,27 +131,44 @@ export default async function () {
       await v.evaluate(() => localStorage.removeItem('slidesdone:deck-language'))
     })
 
-    await s.check('B4 Not laggy: the script loads quietly once the header is visible (no click needed), so choosing a language applies fast even on a slow connection; a spinner shows while translating; an English visitor sees no translation', v, async () => {
-      const slowPage = async () => {
-        const pg = await (await b.newContext({ viewport: { width: 1440, height: 900 } })).newPage()
-        await pg.route(/translate\.google|translate\.googleapis|translate-pa\.googleapis|www\.gstatic/, (r) => { setTimeout(() => void r.continue().catch(() => undefined), 700) }) // every Google file takes 0.7 s more
-        return pg
+    await s.check('B4 Not laggy, and private by default: an English browser loads nothing from Google until the visitor reaches for the language button (hover starts it); a browser set to one of our other languages gets the translator ready while the page is idle, so its pick applies at once (spinner meanwhile); going back to English restores the page in place, without a reload', v, async () => {
+      // every Google file is 0.7 s slower, like a visitor far from Google's servers
+      const page = async (locale) => {
+        const pg = await (await b.newContext({ viewport: { width: 1440, height: 900 }, locale })).newPage()
+        await pg.route(/translate\.google|translate\.googleapis|translate-pa\.googleapis|www\.gstatic/, (r) => { setTimeout(() => void r.continue().catch(() => undefined), 700) })
+        const google = []; pg.on('request', (r) => { if (/translate\.google\.com\/translate_a\/element\.js/.test(r.url())) google.push(r.url()) })
+        await pg.goto(WEB + '/', { waitUntil: 'networkidle' })
+        return { pg, google, english: await pg.locator('main h1').innerText() }
       }
-      const pg = await slowPage()
-      const google = []; pg.on('request', (r) => { if (/translate\.google\.com\/translate_a\/element\.js/.test(r.url())) google.push(r.url()) })
-      await pg.goto(WEB + '/', { waitUntil: 'networkidle' })
-      const english = await pg.locator('main h1').innerText()
-      await pg.waitForTimeout(5000) // the visitor reads the page; nothing is clicked
-      expect(google.length === 1, `the script should load once by itself while the header is visible, loaded ${google.length} times`)
-      expect(await pg.evaluate(() => !/translated-(ltr|rtl)/.test(document.documentElement.className) && !document.cookie.includes('googtrans')), 'English visitors must not get a translated page')
-      expect((await pg.locator('main h1').innerText()) === english, 'the page changed without a choice')
+      // an English browser, reading the page: nothing is loaded from Google (the privacy page promises this)
+      const en = await page('en-US')
+      await en.pg.waitForTimeout(5000)
+      expect(en.google.length === 0, `an English visitor loaded Google's script ${en.google.length} time(s) without touching the language button`)
+      // reaching for the button starts it
+      await en.pg.locator('header').getByLabel('Presentation language').hover()
+      await en.pg.waitForTimeout(300)
+      expect(en.google.length === 1, 'hovering the language button did not start loading the translator')
+      await en.pg.context().close()
+
+      // a Hindi browser: ready while the page is idle, so picking applies fast
+      const hi = await page('hi-IN')
+      await hi.pg.waitForFunction(() => !!document.querySelector('select.goog-te-combo'), null, { timeout: 20000 })
+      expect((await hi.pg.locator('main h1').innerText()) === hi.english && await hi.pg.evaluate(() => !document.cookie.includes('googtrans')), 'the page was translated without a choice')
       const t0 = Date.now()
-      await pg.locator('header').getByLabel('Presentation language').selectOption('de')
-      await pg.locator('header label[aria-busy="true"] svg.animate-spin').waitFor({ timeout: 3000 })
-      await pg.waitForFunction((e) => (document.querySelector('main h1')?.innerText ?? e) !== e, english, { timeout: 15000 })
+      await hi.pg.locator('header').getByLabel('Presentation language').selectOption('de')
+      await hi.pg.waitForFunction((e) => (document.querySelector('main h1')?.innerText ?? e) !== e, hi.english, { timeout: 15000 })
       const took = Date.now() - t0
-      expect(took < 2500, `choosing is still slow although the script was already loaded: ${took} ms`)
-      await pg.waitForFunction(() => document.querySelector('header label')?.getAttribute('aria-busy') === 'false', null, { timeout: 15000 })
+      expect(took < 2500, `choosing is still slow although the translator was ready: ${took} ms`)
+      await hi.pg.waitForFunction(() => document.querySelector('header label')?.getAttribute('aria-busy') === 'false', null, { timeout: 15000 })
+      // back to English: in place (Google's own "show original"), no reload, nothing left behind
+      let reloaded = false; hi.pg.on('framenavigated', (f) => { if (f === hi.pg.mainFrame()) reloaded = true })
+      const t1 = Date.now()
+      await hi.pg.locator('header').getByLabel('Presentation language').selectOption('en')
+      await hi.pg.waitForFunction((e) => document.querySelector('main h1')?.innerText === e, hi.english, { timeout: 10000 })
+      expect(!reloaded, 'going back to English reloaded the page')
+      expect(Date.now() - t1 < 1500, `going back to English took ${Date.now() - t1} ms`)
+      expect(await hi.pg.evaluate(() => !/translated-(ltr|rtl)/.test(document.documentElement.className) && !document.cookie.includes('googtrans=/')), 'the page still counts as translated')
+      await hi.pg.context().close()
     })
   } finally { await b.close() }
   return s.done()

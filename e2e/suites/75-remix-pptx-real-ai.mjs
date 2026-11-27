@@ -42,7 +42,7 @@ export default async function () {
     let deck = null
     await s.check('the whole journey: choose the file, ask, pick vertical and 5 slides, create: the progress screen runs and the editor opens by itself', p, async () => {
       await p.goto(EDITOR + '/', { waitUntil: 'networkidle' })
-      await p.getByTestId('remix-pptx-open').click()
+      await p.getByTestId('start-from').click(); await p.getByTestId('remix-pptx-open').click()
       await p.getByTestId('remix-file-input').setInputFiles({ name: 'Resultados T3.pptx', mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', buffer: file })
       await p.getByTestId('remix-file-ready').waitFor({ timeout: 20000 })
       expect(/6 slides/.test(await p.getByTestId('remix-file-ready').innerText()), 'the six slides were not counted')

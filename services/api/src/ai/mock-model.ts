@@ -45,6 +45,9 @@ export function mockRespond(req: TextRequest): string {
     const deck = req.prompt.match(/<deck>\n([\s\S]*?)\n<\/deck>/)?.[1] ?? ''
     const q = req.prompt.match(/<question>([\s\S]*?)<\/question>/)?.[1] ?? ''
     if (/^(make|add|delete|change)\b/i.test(q.trim())) return JSON.stringify({ answer: 'That is a change.', slides: [], isEdit: true }) // (the mock reads a change request the way the real model is told to)
+    const focus = req.prompt.match(/<focus>([\s\S]*?)<\/focus>/)?.[1] ?? ''
+    // the mock answers FROM the context it was given, so a test can see that the slide on screen, the selection and the picture really reached the model
+    if (focus) return JSON.stringify({ answer: `Looking at ${focus.slice(0, 600)}${req.images?.length ? ` and the picture I was shown (${req.images.length})` : ''}`, slides: [1] })
     return JSON.stringify(/not in the deck|unknowable/i.test(q) ? { answer: 'The deck does not say.', slides: [] } : { answer: `From the deck: ${deck.split('\n')[0]?.slice(0, 200) ?? ''}`, slides: [1] })
   }
   if (task === 'imageread') {
@@ -178,6 +181,8 @@ export function mockRespond(req: TextRequest): string {
     return JSON.stringify({ slide: { ...slide, ...(slide.title ? { title: tag(slide.title) } : {}), ...(slide.bullets ? { bullets: slide.bullets.map(tag) } : {}) } })
   }
   if (task === 'subjectbox') return JSON.stringify(/unicorn/i.test(req.prompt) ? { found: false } : { found: true, box_2d: [200, 550, 650, 850] }) // (a subject on the right of the picture; "unicorn" is never there)
+  // the reading step restates the message as it is (the deterministic understanding below reads the message itself)
+  if (task === 'assist_read') { const m = req.prompt.match(/<message>\n([\s\S]*?)\n<\/message>/)?.[1]?.trim() || 'the message'; return JSON.stringify({ request: m, relation: 'new', assumptions: [], parts: m.split(/\s*;\s*|\s*,\s*and\s+|\.\s+(?=[A-Za-z])/).map((x) => x.trim()).filter(Boolean).slice(0, 12) }) }
   if (task === 'assist_understand') return mockUnderstand(req.prompt)
   if (task === 'assist_write') return mockWrite(req.system, req.prompt)
   if (task === 'aiassist') {

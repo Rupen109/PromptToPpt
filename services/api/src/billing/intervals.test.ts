@@ -14,7 +14,7 @@ import type { RzpSubscription } from './razorpay.ts'
  */
 const DAY = 86400
 const PLAN_IDS: Record<string, string> = { 'pro-INR-month': 'plan_iv_pro_m', 'pro-INR-year': 'plan_iv_pro_y', 'gold-INR-month': 'plan_iv_gold_m', 'gold-INR-year': 'plan_iv_gold_y', 'premium-INR-month': 'plan_iv_prem_m', 'premium-INR-year': 'plan_iv_prem_y' }
-const CREDITS = { pro: 900, gold: 2000, premium: 3700 } as const
+const CREDITS = { pro: 1150, gold: 2000, premium: 3700 } as const
 type P = keyof typeof CREDITS
 
 beforeAll(async () => { for (const [id, pid] of Object.entries(PLAN_IDS)) await db.update(planPrice).set({ providerPriceId: pid, providerAmountMinor: sql`amount_minor` }).where(eq(planPrice.id, id)) })

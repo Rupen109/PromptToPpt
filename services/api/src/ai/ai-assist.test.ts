@@ -48,7 +48,7 @@ describe('POST /presentations/:id/ai-assist (v1 fallback)', () => {
     expect(body.edits).toHaveLength(1)
     expect(body.edits[0].content.bullets).toHaveLength(was + 2)
     expect(body.notes).toEqual([])
-    expect(body.creditsCharged).toBe(4) // one message, one charge: the second try is not billed again
+    expect(body.creditsCharged).toBe(8) // one message, one charge: the second try is not billed again
   })
 
   it('if the model never adds them, the person is told plainly (nothing is faked)', async () => {
@@ -60,7 +60,7 @@ describe('POST /presentations/:id/ai-assist (v1 fallback)', () => {
     expect(body.notes.join(' ')).toMatch(/asked for 2 more points/)
   })
 
-  it('small talk ("hey", "thanks") is answered for free with what the assistant can do — never a change, never the last action again', async () => {
+  it('small talk ("hey", "thanks") is answered for free with one short line — never a change, never the last action again', async () => {
     const u = await signUp('ast'); await setPlan(u.id, 'pro')
     const { id } = await makeDeck(u.id)
     await api(u.cookie, 'GET', '/me/entitlements')
@@ -68,21 +68,22 @@ describe('POST /presentations/:id/ai-assist (v1 fallback)', () => {
     for (const hello of ['hey', 'Thanks!', 'ok', 'hello 🙂', 'thank you']) {
       const body = (await json(await ask(u.cookie, id, hello))).data
       expect(body, hello).toMatchObject({ applied: [], edits: [], additions: [], creditsCharged: 0 })
-      expect(body.reply).toMatch(/Tell me what to update/)
+      expect(body.reply).toMatch(/^(Hi! What would you like to change|You're welcome|Great\. Tell me what)/)
+      expect(body.reply.length).toBeLessThan(80) // one line, not the list of everything
     }
     expect(await balance(u.id)).toBe(before)
     for (const real of ['ok make the title shorter on slide 2', 'hey add a thank you slide', 'good, now animate every slide']) expect(isSmallTalk(real), real).toBe(false)
   })
 
-  it('a message that names ONE slide costs one edit (2 credits on the starter tier); a deck-wide one costs two (4)', async () => {
+  it('a message that names ONE slide costs one edit (4 credits on the starter tier); a deck-wide one costs two (8)', async () => {
     const u = await signUp('asp'); await setPlan(u.id, 'pro')
     const { id } = await makeDeck(u.id)
     await api(u.cookie, 'GET', '/me/entitlements')
     const slideId = (await json(await api(u.cookie, 'GET', `/presentations/${id}`))).data.document.slides[1].id
     const one = await json(await ask(u.cookie, id, 'please animate slide 2', { activeSlideId: slideId }))
-    expect(one.data.creditsCharged).toBe(2)
+    expect(one.data.creditsCharged).toBe(4)
     const wide = await json(await ask(u.cookie, id, 'please animate every slide', { activeSlideId: slideId }))
-    expect(wide.data.creditsCharged).toBe(4)
+    expect(wide.data.creditsCharged).toBe(8)
     expect(namesOneSlide('make it shorter (slide 16)')).toBe(true)
     expect(namesOneSlide('change the thank you page')).toBe(true)
     expect(namesOneSlide('shorten slide 2 and 3 and every slide')).toBe(false)
@@ -99,8 +100,8 @@ describe('POST /presentations/:id/ai-assist (v1 fallback)', () => {
     expect(body.data.applied).toEqual(['Animated every slide (zoom)'])
     expect(body.data.theme.motion).toMatchObject({ transition: 'zoom', entrance: 'zoom' })
     expect(themeSchema.safeParse(body.data.theme).success).toBe(true)
-    expect(body.data.creditsCharged).toBe(4)
-    expect(await balance(u.id)).toBe(before - 4)
+    expect(body.data.creditsCharged).toBe(8)
+    expect(await balance(u.id)).toBe(before - 8)
   })
 
   it('"change the colours" yields an accessible generated palette (text reads on background and surface)', async () => {
@@ -124,7 +125,7 @@ describe('POST /presentations/:id/ai-assist (v1 fallback)', () => {
     expect(body.data.images).toEqual([{ slideId: deck.doc.slides[0]!.id, slideNumber: 1, placement: 'background', prompt: expect.stringContaining('red electric hatchback'), alt: expect.any(String) }])
     expect(body.data.reply).toBe('I prepared a picture for you to confirm below.')
     expect(body.data.theme).toBeNull()
-    expect(await balance(u.id)).toBe(before - 4) // the assistant message itself; the picture costs nothing until confirmed
+    expect(await balance(u.id)).toBe(before - 8) // the assistant message itself; the picture costs nothing until confirmed
     const events = await db.select().from(generatedAsset).where(eq(generatedAsset.userId, u.id))
     expect(events).toHaveLength(0)
   })
@@ -148,7 +149,7 @@ describe('POST /presentations/:id/ai-assist (v1 fallback)', () => {
     expect(body.data.applied).toHaveLength(3)
     expect(body.data.images).toHaveLength(1)
     expect(body.data.reply).toBe('Done — 2 changes applied to your deck. I also prepared a picture for you to confirm below.')
-    expect(body.data.creditsCharged).toBe(4)
+    expect(body.data.creditsCharged).toBe(8)
   })
 
   it('a model failure is refunded', async () => {
@@ -169,7 +170,7 @@ describe('POST /presentations/:id/ai-assist (v1 fallback)', () => {
     const requestId = `req-${rid()}-${rid()}`
     await api(u.cookie, 'POST', `/presentations/${id}/ai-assist`, { instruction: 'animate', requestId })
     await api(u.cookie, 'POST', `/presentations/${id}/ai-assist`, { instruction: 'animate', requestId })
-    expect(await balance(u.id)).toBe(before - 4)
+    expect(await balance(u.id)).toBe(before - 8)
   })
 
   it('Starter has no AI assistant at all (403, nothing charged); Pro has it, with every template (the premium-template gate itself is checked in compileAssist below)', async () => {
@@ -213,8 +214,8 @@ describe('linked web pages in the assistant (v1 fallback)', () => {
     expect(body.data.edits).toHaveLength(1)
     expect(body.data.edits[0].slideId).toBe(doc.slides[1]!.id)
     expect(body.data.edits[0].content.title).toContain('From link: Tata Aeris launch')
-    expect(body.data.creditsCharged).toBe(6) // (deck 2 + 1 page) × starter edit price 2
-    expect(await balance(u.id)).toBe(before - 6)
+    expect(body.data.creditsCharged).toBe(12) // (deck 2 + 1 page) × starter edit price 4
+    expect(await balance(u.id)).toBe(before - 12)
     read.mockRestore()
   })
 

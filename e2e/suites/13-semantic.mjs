@@ -124,7 +124,9 @@ export default async function () {
     expect(after.slides.every((sl, i) => i === 4 || JSON.stringify(sl.content) === JSON.stringify(before.slides[i].content)), 'other slides were modified by a slide-scoped request')
   })
   await s.check('AI › quick action Expand makes the slide longer (not a no-op)', p, async () => {
-    const before = await doc(); await panel().getByLabel('Quick actions for this slide').getByRole('button', { name: 'Expand' }).click()
+    const before = await doc()
+    await p.getByRole('button', { name: 'Quick edits' }).click(); await p.getByRole('menu', { name: 'Quick edits for this slide' }).waitFor({ timeout: 5000 })
+    await p.getByRole('menuitem', { name: 'Expand text' }).click()
     await p.waitForFunction(() => /I updated slide|Something went wrong|failed/i.test(document.querySelector('[role=log]')?.textContent ?? ''), null, { timeout: 90000 }); await settle(800)
     const after = await doc(); expect(textLen(after.slides[4]) > textLen(before.slides[4]), `Expand did not add text (${textLen(before.slides[4])} → ${textLen(after.slides[4])})`)
   })

@@ -146,8 +146,6 @@ export default async function () {
     await p.locator('aside[aria-label=Style] button[aria-label$=" template"]').first().click(); await p.waitForTimeout(1000)
     expect(await logos() >= 1, 'the logo disappeared after a template change'); await p.getByRole('button', { name: 'Close style panel' }).click()
     await p.getByRole('button', { name: /Edit with AI/ }).click(); const panel = p.getByRole('complementary', { name: 'AI assistant' }); await panel.waitFor({ timeout: 8000 })
-    await panel.getByLabel('AI model').locator('option', { hasText: '3.6 Flash' }).waitFor({ state: 'attached', timeout: 15000 }) // the model list loads after the panel opens
-    await panel.getByLabel('AI model').selectOption({ label: (await panel.getByLabel('AI model').locator('option').allInnerTexts()).find((o) => /3\.6 Flash/.test(o)) })
     await panel.getByLabel('Message to the AI assistant').fill('animate every slide'); await panel.getByRole('button', { name: 'Send' }).click()
     await p.getByText('Working on it').waitFor({ state: 'visible', timeout: 15000 }); await p.getByText('Working on it').waitFor({ state: 'detached', timeout: 120000 })
     expect(/animated every slide|Done/i.test(await panel.getByRole('log').innerText()), 'the assistant did not apply the request')

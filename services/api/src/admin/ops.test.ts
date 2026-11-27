@@ -223,7 +223,7 @@ describe('providers', () => {
     expect(d.integrations.payments).toHaveProperty('configured')
     expect(d.integrations.imageStorage.driver).toBe(env.ASSET_STORAGE)
     expect(d.integrations.ai.active).toBe(env.AI_PROVIDER)
-    const secrets = [env.AUTH_SECRET, env.OPENROUTER_API_KEY, env.GEMINI_API_KEY, env.RAZORPAY_KEY_ID, env.RAZORPAY_KEY_SECRET, env.RAZORPAY_WEBHOOK_SECRET, env.GOOGLE_CLIENT_SECRET, env.ASSET_BUCKET].filter((s): s is string => !!s)
+    const secrets = [env.AUTH_SECRET, env.OPENROUTER_API_KEY, env.GEMINI_API_KEY, ...env.GEMINI_KEYS.map((k) => k.key), env.RAZORPAY_KEY_ID, env.RAZORPAY_KEY_SECRET, env.RAZORPAY_WEBHOOK_SECRET, env.GOOGLE_CLIENT_SECRET, env.ASSET_BUCKET].filter((s): s is string => !!s)
     for (const s of secrets) expect(raw).not.toContain(s)
   })
 })

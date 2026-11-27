@@ -89,7 +89,7 @@ function PreviewDialog({ design, locked, onClose }: { design: TemplateDesign; lo
       void refresh()
       navigate(`/edit/${id}?new=1`) // the editor opens with "tell me what to put in your slides"
     } catch (e) {
-      if (isGateError(e) && e.code === 'UPGRADE_REQUIRED') upgrade.show(e.message)
+      if (isGateError(e) && e.code === 'UPGRADE_REQUIRED') upgrade.show(e.message, e.code)
       else setError(e instanceof ApiError ? e.message : 'Could not create the presentation.')
       setBusy(false)
     }

@@ -48,7 +48,7 @@ export default async function () {
   }
   const fromHome = async (p, { file, prompt }) => {
     await p.goto(`${EDITOR}/`, { waitUntil: 'networkidle' })
-    await tid(p, 'file-tpl-open').click()
+    await tid(p, 'start-from').click(); await tid(p, 'file-tpl-open').click()
     await tid(p, 'file-tpl-dialog').waitFor({ timeout: 8000 })
     await tid(p, 'file-tpl-input').setInputFiles(file)
     await tid(p, 'home-file-template').waitFor({ timeout: 60000 })
@@ -68,8 +68,11 @@ export default async function () {
 
     await s.check('T1 Starter: the control is visible with a lock, opens the upgrade prompt, and the server refuses an upload', S.p, async () => {
       await S.p.goto(`${EDITOR}/`, { waitUntil: 'networkidle' })
+      await tid(S.p, 'start-from').click() // the options sit in the prompt box's "Start from" selector
       const c = tid(S.p, 'file-tpl-open')
       await c.waitFor({ timeout: 15000 })
+      // the lock follows the account's plan, which the page loads alongside everything else
+      await c.getByText('Pro', { exact: true }).waitFor({ timeout: 8000 }).catch(() => {})
       expect(/Pro/.test(await c.innerText()), 'no Pro badge on the locked control')
       await c.click()
       await S.p.getByRole('dialog').waitFor({ timeout: 8000 })
@@ -81,7 +84,7 @@ export default async function () {
 
     await s.check('T2 Pro: the picker explains itself (PDF too); a PDF of pictures is refused with the reason; an old .ppt and a text file are refused', p, async () => {
       await p.goto(`${EDITOR}/`, { waitUntil: 'networkidle' })
-      await tid(p, 'file-tpl-open').click()
+      await tid(p, 'start-from').click(); await tid(p, 'file-tpl-open').click()
       await tid(p, 'file-tpl-dialog').waitFor({ timeout: 8000 })
       await tid(p, 'file-tpl-empty').waitFor({ timeout: 8000 })
       expect(!/coming soon/i.test(await tid(p, 'file-tpl-dialog').innerText()), 'still says coming soon')
@@ -97,7 +100,7 @@ export default async function () {
 
     await s.check('T3 Pro: upload a dark .pptx in the prompt box: a chip with its name, slide count and the replaced font; it can be removed; the prompt stays', p, async () => {
       await p.goto(`${EDITOR}/`, { waitUntil: 'networkidle' })
-      await tid(p, 'file-tpl-open').click()
+      await tid(p, 'start-from').click(); await tid(p, 'file-tpl-open').click()
       await tid(p, 'file-tpl-input').setInputFiles(DARK)
       await tid(p, 'home-file-template').waitFor({ timeout: 60000 })
       const t = await tid(p, 'home-file-template').innerText()
@@ -226,7 +229,7 @@ export default async function () {
 
     await s.check('T10 an attached .pptx source offers "Use its design too" in one click; the source flow itself still works', p, async () => {
       await p.goto(`${EDITOR}/`, { waitUntil: 'networkidle' })
-      await p.getByRole('button', { name: /Upload files, or links/ }).click()
+      await p.getByRole('button', { name: /Add files or links/ }).click()
       await p.getByRole('dialog').getByLabel('File', { exact: true }).setInputFiles(LIGHT)
       await p.getByRole('dialog').locator('button[type=submit]').click()
       const btn = tid(p, 'use-design-too')
@@ -239,7 +242,7 @@ export default async function () {
 
     await s.check('T11 design list: the second upload shows with a thumbnail, date and delete; deleting removes it; another person never sees it', p, async () => {
       await p.goto(`${EDITOR}/`, { waitUntil: 'networkidle' })
-      await tid(p, 'file-tpl-open').click()
+      await tid(p, 'start-from').click(); await tid(p, 'file-tpl-open').click()
       await tid(p, 'file-tpl-list').waitFor({ timeout: 10000 })
       const n = await p.locator('[data-testid^="file-tpl-item-"]').count()
       expect(n >= 1, 'no designs listed')

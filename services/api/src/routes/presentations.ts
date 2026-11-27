@@ -1,6 +1,7 @@
 import { streamSSE } from 'hono/streaming'
 import type { MiddlewareHandler } from 'hono'
 import { followProgress, progressFor } from '../assistant/progress.ts'
+import { quickConfirm } from '../assistant/quick.ts'
 import { Hono } from 'hono'
 import { nothingChangedReply } from '../assistant/replies.ts'
 import { bodyLimit } from 'hono/body-limit'
@@ -9,9 +10,9 @@ import { and, desc, eq, gte, isNull, notInArray, sql } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { z } from 'zod'
 import { AIUnavailableError } from '@prompttoppt/ai'
-import { PREMIUM_THEME_IDS, composeSlide, designById, expectationsFromChanges, getTheme, templateSlides } from '@prompttoppt/theme'
+import { PREMIUM_THEME_IDS, composeSlide, describeElement, designById, expectationsFromChanges, getTheme, slideTitle, templateSlides } from '@prompttoppt/theme'
 import { aspectRatioSchema, compactSlides, findUrls, presentationSchema, type AccessTier, type Presentation, type SlideContent, ASSIST_LIMITS, clip } from '@prompttoppt/validation'
-import { aiAssistInput, aiAssistOutput, aiAssistPrompt, compileAssist, isSmallTalk, LIST_SHORTFALL, morePointsAsked, aimsAtOneSlide, namesOneSlide, needsSlideChoice, photoApplied } from '../ai/ai-assist.ts'
+import { aiAssistInput, aiAssistOutput, aiAssistPrompt, compileAssist, isSmallTalk, smallTalkReply, CHAT_REPLY, LIST_SHORTFALL, morePointsAsked, aimsAtOneSlide, namesOneSlide, needsSlideChoice, photoApplied } from '../ai/ai-assist.ts'
 import { resolvePhoto } from '../ai/photo-resolve.ts'
 import { readLinkedPages } from '../ai/linked-pages.ts'
 import { aiEditInput, aiEditOutput, aiEditPrompt } from '../ai/ai-edit.ts'
@@ -45,6 +46,7 @@ import { byUser, rateLimit } from '../middleware/rate-limit.ts'
 import { requireAuth, type AppEnv } from '../middleware/session.ts'
 import { chooseModel } from './models.ts'
 import { elementOpsAnswer, intentSchema } from '../assistant/understand.ts'
+import { readingSchema } from '../assistant/reading.ts'
 import { runAssistant } from '../assistant/pipeline.ts'
 import { readLogo } from '../media/logo-colours.ts'
 import { pictureBytes } from '../media/cutout-picture.ts'
@@ -347,9 +349,21 @@ presentations.post('/:id/ask', rateLimit({ windowMs: 60_000, max: 20, key: byUse
   try {
     const sources = trimSources(await loadSources(userId, (doc.sources ?? []).map((x) => x.id)), 24_000)
     const digest = deckDigest(doc)
+    // WHERE THE PERSON IS WORKING: the slide on screen and what they have selected, so "this slide" / "this chart" need no explaining (the ids are checked against the deck, never trusted)
+    const activeIdx = doc.slides.findIndex((x) => x.id === input.activeSlideId)
+    const selectedIds = new Set(input.selection?.elementIds ?? [])
+    const picked0 = selectedIds.size ? doc.slides.flatMap((sl, n) => sl.elements.filter((e) => selectedIds.has(e.id)).map((e) => ({ e, n: n + 1 }))) : []
+    const focus = activeIdx >= 0 || picked0.length ? {
+      ...(activeIdx >= 0 ? { slide: { n: activeIdx + 1, title: slideTitle(doc.slides[activeIdx]!.content) || '', text: deckDigest({ ...doc, slides: [doc.slides[activeIdx]!] }, 2_000).text.slice(0, 1_200) } } : {}),
+      ...(picked0.length ? { selected: picked0.slice(0, 12).map(({ e, n }) => ({ what: `${describeElement(e)} on slide ${n}`, ...(e.type === 'text' ? { detail: e.paragraphs.map((pp) => pp.runs.map((r) => r.text).join('')).join(' / ').slice(0, 300) } : e.type === 'table' ? { detail: `${e.rows.length + 1} rows × ${e.header.length} columns; headers: ${e.header.join(', ').slice(0, 160)}; rows: ${e.rows.slice(0, 6).map((row) => row.join(' | ')).join(' ; ').slice(0, 400)}` } : e.type === 'chart' ? { detail: `${e.chartType}; labels ${e.labels.slice(0, 12).join(', ').slice(0, 160)}; ${e.series.map((x) => `${x.name}: ${x.values.slice(0, 12).join(', ')}`).join(' ; ').slice(0, 400)}` } : e.type === 'image' ? { detail: e.alt || 'a picture' } : e.type === 'shape' ? { detail: `${e.shape} shape` } : {}) })) } : {}),
+    } : undefined
+    // ONE selected picture and a question about it: the model is shown the picture itself, so the answer comes from what is in it, not from its file name
+    const onlyPicture = picked0.length === 1 && picked0[0]!.e.type === 'image' ? (picked0[0]!.e as { src?: string }).src : undefined
+    const pic = onlyPicture && /\b(this|it|picture|image|photo|shown|visual)\b/i.test(input.question) ? await storedPicture(userId, onlyPicture).catch(() => null) : null
     const out = await gateway.run({
       route: 'fast', model: picked.id, requestType: 'ask_deck',
-      ...askDeckPrompt({ question: input.question, history: input.history, title: doc.title, digest: digest.text, slideCount: digest.slideCount, language: doc.language, sources }),
+      ...askDeckPrompt({ question: input.question, history: input.history, title: doc.title, digest: digest.text, slideCount: digest.slideCount, language: doc.language, sources, ...(focus ? { focus: { ...focus, ...(pic ? { picture: true } : {}) } } : {}) }),
+      ...(pic ? { images: [{ mimeType: pic.mime, data: pic.bytes }] } : {}),
       schema: askDeckOutput, ctx: { userId, presentationId: id },
     })
     const slides = [...new Set(out.slides)].filter((n) => n >= 1 && n <= doc.slides.length).map((n) => ({ n, id: doc.slides[n - 1]!.id }))
@@ -467,8 +481,9 @@ const nothingAppliedReply = (notes: string[]) => (notes.length ? "I couldn't do 
  * How long one assistant model call may take before the gateway moves on to the next model in its chain. A person is waiting in the chat, so the
  * general 60 s is too long: one stuck call once held a chat for a minute. Set from the ledger (60 days, successful calls): understanding p99.9 = 27 s,
  * writing p99.9 = 24 s; so these only ever stop calls that are already outliers, and the answer comes from the next model instead.
+ * The reading step (assistant/reading.ts) is optional: one model gets 8 s and the whole step at most 12 s, then the message is understood without it.
  */
-const ASSIST_TIMEOUT_MS = { understand: 25_000, write: 30_000 } as const
+const ASSIST_TIMEOUT_MS = { read: 8_000, readTotal: 12_000, understand: 25_000, write: 30_000 } as const
 
 /** the request's progress is always ended when it answers, however it answers (the editor's progress stream then closes) */
 const endsProgress: MiddlewareHandler<AppEnv> = async (c, next) => {
@@ -523,7 +538,11 @@ presentations.post('/:id/ai-assist', rateLimit({ windowMs: 60_000, max: 15, key:
 
   const progress = progressFor(c.get('session')!.user.id, input.requestId)
   progress.stage('Reading your request')
+  // a greeting, a thank-you or a plain "ok" is not a request: one short line at once, for free, with no model asked (also on v2)
+  if (isSmallTalk(input.instruction) && !input.quick && !input.confirm) { progressFor(c.get('session')!.user.id, input.requestId).end(); return c.json({ success: true, data: { reply: smallTalkReply(input.instruction), theme: null, edits: [], additions: [], reverts: [], images: [], applied: [], notes: [], rewrite: null, creditsCharged: 0, model: input.model ?? '', sources: [] } }) }
   if (await isFlagOn('assistant_v2', { userId })) return assistV2(c, { id, userId, isOwner, input, ent, doc, baseVersion: p.latestVersion, progress: progress.stage })
+  // quick edits are fixed assistant tasks: only the v2 pipeline runs them (the old single-prompt assistant would have to guess from the label)
+  if (input.quick) return c.json({ success: false, error: { code: 'FEATURE_DISABLED', message: 'Quick edits are not available right now. Describe the change in the chat instead.' } }, 503)
 
   // A request about ONE slide that does not say which: ask before anything is read, charged or guessed (see needsSlideChoice)
   if (needsSlideChoice(input.instruction, input.scope, Boolean(input.activeSlideId))) {
@@ -532,7 +551,7 @@ presentations.post('/:id/ai-assist', rateLimit({ windowMs: 60_000, max: 15, key:
   }
 
   // a greeting or a thank-you is not a request: answer it for free (the model once read "hey" as "add that slide again")
-  if (isSmallTalk(input.instruction)) return c.json({ success: true, data: { reply: CAPABILITIES_REPLY, theme: null, edits: [], additions: [], reverts: [], images: [], applied: [], notes: [], rewrite: null, creditsCharged: 0, model: input.model ?? '', sources: [] } })
+  if (isSmallTalk(input.instruction)) return c.json({ success: true, data: { reply: smallTalkReply(input.instruction), theme: null, edits: [], additions: [], reverts: [], images: [], applied: [], notes: [], rewrite: null, creditsCharged: 0, model: input.model ?? '', sources: [] } })
 
   const { rows } = await catalog()
   const picked = chooseModel(ent, rows, input.model)
@@ -622,6 +641,7 @@ async function assistV2(c: any, o: { id: string; userId: string; isOwner: boolea
   const pages = await readLinkedPages(findUrls(input.instruction))
   const readCount = pages.filter((p) => p.status === 'read').length
   const unit = await creditPrice('ai_edit', tier)
+  const perSlide = await creditPrice('ai_write_slide', tier) // each slide written after the first (docs/MARGIN_POLICY.md)
   const base = unit
   await reserveCredits(userId, base, 'ai_assist', input.requestId, { strict: true })
   // reading the pages in the message is charged on its own (one unit each) and given back when the page's words were never used: a link that was not needed costs nothing
@@ -639,12 +659,13 @@ async function assistV2(c: any, o: { id: string; userId: string; isOwner: boolea
     const material = [...pages.filter((p) => p.status === 'read').map((p) => ({ id: p.id, title: p.title, text: p.text })), ...trimSources(sources, 10_000).map((x) => ({ id: x.id, title: `DECK SOURCE: ${x.title}`, text: x.text }))]
     const ctx = { userId, presentationId: id }
     const outcome = await runAssistant(
-      { doc: { ...doc, sources: [...(doc.sources ?? []), ...added] }, ent, instruction: input.instruction, conversation: input.conversation, activeSlideId: input.activeSlideId, onlySlideId: input.scope === 'slide' ? input.slideId : undefined, recent: input.recent, material, hasSources: sources.length > 0, selection: input.selection, uploads: await loadUploads(userId), confirm: input.confirm, brand: brandAllowed(ent) ? await loadBrand(userId) : null, brandKits: brandAllowed(ent) ? await loadBrandKits(userId) : [], brandThemeList: brandAllowed(ent) ? await listBrandThemes(userId) : [], comments: assistantComments(id, userId, c.get('session')!.user), previousVersion: () => previousVersionOf(id), kits: brandAllowed(ent) && isOwner ? kitActions(userId, ent) : undefined, siteBrand: brandAllowed(ent) ? (u: string) => readSiteBrandForAssist(userId, u) : undefined, picture: (u: string) => storedPicture(userId, u), findSubject: async (pic, subject) => cleanBox(await gateway.run({ route: 'fast', requestType: 'assist_vision', ...subjectBoxPrompt(subject), images: [{ mimeType: pic.mime, data: pic.bytes }], schema: subjectBoxOutput, ctx, maxOutputTokens: 200, thinkingBudget: 0 })), logoBrand: brandAllowed(ent) ? async (u: string) => { const bytes = await pictureBytes(userId, u); return bytes ? readLogo(bytes) : { ok: false as const, say: 'I can only use one of your own uploaded pictures as the logo.' } } : undefined, isOwner, planName: ent.plan?.name, flags: { background_removal: await isFlagOn('background_removal', { userId }), image_generation: await isFlagOn('image_generation', { userId }) } },
+      { doc: { ...doc, sources: [...(doc.sources ?? []), ...added] }, ent, price: { edit: unit, slide: perSlide }, instruction: input.instruction, conversation: input.conversation, activeSlideId: input.activeSlideId, onlySlideId: input.scope === 'slide' ? input.slideId : undefined, recent: input.recent, material, hasSources: sources.length > 0, selection: input.selection, uploads: await loadUploads(userId), confirm: input.quick ? quickConfirm(input.quick) : input.confirm, brand: brandAllowed(ent) ? await loadBrand(userId) : null, brandKits: brandAllowed(ent) ? await loadBrandKits(userId) : [], brandThemeList: brandAllowed(ent) ? await listBrandThemes(userId) : [], comments: assistantComments(id, userId, c.get('session')!.user), previousVersion: () => previousVersionOf(id), kits: brandAllowed(ent) && isOwner ? kitActions(userId, ent) : undefined, siteBrand: brandAllowed(ent) ? (u: string) => readSiteBrandForAssist(userId, u) : undefined, picture: (u: string) => storedPicture(userId, u), findSubject: async (pic, subject) => cleanBox(await gateway.run({ route: 'fast', requestType: 'assist_vision', ...subjectBoxPrompt(subject), images: [{ mimeType: pic.mime, data: pic.bytes }], schema: subjectBoxOutput, ctx, maxOutputTokens: 200, thinkingBudget: 0 })), logoBrand: brandAllowed(ent) ? async (u: string) => { const bytes = await pictureBytes(userId, u); return bytes ? readLogo(bytes) : { ok: false as const, say: 'I can only use one of your own uploaded pictures as the logo.' } } : undefined, isOwner, planName: ent.plan?.name, flags: { background_removal: await isFlagOn('background_removal', { userId }), image_generation: await isFlagOn('image_generation', { userId }) } },
       {
-        understand: (p) => gateway.run({ route: 'fast', requestType: 'assist_understand', ...p, schema: intentSchema, ctx, maxOutputTokens: 900, thinkingBudget: 0, timeoutMs: ASSIST_TIMEOUT_MS.understand }),
+        read: (p) => gateway.run({ route: 'fast', requestType: 'assist_read', ...p, schema: readingSchema, ctx, maxOutputTokens: 300, thinkingBudget: 0, timeoutMs: ASSIST_TIMEOUT_MS.read, signal: AbortSignal.timeout(ASSIST_TIMEOUT_MS.readTotal) }), // (only helps: past its cap the message is understood on its own)
+        understand: (p, o) => gateway.run({ route: 'fast', requestType: 'assist_understand', ...p, schema: intentSchema, ctx, maxOutputTokens: Math.min(3000, 900 + 250 * (o?.parts ?? 0)), thinkingBudget: 0, timeoutMs: ASSIST_TIMEOUT_MS.understand }), // (a long message, read into many parts, needs a longer answer)
         understandOps: (p) => gateway.run({ route: 'fast', requestType: 'assist_understand', ...p, schema: elementOpsAnswer, ctx, maxOutputTokens: 1200, thinkingBudget: 0, timeoutMs: ASSIST_TIMEOUT_MS.understand }),
         write: (p, schema, route) => { if (p.prompt.includes('<source')) materialSeen = true; return gateway.run({ route, ...(route === 'quality' ? { model: picked.id } : {}), requestType: 'assist_write', ...p, schema, ctx, maxOutputTokens: 8000, timeoutMs: ASSIST_TIMEOUT_MS.write }) },
-        authorize: async (units) => { if (units > 1) { extra = unit * (units - 1); await reserveCredits(userId, extra, 'ai_assist', `${input.requestId}:more`, { strict: true }) } },
+        authorize: async (units) => { if (units > 1) { extra = perSlide * (units - 1); await reserveCredits(userId, extra, 'ai_assist', `${input.requestId}:more`, { strict: true }) } },
         progress: o.progress,
       },
     )
@@ -655,7 +676,7 @@ async function assistV2(c: any, o: { id: string; userId: string; isOwner: boolea
       const told = paid.charged ? { creditsCharged: paid.creditsCharged, notes: [paid.charged] } : {}
       if (outcome.kind === 'ask') return reply({ reply: outcome.question.text, ask: true, options: outcome.question.options, ...told })
       if (outcome.kind === 'answer') return reply({ reply: outcome.text, ...told })
-      return reply({ reply: CAPABILITIES_REPLY, ...told })
+      return reply({ reply: outcome.kind === 'chat' ? CHAT_REPLY : CAPABILITIES_REPLY, ...told })
     }
     const result = outcome.compiled
     if (!isOwner && result.rewrite) { await refundAll(); return reply({ reply: 'Only the owner can rebuild the whole presentation. I can still change individual slides, colours and fonts for you.' }) }
@@ -766,7 +787,7 @@ async function enrichFromSources(result: Compiled, o: { doc: Presentation; userI
   const chunks = await loadChunks(o.sourceIds, o.userId)
   if (chunks.length === 0) { const t = 'There is no attached document to take content from — attach a PDF or link with the 📎 button, then ask again.'; result.notes.push(t); result.refused.push(t); return 0 }
   const slidesN = o.onlySlideId ? 1 : o.doc.slides.length
-  const extra = (await creditPrice('ai_edit', o.tier)) * Math.max(1, Math.ceil(slidesN / 3))
+  const extra = (await creditPrice('ai_write_slide', o.tier)) * slidesN // each slide it writes, like any written slide (docs/MARGIN_POLICY.md)
   await reserveCredits(o.userId, extra, 'ai_assist', `${o.requestId}:enrich`, { strict: true }) // throws INSUFFICIENT_CREDITS (402) → the caller refunds the planning charge and passes it on
   const r = await enrichSlides({ doc: o.doc, chunks, instruction: o.instruction, onlySlideId: o.onlySlideId, userId: o.userId, model: o.model, known: o.known, allTexts: o.allTexts })
   if (r.edits.length === 0) await refundCredits(o.userId, 'ai_assist', `${o.requestId}:enrich`)

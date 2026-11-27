@@ -17,7 +17,7 @@ export const metadata: Metadata = withShare({
 })
 
 const STEPS = [
-  { icon: Sparkles, title: 'Say what it is about', text: 'Type a topic in a sentence or two, or add a PDF, Word, Excel or PowerPoint file, an email, a website link or a YouTube video as the source.' },
+  { icon: Sparkles, title: 'Say what it is about', text: 'Type a topic in a sentence or two, or add a PDF, Word, Excel or PowerPoint file, an email, a website link, your own recording or a YouTube transcript as the source.' },
   { icon: Presentation, title: 'The AI builds the deck', text: 'It writes every slide, picks a template that fits your topic and lays out text, pictures, charts and tables for you.' },
   { icon: PencilRuler, title: 'Edit, share, export', text: 'Change anything in your browser, ask the AI to rewrite a slide, share a link, and export to PowerPoint, PDF or images on a paid plan.' },
 ] as const

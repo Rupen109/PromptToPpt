@@ -365,6 +365,27 @@
       "when": 1795513429000,
       "tag": "0051_brand_theme",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1795599829000,
+      "tag": "0052_credit_prices_margin_policy",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1795686229000,
+      "tag": "0053_user_persona",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1795772629000,
+      "tag": "0054_credit_top_up",
+      "breakpoints": true
     }
   ]
 }

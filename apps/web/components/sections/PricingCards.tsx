@@ -19,9 +19,9 @@ const Cross = () => <span className="w-5 h-5 rounded-full grid place-items-cente
 
 const CARD: Record<'starter' | 'pro' | 'gold' | 'premium', { label: string; tone: CardTone; labelColor: string; desc: string }> = {
   starter: { label: 'Free explorer', tone: 'cream', labelColor: 'text-[#475569]', desc: 'Try the AI presentation engine with 100 free credits.' },
-  pro: { label: 'For founders & teams', tone: 'peach', labelColor: 'text-[#b02f00]', desc: 'Premium models, export and no watermark — for anyone who presents often.' },
+  pro: { label: 'For founders & teams', tone: 'peach', labelColor: 'text-[#b02f00]', desc: 'Export, no watermark and AI edits — for anyone who presents often.' },
   gold: { label: 'Power users & firms', tone: 'lavender', labelColor: 'text-primary', desc: 'High-quality generation, brand control and every export format.' },
-  premium: { label: 'Studios & heavy users', tone: 'cream', labelColor: 'text-[#475569]', desc: 'Pro AI models, with no slide limit beyond your credits.' },
+  premium: { label: 'Studios & heavy users', tone: 'cream', labelColor: 'text-[#475569]', desc: 'Our best AI models, with no slide limit beyond your credits.' },
 }
 
 /**
@@ -54,17 +54,17 @@ export function PricingCards({ initial }: { initial: PlansResponse | null }) {
       <CardCarousel from="lg" label="Pricing plans" className="mt-4 lg:mt-16" gridClassName="lg:grid lg:grid-cols-3 lg:gap-8 lg:items-stretch lg:p-0">
         {order.map((plan, i) => {
           const c = CARD[plan.id]
-          const pro = plan.id === 'pro'
+          const popular = plan.id === 'gold' // the plan we point people at
           const price = priceFor(plan, interval)
           const h = planHighlights(plan, i > 0 ? order[i - 1] : undefined)
-          const items = h.items.slice(0, 9)
+          const items = h.items.slice(0, 10)
           const href = plan.id === 'starter' ? '/signup' : `${EDITOR_URL}/billing?plan=${plan.id}&interval=${interval}`
           const free = plan.id === 'starter'
           return (
-            <Card key={plan.id} tone={c.tone} shadow={pro ? 'lg' : 'md'} index={i} wrapperClassName={pro ? 'h-full lg:h-auto lg:-mt-4' : 'h-full'} className="relative p-8 flex flex-col h-full">
-              {pro && <span className={`absolute -top-4 left-1/2 -translate-x-1/2 bg-accent text-white border-2 border-foreground rounded-full px-4 py-1.5 font-heading font-extrabold text-xs uppercase ${HARD.sm}`}>Most popular</span>}
+            <Card key={plan.id} tone={c.tone} shadow={popular ? 'lg' : 'md'} index={i} wrapperClassName={popular ? 'h-full lg:h-auto lg:-mt-4' : 'h-full'} className="relative p-8 flex flex-col h-full">
+              {popular && <span className={`absolute -top-4 left-1/2 -translate-x-1/2 bg-accent text-white border-2 border-foreground rounded-full px-4 py-1.5 font-heading font-extrabold text-xs uppercase ${HARD.sm}`}>Most popular</span>}
               <div className={`font-heading font-extrabold text-xs uppercase tracking-[0.6px] leading-4 mt-1 ${c.labelColor}`}>{c.label}</div>
-              <h3 className={`font-heading font-extrabold mt-2 text-foreground ${pro ? 'text-3xl leading-9' : 'text-2xl leading-8'}`}>{plan.name}</h3>
+              <h3 className={`font-heading font-extrabold mt-2 text-foreground ${popular ? 'text-3xl leading-9' : 'text-2xl leading-8'}`}>{plan.name}</h3>
               <p className="text-sm leading-5 mt-3 min-h-10 text-[#475569]">{c.desc}</p>
               <div className="mt-6">
                 {price ? (
@@ -75,6 +75,7 @@ export function PricingCards({ initial }: { initial: PlansResponse | null }) {
                   </>
                 ) : <span className="text-sm opacity-70">Not available in your currency yet</span>}
               </div>
+              {h.lead && <p className="mt-8 -mb-3 font-heading font-extrabold text-sm text-foreground">{h.lead}</p>}
               <ul className="mt-8 flex flex-col gap-3 flex-1">
                 {items.map((t) => {
                   const no = /^(No export|Watermark)/i.test(t) // limitations are shown as greyed crosses, not as benefits
@@ -83,12 +84,12 @@ export function PricingCards({ initial }: { initial: PlansResponse | null }) {
                   )
                 })}
               </ul>
-              <Button href={href} block size="md" variant={pro ? 'accent' : plan.id === 'gold' ? 'primary' : 'white'} className="mt-8">{free ? 'Start free now' : `Get ${plan.name}`}</Button>
+              <Button href={href} block size="md" variant={plan.id === 'gold' ? 'primary' : plan.id === 'pro' ? 'accent' : 'white'} className="mt-8">{free ? 'Start free now' : `Get ${plan.name}`}</Button>
             </Card>
           )
         })}
       </CardCarousel>
-      <p className="mt-6 lg:mt-10 text-center text-sm text-[#475569]">New here? <a href="/signup" className="font-bold underline">Start free with 100 credits</a>. Free decks carry a watermark and cannot be exported or presented.</p>
+      <p className="mt-6 lg:mt-10 text-center text-sm text-[#475569]">New here? <a href="/signup" className="font-bold underline">Start free with 150 credits</a>. Free decks carry a watermark and cannot be exported or presented.</p>
       <p className="mt-3 text-center text-sm text-[#475569]">Prices are billed {interval === 'year' ? 'annually' : 'monthly'} and may vary by country. Cancel any time.</p>
     </>
   )

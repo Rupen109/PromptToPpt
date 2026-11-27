@@ -2,10 +2,11 @@ import { describe, expect, it } from 'vitest'
 import { composeSlide, getTheme } from '@prompttoppt/theme'
 import type { Presentation, SlideContent } from '@prompttoppt/validation'
 import { CAPABILITIES } from './capabilities/index.ts'
-import { priceUnits, runAssistant, type AssistantDeps } from './pipeline.ts'
+import { creditsFor, creditsLine, priceUnits, retargetToSelection, runAssistant, uncoveredParts, type AssistantDeps } from './pipeline.ts'
 import { insertionPoints, resolveTargets } from './resolve.ts'
 import { buildState, slideIndexText } from './state.ts'
 import { elementOpsAnswer, intentSchema, objectsPrompt, understandPrompt, type Intent } from './understand.ts'
+import { readingSchema } from './reading.ts'
 
 /** The customer's deck: a cover, four slides in a row with the SAME picture + text layout (7-10), a pricing slide, a thank-you page. */
 const theme = getTheme('cobalt')
@@ -69,10 +70,10 @@ describe('stage 1: the deck state is facts, not guesses', () => {
     const p = understandPrompt(s, 'update layout of slides 7-10', [], { examples: false }) // the ALWAYS-sent part (the per-message examples have their own bound below and in catalogue.test.ts)
     const withExamples = understandPrompt(s, 'update layout of slides 7-10')
     expect(withExamples.prompt).toContain('<examples>')
-    expect((withExamples.system.length + withExamples.prompt.length) / 4).toBeLessThan(3500 + 450)
+    expect((withExamples.system.length + withExamples.prompt.length) / 4).toBeLessThan(3700 + 450)
     expect(p.prompt).toContain('7 | split-image-text | Architect of Pokhran-II')
     expect(p.prompt).not.toContain('One idea') // no slide text
-    expect((p.system.length + p.prompt.length) / 4).toBeLessThan(3500) // ≈ tokens: the cheap call stays cheap (the guide is the STATIC part of the prompt, which providers cache when it repeats; 4500 with timing, paths and picture shapes). NEXT TIME do not raise this: split the object-operations guide into a second call used only when the model picks the object family (docs/AI_EDIT_HONESTY_AND_SCENARIOS.md section 24). Every capability's guide text is sent with EVERY message (2600 before the object and brand families, 3000 before shapes/tables/charts, 3500 with transitions): raise this deliberately, per family, never silently. (2600 before the object and brand families, which add the closed list of object operations)
+    expect((p.system.length + p.prompt.length) / 4).toBeLessThan(3700) // (3500 until 2026-11-26: the transform family's guide line added about 130) ≈ tokens: the cheap call stays cheap (the guide is the STATIC part of the prompt, which providers cache when it repeats; 4500 with timing, paths and picture shapes). NEXT TIME do not raise this: split the object-operations guide into a second call used only when the model picks the object family (docs/AI_EDIT_HONESTY_AND_SCENARIOS.md section 24). Every capability's guide text is sent with EVERY message (2600 before the object and brand families, 3000 before shapes/tables/charts, 3500 with transitions): raise this deliberately, per family, never silently. (2600 before the object and brand families, which add the closed list of object operations)
   })
 })
 
@@ -132,7 +133,7 @@ describe('the pipeline: the real chats that went wrong', () => {
     expect(calls).toMatchObject({ understand: 1, write: 1, cards: ['layout'] })
     expect(r.compiled.edits.map((e) => [e.slideId, e.content.layout])).toEqual([['s7', 'process'], ['s8', 'timeline'], ['s9', 'agenda'], ['s10', 'process']])
     expect(r.compiled.applied).toContain('Changed slide 9 to the agenda layout')
-    expect(r.units).toBe(2) // more than one slide written
+    expect(r.units).toBe(4) // four slides written: the base edit + three more slides
   })
   it('the check catches "all the same layout" and retries ONCE naming the problem; still wrong = NOTHING is applied and the person is told why (never a claimed change that misses the request)', async () => {
     const same = (_c: string, input: any, problems: boolean) => ({ slides: input.slides.map((s: any, i: number) => ({ slideId: s.slideId, content: { layout: problems && i % 2 ? 'timeline' : 'process', title: s.content.title, steps: s.content.bullets.map((b: string) => ({ label: b, detail: b })) } })) })
@@ -193,12 +194,21 @@ describe('the pipeline: questions, chat and refusals cost nothing', () => {
     expect(out.kind).toBe('ask')
     expect(calls).toMatchObject({ write: 0, authorized: [] })
   })
-  it('price units: undo is free, code-only work and one written slide are one unit, more written slides two', () => {
+  it('price units (docs/MARGIN_POLICY.md): undo is free, code-only work and the first written slide are the base edit, each further written slide one more', () => {
     const c = (f: keyof typeof CAPABILITIES, estimate: number) => ({ cap: CAPABILITIES[f], estimate })
     expect(priceUnits([c('undo', 0)])).toBe(0)
-    expect(priceUnits([c('palette', 0), c('background', 3)])).toBe(1)
+    expect(priceUnits([c('palette', 0), c('background', 3)])).toBe(1) // code only, however many slides
     expect(priceUnits([c('text', 1)])).toBe(1)
     expect(priceUnits([c('text', 1), c('add_slide', 1)])).toBe(2)
+    expect(priceUnits([c('text', 15)])).toBe(15) // a whole 15-slide rewrite: base + 14 further slides, never the flat price of one edit
+    expect(priceUnits([c('palette', 0), c('text', 3)])).toBe(3)
+  })
+  it('credits for a message: one AI edit, then the slide price for each further written slide; said in the plan preview', async () => {
+    expect(creditsFor(0, { edit: 4, slide: 3 })).toBe(0)
+    expect(creditsFor(1, { edit: 4, slide: 3 })).toBe(4)
+    expect(creditsFor(15, { edit: 4, slide: 3 })).toBe(46)
+    expect(creditsFor(3, undefined)).toBeNull()
+    expect(creditsLine(2, { edit: 4, slide: 3 })).toBe(' It uses 7 credits.')
   })
   it('credits are authorised once, after planning and before the writing call', async () => {
     const { calls } = await run({ tasks: [{ family: 'text', targets: [{ by: 'range', from: 2, to: 3 }], values: { request: 'shorter' } }] }, (_c, input) => ({ slides: input.slides.map((s: any) => ({ slideId: s.slideId, content: { ...s.content, title: 'Short' } })) }))
@@ -413,13 +423,13 @@ describe('writer answers are accepted slide by slide', () => {
   describe('a big message is done step by step', () => {
     it('does the first parts, names the rest in the person\'s words, and offers them as the next step', async () => {
       const t = (n: number, phrase: string) => ({ family: 'background' as const, targets: [{ by: 'number' as const, n }], values: { color: '#112233' }, phrase })
-      // (three or more changes are shown as a plan first: the plan names the first four and the rest for the next step; "Go ahead" does the four and still offers the rest)
-      const { out, asked } = await runProceed({ tasks: [t(1, 'slide 1 dark'), t(2, 'slide 2 dark'), t(3, 'slide 3 dark'), t(4, 'slide 4 dark'), t(5, 'slide 5 dark'), t(6, 'slide 6 dark')] })
-      expect(asked).toMatch(/^I'll make these 4 changes:\n1\. slide 1 dark\n2\. slide 2 dark\n3\. slide 3 dark\n4\. slide 4 dark\nThen, in the next step: slide 5 dark; slide 6 dark\.\nNothing has changed yet\. Go ahead\?$/)
+      // (three or more changes are shown as a plan first: the plan names the first ten and the rest for the next step; "Go ahead" does the ten and still offers the rest)
+      const { out, asked } = await runProceed({ tasks: Array.from({ length: 12 }, (_, i) => t(1 + (i % 10), `slide ${i + 1} dark`)) })
+      expect(asked).toMatch(/^I'll make these 10 changes:\n1\. slide 1 dark\n(.*\n){8}10\. slide 10 dark\nThen, in the next step: slide 11 dark; slide 12 dark\.\nNothing has changed yet\. Go ahead\?$/)
       const r = done(out)
-      expect(r.later).toEqual(['slide 5 dark', 'slide 6 dark'])
-      expect(r.notes.join(' ')).toMatch(/step by step: the first 4 parts are done here. Still to do: slide 5 dark; slide 6 dark\./)
-      expect(r.compiled.backgrounds).toHaveLength(4) // only four were done
+      expect(r.later).toEqual(['slide 11 dark', 'slide 12 dark'])
+      expect(r.notes.join(' ')).toMatch(/step by step: the first 10 parts are done here. Still to do: slide 11 dark; slide 12 dark\./)
+      expect(r.compiled.backgrounds).toHaveLength(10) // only ten were done
     })
     it('two changes in one message are done at once; three or more are shown as a plan first and nothing runs or is charged before Go ahead', async () => {
       const t = (n: number) => ({ family: 'background' as const, targets: [{ by: 'number' as const, n }], values: { color: '#112233' }, phrase: `slide ${n} dark` })
@@ -488,7 +498,7 @@ describe('writer answers are accepted slide by slide', () => {
       const st = buildState(deck(), { activeSlideId: 's2' })
       const one = understandPrompt(st, 'x'), two = objectsPrompt(st, 'x', [{ index: 0, targets: [] }])
       const tokens = (p: { system: string; prompt: string }) => (p.system.length + p.prompt.length) / 4
-      expect(tokens(one)).toBeLessThan(3500)
+      expect(tokens(one)).toBeLessThan(3700)
       expect(two.prompt).toMatch(/"selected"/); expect(two.prompt).toMatch(/objectsOnCurrentSlide/)
     })
   })
@@ -639,5 +649,338 @@ describe('a background change made through slide ops says what it did (the route
       expect(out.kind).toBe('done')
       if (out.kind === 'done') expect(out.applied.length, JSON.stringify(values)).toBeGreaterThan(0)
     }
+  })
+})
+
+describe('reading the message first (reading.ts)', () => {
+  const reading = { request: 'Add a thank-you slide at the end of the deck.', relation: 'new' as const, assumptions: ['one slide, at the end'] }
+  const withRead = (read: AssistantDeps['read']) => {
+    const seen = { read: [] as string[], understand: [] as string[] }
+    const base = fake({ kind: 'chat' })
+    const deps: AssistantDeps = { ...base.deps, read: async (p) => { seen.read.push(p.system + '\n' + p.prompt); return read!(p) }, understand: async (p) => { seen.understand.push(p.system + '\n' + p.prompt); return intentSchema.parse({ kind: 'chat' }) } }
+    return { deps, seen }
+  }
+  it('reads the message with the conversation, then understands it with the reading next to the person\'s own words', async () => {
+    const { deps, seen } = withRead(async () => readingSchema.parse(reading))
+    await runAssistant({ doc: deck(), ent: pro, instruction: 'add the thank you pafe at lat', conversation: [{ role: 'user', text: 'make theme light' }, { role: 'assistant', text: 'Done.' }] }, deps)
+    expect(seen.read[0]).toContain('[task:assist_read]')
+    expect(seen.read[0]).toMatch(/<conversation>\nuser: make theme light/)
+    expect(seen.read[0]).toContain('add the thank you pafe at lat')
+    const u = seen.understand[0]!
+    expect(u).toContain('<reading relation="new">\nAdd a thank-you slide at the end of the deck.\nDefaults chosen: one slide, at the end\n</reading>')
+    expect(u.lastIndexOf('<reading relation')).toBeLessThan(u.lastIndexOf('<message>'))
+    expect(u).toContain('add the thank you pafe at lat') // the person's own words are still there, the source of anything exact
+  })
+  it('a reading that fails, or comes back empty, is skipped: the message is understood on its own, as before', async () => {
+    for (const read of [async () => { throw new Error('timeout') }, async () => readingSchema.parse({ request: ' ' })]) {
+      const { deps, seen } = withRead(read as never)
+      const out = await runAssistant({ doc: deck(), ent: pro, instruction: 'hello there' }, deps)
+      expect(out.kind).toBe('chat')
+      expect(seen.understand).toHaveLength(1)
+      expect(seen.understand[0]).not.toContain('<reading')
+      expect(seen.understand[0]).not.toContain('<reading> (when present)')
+    }
+  })
+  it('a confirmed plan is not read again (the model is not asked anything)', async () => {
+    const { deps, seen } = withRead(async () => readingSchema.parse(reading))
+    await runAssistant({ doc: deck(), ent: pro, instruction: 'Yes, go ahead', confirm: { kind: 'proceed', tasks: [{ family: 'motion', targets: [], values: { preset: 'zoom' } }] } as never }, deps)
+    expect(seen.read).toHaveLength(0)
+  })
+  it('the reading keeps quoted words exactly and drops nulls the model sends', () => {
+    expect(readingSchema.parse({ request: 'Put "Confidential" in the footer.', relation: null, assumptions: null })).toEqual({ request: 'Put "Confidential" in the footer.', relation: 'new', assumptions: [], parts: [] })
+  })
+})
+
+describe('a long message: every part is accounted for, the parts run in a sensible order, and the writing runs in waves', () => {
+  const rewrite = (_c: string, input: any) => ({ slides: input.slides.map((s: any) => ({ slideId: s.slideId, content: { ...s.content, title: `New ${s.slideId}` } })) })
+  const T = (family: string, targets: unknown[], values: object, phrase: string) => ({ family, targets, values, phrase })
+  it('uncoveredParts: names a part only when the count says one is missing, and only the parts no task or refusal shares words with', () => {
+    const parts = ['make slide 3 shorter', 'dark theme', 'add a thank-you slide at the end']
+    const two = intentSchema.parse({ kind: 'edit', clarity: 'act', tasks: [T('text', [{ by: 'number', n: 3 }], { request: 'shorter', length: 'shorter' }, 'make slide 3 shorter'), T('palette', [], { mode: 'dark' }, 'dark theme')] })
+    expect(uncoveredParts(parts, two)).toEqual(['add a thank-you slide at the end'])
+    const three = intentSchema.parse({ ...two, tasks: [...two.tasks, T('add_slide', [], { count: 1, where: 'end', about: 'thank you' }, 'thank-you slide at the end')] })
+    expect(uncoveredParts(parts, three)).toEqual([]) // nothing missing: nothing named, however the phrases are worded
+    const refused = intentSchema.parse({ ...two, unsupported: ['add a video'] })
+    expect(uncoveredParts(['make slide 3 shorter', 'dark theme', 'add a video'], refused)).toEqual([])
+  })
+  it('the understanding is asked ONCE more when it covers fewer parts than the reading found, and the answer names what is still missing', async () => {
+    const parts = ['make slide 2 shorter', 'dark theme', 'add a thank-you slide at the end']
+    const short = { kind: 'edit', clarity: 'act', tasks: [T('text', [{ by: 'number', n: 2 }], { request: 'make it shorter' }, 'make slide 2 shorter')] }
+    const prompts: string[] = []
+    let answers = [short, { ...short, tasks: [...short.tasks, T('palette', [], { mode: 'dark' }, 'dark theme')] }]
+    const base = fake({}, rewrite)
+    const deps: AssistantDeps = { ...base.deps, read: async () => readingSchema.parse({ request: 'x', parts }), understand: async (p) => { prompts.push(p.prompt); return intentSchema.parse(answers.shift() ?? short) } }
+    const out = await runAssistant({ doc: deck(), ent: pro, instruction: 'make slide 2 shorter, dark theme, and add a thank you slide at the end' }, deps)
+    expect(prompts).toHaveLength(2)
+    expect(prompts[1]).toMatch(/<every part>[\s\S]*1\. make slide 2 shorter[\s\S]*3\. add a thank-you slide at the end[\s\S]*covered only 1 of them/)
+    expect(out.kind).toBe('done')
+    if (out.kind !== 'done') return
+    expect(out.refused.join(' ')).toMatch(/I didn't do this part of your message: add a thank-you slide at the end/)
+    expect(out.compiled.edits.map((e) => e.slideId)).toEqual(['s2']) // the two parts it covered were done
+    expect(out.compiled.theme).not.toBeNull() // the dark palette was set too
+  })
+  it('runs in phases: the slide is ADDED before the text and the colours, whatever order the message said', async () => {
+    const seen: string[] = []
+    const tasks = [T('text', [{ by: 'number', n: 2 }], { request: 'shorter' }, 'shorten slide 2'), T('palette', [], { mode: 'dark' }, 'make it dark'), T('add_slide', [], { count: 1, where: 'end', about: 'thanks' }, 'add a thank you slide')]
+    const f = fake({}, (card, input) => card === 'add_slide' ? { slides: [{ content: { layout: 'thank-you', title: 'Thank you' } }] } : rewrite(card, input))
+    const out = await runAssistant({ doc: deck(), ent: pro, instruction: 'x', confirm: { kind: 'proceed', tasks } as never }, { ...f.deps, progress: (t) => { seen.push(t) } })
+    expect(out.kind).toBe('done')
+    expect(seen.map((t) => t.split(' (')[0]!).filter((t) => !/^Rewriting/.test(t))).toEqual(['add a slide', 'change the words of slides', 'change the colours of the whole deck, or switch light and dark mode']) // (the text capability reports its own writing too)
+    expect(f.calls.cards).toEqual(['add_slide', 'text'])
+  })
+  it('writing tasks on DIFFERENT slides run at the same time (one wave); on the SAME slide one after the other', async () => {
+    const timed = (same: boolean) => {
+      let running = 0, most = 0
+      const tasks = [T('text', [{ by: 'number', n: 2 }], { request: 'shorter' }, 'shorten slide 2'), T('text', [{ by: 'number', n: same ? 2 : 3 }], { request: 'bolder' }, `make slide ${same ? 2 : 3} bolder`)]
+      const f = fake({ tasks } as never, rewrite)
+      const write = f.deps.write
+      const deps: AssistantDeps = { ...f.deps, write: async (...a) => { running++; most = Math.max(most, running); await new Promise((ok) => setTimeout(ok, 60)); running--; return write(...a) } }
+      return runAssistant({ doc: deck(), ent: pro, instruction: 'x' }, deps).then((out) => ({ out, most, calls: f.calls }))
+    }
+    const apart = await timed(false)
+    expect(apart.out.kind).toBe('done'); expect(apart.most).toBe(2); expect(apart.calls.write).toBe(2)
+    if (apart.out.kind === 'done') expect(apart.out.compiled.edits.map((e) => e.slideId)).toEqual(['s2', 's3'])
+    const together = await timed(true)
+    expect(together.out.kind).toBe('done'); expect(together.most).toBe(1)
+  })
+  it('ten changes in one message run in one go; the eleventh is offered as the next step', async () => {
+    const tasks = Array.from({ length: 11 }, (_, i) => T('text', [{ by: 'number', n: 2 + (i % 9) }], { request: `change ${i}` }, `change number ${i + 1} please`))
+    const f = fake({ tasks } as never, rewrite)
+    const out = await runAssistant({ doc: deck(), ent: pro, instruction: 'x' }, f.deps)
+    expect(out.kind).toBe('ask') // the plan preview (ten changes)
+    if (out.kind !== 'ask') return
+    expect(out.question.text).toMatch(/I'll make these 10 changes/)
+    expect(out.question.text).toMatch(/Then, in the next step: change number 11 please/)
+  })
+})
+
+describe('the deck lane (transform): a whole-deck goal is planned, checked, shown with its price, confirmed, then written in waves that keep every figure', () => {
+  const withFigure = () => { const d = deck(); (d.slides[3]!.content as SlideContent & { bullets: string[] }).bullets = ['Revenue grew 40% to 2.5M in 2025', 'Second point here', 'Third point here']; return d }
+  const goal = 'make the whole deck more professional for senior executives'
+  const plans = (s: any[]) => s
+  it('plans with one quality call, re-asks ONCE when the plan touches a locked slide, and shows the plan with its price (keep slides are free)', async () => {
+    const seen: any[] = []
+    const f = fake({ tasks: [{ family: 'transform', targets: [], values: { goal, audience: 'senior executives' } }] }, (card, input) => {
+      if (card !== 'transform_plan') throw new Error(card)
+      seen.push(input)
+      const ids = input.deck.slides.map((x: any) => x.id)
+      const bad = !input.problems // the first plan rewrites the locked slide 11
+      return { goal: input.goal, brief: 'Confident, concise, led by results. Keep every figure.', actions: ids.map((id: string) => id === 's2' ? { slideId: id, action: 'rewrite', note: 'lead with the result' } : id === 's4' ? { slideId: id, action: 'shorten' } : id === 's11' && bad ? { slideId: id, action: 'rewrite' } : { slideId: id, action: 'keep' }), add: [] }
+    })
+    const out = await runAssistant({ doc: withFigure(), ent: pro, instruction: goal, price: { edit: 4, slide: 3 } }, f.deps)
+    expect(f.calls.cards).toEqual(['transform_plan', 'transform_plan'])
+    expect(seen[1].problems[0]).toMatch(/slide 11 is locked: it must be "keep"/)
+    expect(seen[0].deck.slides[3]).toMatchObject({ id: 's4', figures: ['40', '2.5', '2025'] }) // the facts ledger the planner sees
+    expect(seen[0].deck.slides[10]).toMatchObject({ id: 's11', locked: true })
+    expect(out.kind).toBe('ask')
+    if (out.kind !== 'ask') return
+    expect(out.question.text).toMatch(/Here is my plan for "make the whole deck more professional for senior executives":\n• Keep slides 1, 3, 5, 6, 7, 8, 9, 10, 11 and 12 as they are\n• Rewrite slide 2: 2 — lead with the result\n• Shorten slide 4\n/)
+    expect(out.question.text).toMatch(/It uses 7 credits \(2 slides written\)\. Go ahead\?$/)
+    const yes = out.question.options[0]!
+    expect(yes.confirm).toMatchObject({ kind: 'transform', plan: { goal, actions: expect.any(Array) } })
+    expect(f.calls.authorized).toEqual([1]) // the planning call: one unit, which the route gives back for a question
+  })
+  it('on "Go ahead": writes only the planned slides (in waves), keeps every figure (a slide that drops one is asked again, then left as it was), adds and reorders; keep slides cost nothing', async () => {
+    const plan = { goal, brief: 'Confident and concise. Keep every figure.', actions: [{ slideId: 's2', action: 'rewrite', note: 'lead with the result' }, { slideId: 's4', action: 'shorten' }, { slideId: 's6', action: 'layout' }, { slideId: 's9', action: 'delete', reason: 'repeats slide 8' }], add: [{ afterSlideId: 's3', title: 'Why now', about: 'the timing, from the deck' }], order: ['s1', 's3', 's2', 's4', 's5', 's6', 's7', 's8', 's10', 's11', 's12'] }
+    let s4Tries = 0
+    const f = fake({}, (card, input) => {
+      if (card === 'transform_text') return { slides: input.slides.map((s: any) => {
+        if (s.slideId === 's4') { s4Tries++; return { slideId: 's4', content: { ...s.content, title: 'Market', bullets: s4Tries === 1 ? ['Revenue grew a lot', 'Second'] : ['Revenue grew 40% to 2.5M in 2025', 'Second'] } } } // the first try drops the figures
+        return { slideId: s.slideId, content: { ...s.content, title: `${s.content.title} for executives` } }
+      }) }
+      if (card === 'transform_layout') return { slides: input.slides.map((s: any) => ({ slideId: s.slideId, content: { layout: 'process', title: s.content.title, steps: s.content.bullets.map((b: string) => ({ label: b.slice(0, 12), detail: b })), speakerNotes: '', sources: [] } })) }
+      if (card === 'transform_add') return { slides: input.adds.map((a: any) => ({ content: { layout: 'title-body', title: a.title, bullets: ['From the deck', 'Also from the deck'], speakerNotes: '', sources: [] } })) }
+      throw new Error(card)
+    })
+    const out = done(await runAssistant({ doc: withFigure(), ent: pro, instruction: 'Yes, go ahead with that plan', confirm: { kind: 'transform', plan } as never, price: { edit: 4, slide: 3 } }, f.deps))
+    expect(f.calls.cards.sort()).toEqual(['transform_add', 'transform_layout', 'transform_text', 'transform_text', 'transform_text'].sort()) // s2, s4, s4 again, the layout, the new slide
+    expect(out.compiled.edits.map((e) => [e.slideId, (e.content as { title: string }).title])).toEqual([['s2', 'Early life for executives'], ['s4', 'Market'], ['s6', 'Rocket science']]) // (the new layout for slide 6 is an edit too)
+    expect((out.compiled.edits.find((e) => e.slideId === 's4')!.content as { bullets: string[] }).bullets[0]).toContain('40%')
+    expect(out.compiled.additions.map((a) => (a.content as { title: string }).title)).toEqual(['Why now'])
+    expect(out.slideOps.removals).toEqual(['s9'])
+    expect(out.slideOps.moves).toEqual([{ slideId: 's3', afterSlideId: 's1' }, { slideId: 'new1', afterSlideId: 's3' }]) // the fewest moves for the new order (the editor adds slides before it moves any: the new slide follows slide 3 to its new place)
+    expect(out.applied).toEqual(['Deleted slide 9', 'Put the slides in the new order'])
+    expect(out.units).toBe(4) // 4 slides written (s2, s4, s6, the new one): the base edit + 3; the 7 kept slides cost nothing
+    expect(out.notes.join(' ')).toMatch(/8 slides already did their job, so I left them exactly as they were \(and did not charge for them\)/)
+    expect(f.calls.authorized).toEqual([4])
+  })
+  it('a slide that keeps dropping its figures is left as it was and said plainly; a plan that no longer fits the deck changes nothing', async () => {
+    const plan = { goal, brief: 'Confident and concise. Keep every figure.', actions: [{ slideId: 's4', action: 'rewrite' }], add: [] }
+    const f = fake({}, (card, input) => ({ slides: input.slides.map((s: any) => ({ slideId: s.slideId, content: { ...s.content, title: 'Market', bullets: ['Revenue grew a lot', 'Second'] } })) }))
+    const out = done(await runAssistant({ doc: withFigure(), ent: pro, instruction: 'Yes', confirm: { kind: 'transform', plan } as never }, f.deps))
+    expect(out.compiled.edits).toEqual([])
+    expect(out.refused.join(' ')).toMatch(/Slide 4: I couldn't do that \(it dropped the figures 40, 2.5, 2025: keep every figure exactly\), so I left it as it was/)
+    const stale = done(await runAssistant({ doc: withFigure(), ent: pro, instruction: 'Yes', confirm: { kind: 'transform', plan: { ...plan, actions: [{ slideId: 'gone', action: 'rewrite' }] } } as never }, fake({}).deps))
+    expect(stale.refused.join(' ')).toMatch(/The deck has changed since I suggested this plan \(there is no slide with id gone\), so nothing was changed/)
+    expect(stale.compiled.edits).toEqual([])
+  })
+  it('code refuses a plan that deletes too much, adds the wrong number of slides, or lists a wrong order (the planner is told and tries once more)', async () => {
+    const seen: any[] = []
+    const mk = (first: (ids: string[]) => object) => fake({ tasks: [{ family: 'transform', targets: [], values: { goal: 'add 2 slides that fit', addSlides: 2 } }] }, (_c, input) => { seen.push(input); const ids = input.deck.slides.map((x: any) => x.id); return input.problems ? { goal: input.goal, brief: 'A brief long enough to pass.', actions: ids.map((id: string) => ({ slideId: id, action: 'keep' })), add: [{ afterSlideId: 's3', title: 'A', about: 'a' }, { afterSlideId: 's5', title: 'B', about: 'b' }] } : { goal: input.goal, brief: 'A brief long enough to pass.', actions: ids.map((id: string) => ({ slideId: id, action: 'keep' })), add: [], ...first(ids) } })
+    for (const [first, why] of [
+      [(ids: string[]) => ({ actions: ids.map((id, i) => ({ slideId: id, action: i > 0 && i < 8 ? 'delete' : 'keep', reason: 'x' })) }), /deletes 7 slides; at most 5 may go/],
+      [() => ({ add: [{ afterSlideId: 's3', title: 'A', about: 'a' }] }), /"add" must have exactly 2 new slides \(it has 1\)/],
+      [(ids: string[]) => ({ add: [{ afterSlideId: 's3', title: 'A', about: 'a' }, { afterSlideId: 's5', title: 'B', about: 'b' }], order: ids.slice(0, 3) }), /"order" must list each of the 12 surviving slides exactly once/],
+    ] as const) {
+      seen.length = 0
+      const out = await runAssistant({ doc: deck(), ent: pro, instruction: 'add 2 slides that fit' }, mk(first).deps)
+      expect(seen).toHaveLength(2)
+      expect(seen[1].problems[0]).toMatch(why)
+      expect(out.kind).toBe('ask')
+    }
+  })
+  it('minimalMoves: only the slides whose predecessor changes move, one after another', async () => {
+    const { minimalMoves } = await import('./capabilities/transform.ts')
+    expect(minimalMoves(['a', 'b', 'c', 'd'], ['a', 'c', 'b', 'd'])).toEqual([{ slideId: 'c', afterSlideId: 'a' }])
+    expect(minimalMoves(['a', 'b', 'c', 'd'], ['d', 'a', 'b', 'c'])).toEqual([{ slideId: 'd', afterSlideId: null }])
+    expect(minimalMoves(['a', 'b', 'c'], ['a', 'b', 'c'])).toEqual([])
+  })
+  void plans
+})
+
+describe('the deck lane: what the real model taught (2026-11-26)', () => {
+  it('notes on every slide are part of a talk-length goal only: a planner that adds notesSeconds on its own does not get them priced; a confirmed plan keeps what it carries', async () => {
+    const f = fake({ tasks: [{ family: 'transform', targets: [], values: { goal: 'make it more professional' } }] }, (_c, input) => ({ goal: input.goal, brief: 'A brief long enough for the check.', actions: input.deck.slides.map((x: any, i: number) => ({ slideId: x.id, action: i === 1 ? 'rewrite' : 'keep' })), add: [], notesSeconds: 45 }))
+    const out = await runAssistant({ doc: deck(), ent: pro, instruction: 'make it more professional', price: { edit: 4, slide: 3 } }, f.deps)
+    expect(out.kind).toBe('ask')
+    if (out.kind !== 'ask') return
+    expect(out.question.text).toMatch(/It uses 4 credits \(1 slide written\)/)
+    expect((out.question.options[0]!.confirm as { plan: { notesSeconds?: number } }).plan.notesSeconds).toBeUndefined()
+  })
+  it('a writing call that fails outright loses only its own slides; the rest still land and the lost ones are named', async () => {
+    const plan = { goal: 'more professional', brief: 'A brief long enough for the check.', actions: [{ slideId: 's2', action: 'rewrite' }, { slideId: 's4', action: 'shorten' }], add: [] }
+    const f = fake({}, (card, input) => { if (input.slides.some((s: any) => s.slideId === 's4')) throw new Error('The AI service is busy or unavailable'); return { slides: input.slides.map((s: any) => ({ slideId: s.slideId, content: { ...s.content, title: `${s.content.title} for executives` } })) } })
+    const out = done(await runAssistant({ doc: deck(), ent: pro, instruction: 'Yes', confirm: { kind: 'transform', plan } as never }, f.deps))
+    expect(out.compiled.edits.map((e) => e.slideId)).toEqual(['s2'])
+    expect(out.refused.join(' ')).toMatch(/Slide 4: I couldn't do that \(the AI service was busy; ask again for this slide\)/)
+    expect(out.units).toBe(2) // the price of the plan as confirmed (the route settles what really landed)
+  })
+})
+
+describe('context: the words of a SELECTED text box (and nothing else)', () => {
+  const proAdv = { features: { premiumTemplates: true, advancedEditor: true } } as never // (changing objects is part of the advanced editor)
+  const pick = (d: Presentation, slideN: number, role = 'body') => d.slides[slideN - 1]!.elements.find((e) => e.type === 'text' && (e as { role?: string }).role === role)!
+  const runOn = async (d: Presentation, elId: string, slideId: string, request: string, writer: (input: any) => unknown) => {
+    const f = fake({ tasks: [{ family: 'element', targets: [], values: { elements: [{ by: 'selected' }], ops: [{ op: 'rewrite_text', request }] } }] }, (card, input) => { expect(card).toBe('element_text'); return writer(input) })
+    const out = await runAssistant({ doc: d, ent: proAdv, instruction: request, activeSlideId: slideId, selection: { slideIds: [slideId], elementIds: [elId] } }, f.deps)
+    return { out, calls: f.calls }
+  }
+  it('rewrites only that box: its place, size and styling stay, the other objects are untouched, and the call carries the box\'s words and the slide around it', async () => {
+    const d = deck()
+    const el = pick(d, 2) as { id: string; paragraphs: { runs: { text: string; bold?: boolean; color?: string }[] }[]; fontSize: number; x: number }
+    el.paragraphs = [{ runs: [{ text: 'Teams compete through a regular league season.', bold: true, color: 'accent' }] }]
+    let seen: any = null
+    const { out, calls } = await runOn(d, el.id, 's2', 'make this more detailed and professional', (input) => { seen = input; return { objects: input.objects.map((o: any) => ({ id: o.id, lines: ['Teams compete across a full league season, each playing every rival.'] })) } })
+    expect(calls.write).toBe(1)
+    expect(seen.request).toBe('make this more detailed and professional')
+    expect(seen.objects[0].lines).toEqual(['Teams compete through a regular league season.'])
+    expect(seen.slide.title).toBe('Early life') // the slide it sits on, for context
+    const r = done(out)
+    expect(r.compiled.edits).toEqual([]) // the SLIDE's words were not rewritten
+    expect(r.slideOps.elementChanges).toHaveLength(1)
+    const ch = r.slideOps.elementChanges[0]!
+    expect(ch.elementId).toBe(el.id)
+    expect(ch.patch!.paragraphs).toEqual([{ runs: [{ text: 'Teams compete across a full league season, each playing every rival.', bold: true, color: 'accent' }] }]) // the styling stays
+    expect(Object.keys(ch.patch!)).toEqual(['paragraphs']) // nothing else about the box is touched
+    expect(ch.verb).toBe('Rewrote the words of {}') // (the wording the editor builds its "Done" line from)
+  })
+  it('keeps every figure: an answer that drops one leaves the box exactly as it was and says so', async () => {
+    const d = deck()
+    const el = pick(d, 2) as { id: string; paragraphs: { runs: { text: string }[] }[] }
+    el.paragraphs = [{ runs: [{ text: 'Revenue grew 40% to 2.5M in 2025.' }] }]
+    const { out } = await runOn(d, el.id, 's2', 'make it shorter', (input) => ({ objects: input.objects.map((o: any) => ({ id: o.id, lines: ['Revenue grew a lot.'] })) }))
+    const r = done(out)
+    expect(r.slideOps.elementChanges).toEqual([])
+    expect(r.refused.join(' ')).toMatch(/I couldn't rewrite .* \(it dropped the figures 40, 2.5, 2025\), so I left it exactly as it was/)
+  })
+  it('an answer that comes back the same, or empty, changes nothing and says so', async () => {
+    for (const [lines, why] of [[['First point here'], /came back with the same words/], [[], /came back empty/]] as const) {
+      const d = deck()
+      const el = pick(d, 2) as { id: string; paragraphs: { runs: { text: string }[] }[] }
+      el.paragraphs = [{ runs: [{ text: 'First point here' }] }]
+      const { out } = await runOn(d, el.id, 's2', 'rewrite this', (input) => ({ objects: input.objects.map((o: any) => ({ id: o.id, lines })) }))
+      const r = done(out)
+      expect(r.slideOps.elementChanges).toEqual([])
+      expect(r.refused.join(' ')).toMatch(why)
+    }
+  })
+  it('a selected object that is not text is said plainly, and nothing is written', async () => {
+    const d = deck()
+    const pic = { id: 'pic1', type: 'image', src: 'https://x.test/a.png', alt: 'cup', x: 0, y: 0, width: 300, height: 200, rotation: 0, locked: false, zIndex: 9, opacity: 1, fit: 'cover', clip: 'none' }
+    ;(d.slides[1]!.elements as unknown[]).push(pic)
+    const f = fake({ tasks: [{ family: 'element', targets: [], values: { elements: [{ by: 'selected' }], ops: [{ op: 'rewrite_text', request: 'rewrite this' }] } }] })
+    const out = await runAssistant({ doc: d, ent: proAdv, instruction: 'rewrite this', activeSlideId: 's2', selection: { slideIds: ['s2'], elementIds: ['pic1'] } }, f.deps)
+    const r = done(out)
+    expect(f.calls.write).toBe(0)
+    expect(r.refused.join(' ')).toMatch(/picture is not text, so I could not rewrite its words/)
+  })
+  it('rebuiltParagraphs: a line that changed takes its paragraph\'s styling; a line that did not is kept exactly (mixed styling and all); extra lines follow the first', async () => {
+    const { rebuiltParagraphs } = await import('./capabilities/elements.ts')
+    const old = [
+      { runs: [{ text: 'Revenue grew ' }, { text: '40%', bold: true, color: 'accent' }], list: 'bullet' as const },
+      { runs: [{ text: 'Costs fell', italic: true }] },
+    ]
+    const out = rebuiltParagraphs(old as never, ['Revenue grew 40%', 'Costs fell sharply', 'And margins rose'])
+    expect(out[0]).toEqual(old[0]) // unchanged words: the mixed styling survives untouched
+    expect(out[1]).toEqual({ runs: [{ text: 'Costs fell sharply', italic: true }] })
+    expect(out[2]).toEqual({ runs: [{ text: 'And margins rose' }], list: 'bullet' }) // an extra line follows the first paragraph
+  })
+  it('what is selected reaches the understanding step with enough of it to decide: the words, a table\'s headers, a chart\'s series', async () => {
+    const d = deck()
+    const el = pick(d, 2) as { id: string; paragraphs: { runs: { text: string }[] }[] }
+    el.paragraphs = [{ runs: [{ text: 'Teams compete through a regular league season.' }] }]
+    ;(d.slides[1]!.elements as unknown[]).push(
+      { id: 'tb1', type: 'table', header: ['Plan', 'Price'], rows: [['Basic', '$12']], x: 0, y: 0, width: 300, height: 200, rotation: 0, locked: false, zIndex: 8, opacity: 1 },
+      { id: 'ch1', type: 'chart', chartType: 'bar', labels: ['Q1', 'Q2'], series: [{ name: 'Revenue', values: [1, 2] }], x: 0, y: 0, width: 300, height: 200, rotation: 0, locked: false, zIndex: 7, opacity: 1 },
+    )
+    const state = buildState(d, { activeSlideId: 's2', selection: { slideIds: ['s2'], elementIds: [el.id, 'tb1', 'ch1'] } })
+    const p = understandPrompt(state, 'make this more professional', [])
+    const focus = JSON.parse(p.prompt.match(/<focus>(.*?)<\/focus>/)![1]!)
+    expect(focus.selected).toHaveLength(3)
+    expect(focus.selected[0].text).toBe('Teams compete through a regular league season.')
+    expect(focus.selected[1]).toMatchObject({ slide: 2, what: 'the table', table: '2 rows × 2 columns; headers: Plan, Price' })
+    expect(focus.selected[2]).toMatchObject({ slide: 2, what: 'the chart', chart: 'bar; 1 series (Revenue); 2 labels' })
+    expect(JSON.stringify(focus.selected)).not.toContain('$12') // the cells themselves are not sent: the capability reads the real table
+  })
+})
+
+describe('the selection decides, in code (retargetToSelection)', () => {
+  const T = (values: object, targets: unknown[] = []) => ({ family: 'text', targets, values })
+  const withSel = (d: Presentation, elId: string) => buildState(d, { activeSlideId: 's2', selection: { slideIds: ['s2'], elementIds: [elId] } })
+  const textEl = (d: Presentation) => d.slides[1]!.elements.find((e) => e.type === 'text')!
+  const parse = (tasks: unknown[]) => intentSchema.parse({ kind: 'edit', clarity: 'act', tasks })
+  it('a words change aimed at the slide on screen, with text selected, becomes a rewrite of THAT box (the model still says what the change is)', () => {
+    const d = deck(); const el = textEl(d)
+    for (const targets of [[], [{ by: 'current' }], [{ by: 'number', n: 2 }]]) {
+      const out = retargetToSelection(parse([T({ request: 'make it more professional' }, targets)]), withSel(d, el.id), 'make this more professional')
+      expect(out.tasks[0]).toMatchObject({ family: 'element', targets: [], values: { elements: [{ by: 'selected' }], ops: [{ op: 'rewrite_text', request: 'make it more professional' }] } })
+    }
+  })
+  it('an explicit scope always wins: a message that names a slide, the deck or every slide is left exactly as the understanding read it', () => {
+    const d = deck(); const el = textEl(d)
+    for (const say of ['make the whole slide shorter', 'improve the entire presentation', 'shorten every slide', 'make slide 3 shorter']) {
+      const out = retargetToSelection(parse([T({ request: 'shorten it' })]), withSel(d, el.id), say)
+      expect(out.tasks[0]!.family, say).toBe('text')
+    }
+  })
+  it('left alone when it is not a words change on the slide on screen, when the notes are the subject, or when what is selected is not text', () => {
+    const d = deck(); const el = textEl(d)
+    const sel = withSel(d, el.id)
+    expect(retargetToSelection(parse([T({ request: 'write notes', notesOnly: true })]), sel, 'write the notes').tasks[0]!.family).toBe('text')
+    expect(retargetToSelection(parse([T({ request: 'shorten' }, [{ by: 'all' }])]), sel, 'shorten').tasks[0]!.family).toBe('text')
+    expect(retargetToSelection(parse([{ family: 'palette', targets: [], values: { mode: 'dark' } }]), sel, 'dark').tasks[0]!.family).toBe('palette')
+    const pic = { id: 'pic9', type: 'image', src: 'https://x.test/a.png', alt: 'x', x: 0, y: 0, width: 10, height: 10, rotation: 0, locked: false, zIndex: 1, opacity: 1, fit: 'cover', clip: 'none' }
+    ;(d.slides[1]!.elements as unknown[]).push(pic)
+    expect(retargetToSelection(parse([T({ request: 'shorten' })]), withSel(d, 'pic9'), 'shorten').tasks[0]!.family).toBe('text') // a picture is not text: the normal path says so
+    expect(retargetToSelection(parse([T({ request: 'shorten' })]), buildState(d, { activeSlideId: 's2' }), 'shorten').tasks[0]!.family).toBe('text') // nothing selected: the slide
+  })
+  it('end to end: with text selected, "rewrite this" writes only that box', async () => {
+    const d = deck()
+    const el = d.slides[1]!.elements.find((e) => e.type === 'text') as { id: string; paragraphs: { runs: { text: string }[] }[] }
+    el.paragraphs = [{ runs: [{ text: 'Teams compete through a regular league season.' }] }]
+    const f = fake({ tasks: [{ family: 'text', targets: [{ by: 'current' }], values: { request: 'make it more professional' } }] }, (card, input) => { expect(card).toBe('element_text'); return { objects: input.objects.map((o: any) => ({ id: o.id, lines: ['Teams play a full league season against every rival.'] })) } })
+    const out = done(await runAssistant({ doc: d, ent: { features: { premiumTemplates: true, advancedEditor: true } } as never, instruction: 'rewrite this more professionally', activeSlideId: 's2', selection: { slideIds: ['s2'], elementIds: [el.id] } }, f.deps))
+    expect(out.compiled.edits).toEqual([])
+    expect(out.slideOps.elementChanges.map((c) => c.elementId)).toEqual([el.id])
   })
 })

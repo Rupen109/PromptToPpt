@@ -1,12 +1,13 @@
 import type { z } from 'zod'
 import { alreadyAsked, effectAlready, groupAlready, layerAlready, planDistribute, planGroup, newOverlaps, describeElement, planChartFromTable, planCopy, planElementChange, planLayer, planShapeAdd, planShapeRow, planNewChart, planCrop, planCopyLook, type ElementOp } from '@prompttoppt/theme'
 import { planEffect } from '../effects-plan.ts'
-import { figuresInTextNotIn } from '../../generation/policy.ts'
-import type { ElementChange, PaintedEffect, SlideElement } from '@prompttoppt/validation'
+import { figuresInTextNotIn, figuresOf } from '../../generation/policy.ts'
+import type { ElementChange, PaintedEffect, SlideElement, TextElement } from '@prompttoppt/validation'
 import { numberOf, type DeckState } from '../state.ts'
 import { COLOUR_NAMES, needsObjects, resolveElements } from '../resolve.ts'
+import { z as zod } from 'zod'
 import { VALUES } from '../understand.ts'
-import type { Capability, Step } from './types.ts'
+import type { Capability, RunCtx, Step } from './types.ts'
 import { lockedSlides } from './preflight.ts'
 import { colourWord } from './colour-words.ts'
 
@@ -50,7 +51,9 @@ export const element: Capability<z.infer<typeof VALUES.element>> = {
     const adds = v.ops.filter((o): o is Extract<ElementOp, { op: 'add_shape' }> => o.op === 'add_shape')
     const copies = v.ops.filter((o): o is Extract<ElementOp, { op: 'copy_object' }> => o.op === 'copy_object')
     const newCharts = v.ops.filter((o): o is Extract<ElementOp, { op: 'add_chart' }> => o.op === 'add_chart')
-    let rest = v.ops.filter((o) => o.op !== 'add_shape' && o.op !== 'copy_object' && o.op !== 'add_chart')
+    // the WORDS of the objects named: one writing call, before the planning loop (everything else here is worked out by code)
+    const rewrites = v.ops.filter((o): o is { op: 'rewrite_text'; request: string } => o.op === 'rewrite_text') // (its own op: it never reaches the geometry planner)
+    let rest = v.ops.filter((o) => o.op !== 'add_shape' && o.op !== 'copy_object' && o.op !== 'add_chart' && o.op !== 'rewrite_text')
     // everything a typed value (a cell, a figure) may be traced to: the person's own words, the deck as it is, the sources and pages
     const deckText = JSON.stringify(ctx.state.doc.slides.map((s) => s.elements.map((e) => (e.type === 'text' ? e.paragraphs.map((p) => p.runs.map((x) => x.text).join('')) : e.type === 'table' ? [e.header, e.rows] : e.type === 'chart' ? [e.labels, e.series] : ''))))
     const corpus = [ctx.instruction, ...ctx.material.map((m) => m.text), deckText].join('\n')
@@ -90,6 +93,41 @@ export const element: Capability<z.infer<typeof VALUES.element>> = {
     refused.push(...new Set(colourRefused))
     const elementChanges: NonNullable<Step['slideOps']>['elementChanges'] = []
     let crops = 0, sourceOnly = 0, quietSkips = 0
+    let written = 0
+    // THE WORDS OF THE OBJECTS NAMED (a selected text box): one call for all of them together; each result keeps the box's own styling and every figure it had,
+    // or that box is left exactly as it was and said. Nothing else on the slide is touched.
+    if (rewrites.length) {
+      const texts = r.items.filter((i) => i.element.type === 'text' && !i.element.locked && !ctx.virtual.slides.find((s) => s.id === i.slideId)?.locked)
+      const others = r.items.filter((i) => i.element.type !== 'text')
+      for (const o of others) refused.push(`${describeElement(o.element).replace(/^(the|a) /, '')} is not text, so I could not rewrite its words.`)
+      if (!texts.length) { if (!others.length) refused.push('There is no text selected to rewrite, so nothing was changed.') }
+      else {
+        const request = rewrites.map((x) => x.request).join('; ')
+        const lineOf = (e: SlideElement) => (e.type === 'text' ? e.paragraphs.map((p) => p.runs.map((x) => x.text).join('')) : [])
+        ctx.progress?.(texts.length === 1 ? 'Rewriting the text you selected' : `Rewriting ${texts.length} pieces of text`)
+        const out = await ctx.write({
+          card: 'element_text', route: 'quality', schema: rewriteOut, material: ctx.material.length ? ctx.material : undefined,
+          rules: REWRITE_RULES,
+          input: {
+            request,
+            objects: texts.map((i) => ({ id: i.element.id, what: describeElement(i.element), slide: numberOf(ctx.state, i.slideId) || undefined, role: i.element.type === 'text' ? i.element.role : undefined, lines: lineOf(i.element), isList: i.element.type === 'text' && !!i.element.paragraphs[0]?.list, mustKeepFigures: figuresOf(lineOf(i.element).join(' ')) })),
+            slide: { title: slideTitleOf(ctx, texts[0]!.slideId), otherText: otherTextOf(ctx, texts[0]!.slideId, texts.map((i) => i.element.id)) },
+          },
+        })
+        const byId = new Map(out.objects.map((x) => [x.id, x.lines.map((l) => l.trim()).filter(Boolean)]))
+        for (const i of texts) {
+          const el = i.element
+          if (el.type !== 'text') continue
+          const was = lineOf(el)
+          const lines = byId.get(el.id) ?? []
+          const lost = figuresOf(was.join(' ')).filter((f) => !figuresOf(lines.join(' ')).includes(f))
+          const why = !lines.length ? 'it came back empty' : lines.join('\n') === was.join('\n') ? 'it came back with the same words' : lost.length ? `it dropped the figure${lost.length === 1 ? '' : 's'} ${lost.slice(0, 5).join(', ')}` : lines.join(' ').length > Math.max(400, was.join(' ').length * 3) ? 'it came back far longer than the box can hold' : ''
+          if (why) { refused.push(`I couldn't rewrite ${describeElement(el)} (${why}), so I left it exactly as it was.`); continue }
+          elementChanges.push({ slideId: i.slideId, elementId: el.id, patch: { paragraphs: rebuiltParagraphs(el.paragraphs, lines) }, verb: 'Rewrote the words of {}', desc: describeElement(el) })
+          written++
+        }
+      }
+    }
     // objects of slides this message added (a Morph copy) are found too
     const st = { ...ctx.state, doc: ctx.virtual }
     /** the animations to paint on `el`: from one object, or (from all_objects) from the object of the source slide in the same place of the same kind; null = this IS the source */
@@ -378,6 +416,42 @@ export const element: Capability<z.infer<typeof VALUES.element>> = {
     const bySlide = new Map<string, number>()
     for (const c of elementChanges) bySlide.set(c.slideId, (bySlide.get(c.slideId) ?? 0) + 1)
     const applied = [...bySlide].map(([id, k]) => `Changed ${k} object${k === 1 ? '' : 's'} on slide ${numberOf(ctx.state, id)}`)
-    return { ops: [], notes, refused, already, applied, slideOps: { elementChanges } }
+    return { ops: [], notes, refused, already, applied, slideOps: { elementChanges }, ...(written ? { written } : {}) }
   },
+}
+
+
+/** the answer shape of a words rewrite: the new lines of each object named */
+const rewriteOut = zod.object({ objects: zod.array(zod.object({ id: zod.string().max(64), lines: zod.array(zod.string().max(600)).max(20).default([]) })).max(12).default([]) })
+
+const REWRITE_RULES = `Return {"objects":[{"id":"<the object's id>","lines":["<line 1>", "..."]}]}: one entry for EVERY object in input.objects, with its new words.
+- Do exactly what input.request asks, to those words only. Keep the meaning and every fact.
+- KEEP EVERY FIGURE in input.objects[].mustKeepFigures exactly as written. Never add a figure, name, date or claim that is not already in the object, in input.slide, or in a <source> block.
+- "lines" are plain text, one per line of the box (input.objects[].lines are the lines it has now). Keep roughly the same number of lines unless the request asks otherwise ("as bullet points" may make more, "one line" fewer). No markdown, no bullet characters: the slide draws the bullets.
+- Keep each line about as long as the box can hold: a title stays a title (a few words), a body line stays a line. input.objects[].role says what the box is.
+- input.slide gives the slide's title and its other text, so your words fit the slide: never repeat the other text, and never write words for the other objects.
+- Never return a line unchanged when the request asks for a change.`
+
+/** the slide's title, for the words rewrite's context */
+const slideTitleOf = (ctx: RunCtx, slideId: string) => ctx.state.slides.find((r) => r.id === slideId)?.title ?? ''
+/** the text of the OTHER objects on the slide (so a rewrite fits in, and never repeats them) */
+const otherTextOf = (ctx: RunCtx, slideId: string, exceptIds: string[]) =>
+  (ctx.virtual.slides.find((s) => s.id === slideId)?.elements ?? [])
+    .filter((e) => e.type === 'text' && !exceptIds.includes(e.id) && !e.hidden)
+    .map((e) => (e.type === 'text' ? e.paragraphs.map((p) => p.runs.map((r) => r.text).join('')).join(' ') : ''))
+    .filter(Boolean).slice(0, 6).map((t) => t.slice(0, 160))
+
+/**
+ * The new words in the box's OWN styling: each new line keeps the styling of the line it replaces (the first run's bold, colour, size and the paragraph's list marker);
+ * extra lines follow the first line's styling. Mixed styling inside one line (one word in a colour) cannot survive a rewrite of that line, which is why only the lines
+ * that really changed are rebuilt.
+ */
+export function rebuiltParagraphs(old: TextElement['paragraphs'], lines: string[]): TextElement['paragraphs'] {
+  return lines.map((text, i) => {
+    const from = old[i] ?? old[0]!
+    const was = from.runs.map((r) => r.text).join('')
+    if (was === text) return from // this line did not change: keep it exactly, mixed styling and all
+    const { text: _drop, ...style } = from.runs[0] ?? { text: '' }
+    return { ...from, runs: [{ ...style, text }] }
+  })
 }

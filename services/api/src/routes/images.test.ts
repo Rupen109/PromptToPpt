@@ -29,8 +29,8 @@ describe('POST /presentations/:id/images', () => {
     const res = await gen(u.cookie, id, { style: 'illustration', aspect: '4:3' })
     const body = await json(res)
     expect(res.status).toBe(200)
-    expect(body.data).toMatchObject({ mime: 'image/png', creditsCharged: 20, usage: { deck: { used: 1, max: 10 }, month: { used: 1, max: 60 } } })
-    expect(await balance(u.id)).toBe(before - 20)
+    expect(body.data).toMatchObject({ mime: 'image/png', creditsCharged: 30, usage: { deck: { used: 1, max: 10 }, month: { used: 1, max: 60 } } })
+    expect(await balance(u.id)).toBe(before - 30)
 
     const img = await app.request(new URL(body.data.url).pathname) // no cookie: capability URL
     expect(img.status).toBe(200)
@@ -90,7 +90,7 @@ describe('POST /presentations/:id/images', () => {
     const ok = results.filter((r) => r.status === 200).length
     expect(ok).toBe(10)
     expect(results.filter((r) => r.status === 429)).toHaveLength(4)
-    expect(await balance(u.id)).toBe(before - 10 * 20)
+    expect(await balance(u.id)).toBe(before - 10 * 30)
     expect((await db.select().from(generatedAsset).where(eq(generatedAsset.presentationId, id))).filter((a) => a.status === 'ready')).toHaveLength(10)
   })
 
@@ -102,7 +102,7 @@ describe('POST /presentations/:id/images', () => {
     const b = await json(await gen(u.cookie, id, { requestId }))
     expect(b.data.assetId).toBe(a.data.assetId)
     expect(b.data.creditsCharged).toBe(0)
-    expect(await balance(u.id)).toBe(before - 20)
+    expect(await balance(u.id)).toBe(before - 30)
     expect((await db.select().from(generatedAsset).where(eq(generatedAsset.presentationId, id)))).toHaveLength(1)
   })
 

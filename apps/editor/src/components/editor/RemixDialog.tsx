@@ -54,7 +54,7 @@ export function RemixDialog({ presentationId, title, slideCount, aspect, handEdi
       clearPending(); setPendingPrompt(`Remix of "${title}": ${instruction}`); setPendingJob(job.id)
       navigate('/create') // the create screen shows the progress and opens the new presentation when it is ready
     } catch (e) {
-      if (isGateError(e)) { onClose(); upgrade.show(e.message) } else setError(e instanceof ApiError ? e.message : 'Something went wrong. You were not charged.')
+      if (isGateError(e)) { onClose(); upgrade.show(e.message, e.code) } else setError(e instanceof ApiError ? e.message : 'Something went wrong. You were not charged.')
       setBusy(false)
     }
   }

@@ -24,6 +24,9 @@ export function TranscriptTool() {
     if (!f) return
     if (!/\.(srt|vtt|sbv|txt)$/i.test(f.name)) return setError('Choose a caption file (.srt, .vtt) or a .txt file, or paste the text.')
     if (f.size > MAX_FILE_MB * 1024 * 1024) return setError(`That file is larger than ${MAX_FILE_MB} MB.`)
+    if (f.size === 0) return setError('That file is empty. Choose the caption file again, or paste the text.')
+    // a caption file is text: NUL bytes mean a different kind of file that was renamed (the server refuses it the same way)
+    if (new Uint8Array(await f.slice(0, 4096).arrayBuffer()).includes(0)) return setError('That file is not a caption or text file. Choose a .srt or .vtt file, or paste the text.')
     setText(await f.text())
     if (!title) setTitle(f.name.replace(/\.(srt|vtt|sbv|txt)$/i, ''))
   }
@@ -48,7 +51,7 @@ export function TranscriptTool() {
         <div className="mt-4 flex flex-wrap items-center gap-4">
           <Button variant="accent" size="lg" arrow disabled={busy || text.trim().length < 40} onClick={() => void run()}>{busy ? 'Cleaning…' : 'Clean transcript'}</Button>
           <button type="button" onClick={() => input.current?.click()} className="font-heading font-extrabold text-sm text-primary hover:underline">…or load a caption file (.srt / .vtt)</button>
-          <input ref={input} type="file" accept=".srt,.vtt,.sbv,.txt" className="sr-only" aria-label="Load a caption file" onChange={(e) => void load(e.target.files?.[0])} />
+          <input ref={input} type="file" accept=".srt,.vtt,.sbv,.txt" className="sr-only" aria-label="Load a caption file" onChange={(e) => { void load(e.target.files?.[0]); e.target.value = '' }} />
         </div>
         {error && <p role="alert" className="mt-4 text-sm font-bold text-red-700">{error}</p>}
       </Card>

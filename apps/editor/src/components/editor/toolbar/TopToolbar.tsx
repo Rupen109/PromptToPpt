@@ -81,7 +81,7 @@ export function TopToolbar({ doc, slide, presentationId, requireAdvanced, onHist
   const bgNow = slide.background?.type === 'color' ? slide.background.value : slideTheme(doc.theme, slide).colors.background
 
   const guard = () => requireAdvanced()
-  const fail = (e: unknown, fallback: string) => { if (isGateError(e)) upgrade.show(e.message); else flash(e instanceof ApiError ? e.message : fallback) }
+  const fail = (e: unknown, fallback: string) => { if (isGateError(e)) upgrade.show(e.message, e.code); else flash(e instanceof ApiError ? e.message : fallback) }
   const placed = (id: string | null) => { if (id) select([id]) }
 
   function addText() {

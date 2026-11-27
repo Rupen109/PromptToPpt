@@ -1,10 +1,9 @@
-import { Check, MessageSquare, Paperclip, Pencil, Sparkles, X } from '@prompttoppt/ui/icons'
+import { Check, MessageSquare, Paperclip, Pencil, SendHorizontal, Sparkles, Target, X } from '@prompttoppt/ui/icons'
 import { useEffect, useRef, useState } from 'react'
-import { ApiError, isGateError, type AiEditCommand, type AiImageProposal, type ModelOption, type SourceSummary } from '@prompttoppt/api-client'
+import { ApiError, isGateError, type AiImageProposal, type ModelOption, type SourceSummary } from '@prompttoppt/api-client'
 import { SourcesDialog } from '@/components/SourcesDialog'
 import { AskDeck } from '@/components/editor/AskDeck'
-import { ASSIST_LIMITS, clip, clipConversation, clipRecent, compactSlides, findUrls, type Presentation, type Restructure, type Slide } from '@prompttoppt/validation'
-import { expectationsFromChanges } from '@prompttoppt/theme'
+import { QUICK_EDITS, type QuickEditId, ASSIST_LIMITS, clip, clipConversation, clipRecent, compactSlides, findUrls, type Presentation, type Restructure, type Slide } from '@prompttoppt/validation'
 import { applyAssistVerified, type AssistAnswer } from '@/editor/assist-apply'
 import * as C from '@/editor/commands'
 import { useDoc } from '@/editor/store'
@@ -81,9 +80,6 @@ const slideLabel = (sl: { elements: { type: string; role?: string; paragraphs?: 
   const text = (t?.paragraphs?.[0]?.runs ?? []).map((r) => r.text).join('').trim()
   return text.length > 28 ? `${text.slice(0, 27)}…` : text
 }
-const QUICK: { id: AiEditCommand; label: string; arg?: string }[] = [
-  { id: 'rewrite', label: 'Rewrite' }, { id: 'shorten', label: 'Shorten' }, { id: 'expand', label: 'Expand' }, { id: 'improve', label: 'Improve hierarchy' },
-]
 
 /**
  * AI assistant: a chat. You describe what you want ("change the colours, animate every slide, shorten slide 3"), the server turns
@@ -99,11 +95,22 @@ const changedPictureSlides = (before: Presentation, after: Presentation): string
 type UiAction = NonNullable<Awaited<ReturnType<typeof api.aiAssist>>['uiAction']>
 const actionLabel = (a: UiAction) => (a.kind === 'present' ? `Start presenting from slide ${a.fromSlide}` : a.kind === 'export' ? `Download ${a.slides ? `${a.slides.length === 1 ? 'slide' : 'slides'} ${compactSlides(a.slides)} ` : ''}as ${a.format.toUpperCase()}` : a.email ? `Open Share with ${a.email}` : 'Open Share')
 
+/**
+ * Roughly how many separate changes a message asks for, counted the way a person writes them: one per line, bullet or numbered item,
+ * and semicolons inside a line. It is only used to warn BEFORE sending (the server decides for real, in understand.ts) — so it errs low:
+ * one flowing sentence counts as one, however long.
+ */
+export function countRequests(text: string): number {
+  const parts = text
+    .split(/\r?\n|(?:^|\s)[-•*]\s|(?:^|\s)\d{1,2}[.)]\s|;/g)
+    .map((x) => x.trim())
+    .filter((x) => x.length >= 8)
+  return parts.length
+}
+
 export function AiPanel({ doc, slide, presentationId, onClose, onBeforeSend, onRewrite, onUiAction }: { doc: Presentation; slide: Slide; presentationId: string; onClose: () => void; onBeforeSend: () => Promise<unknown>; onRewrite: (brief: string, picturesOnly?: boolean) => void; /** runs a prepared present / export / share when the person presses its button */ onUiAction?: ((a: UiAction) => void) | undefined }) {
   const apply = useDoc((s) => s.apply)
   const { ent, refresh, upgrade } = useEntitlements()
-  const [models, setModels] = useState<ModelOption[]>([])
-  const [model, setModel] = useState('')
   // no "whole deck / this slide" switch: the message says where ("slide 3", "the thank-you page", "every slide"); when it does not, the assistant asks in the chat
   const scope = 'deck' as const
   /** Edit: the assistant changes the deck. Ask: questions about the deck's content (read-only). */
@@ -126,21 +133,9 @@ export function AiPanel({ doc, slide, presentationId, onClose, onBeforeSend, onR
   const waiting = pending || !historyLoaded
   const endRef = useRef<HTMLDivElement>(null)
   const undoStack = () => UNDO_STACKS.get(presentationId) ?? []
-  const allowed = models.filter((m) => m.allowed)
   const links = findUrls(text)
   const slideNo = doc.slides.findIndex((s) => s.id === slide.id) + 1
 
-  useEffect(() => {
-    let off = false
-    api.models().then((r) => {
-      if (off) return
-      setModels(r.models)
-      setModel((cur) => cur || r.default || '')
-    }).catch(() => {})
-    return () => {
-      off = true
-    }
-  }, [ent?.plan.id])
   // the conversation is kept per presentation: reopen the panel (or reload, or switch device) and it is all still here
   useEffect(() => {
     let off = false
@@ -172,7 +167,17 @@ export function AiPanel({ doc, slide, presentationId, onClose, onBeforeSend, onR
     } catch { /* the server settles it by itself after a few minutes */ }
   }
 
-  async function send(instruction: string, confirm?: NonNullable<Extract<Msg, { role: 'ai' }>['options']>[number]['confirm']) {
+  // a quick edit from the toolbar's menu: sent like a message (the chat shows it, its answer, its undo and its credits), on the slide on screen
+  const quickEdit = useUi((st) => st.quickEdit)
+  const sentQuick = useRef(0)
+  useEffect(() => {
+    if (!quickEdit || !historyLoaded || pending || sentQuick.current === quickEdit.n) return
+    sentQuick.current = quickEdit.n
+    useUi.setState({ quickEdit: null })
+    void send(`${QUICK_EDITS.find((q) => q.id === quickEdit.id)!.label} (slide ${slideNo})`, undefined, quickEdit.id)
+  })
+
+  async function send(instruction: string, confirm?: NonNullable<Extract<Msg, { role: 'ai' }>['options']>[number]['confirm'], quick?: QuickEditId) {
     if (!historyLoaded) return
     const t = instruction.trim()
     if (!t || pending) return
@@ -186,7 +191,7 @@ export function AiPanel({ doc, slide, presentationId, onClose, onBeforeSend, onR
       await onBeforeSend().catch(() => {}) // the server reads the saved deck, so save what's on screen first
       const requestId = crypto.randomUUID()
       stopFollow = followProgress(presentationId, requestId, setStage)
-      const res = await api.aiAssist(presentationId, { instruction: t, scope, activeSlideId: slide.id, selection: { slideIds: [slide.id], elementIds: useUi.getState().selection.slice(0, 200) }, ...(model ? { model } : {}), requestId, ...(attached.length ? { sourceIds: attached.map((a) => a.id) } : {}), ...(undoStack().length ? { recent: clipRecent([...undoStack()].reverse().map((u) => ({ theme: !!u.theme, slideIds: C.undoSlideIds(u), summary: u.summary }))) } : {}), conversation: conversationOf(msgs), ...(confirm ? { confirm } : {}) })
+      const res = await api.aiAssist(presentationId, { instruction: t, ...(quick ? { scope: 'slide' as const, slideId: slide.id, quick } : { scope }), activeSlideId: slide.id, selection: { slideIds: [slide.id], elementIds: useUi.getState().selection.slice(0, 200) }, requestId, ...(attached.length ? { sourceIds: attached.map((a) => a.id) } : {}), ...(undoStack().length ? { recent: clipRecent([...undoStack()].reverse().map((u) => ({ theme: !!u.theme, slideIds: C.undoSlideIds(u), summary: u.summary }))) } : {}), conversation: conversationOf(msgs), ...(confirm ? { confirm } : {}) })
       setAttached([])
       if (res.sources?.length) apply('Attach sources', (d) => C.addSources(d, res.sources!))
       let undoInfo: { undo?: string; revertedUndo?: string[] } = {}
@@ -241,35 +246,10 @@ export function AiPanel({ doc, slide, presentationId, onClose, onBeforeSend, onR
       // "select …": go to that slide and select exactly the objects the server found (only ones still on it)
       if (res.selectObjects) { const s0 = useDoc.getState().doc?.slides.find((x) => x.id === res.selectObjects!.slideId); if (s0) { const ids = res.selectObjects.elementIds.filter((id) => s0.elements.some((e) => e.id === id)); useUi.getState().setActiveSlide(s0.id); useUi.getState().select(ids) } }
     } catch (e) {
-      if (isGateError(e)) upgrade.show(e.message)
+      if (isGateError(e)) upgrade.show(e.message, e.code)
       else { const em: Msg = { role: 'error', text: e instanceof ApiError ? e.message : 'Something went wrong. You were not charged.' }; setMsgs((m) => [...m, em]); remember(userMsg, em) }
     } finally {
       stopFollow(); setStage(null)
-      setPending(false)
-    }
-  }
-
-  async function quick(cmd: AiEditCommand) {
-    if (waiting || slide.locked) return
-    if (!ent?.features.aiEdits) return upgrade.show('AI edits are available on the Pro plan.')
-    const userMsg: Msg = { role: 'user', text: `${QUICK.find((q) => q.id === cmd)!.label} slide ${slideNo}` }
-    setMsgs((m) => [...m, userMsg])
-    setPending(true)
-    try {
-      await onBeforeSend().catch(() => {})
-      const res = await api.aiEdit(presentationId, { slideId: slide.id, command: cmd, ...(model ? { model } : {}), requestId: crypto.randomUUID() })
-      // the same rule as the chat: the message follows what the deck now holds, and an edit that did not land is not reported as done
-      const changes = { theme: null, edits: [{ slideId: slide.id, content: res.content }] }
-      const r = applyAssistVerified({ ...changes, expect: res.expect ?? expectationsFromChanges(useDoc.getState().doc!, changes) }, { label: 'AI edit' })
-      const aiMsg: Msg = { role: 'ai', reply: r.composed.reply, applied: r.composed.applied, notes: r.composed.notes, credits: res.creditsCharged }
-      setMsgs((m) => [...m, aiMsg])
-      remember(userMsg, aiMsg)
-      void refresh()
-      if (res.requestId) void reportOutcome({ requestId: res.requestId, results: r.checks.map((c) => ({ key: c.key, status: c.status })) })
-    } catch (e) {
-      if (isGateError(e)) upgrade.show(e.message)
-      else { const em: Msg = { role: 'error', text: e instanceof ApiError ? e.message : 'The edit failed. You were not charged.' }; setMsgs((m) => [...m, em]); remember(userMsg, em) }
-    } finally {
       setPending(false)
     }
   }
@@ -286,15 +266,7 @@ export function AiPanel({ doc, slide, presentationId, onClose, onBeforeSend, onR
           <button key={k} role="tab" aria-selected={mode === k} onClick={() => setMode(k)} className={`py-1.5 rounded-md ${mode === k ? 'bg-white shadow-sm' : 'text-slate-500'}`}><span className="inline-flex items-center justify-center gap-1.5"><Icon aria-hidden size={14} />{label}</span></button>
         ))}
       </div>
-      {mode === 'ask' ? <AskDeck doc={doc} presentationId={presentationId} onEdit={(t) => { setMode('edit'); void send(t) }} /> : (<>
-      <div className="px-4 pt-3 space-y-2">
-        <label className="flex items-center gap-2 text-xs text-slate-600">Model
-          <select aria-label="AI model" value={model} onChange={(e) => setModel(e.target.value)} className="flex-1 min-w-0 border border-border rounded-md px-2 py-1 bg-white text-xs">
-            {allowed.map((m) => <option key={m.id} value={m.id}>{m.displayName}</option>)}
-          </select>
-        </label>
-      </div>
-
+      {mode === 'ask' ? <AskDeck doc={doc} presentationId={presentationId} slideId={slide.id} onEdit={(t) => { setMode('edit'); void send(t) }} /> : (<>
       {doc.sources.length > 0 && <p className="px-4 pt-2 text-[11px] text-slate-600" aria-label="Deck sources"><Paperclip aria-hidden size={12} className="inline mr-1 -mt-0.5" />Using {doc.sources.length === 1 ? '1 source' : `${doc.sources.length} sources`} from this deck: {doc.sources.map((x) => x.title).join(', ').slice(0, 120)}</p>}
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 min-h-0" role="log" aria-live="polite" aria-label="Conversation">
         {historyLoaded && msgs.length === 0 && (
@@ -355,12 +327,7 @@ export function AiPanel({ doc, slide, presentationId, onClose, onBeforeSend, onR
       </div>
 
       <div className="border-t border-border p-3 space-y-2">
-        {(
-          <div className="flex flex-wrap items-center gap-1.5" aria-label="Quick actions for this slide">
-            <span className="text-[11px] text-slate-500">Slide {slideNo}:</span>
-            {QUICK.map((q) => <button key={q.id} disabled={waiting || slide.locked} onClick={() => void quick(q.id)} className="text-xs border border-border rounded-full px-2.5 py-1 hover:border-primary disabled:opacity-50">{q.label}</button>)}
-          </div>
-        )}
+        <ContextLine doc={doc} slide={slide} />
         {slide.locked && <p role="alert" className="text-xs text-amber-800">This slide is locked. Unlock it to use AI.</p>}
         {attached.length > 0 && (
           <ul className="flex flex-wrap gap-1.5" aria-label="Attached to this message">
@@ -383,21 +350,28 @@ export function AiPanel({ doc, slide, presentationId, onClose, onBeforeSend, onR
             </div>
           </div>
         )}
-        <form onSubmit={(e) => { e.preventDefault(); void send(text) }} className="flex items-end gap-2">
+        {/* one box: the message, with attaching and sending inside it (a bigger, quieter place to type than a one-line field squeezed between buttons) */}
+        <form onSubmit={(e) => { e.preventDefault(); void send(text) }} className={`rounded-2xl border bg-white transition-colors ${waiting ? 'border-border opacity-60' : 'border-border focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/15'}`}>
           <textarea
-            value={text} onChange={(e) => setText(e.target.value)} rows={2} maxLength={ASSIST_LIMITS.instruction} aria-label="Message to the AI assistant" disabled={waiting}
+            value={text} onChange={(e) => setText(e.target.value)} rows={4} maxLength={ASSIST_LIMITS.instruction} aria-label="Message to the AI assistant" disabled={waiting}
             onPaste={(e) => {
               const pasted = e.clipboardData.getData('text')
               const el = e.currentTarget
               if (text.length - (el.selectionEnd - el.selectionStart) + pasted.length > ASSIST_LIMITS.instruction) { e.preventDefault(); setLongPaste(pasted) }
             }}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(text) } }}
-            placeholder={`e.g. make slide ${slideNo} shorter`}
-            className="flex-1 border border-border rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:border-primary"
+            placeholder={`e.g. make slide ${slideNo} shorter, or add a slide about pricing`}
+            className="block w-full min-h-[96px] max-h-56 bg-transparent px-3.5 pt-3 pb-1 text-sm leading-relaxed resize-none focus:outline-none placeholder:text-slate-400"
           />
-          <button type="button" onClick={() => setSourcesOpen(true)} aria-label="Attach a file or link" title="Attach a PDF, website or notes" disabled={waiting} className="border border-border rounded-xl px-2.5 py-2 text-sm hover:border-primary disabled:opacity-40"><Paperclip aria-hidden size={16} /></button>
-          <button type="submit" disabled={waiting || !text.trim()} aria-label="Send" className="bg-primary text-white rounded-xl px-3 py-2 text-sm font-semibold disabled:opacity-40">Send</button>
+          <div className="flex items-center gap-2 px-2.5 pb-2.5">
+            <button type="button" onClick={() => setSourcesOpen(true)} aria-label="Attach a file or link" title="Attach a PDF, website or notes" disabled={waiting} className="grid h-9 w-9 place-items-center rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40"><Paperclip aria-hidden size={16} /></button>
+            <button type="submit" disabled={waiting || !text.trim()} aria-label="Send" className="ml-auto inline-flex h-9 items-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-semibold text-white hover:bg-primary/90 disabled:opacity-40"><SendHorizontal aria-hidden size={15} />Send</button>
+          </div>
         </form>
+        {countRequests(text) > ASSIST_LIMITS.changesPerMessage && (
+          // said before a credit is spent: a very long message is never refused, it is done in order and the rest is listed
+          <p data-testid="many-changes" className="text-[11px] text-amber-800" aria-live="polite">That looks like about {countRequests(text)} changes. I do {ASSIST_LIMITS.changesPerMessage} per message, in a sensible order, then list what is left so you can send it next.</p>
+        )}
         {text.length > ASSIST_LIMITS.instruction * 0.8 && <p className={`text-[11px] ${text.length >= ASSIST_LIMITS.instruction ? 'text-red-700' : 'text-slate-500'}`} aria-live="polite">{text.length.toLocaleString('en')} / {ASSIST_LIMITS.instruction.toLocaleString('en')} characters · attach longer text as a source</p>}
         <p className="text-[11px] text-slate-500">Enter to send · Shift+Enter for a new line{links.length > 0 && <> (includes reading {links.length === 1 ? 'the linked page' : `${links.length} linked pages`})</>} · changes apply live (⌘Z to undo)</p>
       </div>
@@ -441,14 +415,14 @@ function ProposalCard({ proposal, presentationId }: { proposal: AiImageProposal;
     setError(null)
     try {
       const placement = (C.imagePlacements(slide).some((p) => p.id === proposal.placement) ? proposal.placement : 'floating')
-      const img = await api.generateImage(presentationId, { prompt: proposal.prompt, aspect: aspectFor(placement, d.aspectRatio), ...(model ? { model: model.id } : {}), requestId: requestId.current })
+      const img = await api.generateImage(presentationId, { prompt: proposal.prompt, aspect: aspectFor(placement, d.aspectRatio), requestId: requestId.current }) // (the server picks the picture model for this plan; `model` here only shows its price)
       apply('AI image', (draft) => placeImage(draft, slide, placement, { url: img.url, alt: proposal.alt, prompt: proposal.prompt }))
       setLeft(`${img.usage.deck.max - img.usage.deck.used} left in this presentation`)
       setState('done')
       void refresh()
     } catch (e) {
       requestId.current = crypto.randomUUID()
-      if (isGateError(e) && e.code !== 'LIMIT_REACHED') upgrade.show(e.message)
+      if (isGateError(e) && e.code !== 'LIMIT_REACHED') upgrade.show(e.message, e.code)
       else setError(e instanceof ApiError ? e.message : 'Could not create the picture. You were not charged.')
       setState('idle')
     }
@@ -470,5 +444,27 @@ function ProposalCard({ proposal, presentationId }: { proposal: AiImageProposal;
       )}
       {error && <p role="alert" className="text-xs text-red-700">{error}</p>}
     </div>
+  )
+}
+
+
+/**
+ * What the next message will be about, in one line: the slide on screen, or what is selected on it (the assistant uses exactly this, so the person can see it
+ * before they type). It follows the live selection and the live slide, so switching either changes the line at once. A message that names a slide or the whole
+ * deck still wins over it — that is the assistant's own rule, and the line says so when something is selected.
+ */
+function ContextLine({ doc, slide }: { doc: Presentation; slide: Slide }) {
+  const selection = useUi((s) => s.selection)
+  const n = doc.slides.findIndex((s) => s.id === slide.id) + 1
+  const picked = slide.elements.filter((e) => selection.includes(e.id))
+  const what = picked.length === 0 ? null
+    : picked.length > 1 ? `${picked.length} objects`
+    : picked[0]!.type === 'text' ? (picked[0] as { role?: string }).role === 'title' ? 'the title' : 'text'
+    : picked[0]!.type === 'image' ? 'a picture' : picked[0]!.type === 'chart' ? 'a chart' : picked[0]!.type === 'table' ? 'a table' : picked[0]!.type === 'icon' ? 'an icon' : 'a shape'
+  return (
+    <p data-testid="ai-context" title="Name a slide, or say &quot;the whole deck&quot;, to change something else" className="flex items-center gap-1.5 truncate text-[11px] text-slate-500" aria-live="polite">
+      <Target aria-hidden size={12} className="shrink-0 text-primary" />
+      {what ? <span className="truncate">Working on <b className="font-semibold text-slate-700">{what}</b> on slide {n}</span> : <span className="truncate">Working on <b className="font-semibold text-slate-700">slide {n}</b></span>}
+    </p>
   )
 }

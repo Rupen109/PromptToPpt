@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { asc, eq } from 'drizzle-orm'
 import { zipSync, strToU8 } from 'fflate'
 import { describe, expect, it, vi } from 'vitest'
 import { app } from '../app.ts'
@@ -39,7 +39,7 @@ describe('PowerPoint (.pptx) and text extraction', () => {
   it('fromFile decides by CONTENT: a renamed pptx is still a pptx; a text file named .pdf is refused; binary "text" is refused', async () => {
     expect((await fromFile(pptx({ 1: [['Hello from slides']] }), 'renamed.pdf')).kind).toBe('pptx')
     expect((await fromFile(strToU8('Plain notes about the quarter, long enough to count.'), 'notes.txt')).kind).toBe('text')
-    await expect(fromFile(strToU8('MZ not really a pdf'), 'evil.pdf')).rejects.toThrow(/Unsupported file type/)
+    await expect(fromFile(strToU8('MZ not really a pdf'), 'evil.pdf')).rejects.toThrow(/named like a PDF but is not one inside/)
     await expect(fromFile(new Uint8Array([65, 66, 0, 67, ...new Array(40).fill(65)]), 'bin.txt')).rejects.toThrow(/plain text/)
     expect(() => fromTextFile(strToU8('short'), 'a.txt')).toThrow(/too little text/)
   })
@@ -59,7 +59,7 @@ describe('POST /sources/file', () => {
     const { cookie } = await signUp('up')
     const ok = await json(await send('/api/v1/sources/file', deck, cookie))
     expect(ok.data).toMatchObject({ type: 'pptx', title: 'review' })
-    const chunks = await db.select().from(sourceChunk).where(eq(sourceChunk.sourceId, ok.data.id))
+    const chunks = await db.select().from(sourceChunk).where(eq(sourceChunk.sourceId, ok.data.id)).orderBy(asc(sourceChunk.ordinal))
     expect(chunks.map((c) => c.locator)).toContain('slide 2')
     expect((await json(await send('/api/v1/sources/file', { bytes: strToU8('Meeting notes: ship the beta on Friday, then review.'), name: 'n.md' }, cookie))).data.type).toBe('text')
     const bad = await send('/api/v1/sources/file', { bytes: new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0, 0, 0, 0]), name: 'old.ppt' }, cookie)

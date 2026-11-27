@@ -307,7 +307,8 @@ export default async function () {
     await p.keyboard.press('Shift+ArrowRight'); await saved()
   })
   await s.check('keyboard shortcuts: ⌘C/⌘V paste, Delete removes, Enter edits text', p, async () => {
-    await thumbs().nth(textSlide).click(); await sel(firstText())
+    // any text box will do: earlier checks drag boxes by screen distances, so on a bigger screen one of them can end up over the first text (the click selects the one on top)
+    await thumbs().nth(textSlide).click(); await firstText().click({ position: { x: 8, y: 8 }, force: true }); await p.getByRole('toolbar', { name: 'Element tools' }).waitFor({ timeout: 4000 })
     const n0 = await p.locator('[data-testid="stage"] [data-element]').count()
     await p.keyboard.press('Control+c'); await p.keyboard.press('Control+v'); await settle(250)
     expect(await p.locator('[data-testid="stage"] [data-element]').count() === n0 + 1, 'paste failed')
@@ -316,10 +317,10 @@ export default async function () {
   })
   await s.check('present mode: opens, ←/→ navigate, N toggles notes, Esc returns to the editor', p, async () => {
     await p.getByRole('button', { name: /Present/ }).click(); await p.getByTestId('present').waitFor({ timeout: 8000 })
-    const pos = () => p.getByText(/\d+ \/ \d+ ·/).innerText()
-    expect((await pos()).startsWith('1 /'), 'does not start at 1')
-    await p.keyboard.press('ArrowRight'); await settle(200); expect((await pos()).startsWith('2 /'), 'right arrow')
-    await p.keyboard.press('ArrowLeft'); await settle(200); expect((await pos()).startsWith('1 /'), 'left arrow')
+    const pos = async () => ((await p.getByTestId('present-controls').innerText()).match(/\d+\s*\/\s*\d+/)?.[0] ?? '').replace(/\s/g, '') // the slide number in the controls bar
+    expect((await pos()).startsWith('1/'), 'does not start at 1')
+    await p.keyboard.press('ArrowRight'); await settle(200); expect((await pos()).startsWith('2/'), 'right arrow')
+    await p.keyboard.press('ArrowLeft'); await settle(200); expect((await pos()).startsWith('1/'), 'left arrow')
     await p.keyboard.press('End'); await settle(200); await p.keyboard.press('Home'); await p.keyboard.press('n'); await settle(200)
     await p.keyboard.press('Escape'); await p.waitForURL(/\/edit\//, { timeout: 5000 })
   })

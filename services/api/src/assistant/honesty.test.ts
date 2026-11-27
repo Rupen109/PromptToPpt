@@ -32,15 +32,15 @@ describe('an answer that changes the deck', () => {
     expect(body.data.expect[0]).toMatchObject({ kind: 'edit', slideId: doc.slides[1]!.id, change: 'text' })
     const r = await row(requestId)
     expect(r).toMatchObject({ status: 'reserved', userId: u.id, presentationId: id, baseVersion: 1 })
-    expect(r!.reservations).toEqual([{ ref: requestId, units: 2, kind: 'base' }])
-    expect(await balance(u.id)).toBe(start - 2)
+    expect(r!.reservations).toEqual([{ ref: requestId, units: 4, kind: 'base' }])
+    expect(await balance(u.id)).toBe(start - 4)
   })
 
   it('never saved (the browser did not apply it, or it did not land): the outcome report refunds it, and a repeat changes nothing', async () => {
     const { u, id, doc, start } = await setup('hon2')
     const requestId = `req-${rid()}-${rid()}`
     await api(u.cookie, 'POST', `/presentations/${id}/ai-assist`, { instruction: 'shorten slide 2', requestId, activeSlideId: doc.slides[0]!.id })
-    expect(await balance(u.id)).toBe(start - 2)
+    expect(await balance(u.id)).toBe(start - 4)
     const out = await json(await api(u.cookie, 'POST', `/presentations/${id}/ai-assist/${requestId}/outcome`, { results: [{ key: 'edit:0', status: 'done' }] })) // the browser claims it worked
     expect(out.data).toMatchObject({ settled: true, verified: 0, judged: 1, refunded: true })
     expect(await balance(u.id)).toBe(start)
@@ -59,7 +59,7 @@ describe('an answer that changes the deck', () => {
     expect(evaluate(body.data.expect[0] as Expectation, saved).status).toBe('done')
     const out = await json(await api(u.cookie, 'POST', `/presentations/${id}/ai-assist/${requestId}/outcome`, { results: [{ key: 'edit:0', status: 'failed' }] })) // the browser says it failed
     expect(out.data).toMatchObject({ verified: 1, judged: 1, refunded: false })
-    expect(await balance(u.id)).toBe(start - 2)
+    expect(await balance(u.id)).toBe(start - 4)
     expect((await row(requestId))!.mismatches).toBe(1) // counted
   })
 
@@ -116,7 +116,7 @@ describe('P1 through the real route: objects, the saved brand, the person\'s own
     expect(body.data.elementChanges).toHaveLength(1)
     expect(body.data.elementChanges[0]).toMatchObject({ slideId: doc.slides[0]!.id, elementId: sel, verb: 'Made the text of {} bigger' }) // (a title made bigger: its TEXT, in its own place)
     expect(body.data.expect[0]).toMatchObject({ kind: 'element', already: false })
-    expect(await balance(u.id)).toBe(start - 2)
+    expect(await balance(u.id)).toBe(start - 4)
     // the browser applies and saves it
     const c = body.data.elementChanges[0]
     const saved = structuredClone(doc); Object.assign(saved.slides[0]!.elements.find((e) => e.id === sel)!, c.patch)
@@ -124,7 +124,7 @@ describe('P1 through the real route: objects, the saved brand, the person\'s own
     expect(evaluate(body.data.expect[0] as Expectation, saved).status).toBe('done')
     const out = await json(await api(u.cookie, 'POST', `/presentations/${id}/ai-assist/${requestId}/outcome`, {}))
     expect(out.data).toMatchObject({ verified: 1, judged: 1, refunded: false })
-    expect(await balance(u.id)).toBe(start - 2)
+    expect(await balance(u.id)).toBe(start - 4)
   })
 
   it('nothing selected and nothing named: ONE question, nothing charged, nothing recorded', async () => {

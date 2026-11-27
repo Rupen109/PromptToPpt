@@ -68,7 +68,7 @@ export function ImageDialog({ doc, slide, presentationId, request, onClose }: { 
       setUsage((u) => (u ? { ...u, ...img.usage } : u))
       void refresh()
     } catch (e) {
-      if (isGateError(e) && e.code !== 'LIMIT_REACHED') upgrade.show(e.message)
+      if (isGateError(e) && e.code !== 'LIMIT_REACHED') upgrade.show(e.message, e.code)
       else setError(e instanceof ApiError ? e.message : 'Could not create the picture. You were not charged.')
       requestId.current = crypto.randomUUID() // a failed attempt was refunded; the next click is a new action
     } finally {

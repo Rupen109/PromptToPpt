@@ -8,6 +8,7 @@ import { EntitlementsProvider } from '@/lib/entitlements'
 import { FlagsProvider } from '@/lib/flags'
 import { DevGallery } from '@/pages/DevGallery'
 import { RequireAuth } from '@/lib/session'
+import { WelcomeGate } from '@/components/WelcomeGate'
 import { HomePage } from '@/pages/HomePage'
 import { StartPage } from '@/pages/StartPage'
 import './index.css'
@@ -44,6 +45,7 @@ createRoot(document.getElementById('root')!).render(
         {import.meta.env.DEV && <Route path="/dev/gallery" element={<DevGallery />} />}
         <Route path="/*" element={
       <RequireAuth>
+        <WelcomeGate>
         <EntitlementsProvider>
         <FlagsProvider>
         <Suspense fallback={<SlideLoader fullScreen size="lg" label="Loading" />}>
@@ -76,6 +78,7 @@ createRoot(document.getElementById('root')!).render(
         <UpgradeModal />
         </FlagsProvider>
         </EntitlementsProvider>
+        </WelcomeGate>
       </RequireAuth>
         } />
       </Routes>

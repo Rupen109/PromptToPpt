@@ -15,7 +15,8 @@ import { brand } from './routes/brand.ts'
 import { comments } from './routes/comments.ts'
 import { publicAnalytics, shareAnalytics } from './routes/share-analytics.ts'
 import { db } from './db/index.ts'
-import { generatedAsset } from './db/schema.ts'
+import { generatedAsset, user as userTable } from './db/schema.ts'
+import { personaInput } from '@prompttoppt/validation'
 import { getStorage } from './storage/index.ts'
 import { and, eq, isNull } from 'drizzle-orm'
 import { reviews } from './routes/reviews.ts'
@@ -151,9 +152,19 @@ app.use('/api/v1/*', loadSession)
 const userWrites = rateLimit({ windowMs: 60_000, max: 600, message: 'You are doing that very quickly. Please wait a moment and try again.', key: (c) => `writes:${(c.get('session') as { user: { id: string } } | null)?.user.id ?? clientIp(c)}` })
 app.use('/api/v1/*', (c, next) => (['GET', 'HEAD', 'OPTIONS'].includes(c.req.method) || c.req.path.startsWith('/api/v1/webhooks/') || c.req.path.startsWith('/api/v1/public/') ? next() : userWrites(c, next)))
 app.get('/api/v1', (c) => c.json({ version: '1.0.0', name: 'SlidesDone API' }))
-app.get('/api/v1/me', requireAuth, (c) => {
+app.get('/api/v1/me', requireAuth, async (c) => {
   const { user } = c.get('session')!
-  return c.json({ success: true, data: { id: user.id, email: user.email, name: user.name, image: user.image ?? null, role: (user as { role?: string }).role ?? 'user' } })
+  // the persona is read from the row, not the session: the session can be a cached copy from before the person answered
+  const [row] = await db.select({ persona: userTable.persona }).from(userTable).where(eq(userTable.id, user.id))
+  return c.json({ success: true, data: { id: user.id, email: user.email, name: user.name, image: user.image ?? null, role: (user as { role?: string }).role ?? 'user', persona: row?.persona ?? null } })
+})
+/** "Which of these best describes you?" (asked on the first visit): one of the fixed answers, saved on the person's own row; answering again changes it */
+app.put('/api/v1/me/persona', requireAuth, async (c) => {
+  const body = personaInput.safeParse(await c.req.json().catch(() => null))
+  if (!body.success) return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Choose one of the options.' } }, 400)
+  const { user } = c.get('session')!
+  await db.update(userTable).set({ persona: body.data.persona, personaAt: new Date(), updatedAt: new Date() }).where(eq(userTable.id, user.id))
+  return c.json({ success: true, data: { persona: body.data.persona } })
 })
 app.route('/api/v1/drafts', drafts)
 app.route('/api/v1/free-tools', freeTools)

@@ -1,6 +1,7 @@
 import { execSync } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { WEB, EDITOR, API, PASSWORD, expect, launch, suite, uniqueEmail } from '../lib.mjs'
+import { verifyEmail } from '../kits-lib.mjs'
 
 /**
  * The vertical 9:16 format, the format choice in Remix, and "Remix a PowerPoint", in a real browser against the real server. No AI is called and no credit is spent: the final
@@ -26,6 +27,11 @@ export default async function () {
       ? await ctx.request.post(API + '/api/auth/sign-in/email', { headers: { origin: WEB }, data: { email, password: process.env['E2E_PASSWORD'] ?? PASSWORD } })
       : await ctx.request.post(API + '/api/auth/sign-up/email', { headers: { origin: WEB }, data: { name: 'QA', email, password: PASSWORD } })
     expect(r.ok(), `${existing ? 'sign-in' : 'sign-up'} ${r.status()}`)
+    if (!existing) { // the server requires a verified e-mail before it opens a session: verify it directly, then sign in (as kits-lib person() does)
+      verifyEmail(email)
+      const si = await ctx.request.post(API + '/api/auth/sign-in/email', { headers: { origin: WEB }, data: { email, password: PASSWORD } })
+      expect(si.ok(), `sign-in ${si.status()}`)
+    }
     const grant = (plan) => execSync(`pnpm --filter @prompttoppt/api exec tsx --env-file-if-exists=.env scripts/qa-grant-plan.ts ${email} ${plan}`, { cwd: new URL('..', import.meta.url).pathname.replace(/e2e\/$/, ''), stdio: 'pipe' })
     let sent = null
     const stub = async (p) => { await p.route('**/api/v1/generation/jobs', (rt) => { if (rt.request().method() !== 'POST') return rt.continue(); sent = rt.request().postDataJSON(); return rt.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ success: true, data: { id: 'stub', status: 'queued', progress: 0, stage: 'queued', presentationId: null } }) }) }) }
@@ -35,6 +41,7 @@ export default async function () {
       const p = await ctx.newPage(); await stub(p)
       await s.check('Starter: "Remix a PowerPoint" shows the Pro lock and opens the upgrade message, not the dialog', p, async () => {
         await p.goto(EDITOR + '/', { waitUntil: 'networkidle' })
+        await p.getByTestId('start-from').click() // the options sit in the prompt box's "Start from" selector
         const btn = p.getByTestId('remix-pptx-open')
         expect(/Pro/.test(await btn.innerText()), 'no Pro badge')
         await btn.click(); await p.waitForTimeout(600)
@@ -76,7 +83,7 @@ export default async function () {
       const p = await ctx.newPage(); await stub(p)
       await s.check('Remix a PowerPoint: a text file is refused, a real .pptx is read (slides counted), the choices go to the job', p, async () => {
         await p.goto(EDITOR + '/', { waitUntil: 'networkidle' })
-        await p.getByTestId('remix-pptx-open').click()
+        await p.getByTestId('start-from').click(); await p.getByTestId('remix-pptx-open').click()
         expect((await p.getByRole('dialog', { name: 'Remix a PowerPoint' }).count()) === 1, 'dialog did not open')
         expect(await p.getByTestId('remix-file-start').isDisabled(), 'Create is on before a file is read')
         await p.getByTestId('remix-file-input').setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('just a few notes, not a presentation') })

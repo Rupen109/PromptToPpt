@@ -13,19 +13,32 @@ mkdirSync(RESULTS, { recursive: true })
 const CHROMIUM = process.env.E2E_CHROMIUM ?? `${process.env.HOME}/Library/Caches/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-mac-arm64/chrome-headless-shell`
 /** The website loads Google's translate script quietly for every visitor. Tests do not need it (and hundreds of loads from one machine make Google answer "unusual traffic"), so it is blocked unless a suite asks for the real thing: `launch({ google: true })`. */
 const GOOGLE_TRANSLATE = /translate\.google\.com|translate\.googleapis\.com|translate-pa\.googleapis\.com|www\.gstatic\.com\/(_\/translate|images\/branding)/
-export async function launch({ google = false } = {}) {
+/**
+ * The editor asks every account once "What do you make presentations for?" (components/WelcomeGate.tsx). Suites are about other things, so every page they open
+ * answers it by itself ("Something else") the moment it shows. The suite that tests the question itself opts out: `launch({ welcome: 'ask' })`.
+ */
+async function answerWelcome(page) {
+  await page.addLocatorHandler(page.getByRole('heading', { name: 'What do you make presentations for?' }), async () => {
+    await page.getByRole('radio', { name: /Something else/ }).click()
+    await page.getByRole('button', { name: 'Continue' }).click()
+    await page.getByRole('heading', { name: 'What do you make presentations for?' }).waitFor({ state: 'detached', timeout: 15000 })
+  })
+}
+
+export async function launch({ google = false, welcome = 'answer' } = {}) {
   // E2E_BROWSER=firefox|webkit runs a suite in that engine (installed with playwright's own installer); the default is the local Chromium
   const engine = { firefox, webkit }[process.env.E2E_BROWSER ?? '']
   const browser = engine ? await engine.launch() : await chromium.launch({ executablePath: CHROMIUM })
-  if (!google) {
-    const make = browser.newContext.bind(browser)
+  const make = browser.newContext.bind(browser)
+  browser.newContext = async (options) => {
+    const ctx = await make(options)
     // answered empty (not failed) so the console stays clean
-    browser.newContext = async (options) => {
-      const ctx = await make(options)
-      await ctx.route(GOOGLE_TRANSLATE, (r) => void r.fulfill({ status: 200, contentType: 'application/javascript', body: '' }))
-      return ctx
-    }
+    if (!google) await ctx.route(GOOGLE_TRANSLATE, (r) => void r.fulfill({ status: 200, contentType: 'application/javascript', body: '' }))
+    if (welcome === 'answer') { const open = ctx.newPage.bind(ctx); ctx.newPage = async () => { const page = await open(); await answerWelcome(page); return page } }
+    return ctx
   }
+  // browser.newPage() makes its own context: route it through the one above
+  browser.newPage = async (options) => { const ctx = await browser.newContext(options); const page = await ctx.newPage(); page.close = ((close) => async (o) => { await close(o); await ctx.close() })(page.close.bind(page)); return page }
   return browser
 }
 

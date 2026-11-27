@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import Script from 'next/script'
+import { verifyCallback } from './VerifyEmailResult'
 import { useState, type FormEvent } from 'react'
 import { safeRedirect } from '@prompttoppt/api-client'
 import { Button } from '@/components/ui/Button'
@@ -48,10 +49,14 @@ export function AuthForm({ mode, next, defaultEmail, failed }: { mode: Mode; nex
     const password = String(form.get('password'))
     const captcha = String(form.get('cf-turnstile-response') ?? '')
     const fetchOptions = captcha ? { headers: { 'x-turnstile-token': captcha } } : undefined
+    // Sign-up only: the confirmation e-mail's link must lead back to where this person was going (a deck waiting from the home page, a template,
+    // checkout), not just to "verified" — verifyCallback carries `next` through our verify-email page, which moves on to it once confirmed.
+    // NOT on log-in: there the sign-in system reads callbackURL as "go here after logging in" and sends the browser through the verify page,
+    // racing our own redirect below (a double navigation; e2e suite 02 caught it).
     const { data, error } =
       mode === 'login'
         ? await api.auth.signIn.email({ email, password, ...(fetchOptions ? { fetchOptions } : {}) })
-        : await api.auth.signUp.email({ email, password, name: String(form.get('name')), ...(fetchOptions ? { fetchOptions } : {}) })
+        : await api.auth.signUp.email({ email, password, name: String(form.get('name')), callbackURL: verifyCallback(next), ...(fetchOptions ? { fetchOptions } : {}) })
     if (error) {
       setError(error.status === 429 ? error.message || 'Too many attempts. Please wait a while and try again.' : (error.message ?? 'Something went wrong. Please try again.'))
       setBusy(false)

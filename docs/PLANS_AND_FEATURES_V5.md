@@ -5,6 +5,15 @@ Supersedes `docs/PRICING_PLANS_V4.md`.
 
 ---
 
+> **Updated 2026-11-26:** the prices and credits below are superseded by docs/MARGIN_POLICY.md (migration 0052):
+> - Starter 150 credits;
+> - Pro 1,150 credits;
+> - Gold ₹700;
+> - Premium ₹1,300;
+> - 3 credits per deck slide, 4 per AI edit message, plus 3 per further written slide.
+>
+> Section 4's costs per slide are out of date (measured now: $0.0034 per slide).
+
 ## 1. The four plans (owner's definitions)
 
 | | **Starter** (free, **not shown** on the pricing page) | **Pro** ₹300 / month | **Gold** ₹650 / month | **Premium** ₹1,200 / month |
@@ -146,3 +155,11 @@ Upload a PowerPoint and build new decks in its exact look (`docs/TEMPLATE_FROM_F
 | Use a file's design (`features.templateFromFile`) | no | yes | yes | yes |
 
 Enforcement (server, never the browser): `POST /file-templates` (before the body is read) and starting a job with `fromTemplateId` both call `assertTemplateFromFile` and answer `UPGRADE_REQUIRED` with `details.feature = 'templateFromFile'`. Listing, reading and deleting your own uploaded designs is not gated (a person who downgrades can still see and delete them; they just cannot start new decks from them). A deck made from a design counts as an ordinary new presentation (`assertPresentationQuota`); in "Write it for me" mode it costs the usual credits per slide, in "I'll add the data myself" mode it uses no model and costs no credits. The pricing page lists the feature from the flag (`planHighlights`). The cost of the AI mode is one analysis call plus one writing call (plus one short repair call at most), like a Morph-template deck.
+
+## Credit top-ups (2026-11-27)
+
+When the month's credits run out, a paid plan can buy **its own credits again, at its own monthly price** (Pro 1,150 for ₹300, Gold 2,000 for ₹700, Premium 3,700 for ₹1,300; the same in USD). The plan, the renewal date and the billing cycle do not change.
+
+Bought credits sit in their own pot and are **not** reset at the end of the period: the plan's credits are always spent first. Starter has nothing to buy again — its credits are free and renew monthly.
+
+The credits and the price come from the same plan data as everything else, so the 2027-01-01 re-pricing moves top-ups with it. Full design, invariants and proof: docs/CREDIT_TOP_UPS.md.

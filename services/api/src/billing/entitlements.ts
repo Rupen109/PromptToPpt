@@ -58,9 +58,10 @@ export async function livePlanFor(userId: string, now = new Date()) {
 
 /** Everything the server needs to authorise an action for this user. Never derived from client input. */
 export async function getEntitlements(userId: string, now = new Date()): Promise<Entitlements & { period: Period }> {
-  const { ensureAllowance } = await import('./credits.ts')
+  const { creditPots, ensureAllowance } = await import('./credits.ts')
   const { plan: p, period } = await livePlanFor(userId, now)
-  const balance = await ensureAllowance(userId, p, period)
+  await ensureAllowance(userId, p, period)
+  const pots = await creditPots(userId)
 
   const [{ n: created } = { n: 0 }] = await db
     .select({ n: sql<number>`count(*)::int` })
@@ -81,7 +82,7 @@ export async function getEntitlements(userId: string, now = new Date()): Promise
     plan: { id: p.id as PlanId, name: p.name },
     features: p.features,
     limits: { maxSlides: p.maxSlides, maxPresentationsPerMonth: p.maxPresentationsPerMonth, maxImagesPerPresentation: p.maxImagesPerPresentation, maxImagesPerMonth: p.maxImagesPerMonth },
-    credits: { balance, monthlyAllowance: p.monthlyCredits, resetsAt: period.end.toISOString() },
+    credits: { balance: pots.total, bought: pots.extra, monthlyAllowance: p.monthlyCredits, resetsAt: period.end.toISOString() },
     usage: { presentationsThisPeriod: created + inflight, imagesThisPeriod: images, morphDecksThisPeriod: morphDecks },
     period,
   }

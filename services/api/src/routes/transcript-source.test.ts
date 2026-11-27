@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { asc, eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 import { app } from '../app.ts'
 import { db } from '../db/index.ts'
@@ -16,7 +16,8 @@ describe('POST /sources/transcript and YouTube links', () => {
     expect(d).toMatchObject({ type: 'transcript', title: 'Solar talk' })
     const [doc] = await db.select().from(sourceDocument).where(eq(sourceDocument.id, d.id))
     expect(doc!.url).toBe('https://www.youtube.com/watch?v=dQw4w9WgXcQ')
-    const chunks = await db.select().from(sourceChunk).where(eq(sourceChunk.sourceId, d.id))
+    // in the order they were written: without ORDER BY Postgres may return rows in any order (it did under a full parallel run)
+    const chunks = await db.select().from(sourceChunk).where(eq(sourceChunk.sourceId, d.id)).orderBy(asc(sourceChunk.ordinal))
     expect(chunks.map((c) => c.locator)).toEqual(['0:00', '3:10'])
   })
 

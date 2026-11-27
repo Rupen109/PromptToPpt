@@ -8,8 +8,9 @@ import { paidPlanIdSchema, planIdSchema, type Currency, type PlanView } from '@p
 import { getEntitlements } from '../billing/entitlements.ts'
 import { razorpayEnabled, razorpayTestMode } from '../billing/razorpay.ts'
 import { simulatorEnabled } from '../billing/simulator.ts'
-import { testPay, testRefund, testRenew } from '../billing/test-payments.ts'
+import { testPay, testPayOrder, testRefund, testRenew } from '../billing/test-payments.ts'
 import { cancelAtPeriodEnd, confirmCheckout, handleWebhook, startCheckout, subscriptionSummary } from '../billing/subscriptions.ts'
+import { confirmTopUp, startTopUp, topUpHistory, topUpOffer } from '../billing/top-ups.ts'
 import { db } from '../db/index.ts'
 import { plan, planPrice, subscription } from '../db/schema.ts'
 import { env } from '../env.ts'
@@ -71,7 +72,37 @@ billing.post(
   },
 )
 
-billing.get('/billing/subscription', requireAuth, async (c) => c.json({ success: true, data: { ...(await subscriptionSummary(c.get('session')!.user.id)), billingEnabled: razorpayEnabled(), testMode: razorpayTestMode(), simulator: simulatorEnabled() } }))
+// ─── credit top-ups (one-off: the plan's credits again, at the plan's price) ───
+/** What a top-up would give this person and cost them. Safe to call before anything is created with the provider. */
+billing.get('/billing/top-up', requireAuth, async (c) =>
+  c.json({ success: true, data: await topUpOffer(c.get('session')!.user.id, detectCurrency(c.req.raw.headers).currency) }))
+
+/** Starts the one-off checkout. Credits, price and currency are decided server-side; the browser only asks for a top-up. */
+billing.post('/billing/top-up/checkout', requireAuth, rateLimit({ windowMs: 60_000, max: 10, key: byUser('topup') }), async (c) => {
+  const { user } = c.get('session')!
+  const session = await startTopUp(user.id, detectCurrency(c.req.raw.headers).currency)
+  void audit(user.id, 'billing.top_up_started', { credits: session.credits, amountMinor: session.amountMinor, currency: session.currency }, ipOf(c.req.raw.headers))
+  return c.json({ success: true, data: { ...session, prefill: { name: user.name ?? '', email: user.email } } })
+})
+
+/** The one-off checkout finished in the browser: verify the signature, then add the credits. (The webhook does the same independently.) */
+billing.post(
+  '/billing/top-up/verify', requireAuth, rateLimit({ windowMs: 60_000, max: 20, key: byUser('topup-verify') }),
+  zValidator('json', z.object({ razorpay_order_id: z.string().min(5).max(64), razorpay_payment_id: z.string().min(5).max(64), razorpay_signature: z.string().min(32).max(128) })),
+  async (c) => {
+    const b = c.req.valid('json')
+    const userId = c.get('session')!.user.id
+    await confirmTopUp(userId, { orderId: b.razorpay_order_id, paymentId: b.razorpay_payment_id, signature: b.razorpay_signature })
+    const { period: _p, ...ent } = await getEntitlements(userId)
+    return c.json({ success: true, data: ent })
+  },
+)
+
+billing.get('/billing/subscription', requireAuth, async (c) => {
+  const userId = c.get('session')!.user.id
+  const [summary, topUps] = await Promise.all([subscriptionSummary(userId), topUpHistory(userId)])
+  return c.json({ success: true, data: { ...summary, topUps, billingEnabled: razorpayEnabled(), testMode: razorpayTestMode(), simulator: simulatorEnabled() } })
+})
 
 billing.post('/billing/cancel', requireAuth, rateLimit({ windowMs: 60_000, max: 10, key: byUser('cancel') }), async (c) => {
   const userId = c.get('session')!.user.id
@@ -91,6 +122,10 @@ const simOnly = async (c: { json: (b: unknown, s: 404) => Response }, next: () =
 billing.post('/billing/simulator/pay', simOnly, requireAuth, rateLimit({ windowMs: 60_000, max: 30, key: byUser('sim-pay') }), zValidator('json', z.object({ subscriptionId: z.string().min(5).max(64), outcome: z.enum(['success', 'failure']) })), async (c) => {
   const b = c.req.valid('json')
   return c.json({ success: true, data: await testPay(c.get('session')!.user.id, b.subscriptionId, b.outcome) })
+})
+billing.post('/billing/simulator/pay-order', simOnly, requireAuth, rateLimit({ windowMs: 60_000, max: 30, key: byUser('sim-pay-order') }), zValidator('json', z.object({ orderId: z.string().min(5).max(64), outcome: z.enum(['success', 'failure']) })), async (c) => {
+  const b = c.req.valid('json')
+  return c.json({ success: true, data: await testPayOrder(c.get('session')!.user.id, b.orderId, b.outcome) })
 })
 billing.post('/billing/simulator/renew', simOnly, requireAuth, rateLimit({ windowMs: 60_000, max: 30, key: byUser('sim-renew') }), async (c) => {
   const userId = c.get('session')!.user.id

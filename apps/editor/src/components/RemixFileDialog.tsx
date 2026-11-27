@@ -22,6 +22,9 @@ const DEFAULT_ASK = 'Rebuild this presentation as a clean, well-structured new p
  * Remix a PowerPoint: choose a .pptx, say how it should change, pick the shape and length, and get a NEW presentation built from that file's slides (its text and speaker notes):
  * same facts and figures, a fresh design, nothing invented. The file is read here on the server; it is never changed. Charged per slide like a new deck.
  */
+/** what the server reads for a PowerPoint (PPTX_MAX_BYTES in services/api sources) */
+const REMIX_MAX_BYTES = 15 * 1024 * 1024
+
 export function RemixFileDialog({ onClose }: { onClose: () => void }) {
   const { ent, upgrade } = useEntitlements()
   const navigate = useNavigate()
@@ -46,14 +49,20 @@ export function RemixFileDialog({ onClose }: { onClose: () => void }) {
 
   async function read(f: File | undefined) {
     if (!f || reading) return
-    setError(null); setFile(null); setReading(true)
+    setError(null); setFile(null)
+    // said here, in this dialog's own words, before the file is sent (the server checks the same again by the file's content)
+    if (/\.(ppt|pps)$/i.test(f.name)) return setError('Old .ppt files are not supported — open it in PowerPoint and save it as .pptx.')
+    if (!/\.pptx$/i.test(f.name)) return setError('Choose a PowerPoint (.pptx) file.')
+    if (f.size === 0) return setError('That file is empty. Choose the PowerPoint again.')
+    if (f.size > REMIX_MAX_BYTES) return setError(`That PowerPoint is larger than ${REMIX_MAX_BYTES / 1024 / 1024} MB. Remove large videos or pictures, save a copy and try again.`)
+    setReading(true)
     try {
       const s = await api.addFileSource(f)
       if (s.type !== 'pptx') throw new Error('That file is not a PowerPoint presentation. Choose a .pptx file.')
       setFile({ id: s.id, title: s.title, slides: s.parts ?? null })
       setCount(String(clamp(String(s.parts ?? 8))))
     } catch (e) {
-      if (isGateError(e)) { onClose(); upgrade.show(e.message) } else setError(e instanceof Error ? (e instanceof ApiError ? e.message : e.message) : 'That file could not be read.')
+      if (isGateError(e)) { onClose(); upgrade.show(e.message, e.code) } else setError(e instanceof Error ? (e instanceof ApiError ? e.message : e.message) : 'That file could not be read.')
     } finally { setReading(false) }
   }
   const drop = (e: DragEvent) => { e.preventDefault(); setOver(false); void read(e.dataTransfer.files[0]) }
@@ -67,7 +76,7 @@ export function RemixFileDialog({ onClose }: { onClose: () => void }) {
       clearPending(); setPendingPrompt(`Remix of "${file.title}": ${text.trim() || 'a clean new version'}`); setPendingJob(job.id)
       navigate('/create') // the create screen shows the progress and opens the new presentation when it is ready
     } catch (e) {
-      if (isGateError(e)) { onClose(); upgrade.show(e.message) } else setError(e instanceof ApiError ? e.message : 'Something went wrong. You were not charged.')
+      if (isGateError(e)) { onClose(); upgrade.show(e.message, e.code) } else setError(e instanceof ApiError ? e.message : 'Something went wrong. You were not charged.')
       setBusy(false)
     }
   }

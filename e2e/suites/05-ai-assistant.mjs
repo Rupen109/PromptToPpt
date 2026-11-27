@@ -12,8 +12,8 @@ export default async function () {
   await p.goto(`${EDITOR}/edit/${id}`, { waitUntil: 'networkidle' }); await p.locator('[data-testid="stage"]').waitFor(); await settle(800)
   const thumbs = () => p.locator('nav[aria-label="Slides"] [data-testid^="thumb-"]')
   const panel = () => p.getByRole('complementary', { name: 'AI assistant' })
-  // Local dev runs on Vertex, where the Pro default (Gemini 3.8 Flash) is sometimes very slow; the tests use the steadier 3.6 Flash.
-  const steadyModel = () => panel().getByLabel('AI model').selectOption({ label: 'Gemini 3.6 Flash' }).catch(() => {})
+  // (the model is the server's choice now: there is no picker in the panel)
+  const steadyModel = async () => {}
   const send = async (text, wait = 150000) => {
     await steadyModel()
     await p.getByLabel('Message to the AI assistant').fill(text); await p.getByRole('button', { name: 'Send' }).click()
@@ -29,8 +29,8 @@ export default async function () {
   await s.check('panel: opens from the toolbar, has NO whole-deck / this-slide switch (the chat asks which slide), model picker, suggestions, quick actions, closes', p, async () => {
     await p.getByRole('button', { name: /Edit with AI/ }).click(); await panel().waitFor({ timeout: 4000 })
     expect(await panel().getByRole('group', { name: 'What should the AI change?' }).count() === 0 && await panel().getByRole('button', { name: /^Whole deck$/ }).count() === 0, 'the scope switch is still there')
-    expect(await panel().getByLabel('Quick actions for this slide').isVisible(), 'quick actions missing')
-    expect(await panel().getByLabel('AI model').isVisible(), 'model picker missing')
+    expect(await panel().getByLabel('AI model').count() === 0, 'the model picker is still there (the server chooses the model)')
+    expect(await panel().getByTestId('ai-context').isVisible(), 'the line saying what the message is about is missing')
     expect(await panel().locator('button').count() >= 6, 'no suggestions')
     await p.getByLabel('Close AI panel').click(); await settle(200); expect(await panel().count() === 0, 'did not close')
     await p.getByRole('button', { name: /Edit with AI/ }).click(); await panel().waitFor()
@@ -60,16 +60,18 @@ export default async function () {
     const others2 = await thumbs().evaluateAll((els) => els.map((e, i) => i === 2 ? '' : e.innerHTML.length).join(','))
     expect(others === others2, 'other slides changed on a slide-scoped request')
   })
-  await s.check('quick actions (Rewrite / Shorten / Expand / Improve hierarchy) are available for the slide', p, async () => {
-    const q = panel().getByLabel('Quick actions for this slide'); expect(await q.getByRole('button').count() === 4, 'quick actions missing')
-    await q.getByRole('button', { name: 'Shorten' }).click()
-    await p.waitForFunction(() => /I updated slide|Something went wrong|failed/i.test(document.querySelector('[role=log]')?.textContent ?? ''), null, { timeout: 90000 })
-    expect(/I updated slide/.test(await panel().getByRole('log').innerText()), 'quick action failed')
+  await s.check('a quick edit from the toolbar menu works on the slide', p, async () => {
+    await p.getByRole('button', { name: 'Quick edits' }).click()
+    await p.getByRole('menu', { name: 'Quick edits for this slide' }).waitFor({ timeout: 5000 })
+    await p.getByRole('menuitem', { name: 'Make shorter' }).click()
+    await p.waitForFunction(() => document.querySelector('textarea[aria-label="Message to the AI assistant"]')?.disabled === false && /Done|couldn|Partly/i.test(document.querySelector('[role=log]')?.textContent ?? ''), null, { timeout: 180000 })
+    expect(/Rewrote the text|Made it shorter|Done/i.test(await panel().getByRole('log').innerText()), 'the quick edit changed nothing')
   })
-  await s.check('honesty: an impossible request (export + share) is declined in plain words, not faked', p, async () => {
+  await s.check('export / share: the assistant prepares ONE button for the person to press, and never claims it sent anything', p, async () => {
     await send('Export this to PDF and email it to my boss')
     const log = (await panel().getByRole('log').innerText()).toLowerCase()
-    expect(/can.?t|cannot|unable|not able|isn.?t|doesn.?t|unsupported|no way|export button|couldn.?t/.test(log), `no honest refusal: ${log.slice(-250)}`)
+    expect(/ready to (export|open share)|export|share/.test(log), `no prepared action: ${log.slice(-250)}`)
+    expect(!/sent|emailed|i have emailed|mailed it/.test(log), `it claimed to have sent something: ${log.slice(-250)}`)
   })
   await s.check('pictures: "add a picture" places a free photo (or proposes an AI image) instead of silently doing nothing', p, async () => {
     await thumbs().nth(1).click(); await settle(300)
@@ -87,19 +89,19 @@ export default async function () {
     await send('please add the thank you pafe at last')
     await settle(600)
     expect(await count() === before + 1, `slide count ${before} -> ${await count()}`)
-    expect(/added a new slide/i.test(await panel().getByRole('log').innerText()), 'no confirmation of the added slide')
+    expect(/added a (new )?slide/i.test(await panel().getByRole('log').innerText()), 'no confirmation of the added slide')
     await p.keyboard.press('Meta+z'); await settle(400)
     expect(await count() === before, 'undo did not remove the added slide')
   })
-  await s.check('no edit found: a greeting gets a helpful reply (what the assistant can do), not a bare refusal', p, twice(async () => {
+  await s.check('a greeting gets ONE friendly line inviting a change (not the long list of what the assistant can do, not a refusal)', p, twice(async () => {
     await send('hey')
     const log = await panel().getByRole('log').innerText()
-    expect(/Tell me what to update/.test(log) && /add a slide/.test(log) && /colours/.test(log) && !/couldn't change anything|nothing was charged/i.test(log), `reply: ${log.slice(-300)}`)
+    expect(/Hi! What would you like to change in your presentation\?/.test(log.slice(-200)) && !/Tell me what to update/.test(log.slice(-200)) && !/couldn't change anything|nothing was charged/i.test(log), `reply: ${log.slice(-300)}`)
   }))
   await s.check('off-topic ("give me some water please") shows the help list, not a made-up note', p, twice(async () => {
     await send('give me some water please')
     const log = await panel().getByRole('log').innerText()
-    expect(/Tell me what to update/.test(log.slice(-700)) && !/serving|physical|drinks/i.test(log.slice(-700)), `reply: ${log.slice(-300)}`)
+    expect(/change the words of slides|add a slide|what can I do/i.test(log.slice(-1800)) && !/serving|physical|drinks|glass of water/i.test(log.slice(-700)), `reply: ${log.slice(-300)}`)
   }))
   await s.check('"why did you change the theme?" puts the assistant\'s own change back (free), and says so', p, twice(async () => {
     const base = await sig()
@@ -123,18 +125,12 @@ export default async function () {
     const before = await sig()
     await steadyModel()
     await p.getByLabel('Message to the AI assistant').fill('please make the title shorter'); await p.getByRole('button', { name: 'Send' }).click()
-    await panel().getByRole('group', { name: 'Which slide?' }).waitFor({ timeout: 15000 }); await settle(500)
+    // the slide on screen IS the slide meant (context-aware editing, 2026-11-26): the assistant acts on it instead of asking which one
+    await p.waitForFunction(() => document.querySelector('textarea[aria-label="Message to the AI assistant"]')?.disabled === false, null, { timeout: 180000 })
+    await settle(900)
     const tail = (await panel().getByRole('log').innerText()).slice(-500)
-    expect(/which slide/i.test(tail), `no question: ${tail} | alerts: ${await p.getByRole('alert').allInnerTexts()}`)
-    expect(await sig() === before, 'something changed before the user chose a slide')
-    const chip = panel().getByRole('group', { name: 'Which slide?' }).getByRole('button', { name: /this one/ })
-    expect(await chip.count() === 1, 'no "this slide" button')
-    expect(await panel().getByRole('group', { name: 'Which slide?' }).getByRole('button', { name: 'All slides' }).count() === 1, 'no "All slides" button')
-    const other = panel().getByRole('group', { name: 'Which slide?' }).getByLabel('Another slide')
-    expect(await other.locator('option').count() >= 5, 'no list of other slides to pick from')
-    await chip.click()
-    await p.getByText('Working on it').waitFor({ state: 'visible', timeout: 10000 }); await p.getByText('Working on it').waitFor({ state: 'detached', timeout: 150000 }); await settle(700)
-    expect(/rewrote slide/i.test((await panel().getByRole('log').innerText()).slice(-400)), 'the chosen slide was not edited')
+    expect(!/which slide/i.test(tail), `it asked which slide although one is on screen: ${tail}`)
+    expect(await sig() !== before, `nothing changed: ${tail}`)
   })
   const colours = (x) => x.split('|').map((t) => t.replace(/^\d+:/, '')).join('|')
   await s.check('"make theme light" then, after closing and reopening the panel, "didnt like it revert it please" simply puts it back (no question)', p, async () => {

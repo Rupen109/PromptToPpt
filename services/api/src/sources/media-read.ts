@@ -21,8 +21,15 @@ export const mediaBlocks = (bytes: number) => Math.max(1, Math.ceil(bytes / MEDI
 export function inspectMedia(bytes: Uint8Array, maxBytes = MEDIA_MAX_BYTES): { kind: MediaKind; mime: string } {
   if (bytes.length === 0) throw new MediaError('That file is empty.')
   if (bytes.length > maxBytes) throw new MediaError(`That recording is larger than ${Math.round(maxBytes / 1024 / 1024)} MB. Save a shorter part, or export just the audio (MP3 or M4A is much smaller than video), and try again.`)
+  // what it IS comes first: a renamed web page must hear "not a recording", never "too short to contain speech"
+  const found = mediaKindOf(bytes)
   if (bytes.length < MIN_BYTES) throw new MediaError('That recording is too short to contain speech.')
-  const b0 = bytes[0]!, b1 = bytes[1]!
+  return found
+}
+
+/** the recording's kind from its own bytes; anything that is not a recording throws a sentence saying what it is instead */
+function mediaKindOf(bytes: Uint8Array): { kind: MediaKind; mime: string } {
+  const b0 = bytes[0] ?? 0, b1 = bytes[1] ?? 0
   if (ascii(bytes, 0, 4) === 'RIFF' && ascii(bytes, 8, 12) === 'WAVE') return { kind: 'audio', mime: 'audio/wav' }
   if (ascii(bytes, 0, 4) === 'fLaC') return { kind: 'audio', mime: 'audio/flac' }
   if (ascii(bytes, 0, 4) === 'OggS') return { kind: 'audio', mime: 'audio/ogg' }

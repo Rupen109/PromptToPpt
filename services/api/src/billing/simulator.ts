@@ -1,7 +1,7 @@
 import { createHmac } from 'node:crypto'
 import { nanoid } from 'nanoid'
 import { env } from '../env.ts'
-import { RazorpayApiError, notesOf, type RzpPayment, type RzpSubscription } from './razorpay-types.ts'
+import { RazorpayApiError, notesOf, type RzpOrder, type RzpPayment, type RzpSubscription } from './razorpay-types.ts'
 
 /**
  * TEST PAYMENTS. With PAYMENTS_SIMULATOR=true the server talks to this in-process stand-in instead of Razorpay, so the whole purchase can be tried without a
@@ -15,6 +15,7 @@ export const SIM_SECRET = 'simulator-key-secret-not-for-production'
 export const SIM_KEY_ID = 'rzp_test_simulator'
 
 const subs = new Map<string, RzpSubscription>()
+const orders = new Map<string, RzpOrder>()
 const pays = new Map<string, RzpPayment>()
 const notFound = () => new RazorpayApiError(400, 'The ID provided is invalid or could not be found.')
 const unix = (d: Date) => Math.floor(d.getTime() / 1000)
@@ -36,6 +37,16 @@ export const simProvider = {
     if (!p) throw notFound()
     return { ...p }
   },
+  createOrder: async (p: { amount: number; currency: string; receipt: string; notes: Record<string, string> }): Promise<RzpOrder> => {
+    const o: RzpOrder = { id: `order_sim_${nanoid(10)}`, amount: p.amount, amount_paid: 0, currency: p.currency, status: 'created', receipt: p.receipt, notes: p.notes }
+    orders.set(o.id, o)
+    return { ...o }
+  },
+  fetchOrder: async (id: string): Promise<RzpOrder> => {
+    const o = orders.get(id)
+    if (!o) throw notFound()
+    return { ...o }
+  },
   cancelSubscription: async (id: string, atCycleEnd: boolean): Promise<RzpSubscription> => {
     const s = subs.get(id)
     if (!s) return { id, plan_id: '', status: 'cancelled', current_start: null, current_end: null }
@@ -46,6 +57,22 @@ export const simProvider = {
 
 const period = (interval: string) => (interval === 'year' ? 366 : 31) * 864e5
 export const simSignature = (paymentId: string, subscriptionId: string) => createHmac('sha256', SIM_SECRET).update(`${paymentId}|${subscriptionId}`).digest('hex')
+/** a one-off order's signature is the other way round (order first), exactly as Razorpay signs it */
+export const simOrderSignature = (orderId: string, paymentId: string) => createHmac('sha256', SIM_SECRET).update(`${orderId}|${paymentId}`).digest('hex')
+
+/** "Pay" (or "Fail") pressed in the test window for a one-off order (a credit top-up) this server created. */
+export function simPayOrder(userId: string, orderId: string, outcome: 'success' | 'failure', now = new Date()): { order: RzpOrder; payment: RzpPayment } {
+  const o = orders.get(orderId)
+  if (!o) throw new RazorpayApiError(400, 'This test payment window has expired: close it and try again.')
+  const notes = notesOf(o.notes)
+  if (notes['userId'] !== userId) throw new RazorpayApiError(400, 'This test payment belongs to a different account.')
+  const payment: RzpPayment = outcome === 'success'
+    ? { id: `pay_sim_${nanoid(12)}`, amount: o.amount, currency: o.currency, status: 'captured', method: 'upi', created_at: unix(now), notes: o.notes!, subscription_id: null }
+    : { id: `pay_sim_${nanoid(12)}`, amount: o.amount, currency: o.currency, status: 'failed', method: 'upi', error_description: 'Test payment failed: the payment was declined (simulated)', created_at: unix(now), notes: o.notes!, subscription_id: null }
+  pays.set(payment.id, payment)
+  if (outcome === 'success') { o.status = 'paid'; o.amount_paid = o.amount }
+  return { order: { ...o }, payment }
+}
 
 /** The person pressed "Pay" (or "Fail") in the test window for a subscription this server created. */
 export function simPay(userId: string, subscriptionId: string, amountMinor: number, currency: string, outcome: 'success' | 'failure', now = new Date()): { sub: RzpSubscription; payment: RzpPayment } {

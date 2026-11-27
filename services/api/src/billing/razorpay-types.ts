@@ -22,6 +22,19 @@ export interface RzpPayment {
   created_at: number
   notes?: Notes
   subscription_id?: string | null
+  /** set when the payment is for a one-off order (a credit top-up) */
+  order_id?: string | null
+}
+
+/** A one-off payment (a credit top-up). Subscriptions are a different object: this one is paid once and never renews. */
+export interface RzpOrder {
+  id: string
+  amount: number
+  amount_paid?: number
+  currency: string
+  status: 'created' | 'attempted' | 'paid'
+  receipt?: string | null
+  notes?: Notes
 }
 
 export class RazorpayApiError extends Error {

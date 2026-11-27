@@ -33,7 +33,7 @@ export default async function () {
 
   async function build(fixture, prompt, uploadLabel) {
     await p.goto(EDITOR + '/', { waitUntil: 'networkidle' })
-    await p.getByRole('button', { name: /Upload files, or links/ }).click(); await p.getByRole('dialog', { name: 'Add sources' }).waitFor()
+    await p.getByRole('button', { name: /Add files or links/ }).click(); await p.getByRole('dialog', { name: 'Add sources' }).waitFor()
     await p.getByLabel('File').setInputFiles(join(FX, fixture)); await p.getByRole('button', { name: 'Add source' }).click()
     await p.getByRole('dialog', { name: 'Add sources' }).waitFor({ state: 'detached', timeout: 20000 })
     await p.locator('form span[title]').filter({ hasText: uploadLabel }).first().waitFor({ timeout: 10000 })

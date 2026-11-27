@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import { env } from '../env.ts'
 import { BillingError } from './errors.ts'
-import { RazorpayApiError, type RzpPayment, type RzpSubscription } from './razorpay-types.ts'
+import { RazorpayApiError, type RzpOrder, type RzpPayment, type RzpSubscription } from './razorpay-types.ts'
 import { SIM_SECRET, simProvider, simulatorEnabled } from './simulator.ts'
 
 const LIVE_API = 'https://api.razorpay.com/v1'
@@ -14,7 +14,7 @@ const apiBase = () => (env.RAZORPAY_API_BASE && razorpayTestMode() && env.NODE_E
 export const razorpayEnabled = () => simulatorEnabled() || (!!env.RAZORPAY_KEY_ID && !!env.RAZORPAY_KEY_SECRET)
 export const razorpayTestMode = () => simulatorEnabled() || !!env.RAZORPAY_KEY_ID?.startsWith('rzp_test_')
 
-export { RazorpayApiError, notesOf, type Notes, type RzpPayment, type RzpSubscription } from './razorpay-types.ts'
+export { RazorpayApiError, notesOf, type Notes, type RzpOrder, type RzpPayment, type RzpSubscription } from './razorpay-types.ts'
 
 async function call<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
   if (!razorpayEnabled()) throw new BillingError('BILLING_DISABLED', 'Payments are not configured on this server.', 503)
@@ -41,6 +41,10 @@ export const razorpay = {
     simulatorEnabled() ? simProvider.createSubscription(p) : call<RzpSubscription>('POST', '/subscriptions', { plan_id: p.planId, total_count: p.totalCount, customer_notify: 1, notes: p.notes }),
   fetchSubscription: (id: string) => simulatorEnabled() ? simProvider.fetchSubscription(id) : call<RzpSubscription>('GET', `/subscriptions/${encodeURIComponent(id)}`),
   fetchPayment: (id: string) => simulatorEnabled() ? simProvider.fetchPayment(id) : call<RzpPayment>('GET', `/payments/${encodeURIComponent(id)}`),
+  /** one-off payments (credit top-ups): an order is created here, paid in the browser, and never renews */
+  createOrder: (p: { amount: number; currency: string; receipt: string; notes: Record<string, string> }) =>
+    simulatorEnabled() ? simProvider.createOrder(p) : call<RzpOrder>('POST', '/orders', { amount: p.amount, currency: p.currency, receipt: p.receipt, payment_capture: 1, notes: p.notes }),
+  fetchOrder: (id: string) => simulatorEnabled() ? simProvider.fetchOrder(id) : call<RzpOrder>('GET', `/orders/${encodeURIComponent(id)}`),
   cancelSubscription: (id: string, atCycleEnd: boolean) => simulatorEnabled() ? simProvider.cancelSubscription(id, atCycleEnd) : call<RzpSubscription>('POST', `/subscriptions/${encodeURIComponent(id)}/cancel`, { cancel_at_cycle_end: atCycleEnd ? 1 : 0 }),
 }
 
@@ -54,6 +58,12 @@ function safeEqualHex(expected: string, actual: string): boolean {
 export function verifyCheckoutSignature(paymentId: string, subscriptionId: string, signature: string, secret = simulatorEnabled() ? SIM_SECRET : env.RAZORPAY_KEY_SECRET ?? ''): boolean {
   if (!secret) return false
   return safeEqualHex(createHmac('sha256', secret).update(`${paymentId}|${subscriptionId}`).digest('hex'), signature)
+}
+
+/** One-off checkout success: HMAC_SHA256(`${order_id}|${payment_id}`, key_secret) — the other way round from a subscription's. */
+export function verifyOrderSignature(orderId: string, paymentId: string, signature: string, secret = simulatorEnabled() ? SIM_SECRET : env.RAZORPAY_KEY_SECRET ?? ''): boolean {
+  if (!secret) return false
+  return safeEqualHex(createHmac('sha256', secret).update(`${orderId}|${paymentId}`).digest('hex'), signature)
 }
 
 /** Webhook: HMAC_SHA256(raw request body, webhook secret) in `X-Razorpay-Signature`. Must be computed over the RAW bytes. */

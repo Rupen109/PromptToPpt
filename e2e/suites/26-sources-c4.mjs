@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { API, EDITOR, WEB, expect, launch, suite, uniqueEmail } from '../lib.mjs'
-import { JSON_HEADERS, file, tsx } from '../kits-lib.mjs'
+import { JSON_HEADERS, file, tsx, verifyEmail } from '../kits-lib.mjs'
 
 /**
  * C4 — Word, spreadsheet, email and Google-link sources, in a real browser against the real server and database (no AI: reading files costs nothing;
@@ -17,6 +17,8 @@ const SETS = [
   { f: 'q3-update.eml', icon: 'mail', title: 'Q3 update — café sales & Mumbai plan', type: 'email' },
 ]
 
+const OUTBOX = join(new URL('../..', import.meta.url).pathname, 'services/api/.data/outbox.jsonl')
+
 export default async function () {
   const s = suite('26-sources-c4')
   const b = await launch()
@@ -24,11 +26,15 @@ export default async function () {
   const ctx = await b.newContext({ viewport: { width: 1500, height: 950 } })
   const su = await ctx.request.post(`${API}/api/auth/sign-up/email`, { headers: JSON_HEADERS, data: { email, password: 'Passw0rd!qa-test', name: 'Source QA' } })
   expect(su.ok(), `sign-up ${su.status()}`)
+  // the server requires a verified e-mail before it opens a session: verify it directly, then sign in (as kits-lib person() does)
+  verifyEmail(email)
+  const si = await ctx.request.post(`${API}/api/auth/sign-in/email`, { headers: JSON_HEADERS, data: { email, password: 'Passw0rd!qa-test' } })
+  expect(si.ok(), `sign-in ${si.status()}`)
   const p = await ctx.newPage()
   const cool = () => p.waitForTimeout(62000)
   const stored = () => JSON.parse(tsx(`scripts/qa-sources.ts ${email}`))
   const home = async () => { await p.goto(EDITOR + '/', { waitUntil: 'networkidle' }); await p.getByLabel('Presentation prompt').waitFor({ timeout: 10000 }) }
-  const openDialog = async () => { await p.getByRole('button', { name: /Upload files, or links/ }).click(); await p.getByRole('dialog', { name: 'Add sources' }).waitFor({ timeout: 5000 }) }
+  const openDialog = async () => { await p.getByRole('button', { name: /Add files or links/ }).click(); await p.getByRole('dialog', { name: 'Add sources' }).waitFor({ timeout: 5000 }) }
   const chips = () => p.locator('form span[title]')
   const SIZE = (n) => readFileSync(fx(n)).length
   /** a real drag-and-drop of a file onto the prompt bar */
@@ -107,7 +113,7 @@ export default async function () {
       const up = async (name, buf) => { const r = await ctx.request.post(`${API}/api/v1/sources/file`, { headers: { Origin: WEB }, multipart: { file: file(name, buf, 'application/octet-stream') } }); return { status: r.status(), body: await r.json().catch(() => ({})) } }
       const ole = Buffer.concat([Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]), Buffer.alloc(600)])
       const enc = Buffer.concat([ole, Buffer.from('EncryptedPackage', 'utf16le'), Buffer.alloc(40)])
-      for (const [name, buf, re] of [['a.docx', Buffer.from('just text'), /not a valid Office document/], ['a.docx', Buffer.from('MZ\x90\0\x03\0\0\0'), /not a valid Office document/], ['a.xlsx', Buffer.from([0x50, 0x4b, 3, 4, 1, 2, 3, 4, 5, 6, 7]), /damaged|could not be opened/], ['locked.docx', enc, /password-protected/], ['locked.xlsx', enc, /password-protected/], ['x.docx', ole, /save as \.docx|Unsupported/]]) {
+      for (const [name, buf, re] of [['a.docx', Buffer.from('just text'), /named like a Word document but is not one inside/], ['a.docx', Buffer.from('MZ\x90\0\x03\0\0\0'), /named like a Word document but is not one inside/], ['a.xlsx', Buffer.from([0x50, 0x4b, 3, 4, 1, 2, 3, 4, 5, 6, 7]), /damaged|could not be opened/], ['locked.docx', enc, /password-protected/], ['locked.xlsx', enc, /password-protected/], ['x.docx', ole, /save as \.docx|Unsupported/]]) {
         const r = await up(name, buf); expect(r.status === 422 && re.test(r.body.error?.message ?? ''), `${name}: ${r.status} ${JSON.stringify(r.body.error)}`)
       }
       expect(stored().length === 0, 'something was stored')
@@ -178,7 +184,7 @@ export default async function () {
     await s.check('H3 phone width (390 px): the Add sources dialog fits, scrolls and its file list is reachable', p, async () => {
       const pc = await b.newContext({ viewport: { width: 390, height: 780 }, storageState: await ctx.storageState() }); const pp = await pc.newPage()
       await pp.goto(EDITOR + '/', { waitUntil: 'networkidle' })
-      await pp.getByRole('button', { name: /Upload files, or links/ }).click(); const d = pp.getByRole('dialog', { name: 'Add sources' }); await d.waitFor()
+      await pp.getByRole('button', { name: /Add files or links/ }).click(); const d = pp.getByRole('dialog', { name: 'Add sources' }); await d.waitFor()
       const box = await d.boundingBox(); expect(box.x >= 0 && box.x + box.width <= 391, `dialog wider than the screen ${JSON.stringify(box)}`)
       await pp.getByLabel('File').setInputFiles(fx('sales-2025.xlsx')); const btn = d.getByRole('button', { name: 'Add source' }); await btn.scrollIntoViewIfNeeded(); await btn.click()
       await pp.getByRole('dialog', { name: 'Add sources' }).waitFor({ state: 'detached', timeout: 20000 })
@@ -213,8 +219,27 @@ export default async function () {
       const vemail = uniqueEmail('lan').toLowerCase()
       await v.getByLabel(/Email/i).first().fill(vemail); await v.getByLabel(/Password/i).first().fill('Passw0rd!qa-test')
       const name = v.getByLabel(/Name/i); if (await name.count()) await name.first().fill('Visitor')
+      const carried = new URL(v.url()).search // what the sign-up page carries along (the waiting draft)
       await v.getByRole('button', { name: 'Sign up free' }).click()
-      await v.waitForURL(/localhost:3001/, { timeout: 30000 })
+      // the server asks new people to confirm their e-mail first: confirm it (as the link in the e-mail would), then log in from the same place
+      const landed = await Promise.race([
+        v.waitForURL(/localhost:3001/, { timeout: 30000 }).then(() => 'editor'),
+        v.getByRole('heading', { name: 'Check your email' }).waitFor({ timeout: 30000 }).then(() => 'confirm'),
+      ])
+      if (landed === 'confirm') {
+        // the person opens the link in the confirmation e-mail (mail to example.com is kept in the API's outbox file, never sent):
+        // that link must bring them back to the deck that is waiting, not just to "verified"
+        await v.waitForTimeout(1500)
+        const mails = readFileSync(OUTBOX, 'utf8').trim().split('\n').map((l) => JSON.parse(l)).filter((m) => m.to === vemail)
+        const link = mails.at(-1)?.text.match(/https?:\/\/\S+verify-email\S*/)?.[0]
+        expect(!!link && /draft/.test(decodeURIComponent(link)), `the confirmation link does not lead back to the waiting deck: ${link}`)
+        await v.goto(link, { waitUntil: 'load' })
+        await v.waitForURL(/localhost:3001/, { timeout: 30000 })
+        void carried
+      }
+      // the first-visit question comes first; answering it (any action does, via launch()'s helper) lets the waiting deck start
+      await v.locator('body').hover()
+      await v.waitForURL(/\/create/, { timeout: 30000 })
       let rows = []; for (let i = 0; i < 40 && rows.length < 2; i++) { await v.waitForTimeout(500); rows = JSON.parse(tsx(`scripts/qa-sources.ts ${vemail}`)); if (rows.error) rows = [] }
       expect(rows.map((r) => r.type).sort().join() === 'csv,docx', `sources after sign-up: ${JSON.stringify(rows.map((r) => [r.type, r.title]))}`)
       await vctx.close()

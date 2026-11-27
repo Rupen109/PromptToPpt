@@ -6,4 +6,5 @@ export { GeminiProvider, AI_STUDIO, VERTEX, exhaustedFor, type GeminiBackend } f
 export { MockProvider } from './mock'
 export { OpenRouterProvider, type OpenRouterOptions } from './openrouter'
 export { OllamaProvider, type OllamaOptions } from './ollama'
+export { KeyRingProvider, restFor, type RingKey, type KeyRingOptions } from './key-ring'
 export { ProviderLimiter, limitsFromMap, type LimitConfig, type Permit } from './limiter'

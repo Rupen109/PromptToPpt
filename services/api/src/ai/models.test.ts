@@ -34,7 +34,7 @@ describe('GET /models', () => {
     const def = res.data.models.find((m: any) => m.id === res.data.default)
     expect(def.tier).toBe('starter')
     expect(def.id.split(':')[1]).toBe('gemini-3.6-flash') // Starter: Gemini 3.6 (2.5 is its fallback)
-    expect(def.creditsPerSlide).toBe(2) // the Gemini Flash credit class
+    expect(def.creditsPerSlide).toBe(3) // the Gemini Flash credit class (docs/MARGIN_POLICY.md)
     expect(byTier('frontier')[0].creditsPerSlide).toBe(12)
   })
 
@@ -103,7 +103,7 @@ describe('choosing a model', () => {
     const frontier = (await json(await api(free.cookie, 'GET', '/models'))).data.models.find((m: any) => m.tier === 'frontier').id
     const r = await api(free.cookie, 'POST', '/generation/jobs', jobBody({ model: frontier }))
     expect(r.status).toBe(201)
-    expect(await balance(free.id)).toBe(100 - 6 * 2) // 6 slides × 2 credits, not 12 × 6
+    expect(await balance(free.id)).toBe(150 - 6 * 3) // 6 slides × 3 credits, not 12 × 6
     const jobId = (await json(r)).data.id
     expect((await drain(jobId)).status).toBe('completed')
     const events = (await db.select().from(aiUsageEvent).where(eq(aiUsageEvent.jobId, jobId))).filter((e) => e.requestType === 'outline_generation' || e.requestType === 'slide_content')
@@ -207,6 +207,6 @@ describe('Gemini direct first, the same Gemini through OpenRouter as the backup 
     const premium = PLAN_SEED.find((p) => p.id === 'premium')!
     expect(premium.features.fixedModels[0]).toBe('gemini-3.6-flash'); expect(premium.features.modelChoice).toBe(true)
     const slide = (tier: string) => CREDIT_COST_SEED.find((c) => c.action === 'generate_slide' && c.tier === tier)!.credits
-    expect(slide('premium') / slide('starter')).toBe(2.5)
+    expect(slide('premium') / slide('starter')).toBe(4) // Gemini 3.1 Pro: 12 credits a slide against Flash 3 (measured, docs/MARGIN_POLICY.md)
   })
 })

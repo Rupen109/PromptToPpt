@@ -1,4 +1,4 @@
-import { and, eq, like } from 'drizzle-orm'
+import { asc, and, eq, like } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { describe, expect, it } from 'vitest'
 import { composeSlide, getTheme } from '@prompttoppt/theme'
@@ -59,7 +59,7 @@ describe('remix source', () => {
     expect(r.status).toBe(201)
     const data = (await json(r)).data
     expect(data).toMatchObject({ title: 'Q3 sales', slideCount: 5, aspectRatio: '4:3', skipped: 1 }) // the picture-only slide has nothing to read; the hand-edited one is read
-    const chunks = await db.select().from(sourceChunk).where(eq(sourceChunk.sourceId, data.sourceId))
+    const chunks = await db.select().from(sourceChunk).where(eq(sourceChunk.sourceId, data.sourceId)).orderBy(asc(sourceChunk.ordinal))
     const text = chunks.map((c) => c.text).join('\n')
     for (const must of ['Revenue up 15%', 'Pipeline down 8%', '100 | 120.5 | 138', 'Enterprise growth', '40%', 'Open with the headline', 'Typed by hand: new headline 77%']) expect(text).toContain(must)
     expect(text).not.toContain('STALE original title') // the hand-edited slide is read as it looks now, not from its stale original

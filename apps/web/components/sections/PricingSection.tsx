@@ -31,7 +31,7 @@ export async function PricingSection({ heading = 'h2' }: { heading?: 'h1' | 'h2'
         as={heading}
         size={48}
         title={<>Invest in Closed Deals, Not<br className="hidden md:block" /> Slide Fatigue</>}
-        subtitle={<>Start generating for free. Upgrade when you need to export, use premium models and get more credits.</>}
+        subtitle={<>Start generating for free. Upgrade when you need to export, present and share — and for more credits each month.</>}
         max="max-w-[672px]"
       />
       <PricingCards initial={initial} />

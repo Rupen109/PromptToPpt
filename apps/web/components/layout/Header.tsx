@@ -3,19 +3,20 @@ import { Logo } from '@prompttoppt/ui/logo'
 import { DesktopAuth } from './AuthActions'
 import { LanguageSelect } from './LanguageSelect'
 import { MobileNav } from './MobileNav'
-import { ResourcesMenu, TemplatesMenu } from './NavMenus'
+import { FeaturesMenu, ResourcesMenu, TemplatesMenu } from './NavMenus'
 import { CATEGORIES, DESIGNS } from '@prompttoppt/theme'
 import { LANDINGS } from '@/lib/template-landing'
 
 /** The phone menu lists everything flat (a menu inside a menu is hard to use on a phone). */
 const MOBILE_ITEMS = [
-  { label: 'Interactive Studio', href: '/#studio' },
+  { label: 'Features', href: '/ai-ppt-maker' },
   { label: 'Templates', href: '/templates' },
   { label: 'Morph animation templates', href: '/morph-animation-templates' },
   { label: 'Pricing', href: '/pricing' },
   { label: 'Blog', href: '/blog' },
   { label: 'Tech news', href: '/news' },
   { label: 'Guides', href: '/guides' },
+  { label: 'Free tools', href: '/free-tools' },
   { label: 'Support', href: '/support' },
   { label: 'FAQ', href: '/faq' },
 ]
@@ -34,7 +35,7 @@ export function Header() {
         <Link href="/" aria-label="SlidesDone home" translate="no" className="shrink-0"><Logo size={38} /></Link>
 
         <nav className="hidden xl:flex items-center gap-1" aria-label="Main">
-          <Link href="/#studio" className={LINK}>Interactive Studio</Link>
+          <FeaturesMenu />
           <TemplatesMenu items={collections} />
           <Link href="/pricing" className={LINK}>Pricing</Link>
           <ResourcesMenu />

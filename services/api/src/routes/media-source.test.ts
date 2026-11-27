@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { asc, eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 import { app } from '../app.ts'
 import { db } from '../db/index.ts'
@@ -22,14 +22,14 @@ describe('POST /sources/media (audio & video to slides)', () => {
     expect(r.status).toBe(201)
     const d = (await json(r)).data
     expect(d).toMatchObject({ type: 'transcript', creditsCharged: 6 })
-    expect(await balance(u.id)).toBe(94)
-    const chunks = await db.select().from(sourceChunk).where(eq(sourceChunk.sourceId, d.id))
+    expect(await balance(u.id)).toBe(144)
+    const chunks = await db.select().from(sourceChunk).where(eq(sourceChunk.sourceId, d.id)).orderBy(asc(sourceChunk.ordinal))
     expect(chunks.map((c) => c.locator)).toEqual(['0:00', '2:10'])
     expect(chunks.map((c) => c.text).join(' ')).toContain('4,200 electric bicycles')
     expect(chunks.map((c) => c.text).join(' ')).not.toContain('SECRET_MARKER')
     const big = await upload(u.cookie, wavBytes(5 * 1024 * 1024)) // 5 MB = 2 started blocks
     expect((await json(big)).data.creditsCharged).toBe(12)
-    expect(await balance(u.id)).toBe(94 - 12)
+    expect(await balance(u.id)).toBe(144 - 12)
   })
 
   it('refuses things that are not recordings before any charge or model call', async () => {
@@ -38,21 +38,21 @@ describe('POST /sources/media (audio & video to slides)', () => {
       const r = await upload(u.cookie, bytes, name)
       expect(r.status).toBe(422); expect((await json(r)).error.message).toMatch(hint)
     }
-    expect(await balance(u.id)).toBe(100)
+    expect(await balance(u.id)).toBe(150)
     expect(await db.select().from(sourceDocument).where(eq(sourceDocument.userId, u.id))).toHaveLength(0)
   })
 
   it('over 12 MB is refused (413) and costs nothing', async () => {
     const u = await fresh()
     expect((await upload(u.cookie, wavBytes(13 * 1024 * 1024))).status).toBe(413)
-    expect(await balance(u.id)).toBe(100)
+    expect(await balance(u.id)).toBe(150)
   })
 
   it('a recording with no speech is refunded with a plain message and nothing is stored', async () => {
     const u = await fresh()
     const r = await upload(u.cookie, wavBytes(4096, 'SILENT_MEDIA'))
     expect(r.status).toBe(422); expect((await json(r)).error.code).toBe('NO_SPEECH')
-    expect(await balance(u.id)).toBe(100)
+    expect(await balance(u.id)).toBe(150)
     expect(await db.select().from(sourceDocument).where(eq(sourceDocument.userId, u.id))).toHaveLength(0)
   })
 
@@ -60,7 +60,7 @@ describe('POST /sources/media (audio & video to slides)', () => {
     const u = await fresh()
     const r = await upload(u.cookie, wavBytes(), 'FAIL_PLEASE.wav')
     expect(r.status).toBeGreaterThanOrEqual(422)
-    expect(await balance(u.id)).toBe(100)
+    expect(await balance(u.id)).toBe(150)
     expect(await db.select().from(sourceDocument).where(eq(sourceDocument.userId, u.id))).toHaveLength(0)
   })
 

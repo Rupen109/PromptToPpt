@@ -45,9 +45,9 @@ export default async function () {
     }
   })
 
-  await s.check('home: "Upload files, or links" dialog adds a text file and a link as sources', p, async () => {
+  await s.check('home: "Add files or links" dialog adds a text file and a link as sources', p, async () => {
     await p.goto(EDITOR + '/', { waitUntil: 'networkidle' })
-    await p.getByRole('button', { name: /Upload files, or links/ }).click()
+    await p.getByRole('button', { name: /Add files or links/ }).click()
     const dlg = p.getByRole('dialog'); await dlg.waitFor({ timeout: 5000 })
     const f = join(RESULTS, 'notes.txt'); writeFileSync(f, 'Aroma Coffee Roasters sells single-origin beans. Founded 2019. 4 stores.')
     await dlg.getByRole('tab', { name: 'File' }).click()
@@ -59,7 +59,7 @@ export default async function () {
 
   await s.check('home: the dialog opens on "Upload file" first, then "Website link", then "Paste text"', p, async () => {
     await p.goto(EDITOR + '/', { waitUntil: 'networkidle' })
-    await p.getByRole('button', { name: /Upload files, or links/ }).click()
+    await p.getByRole('button', { name: /Add files or links/ }).click()
     const tabs = p.getByRole('dialog').getByRole('tab')
     expect((await tabs.allInnerTexts()).join('|') === 'Upload file|Website link|YouTube / captions|Paste text|Wikipedia & web', `tab order: ${(await tabs.allInnerTexts()).join('|')}`)
     expect(await tabs.first().getAttribute('aria-selected') === 'true', 'Upload file is not the opening tab')
@@ -186,7 +186,8 @@ export default async function () {
     const len = p.getByRole('radio', { name: /\d+ slides/ }).first(); await len.waitFor({ timeout: 90000 })
     expect(await p.getByRole('radiogroup', { name: 'AI model' }).count() === 0, 'a model step is shown on a plan without model choice')
     await len.click()
-    await p.getByRole('progressbar').waitFor({ timeout: 10000 })
+    // the build screen (components/BuildProgress.tsx): a list of steps with a live status line (the old progress bar is gone, suite 57)
+    await p.getByRole('list', { name: 'Steps' }).waitFor({ timeout: 10000 })
     expect(/\/create/.test(p.url()), 'the editor opened before the deck was written')
     await p.getByRole('button', { name: 'Cancel' }).click()
     await p.getByText(/cancelled/i).waitFor({ timeout: 15000 })

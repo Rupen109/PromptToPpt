@@ -1,9 +1,9 @@
 import { CalendarClock, Check, Coins, Layers, Sparkles, X } from '@prompttoppt/ui/icons'
 import { useEffect, useState } from 'react'
-import { planHighlights, priceFor, type BillingInterval, type PlansResponse } from '@prompttoppt/api-client'
+import { formatMoney, planHighlights, priceFor, type BillingInterval, type PlansResponse, type TopUpOffer } from '@prompttoppt/api-client'
 import type { PaidPlanId, PlanId } from '@prompttoppt/validation'
 import { api } from '@/lib/api'
-import { checkoutErrorMessage, setSimulatorMode, subscribe, testModeHint } from '@/lib/checkout'
+import { buyCredits, checkoutErrorMessage, setSimulatorMode, subscribe, testModeHint } from '@/lib/checkout'
 import { useDialog } from '@/lib/useDialog'
 import { useEntitlements } from '@/lib/entitlements'
 
@@ -15,6 +15,10 @@ export function UpgradeModal() {
   const [interval, setInterval] = useState<BillingInterval>('month')
   const [error, setError] = useState<string | null>(null)
   const [paid, setPaid] = useState<{ plan: string; credits: number; slides: number; renews: string } | null>(null)
+  /** buying credits instead of a bigger plan: the plan's own credits again, at the plan's own price */
+  const [topUp, setTopUp] = useState<TopUpOffer | null>(null)
+  const [toppingUp, setToppingUp] = useState(false)
+  const [toppedUp, setToppedUp] = useState<{ credits: number; balance: number } | null>(null)
   const [testHint, setTestHint] = useState(false)
   const close = () => {
     setError(null)
@@ -26,9 +30,12 @@ export function UpgradeModal() {
   useEffect(() => {
     if (upgrade.open && !plans) api.plans().then(setPlans).catch(() => {})
     if (upgrade.open) void api.billing().then((b) => { setSimulatorMode(!!b.simulator); setTestHint(b.testMode) }).catch(() => {})
+    // a paid plan that has run out can buy its own credits again instead of moving up a plan
+    if (upgrade.open) void api.topUpOffer().then(setTopUp).catch(() => setTopUp(null))
   }, [upgrade.open, plans])
 
   if (!upgrade.open) return null
+  const outOfCredits = upgrade.code === 'INSUFFICIENT_CREDITS'
   const choices = plans?.plans.filter((p) => p.id !== 'starter') ?? []
 
   async function pay(id: PaidPlanId) {
@@ -42,6 +49,20 @@ export function UpgradeModal() {
       setError(checkoutErrorMessage(e))
     } finally {
       setBusy(null)
+    }
+  }
+
+  async function addCredits() {
+    setToppingUp(true)
+    setError(null)
+    try {
+      const e = await buyCredits((sessionInfo) => setTestHint(sessionInfo.testMode))
+      await refresh()
+      setToppedUp({ credits: topUp?.credits ?? 0, balance: e.credits.balance })
+    } catch (e) {
+      setError(checkoutErrorMessage(e))
+    } finally {
+      setToppingUp(false)
     }
   }
 
@@ -78,6 +99,28 @@ export function UpgradeModal() {
         ) : (
           <>
             {upgrade.reason && <p className="text-slate-700 mb-4" role="status">{upgrade.reason}</p>}
+            {toppedUp ? (
+              <div data-testid="topup-success" role="status" className="mb-5 rounded-2xl border border-emerald-300 bg-emerald-50 p-4">
+                <p className="font-semibold text-emerald-900">{toppedUp.credits.toLocaleString()} credits added. You have {toppedUp.balance.toLocaleString()} now.</p>
+                <p className="mt-1 text-sm text-emerald-800">Credits you buy do not expire at your monthly reset — your plan&apos;s own credits are used first. Your plan and renewal date are unchanged.</p>
+                <button onClick={close} className="mt-3 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">Carry on</button>
+              </div>
+            ) : topUp?.available ? (
+              <div data-testid="topup-offer" className={`mb-5 rounded-2xl border p-4 ${outOfCredits ? 'border-primary bg-primary/5' : 'border-border bg-slate-50'}`}>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="font-semibold">{outOfCredits ? 'Out of credits? Just top up.' : 'Need more credits on this plan?'}</p>
+                    <p className="mt-0.5 text-sm text-slate-600">
+                      Get your {topUp.planName} credits again now: <b>{topUp.credits.toLocaleString()} credits</b> for <b>{formatMoney(topUp.amountMinor, topUp.currency)}</b>. They never expire at the monthly reset, and your plan and renewal date do not change.
+                    </p>
+                  </div>
+                  <button onClick={() => void addCredits()} disabled={toppingUp || busy !== null} data-testid="topup-buy" className="shrink-0 inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
+                    <Coins aria-hidden size={16} />{toppingUp ? 'Opening secure checkout…' : `Buy ${topUp.credits.toLocaleString()} credits`}
+                  </button>
+                </div>
+                {!outOfCredits && <p className="mt-2 text-xs text-slate-500">Or move up a plan below for more credits every month and more features.</p>}
+              </div>
+            ) : null}
             {ent && <p className="text-xs text-slate-500 mb-4">You&apos;re on {ent.plan.name} · {ent.credits.balance} credits left · resets {new Date(ent.credits.resetsAt).toLocaleDateString()}</p>}
             <div className="flex justify-center mb-4">
               <div role="group" aria-label="Billing period" className="bg-slate-100 p-1 rounded-full inline-flex text-xs font-bold">
@@ -95,6 +138,7 @@ export function UpgradeModal() {
                   <div key={p.id} className="border border-border rounded-xl p-4 flex flex-col gap-2">
                     <div className="font-heading font-bold text-lg">{p.name}</div>
                     {price && <div><span className="text-3xl font-extrabold">{price.text}</span><span className="text-slate-500"> /mo</span><div className="text-xs text-slate-500">{price.billed}</div></div>}
+                    {h.lead && <p className="mt-2 text-sm font-semibold text-slate-800">{h.lead}</p>}
                     <ul className="text-sm text-slate-700 space-y-1 my-2">{h.items.slice(0, 7).map((x) => <li key={x} className="flex items-start gap-1.5"><Check aria-hidden size={16} className="mt-0.5 shrink-0 text-primary" />{x}</li>)}</ul>
                     <button onClick={() => void pay(p.id as PaidPlanId)} disabled={busy !== null} className="text-center bg-primary text-white rounded-lg py-2 text-sm font-semibold disabled:opacity-50">
                       {busy === p.id ? 'Opening secure checkout…' : current ? `Switch ${p.name} billing` : `Subscribe to ${p.name}`}

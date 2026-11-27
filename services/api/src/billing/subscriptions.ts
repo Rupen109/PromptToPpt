@@ -11,7 +11,7 @@ import { sendMail } from '../lib/mailer.ts'
 import { clawbackCredits } from './credits.ts'
 import { BillingError } from './errors.ts'
 import { SIM_KEY_ID, simulatorEnabled } from './simulator.ts'
-import { notesOf, razorpay, razorpayEnabled, razorpayTestMode, RazorpayApiError, verifyCheckoutSignature, verifyWebhookSignature, type RzpPayment, type RzpSubscription } from './razorpay.ts'
+import { notesOf, razorpay, razorpayEnabled, razorpayTestMode, RazorpayApiError, verifyCheckoutSignature, verifyWebhookSignature, type RzpOrder, type RzpPayment, type RzpSubscription } from './razorpay.ts'
 
 type Interval = 'month' | 'year'
 type PaidPlan = PaidPlanId
@@ -252,7 +252,7 @@ export async function subscriptionSummary(userId: string): Promise<{ subscriptio
 
 interface WebhookBody {
   event: string
-  payload?: { subscription?: { entity: RzpSubscription }; payment?: { entity: RzpPayment }; refund?: { entity: { id: string; payment_id: string; amount: number } }; dispute?: { entity: { id: string; payment_id: string } } }
+  payload?: { subscription?: { entity: RzpSubscription }; payment?: { entity: RzpPayment }; order?: { entity: RzpOrder }; refund?: { entity: { id: string; payment_id: string; amount: number } }; dispute?: { entity: { id: string; payment_id: string } } }
 }
 
 /**
@@ -275,6 +275,12 @@ export async function handleWebhook(rawBody: string, headers: Headers): Promise<
 
   const subEntity = evt.payload?.subscription?.entity
   const payEntity = evt.payload?.payment?.entity
+  // a one-off order: the only one-off thing we sell is a credit top-up. `order.paid` carries the order; `payment.captured` carries only the payment, with the order id on it.
+  const orderEntity = evt.payload?.order?.entity ?? (payEntity?.order_id ? await razorpay.fetchOrder(payEntity.order_id).catch(() => null) : null)
+  if (orderEntity && (evt.event === 'order.paid' || evt.event === 'payment.captured')) {
+    const { grantTopUp } = await import('./top-ups.ts')
+    await grantTopUp(orderEntity, payEntity ?? null)
+  }
   if (evt.event.startsWith('subscription.') && subEntity) {
     await applySubscription(subEntity)
     const notes = notesOf(subEntity.notes)
@@ -305,6 +311,12 @@ export async function revokeForPayment(providerPaymentId: string, kind: 'refunde
   const [pay] = await db.select().from(payment).where(and(eq(payment.provider, 'razorpay'), eq(payment.providerPaymentId, providerPaymentId)))
   if (!pay) return
   if (kind === 'refunded' && refundedMinor !== undefined && refundedMinor < pay.amountMinor) return // partial refund: keep the plan
+  // a returned CREDIT TOP-UP takes back its own credits only: it never bought the plan, so the plan and the other credits stay
+  const { revokeTopUpForPayment } = await import('./top-ups.ts')
+  if (await revokeTopUpForPayment(providerPaymentId)) {
+    await db.update(payment).set({ status: kind }).where(eq(payment.id, pay.id))
+    return
+  }
   const firstTime = pay.status !== kind // a repeated event must not mail again
   await db.update(payment).set({ status: kind }).where(eq(payment.id, pay.id))
   const [sub] = await db.select().from(subscription).where(eq(subscription.userId, pay.userId))

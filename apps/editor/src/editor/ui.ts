@@ -34,6 +34,8 @@ interface UiState {
   /** the Export menu, open with a choice of slides already made ("Download this slide" from a slide's menu opens it on that slide) */
   exportMenu: { scope: 'all' | 'current' } | null
   openExport: (scope: 'all' | 'current' | null) => void
+  /** a quick edit asked from the toolbar's Quick edits menu, waiting for the AI panel to send it (`n` makes the same edit asked twice a new request) */
+  quickEdit: { id: import('@prompttoppt/validation').QuickEditId; n: number } | null
   /** the person may export this deck (its owner) */
   canExport: boolean
   /** the effect the Timing group and Effect Options edit (the one last clicked in the pane or the one of the selected object) */
@@ -90,6 +92,7 @@ export const useUi = create<UiState>((set) => ({
   exportMenu: null,
   canExport: false,
   openExport: (scope) => set({ exportMenu: scope ? { scope } : null }),
+  quickEdit: null,
   activeEffectId: null,
   painterFrom: null,
   pathEditId: null,

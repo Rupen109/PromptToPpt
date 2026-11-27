@@ -53,6 +53,10 @@ const schema = z
     GEMINI_API_KEY: optional(z.string()),
     /** the FREE keys (Google projects with no billing: Google never charges them) and the PAID key, side by side in one .env; IS_QA picks */
     GEMINI_API_KEY_QA: optional(z.string()),
+    /** more free keys for local testing and QA: used in turn when the ones before them hit Google's quota (ai/gateway.ts key ring) */
+    GEMINI_API_KEY_QA2: optional(z.string()),
+    GEMINI_API_KEY_QA3: optional(z.string()),
+    GEMINI_API_KEY_QA4: optional(z.string()),
     GEMINI_API_KEY_LOCAL: optional(z.string()),
     GEMINI_API_KEY_PAID: optional(z.string()),
     OPENROUTER_API_KEY: optional(z.string()),
@@ -220,9 +224,22 @@ if (!parsed.success) {
   console.error('Invalid environment configuration:\n' + z.prettifyError(parsed.error))
   process.exit(1)
 }
-/** the key and tier IS_QA picks (every AI call reads these two, never the named keys) */
-export const aiKeyFor = (e: { IS_QA: boolean; GEMINI_API_KEY?: string | undefined; GEMINI_API_KEY_QA?: string | undefined; GEMINI_API_KEY_LOCAL?: string | undefined; GEMINI_API_KEY_PAID?: string | undefined }) => e.IS_QA
-  ? { AI_KEY_TIER: 'free' as const, GEMINI_API_KEY: e.GEMINI_API_KEY_QA ?? e.GEMINI_API_KEY_LOCAL ?? e.GEMINI_API_KEY }
-  : { AI_KEY_TIER: 'paid' as const, GEMINI_API_KEY: e.GEMINI_API_KEY_PAID ?? e.GEMINI_API_KEY }
+/** the free keys, in the order they are used (the owner's order): each one takes over when the ones before it hit Google's quota */
+export const FREE_KEY_ORDER = ['GEMINI_API_KEY_LOCAL', 'GEMINI_API_KEY_QA', 'GEMINI_API_KEY_QA2', 'GEMINI_API_KEY_QA3', 'GEMINI_API_KEY_QA4'] as const
+type KeyEnv = { IS_QA: boolean; GEMINI_API_KEY?: string | undefined; GEMINI_API_KEY_PAID?: string | undefined } & { [K in (typeof FREE_KEY_ORDER)[number]]?: string | undefined }
+/**
+ * The keys and tier IS_QA picks (every AI call reads these, never the named keys).
+ *  - true (local, QA): the FREE keys in FREE_KEY_ORDER, the same key once; with none of them set, GEMINI_API_KEY.
+ *  - false (the live site): ONE key, the PAID one (else GEMINI_API_KEY, where the server keeps it); never a free key.
+ * GEMINI_API_KEY is the first of GEMINI_KEYS. Names go to logs, values never do.
+ */
+export const aiKeyFor = (e: KeyEnv) => {
+  const named = (name: string, key: string | undefined) => (key?.trim() ? [{ name: name.replace(/^GEMINI_API_KEY_?/, '') || 'GEMINI_API_KEY', key: key.trim() }] : [])
+  const keys = e.IS_QA
+    ? FREE_KEY_ORDER.flatMap((n) => named(n, e[n])).filter((k, i, all) => all.findIndex((x) => x.key === k.key) === i)
+    : named('GEMINI_API_KEY_PAID', e.GEMINI_API_KEY_PAID)
+  const list = keys.length ? keys : named('GEMINI_API_KEY', e.GEMINI_API_KEY)
+  return { AI_KEY_TIER: e.IS_QA ? ('free' as const) : ('paid' as const), GEMINI_API_KEY: list[0]?.key, GEMINI_KEYS: list }
+}
 export const env = { ...parsed.data, ...aiKeyFor(parsed.data) }
 export const isProd = env.NODE_ENV === 'production'

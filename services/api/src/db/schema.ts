@@ -16,6 +16,9 @@ export const user = pgTable('user', {
   role: text('role').notNull().default('user'),
   /** ISO-3166 alpha-2 from our edge's trusted header at signup; used for pricing + owner analytics, never for authorisation */
   country: text('country'),
+  /** "Which of these best describes you?" (packages/validation persona.ts), chosen by the person on their first visit; null = not asked yet */
+  persona: text('persona'),
+  personaAt: timestamp('persona_at'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
@@ -479,17 +482,49 @@ export const webhookEvent = pgTable('webhook_event', {
   receivedAt: timestamp('received_at').notNull().defaultNow(),
 })
 
+/**
+ * One credit top-up: the customer buys their plan's credits again, at their plan's monthly price, without waiting for the renewal.
+ * What is bought is decided HERE (plan + price from the database), never by the browser; the provider order is only the way it is paid for.
+ */
+export const creditTopUp = pgTable(
+  'credit_top_up',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+    /** the plan the price and the credits come from (the plan the person was on when they bought) */
+    planId: text('plan_id').notNull(),
+    credits: integer('credits').notNull(),
+    amountMinor: integer('amount_minor').notNull(),
+    currency: text('currency').notNull(),
+    provider: text('provider').notNull(),
+    /** the provider's one-off order; unique, so one order can only ever grant once */
+    providerOrderId: text('provider_order_id').notNull(),
+    providerPaymentId: text('provider_payment_id'),
+    /** created | paid | refunded */
+    status: text('status').notNull().default('created'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    paidAt: timestamp('paid_at'),
+  },
+  (t) => [uniqueIndex('credit_top_up_order_uq').on(t.provider, t.providerOrderId), index('credit_top_up_user_idx').on(t.userId, t.createdAt)],
+)
+
 export const creditBalance = pgTable(
   'credit_balance',
   {
     userId: text('user_id').primaryKey().references(() => user.id, { onDelete: 'cascade' }),
+    /** the plan's allowance for this period: reset at every new period, nothing rolls over */
     balance: integer('balance').notNull(),
+    /**
+     * Credits BOUGHT on top of the plan (a top-up). They are a separate pot because they are not part of any period:
+     * the period reset never touches them, and they are only spent once the plan's own credits for the period are gone.
+     */
+    extra: integer('extra').notNull().default(0),
     /** which allowance period the last grant was for (YYYY-MM for Starter, period-start date for paid) */
     periodKey: text('period_key').notNull(),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
   },
   // Defence in depth: even a buggy query cannot take a balance negative.
-  (t) => [check('credit_balance_non_negative', sql`${t.balance} >= 0`)],
+  (t) => [check('credit_balance_non_negative', sql`${t.balance} >= 0`), check('credit_balance_extra_non_negative', sql`${t.extra} >= 0`)],
 )
 
 /** Append-only (trigger). `idempotencyKey` makes every grant/reserve/refund safe to retry. */
@@ -499,6 +534,8 @@ export const creditLedger = pgTable(
     id: text('id').primaryKey(),
     userId: text('user_id').notNull(),
     delta: integer('delta').notNull(),
+    /** how much of `delta` came from (or went back to) the BOUGHT pot, so a refund returns each credit to the pot it was taken from */
+    extraDelta: integer('extra_delta').notNull().default(0),
     balanceAfter: integer('balance_after').notNull(),
     reason: text('reason').notNull(), // plan_grant | reserve | refund | clawback | adjustment | topup
     refType: text('ref_type'),

@@ -14,10 +14,11 @@ import { BusyError, parseUpload } from '../sources/parse-pool.ts'
 import { busyAnswer, uploadGate } from '../middleware/upload-gate.ts'
 import { saveSource, type SourceType } from '../sources/store.ts'
 import { fileErrorMessage } from './sources.ts'
+import { DECK_PROMPT_LIMIT, deckPromptTooLong } from '@prompttoppt/validation'
 
 const DRAFT_TTL_MS = 30 * 60 * 1000
 const ATTACHMENT_TTL_MS = 60 * 60 * 1000
-export const MAX_PROMPT_CHARS = 4000
+export const MAX_PROMPT_CHARS = DECK_PROMPT_LIMIT
 export const MAX_DRAFT_ATTACHMENTS = 5
 
 export const drafts = new Hono<AppEnv>()
@@ -87,7 +88,7 @@ drafts.post('/attachments/link', attachLimit, dailyAttachLimit, zValidator('json
 drafts.post(
   '/',
   rateLimit({ windowMs: 60_000, max: 20 }),
-  zValidator('json', z.object({ prompt: z.string().trim().min(1).max(MAX_PROMPT_CHARS), attachmentIds: z.array(z.string().max(40)).max(MAX_DRAFT_ATTACHMENTS).default([]) })),
+  zValidator('json', z.object({ prompt: z.string().trim().min(1).max(MAX_PROMPT_CHARS, deckPromptTooLong()), attachmentIds: z.array(z.string().max(40)).max(MAX_DRAFT_ATTACHMENTS).default([]) })),
   async (c) => {
     const { prompt, attachmentIds } = c.req.valid('json')
     const ids = [...new Set(attachmentIds)]

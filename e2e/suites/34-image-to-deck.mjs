@@ -15,7 +15,7 @@ const fx = (n) => ({ name: n, mimeType: mime(n), buffer: readFileSync(join(FX, n
 export default async function () {
   const s = suite('34-image-to-deck')
   const b = await launch()
-  const P = await person(b, 'imgdeck'); await api.get(P, '/me/entitlements') // Starter, 100 credits
+  const P = await person(b, 'imgdeck'); await api.get(P, '/me/entitlements') // Starter, 150 credits
   const balance = () => JSON.parse(tsx(`scripts/qa-remix-check.ts balance ${P.email}`)).balance
   const sources = () => JSON.parse(tsx(`scripts/qa-sources.ts ${P.email}`))
   const textOf = (src) => src.chunks.map((c) => c.text).join('\n')
@@ -26,7 +26,7 @@ export default async function () {
     await s.check('A1 Home screen: choose a picture → chip appears, settles to its title, 4 credits spent, source stored as "image"', P.p, async () => {
       await P.p.goto(EDITOR + '/', { waitUntil: 'load' })
       const before = balance()
-      await P.p.getByRole('button', { name: /Upload files, or links/ }).click()
+      await P.p.getByRole('button', { name: /Add files or links/ }).click()
       const dlg = P.p.getByRole('dialog', { name: 'Add sources' }); await dlg.waitFor()
       expect((await dlg.getByLabel('File').getAttribute('accept')).includes('.png'), 'picker does not offer pictures')
       expect(/4 credits/.test(await dlg.innerText()), 'dialog does not say a picture costs 4 credits')

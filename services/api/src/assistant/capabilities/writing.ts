@@ -31,20 +31,20 @@ const cleanContent = (raw: unknown): unknown => {
 }
 const content = z.preprocess(cleanContent, slideContentSchema)
 const issuesOf = (e: z.ZodError) => e.issues.slice(0, 4).map((i) => `${i.path.join('.') || 'content'}: ${i.message}`).join('; ')
-const parseContent = (raw: unknown): { ok: true; content: SlideContent } | { ok: false; why: string } => {
+export const parseContent = (raw: unknown): { ok: true; content: SlideContent } | { ok: false; why: string } => {
   const r = content.safeParse(raw)
   return r.success ? { ok: true, content: r.data as SlideContent } : { ok: false, why: issuesOf(r.error) }
 }
 
 /** the answer's overall shape only; each slide's content is checked on its own (see above) */
-const slidesOut = z.object({ slides: z.array(z.object({ slideId: z.string().max(64), content: z.unknown() })).max(12).default([]) })
-const newSlidesOut = z.object({ slides: z.array(z.object({ content: z.unknown() })).max(5).default([]) })
+export const slidesOut = z.object({ slides: z.array(z.object({ slideId: z.string().max(64), content: z.unknown() })).max(12).default([]) })
+export const newSlidesOut = z.object({ slides: z.array(z.object({ content: z.unknown() })).max(5).default([]) })
 
 const slideOf = (ctx: RunCtx, id: string) => ctx.virtual.slides.find((s) => s.id === id)
 const numberFor = (ctx: RunCtx, id: string) => numberOf(ctx.state, id) || ctx.virtual.slides.findIndex((x) => x.id === id) + 1
 
 /** the slides a model may rewrite: not locked, not hand-edited, with semantic content; the rest are blocked, with the reason (the preflight asks about them first; the notes name them) */
-function writable(ctx: RunCtx, ids: string[]): { ok: string[]; notes: string[]; blocked: Preflight['blocked'] } {
+export function writable(ctx: RunCtx, ids: string[]): { ok: string[]; notes: string[]; blocked: Preflight['blocked'] } {
   const ok: string[] = [], notes: string[] = [], blocked: Preflight['blocked'] = []
   for (const id of ids) {
     const s = slideOf(ctx, id)
@@ -63,6 +63,8 @@ const writingPreflight = (ctx: RunCtx, ids: string[]): Preflight => { const w = 
  * Groups written AT THE SAME TIME (at most WRITE_AT_ONCE calls in flight, which keeps within the model's rate limits): each group's prompt, model and checks are
  * exactly what they were one by one, so the answers are the same; only the waiting is shorter. Results come back in the groups' order.
  */
+/** what writing this many slides costs, in credits (docs/MARGIN_POLICY.md: one AI edit, then each further slide), said before the person confirms */
+const costOf = (ctx: RunCtx, slides: number) => (ctx.price ? `It uses ${ctx.price.edit + Math.max(0, slides - 1) * ctx.price.slide} credits, and ` : 'It uses more credits than a one-slide edit, and ')
 const WRITE_AT_ONCE = 3
 export async function inParallel<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const out = new Array<R>(items.length)
@@ -85,7 +87,7 @@ function batches(ctx: RunCtx, ids: string[]): string[][] {
 }
 
 /** each slide's exact limits, as numbers the writer can count against */
-const slideInput = (ctx: RunCtx, id: string, goal?: TextGoal) => {
+export const slideInput = (ctx: RunCtx, id: string, goal?: TextGoal) => {
   const s = slideOf(ctx, id)!
   const maxPoints = LAYOUT_MAX_POINTS[s.layoutId]
   return { slideId: id, n: numberFor(ctx, id), layout: s.layoutId, content: s.content, ...(maxPoints ? { limits: { maxPointsPerList: maxPoints } } : {}), ...(goal && s.content ? { goal: goalInput(s.content as SlideContent, goal) } : {}) }
@@ -105,7 +107,7 @@ const roomy = (c: SlideContent) => pointLists(c).filter((l) => l.count < l.max).
 export const allowedLists = (c: SlideContent, g: TextGoal): string[] => wantedCounts(c, g)?.map((x) => x.path) ?? (g.length === 'longer' ? roomy(c) : [])
 /** the countable part of a text request: what code checks before calling it done */
 export const textGoal = (v: { addPoints?: number | undefined; totalPoints?: number | undefined; length?: 'longer' | 'shorter' | undefined }): TextGoal => ({ ...(v.addPoints ? { addPoints: v.addPoints } : {}), ...(v.totalPoints ? { totalPoints: v.totalPoints } : {}), ...(v.length ? { length: v.length } : {}) })
-const sameWords = (a: SlideContent, b: SlideContent) => JSON.stringify(textOf(a)) === JSON.stringify(textOf(b))
+export const sameWords = (a: SlideContent, b: SlideContent) => JSON.stringify(textOf(a)) === JSON.stringify(textOf(b))
 /** the same data whatever order its keys are in (a parsed slide comes back in the schema's key order) */
 const canonical = (v: unknown): string => (Array.isArray(v) ? `[${v.map(canonical).join(',')}]` : v && typeof v === 'object' ? `{${Object.keys(v).filter((k) => (v as Record<string, unknown>)[k] !== undefined).sort().map((k) => `${JSON.stringify(k)}:${canonical((v as Record<string, unknown>)[k])}`).join(',')}}` : JSON.stringify(v))
 const withoutNotes = (c: SlideContent) => canonical({ ...c, speakerNotes: '', sources: [] })
@@ -114,19 +116,19 @@ const SPEAK_WPM = 140
 export const notesWordRange = (seconds: number) => { const about = Math.round((seconds * SPEAK_WPM) / 60); return { about, atLeast: Math.max(5, Math.floor(about * 0.8)), atMost: Math.ceil(about * 1.2) } }
 const notesWords = (t: string) => t.trim().split(/\s+/).filter(Boolean).length
 /** a timed script: the notes must be about as long as the time asked (code counts, never the model) */
-const timedProblem = (c: SlideContent, seconds: number | undefined): string | null => {
+export const timedProblem = (c: SlideContent, seconds: number | undefined): string | null => {
   if (!seconds) return null
   const r = notesWordRange(seconds), n = notesWords(c.speakerNotes ?? '')
   return n < r.atLeast || n > r.atMost ? `the speaker notes must be ${r.atLeast}-${r.atMost} words (about ${seconds} seconds spoken); they have ${n}` : null
 }
 /** what a notes-only request must do: new notes, the slide itself untouched */
-const notesProblem = (a: SlideContent, b: SlideContent): string | null => (withoutNotes(a) !== withoutNotes(b) ? 'only the speaker notes may change: keep every other field exactly as it is' : (a.speakerNotes ?? '').trim() === (b.speakerNotes ?? '').trim() ? 'the speaker notes did not change' : null)
+export const notesProblem = (a: SlideContent, b: SlideContent): string | null => (withoutNotes(a) !== withoutNotes(b) ? 'only the speaker notes may change: keep every other field exactly as it is' : (a.speakerNotes ?? '').trim() === (b.speakerNotes ?? '').trim() ? 'the speaker notes did not change' : null)
 
 /**
  * Asks for the slides of `ids`, keeps every slide that fits the rules, and asks ONCE more for only the ones that do not, naming each reason.
  * `accept` adds a capability's own rule for a slide (for example "must keep its layout"). Returns what fit and why the rest did not.
  */
-async function writeValid(
+export async function writeValid(
   ctx: RunCtx, ids: string[], earlier: string[] | undefined,
   ask: (ids: string[], problems: string[]) => Promise<z.infer<typeof slidesOut>>,
   accept: (id: string, c: SlideContent) => string | null,
@@ -181,7 +183,7 @@ export const text: Capability<z.infer<typeof VALUES.text>> = {
     const total = ctx.virtual.slides.length
     if (ctx.confirm?.kind !== 'text_bulk' && ok.length >= 4 && ok.length * 2 > total) {
       const notesOnly = !!v.notesOnly
-      return { ops: [], ask: { text: `This ${notesOnly ? 'writes the speaker notes of' : 'rewrites the words of'} ${ok.length} of the ${total} slides ("${v.request.slice(0, 160)}${v.request.length > 160 ? '…' : ''}"). It counts as two edits instead of one, and Ctrl+Z puts ${notesOnly ? 'the old notes' : 'the old words'} back right after. Go ahead?`, options: [{ label: notesOnly ? 'Yes, write the notes' : 'Yes, rewrite them', reply: notesOnly ? 'Yes, write those notes' : 'Yes, rewrite those slides', confirm: { kind: 'text_bulk', request: v.request, ...goal, ...(v.notesSeconds ? { notesSeconds: v.notesSeconds } : {}), ...(v.notesOnly ? { notesOnly: true } : {}), slideIds: ok } }, { label: 'No, leave them', reply: 'No, leave my slides as they are' }] } }
+      return { ops: [], ask: { text: `This ${notesOnly ? 'writes the speaker notes of' : 'rewrites the words of'} ${ok.length} of the ${total} slides ("${v.request.slice(0, 160)}${v.request.length > 160 ? '…' : ''}"). ${costOf(ctx, ok.length)}Ctrl+Z puts ${notesOnly ? 'the old notes' : 'the old words'} back right after. Go ahead?`, options: [{ label: notesOnly ? 'Yes, write the notes' : 'Yes, rewrite them', reply: notesOnly ? 'Yes, write those notes' : 'Yes, rewrite those slides', confirm: { kind: 'text_bulk', request: v.request, ...goal, ...(v.notesSeconds ? { notesSeconds: v.notesSeconds } : {}), ...(v.notesOnly ? { notesOnly: true } : {}), slideIds: ok } }, { label: 'No, leave them', reply: 'No, leave my slides as they are' }] } }
     }
     const ops: Step['ops'] = []
     const groups = batches(ctx, ok)
@@ -308,7 +310,7 @@ export const addSlide: Capability<z.infer<typeof VALUES.add_slide>> = {
     // four or more new slides are written at once: shown first with what it costs, and confirmed (the confirmed numbers come from the request, never from the model)
     if (ctx.confirm?.kind !== 'add_bulk' && v.count >= 4 && v.where !== 'after') {
       const now = ctx.virtual.slides.length
-      return { ops: [], ask: { text: `This writes ${v.count} new slides${v.about ? ` about "${v.about.slice(0, 120)}"` : ''}, taking the deck from ${now} to ${now + v.count} slides. It counts as two edits instead of one, and Ctrl+Z takes the new slides away right after. Go ahead?`, options: [{ label: `Yes, add ${v.count} slides`, reply: 'Yes, add those slides', confirm: { kind: 'add_bulk', count: v.count, where: v.where as 'end' | 'start' | 'spread', ...(v.about ? { about: v.about } : {}), ...(v.layout ? { layout: v.layout } : {}) } }, { label: 'No, leave the deck', reply: 'No, leave my deck as it is' }] } }
+      return { ops: [], ask: { text: `This writes ${v.count} new slides${v.about ? ` about "${v.about.slice(0, 120)}"` : ''}, taking the deck from ${now} to ${now + v.count} slides. ${costOf(ctx, v.count)}Ctrl+Z takes the new slides away right after. Go ahead?`, options: [{ label: `Yes, add ${v.count} slides`, reply: 'Yes, add those slides', confirm: { kind: 'add_bulk', count: v.count, where: v.where as 'end' | 'start' | 'spread', ...(v.about ? { about: v.about } : {}), ...(v.layout ? { layout: v.layout } : {}) } }, { label: 'No, leave the deck', reply: 'No, leave my deck as it is' }] } }
     }
     let afterId: string | undefined
     if (v.where === 'after') {

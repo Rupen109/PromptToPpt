@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { eq } from 'drizzle-orm'
+import { asc, eq } from 'drizzle-orm'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { app } from '../app.ts'
 import { db } from '../db/index.ts'
@@ -44,17 +44,17 @@ describe.skipIf(!have)('video to slides (big recordings)', () => {
     const done = await complete(u.cookie, id)
     expect(done.status).toBe(200)
     expect((await json(done)).data).toMatchObject({ status: 'queued', minutes: 1, credits: 3, hasVideo: true })
-    expect(await balance(u.id)).toBe(97)
+    expect(await balance(u.id)).toBe(147)
     expect((await job(u.cookie, id)).status).toBe('queued')
     const j = await finish(u.cookie, id)
     expect(j).toMatchObject({ status: 'completed', progress: 100 })
-    const text = (await db.select().from(sourceChunk).where(eq(sourceChunk.sourceId, j.source.id))).map((c) => c.text).join('\n')
+    const text = (await db.select().from(sourceChunk).where(eq(sourceChunk.sourceId, j.source.id)).orderBy(asc(sourceChunk.ordinal))).map((c) => c.text).join('\n')
     expect(text).toContain('4,200 electric bicycles') // what was said
     expect(text).toContain('[on screen] Quarterly results') // what was shown
     expect(existsSync(filePath(id))).toBe(false)
     const kinds = (await db.select().from(aiUsageEvent).where(eq(aiUsageEvent.userId, u.id))).map((e) => e.requestType)
     expect(kinds).toEqual(expect.arrayContaining(['media_read', 'video_read']))
-    expect(await balance(u.id)).toBe(97) // charged once, not again
+    expect(await balance(u.id)).toBe(147) // charged once, not again
   })
 
   it('audio only: the same pipeline without the screen part', async () => {
@@ -62,7 +62,7 @@ describe.skipIf(!have)('video to slides (big recordings)', () => {
     const id = await upload(u.cookie, audio, 'voice-note.m4a')
     expect((await json(await complete(u.cookie, id))).data).toMatchObject({ hasVideo: false, credits: 3 })
     const j = await finish(u.cookie, id); expect(j.status).toBe('completed')
-    const text = (await db.select().from(sourceChunk).where(eq(sourceChunk.sourceId, j.source.id))).map((c) => c.text).join('\n')
+    const text = (await db.select().from(sourceChunk).where(eq(sourceChunk.sourceId, j.source.id)).orderBy(asc(sourceChunk.ordinal))).map((c) => c.text).join('\n')
     expect(text).toContain('4,200'); expect(text).not.toContain('[on screen]')
   })
 
@@ -94,7 +94,7 @@ describe.skipIf(!have)('video to slides (big recordings)', () => {
     const lid = await upload(u.cookie, longAudio, 'all-day.m4a')
     const long = await complete(u.cookie, lid)
     expect(long.status).toBe(413); expect((await json(long)).error.message).toMatch(/limit is 90 minutes/)
-    expect(await balance(u.id)).toBe(100)
+    expect(await balance(u.id)).toBe(150)
   })
 
   it('no speech and nothing on screen: refunded with a plain message; a failing model: retried once, then refunded', async () => {
@@ -102,21 +102,21 @@ describe.skipIf(!have)('video to slides (big recordings)', () => {
     const a = await upload(u.cookie, audio, 'SILENT_FILE.m4a'); await complete(u.cookie, a)
     const ja = await finish(u.cookie, a)
     expect(ja.status).toBe('failed'); expect(ja.error).toMatch(/nothing to build a deck from. You were not charged/)
-    expect(await balance(u.id)).toBe(100)
+    expect(await balance(u.id)).toBe(150)
     const b = await upload(u.cookie, audio, 'FAIL_PLEASE.m4a'); await complete(u.cookie, b)
-    expect(await balance(u.id)).toBe(97)
+    expect(await balance(u.id)).toBe(147)
     const jb = await finish(u.cookie, b)
-    expect(jb.status).toBe('failed'); expect(await balance(u.id)).toBe(100)
+    expect(jb.status).toBe('failed'); expect(await balance(u.id)).toBe(150)
   })
 
   it("cancelling a queued video refunds it; other people cannot see or cancel your job", async () => {
     const u = await fresh(); const other = await fresh()
     const id = await upload(u.cookie, audio, 'a.m4a'); await complete(u.cookie, id)
-    expect(await balance(u.id)).toBe(97)
+    expect(await balance(u.id)).toBe(147)
     expect((await api(other.cookie, 'GET', `/media/jobs/${id}`)).status).toBe(404)
     expect((await api(other.cookie, 'DELETE', `/media/jobs/${id}`)).status).toBe(404)
     expect((await api(u.cookie, 'DELETE', `/media/jobs/${id}`)).status).toBe(200)
-    expect(await balance(u.id)).toBe(100)
+    expect(await balance(u.id)).toBe(150)
     expect(existsSync(filePath(id))).toBe(false)
   })
 

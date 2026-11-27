@@ -24,6 +24,7 @@ export function mockUnderstand(prompt: string): string {
   const t = (prompt.match(/<message>\n([\s\S]*?)\n<\/message>/)?.[1] ?? '').toLowerCase()
   if (t.includes('fail_please')) throw new Error('mock model failure')
   if (/^\s*(hi|hey|hello|thanks|thank you|ok)\b[\s.!]*$/.test(t)) return JSON.stringify({ kind: 'chat' })
+  if (/^\s*how are you( doing)?\b[\s.!?]*$/.test(t)) return JSON.stringify({ kind: 'chat' }) // chat that is not a plain greeting: it reaches the pipeline
   if (/water|weather|recipe/.test(t)) return JSON.stringify({ kind: 'off_topic' })
   if (/^what can you (do|edit)|^what (is|'s) available/.test(t)) return JSON.stringify({ kind: 'help', help: /on this slide|edit on/.test(t) ? 'slide' : /plan|subscription/.test(t) ? 'plan' : 'all' })
   if (/^how many slides/.test(t)) { const n = (prompt.match(/<slides>\n([\s\S]*?)\n<\/slides>/)?.[1] ?? '').split('\n').length; return JSON.stringify({ kind: 'question', answer: `This deck has ${n} slides.` }) }
@@ -93,5 +94,28 @@ export function mockWrite(system: string, prompt: string): string {
     return JSON.stringify({ slides: Array.from({ length: input['count'] ?? 1 }, (_, i) => ({ content: thanks ? { layout: 'thank-you', title: 'Thank you', subtitle: 'Questions?' } : { layout: 'title-body', title: `New slide ${i + 1}`, bullets: ['A first point', 'A second point'] } })) })
   }
   if (card === 'template') return JSON.stringify({ templateId: String((input['templates'] ?? [''])[0]).split('|')[0] })
+  // the whole-deck plan: keep the cover and the close, rewrite the body slides (a "shorter" goal shortens them), add nothing unless asked
+  if (card === 'transform_plan') {
+    const slides: { id: string; n: number; layout: string; locked?: boolean; keepWords?: string }[] = input['deck']?.slides ?? []
+    const last = slides.length - 1
+    const kind = /short|concise|minute/i.test(String(input['goal'])) ? 'shorten' : 'rewrite'
+    const actions = slides.map((sl, i) => (i === 0 || i === last || sl.locked || sl.keepWords ? { slideId: sl.id, action: 'keep' } : { slideId: sl.id, action: kind, note: `${kind} for ${input['goal']}` }))
+    const add = Array.from({ length: input['limits']?.addSlides ?? 0 }, (_, i) => ({ afterSlideId: slides[Math.min(last - 1, i + 1)]?.id ?? null, title: `Added slide ${i + 1}`, about: 'more detail from the deck' }))
+    return JSON.stringify({ goal: input['goal'], brief: `Make every slide serve this goal: ${input['goal']}. Keep every figure.`, actions, add })
+  }
+  if (card === 'transform_text' || card === 'transform_layout') {
+    return JSON.stringify({ slides: (input['slides'] ?? []).map((s: any, i: number) => {
+      const c = { ...s.content }
+      if (card === 'transform_layout') { const points: string[] = (c.bullets ?? ['First point', 'Second point', 'Third point']).slice(0, 5); return { slideId: s.slideId, content: { layout: s.layout_to ?? (i % 2 ? 'timeline' : 'process'), title: c.title ?? 'Steps', steps: points.map((x: string) => ({ label: x.split(' ').slice(0, 3).join(' '), detail: x })), speakerNotes: '', sources: [] } } }
+      if ((lazy && !retry) || stubborn) return { slideId: s.slideId, content: c }
+      if (typeof c.title === 'string') c.title = `${c.title} ✎`.slice(0, 90)
+      if (s.goal?.words?.atMost && Array.isArray(c.bullets)) c.bullets = c.bullets.slice(0, Math.max(1, c.bullets.length - 1)).map((b: string) => b.split(' ').slice(0, 4).join(' '))
+      if (input['speakerNotesWords']) c.speakerNotes = Array.from({ length: input['speakerNotesWords'].about }, (_, k) => `word${k}`).join(' ')
+      return { slideId: s.slideId, content: c }
+    }) })
+  }
+  if (card === 'element_text') return JSON.stringify({ objects: (input['objects'] ?? []).map((o: any) => ({ id: o.id, lines: (lazy && !retry) || stubborn ? o.lines : o.lines.map((l: string, i: number) => (i === 0 ? `${l} (rewritten)` : l)) })) })
+  if (card === 'transform_notes') return JSON.stringify({ slides: (input['slides'] ?? []).map((s: any) => ({ slideId: s.slideId, speakerNotes: Array.from({ length: input['speakerNotesWords']?.about ?? 20 }, (_, k) => `note${k}`).join(' ') })) })
+  if (card === 'transform_add') return JSON.stringify({ slides: (input['adds'] ?? []).map((a: any) => ({ content: a.layout === 'thank-you' || /conclusion|thank/i.test(a.title) ? { layout: 'thank-you', title: a.title, subtitle: 'Questions?' } : { layout: 'title-body', title: a.title, bullets: ['A point from the deck', 'Another point from the deck'] } })) })
   throw new Error(`mock: unknown card ${card}`)
 }

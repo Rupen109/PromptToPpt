@@ -9,6 +9,9 @@ const msg = (b: Buffer, max?: number) => { try { inspectMedia(b, max); return 'a
 describe('inspectMedia (the file is judged by its bytes, not its name)', () => {
   it('recognises the supported audio and video containers', () => {
     expect(inspectMedia(wav)).toEqual({ kind: 'audio', mime: 'audio/wav' })
+    // a tiny renamed web page is told what it is, not that it is "too short to contain speech"
+    expect(msg(Buffer.from('<html><script>x</script></html>'))).toMatch(/web or text file, not a recording/)
+    expect(msg(Buffer.from('MZ not a program'))).toMatch(/not a supported recording/)
     expect(inspectMedia(pad('ID3\x03\x00'))).toEqual({ kind: 'audio', mime: 'audio/mpeg' })
     expect(inspectMedia(pad([0xff, 0xfb, 0x90, 0x00]))).toEqual({ kind: 'audio', mime: 'audio/mpeg' })
     expect(inspectMedia(pad([0xff, 0xf1, 0x50, 0x80]))).toEqual({ kind: 'audio', mime: 'audio/aac' })
@@ -25,7 +28,8 @@ describe('inspectMedia (the file is judged by its bytes, not its name)', () => {
     expect(msg(pad('<svg xmlns="http://www.w3.org/2000/svg"></svg>'))).toMatch(/web or text file/)
     expect(msg(pad('<!doctype html><html></html>'))).toMatch(/web or text file/)
     expect(msg(pad(at(4, 'ftypheic')))).toMatch(/picture/)
-    expect(msg(Buffer.alloc(100, 1))).toMatch(/too short/)
+    expect(msg(Buffer.concat([Buffer.from('ID3\x03\x00'), Buffer.alloc(95)]))).toMatch(/too short/) // a real recording that is too short
+    expect(msg(Buffer.alloc(100, 1))).toMatch(/not a supported recording/) // 100 bytes of nothing is not a recording at all
     expect(msg(Buffer.concat([wav, Buffer.alloc(13 * 1024 * 1024)]))).toMatch(/larger than 12 MB/)
     expect(msg(Buffer.concat([wav, Buffer.alloc(5 * 1024 * 1024)]), 4 * 1024 * 1024)).toMatch(/larger than 4 MB/)
   })

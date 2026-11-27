@@ -33,7 +33,7 @@ export default async function () {
     await s.check('A1 Home screen: a video is chosen → chip shows progress, finishes with ONE timed source: speech AND on-screen text; 3 credits', P.p, async () => {
       await P.p.goto(EDITOR + '/', { waitUntil: 'load' })
       const before = balance()
-      await P.p.getByRole('button', { name: /Upload files, or links/ }).click()
+      await P.p.getByRole('button', { name: /Add files or links/ }).click()
       const dlg = P.p.getByRole('dialog', { name: 'Add sources' }); await dlg.waitFor()
       expect(/3 credits per minute/.test(await dlg.innerText()), 'dialog does not state the video price')
       await dlg.getByLabel('File').setInputFiles(join(dir, 'lecture.mp4'))
@@ -51,7 +51,7 @@ export default async function () {
       const before = balance()
       const pending = P.p.waitForResponse((r) => /\/media\/uploads\/[^/]+\/complete/.test(r.url()), { timeout: 400000 })
       await P.p.goto(EDITOR + '/', { waitUntil: 'load' })
-      await P.p.getByRole('button', { name: /Upload files, or links/ }).click()
+      await P.p.getByRole('button', { name: /Add files or links/ }).click()
       const dlg = P.p.getByRole('dialog', { name: 'Add sources' }); await dlg.waitFor()
       await dlg.getByLabel('File').setInputFiles(join(dir, 'big.mp4'))
       await dlg.getByRole('button', { name: 'Add source' }).click()

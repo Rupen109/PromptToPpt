@@ -78,6 +78,8 @@ export interface Step {
 }
 
 export interface RunCtx {
+  /** the credit prices for this person (one AI edit; each further slide written): a confirm question says what the work costs */
+  price?: { edit: number; slide: number } | undefined
   /** say what this step is doing now, for the person waiting ("Rewriting 12 slides"); optional */
   progress?: ((text: string, done?: number, total?: number) => void) | undefined
   /** the owner of the presentation (an invited editor cannot export or share) */

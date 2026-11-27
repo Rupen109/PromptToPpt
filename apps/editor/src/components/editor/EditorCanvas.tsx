@@ -32,22 +32,33 @@ const HANDLE_POS: Record<C.Handle, [number, number]> = { nw: [0, 0], n: [0.5, 0]
 const HEADING = new Set(['title', 'heading', 'metric', 'subtitle'])
 
 /** The width the slide is drawn at: the room the page gives it, never more than `max`, and (for a tall slide such as 9:16) never so wide that its height runs off the screen. */
-function useFitWidth(max: number, tall?: { W: number; H: number }) {
+/**
+ * The slide's width on screen: as big as the room allows in BOTH directions: the stage's width, and the height of the editing area (the scroll box marked
+ * `data-stage-scroll`) less its padding, the notes toggle and the floating dock. Both are measured on boxes whose size does not depend on the slide, so
+ * centring the slide can never feed back into its size (a wide window with the AI panel open, or a short one, never leaves it small with empty space under it).
+ */
+const NOTES_ROOM = 125
+const ROOM_BELOW = 170 // the area's top padding (24) + the dock's room at the bottom (96) + the speaker-notes toggle under the slide (about 40) + a little air
+function useFitSize(max: number, size: { W: number; H: number }) {
   const ref = useRef<HTMLDivElement>(null)
-  const [w, setW] = useState(0)
-  const [vh, setVh] = useState(() => window.innerHeight)
+  const [box, setBox] = useState({ w: 0, h: 0 })
   useLayoutEffect(() => {
     const el = ref.current
     if (!el) return
-    const ro = new ResizeObserver(([e]) => setW(Math.min(max, Math.floor(e!.contentRect.width))))
-    ro.observe(el)
-    const on = () => setVh(window.innerHeight)
-    window.addEventListener('resize', on)
-    return () => { ro.disconnect(); window.removeEventListener('resize', on) }
+    const area = el.closest<HTMLElement>('[data-stage-scroll]')
+    const measure = () => setBox({ w: Math.floor(el.clientWidth), h: area ? area.clientHeight : window.innerHeight - 260 })
+    const ro = new ResizeObserver(measure)
+    ro.observe(el); if (area) ro.observe(area)
+    window.addEventListener('resize', measure)
+    return () => { ro.disconnect(); window.removeEventListener('resize', measure) }
   }, [max])
-  // room above and below the slide (title bar, ribbon, notes, the floating dock): about 260 px
-  const byHeight = tall ? Math.max(240, Math.floor(((vh - 260) * tall.W) / tall.H)) : Infinity
-  return [ref, Math.min(w, byHeight)] as const
+  // open speaker notes (a 4-line box, about 120 px) need room too, or the floating dock would sit over them
+  const notesOpen = useUi((st) => st.notesOpen)
+  const byHeight = Math.max(240, Math.floor(((box.h - ROOM_BELOW - (notesOpen ? NOTES_ROOM : 0)) * size.W) / size.H))
+  const width = Math.min(max, box.w, byHeight)
+  // the editing area learns the slide's width, so what sits under the slide (speaker notes, notices) lines up with its edges
+  useLayoutEffect(() => { const area = ref.current?.closest<HTMLElement>('[data-stage-scroll]'); if (area && width > 0) area.style.setProperty('--stage-w', `${width}px`) }, [width])
+  return [ref, width] as const
 }
 
 /** A text box nobody has typed in (its words are all empty). */
@@ -192,7 +203,7 @@ export function EditorCanvas({ slide, theme, aspect, watermark, requireAdvanced 
   const footerInfo = footerAt >= 0 ? { index: footerAt, total: footerTotal, title: footerTitle } : null
   const placing = useComments((c) => c.placing)
   const grid = useGrid()
-  const [wrap, width] = useFitWidth(1100, H > W ? { W, H } : undefined)
+  const [wrap, width] = useFitSize(1600, { W, H })
   const scale = width / W || 1
   const [drag, setDrag] = useState<{ ids: string[]; dx: number; dy: number; guides: C.Guide[] } | null>(null)
   const [resize, setResize] = useState<{ id: string; box: C.Box } | null>(null)
@@ -304,7 +315,7 @@ export function EditorCanvas({ slide, theme, aspect, watermark, requireAdvanced 
     <div ref={wrap} style={{ width: '100%' }}>
       {width > 0 && (
         <div
-          style={{ position: 'relative', width, height: H * scale }} data-testid="stage" data-scale={scale}
+          style={{ position: 'relative', width, height: H * scale, margin: '0 auto' }} data-testid="stage" data-scale={scale}
           onPointerMove={(e) => { const r = e.currentTarget.getBoundingClientRect(); pointer.current = { x: (e.clientX - r.left) / scale, y: (e.clientY - r.top) / scale }; pointer.poke() }}
           onPointerLeave={() => { pointer.current = null; pointer.poke() }}
         >

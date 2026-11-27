@@ -53,7 +53,7 @@ export function ShareDialog({ deckId, onClose, initialEmail, initialRole = 'edit
       setEmail('')
       await refreshMembers()
     } catch (err) {
-      if (isGateError(err) && err.code === 'UPGRADE_REQUIRED') { onClose(); upgrade.show(err.message) }
+      if (isGateError(err) && err.code === 'UPGRADE_REQUIRED') { onClose(); upgrade.show(err.message, err.code) }
       else setError(msg(err, 'Could not send the invitation.'))
     } finally { setBusy(false) }
   }
@@ -72,7 +72,7 @@ export function ShareDialog({ deckId, onClose, initialEmail, initialRole = 'edit
   async function protect(body: { password?: string | null; expiresInDays?: ShareExpiry }, done: string) {
     setBusy(true); setError(null); setNote(null)
     try { const r = await api.updateShareLink(deckId, body); setLinkInfo(r); setExpiry(r.expiresAt ? 'custom' : 'never'); setPw(''); setNote(done) }
-    catch (err) { if (isGateError(err) && err.code === 'UPGRADE_REQUIRED') { onClose(); upgrade.show(err.message) } else setError(msg(err, 'Could not update the link.')) }
+    catch (err) { if (isGateError(err) && err.code === 'UPGRADE_REQUIRED') { onClose(); upgrade.show(err.message, err.code) } else setError(msg(err, 'Could not update the link.')) }
     finally { setBusy(false) }
   }
   async function emailLink(e: FormEvent) {

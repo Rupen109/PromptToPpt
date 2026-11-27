@@ -1,4 +1,4 @@
-import { AIGateway, AI_STUDIO, GeminiProvider, MockProvider, OllamaProvider, OpenRouterProvider, ProviderError, ProviderLimiter, VERTEX, limitsFromMap, type AIProvider, type LimitConfig } from '@prompttoppt/ai'
+import { AIGateway, AI_STUDIO, GeminiProvider, KeyRingProvider, MockProvider, OllamaProvider, OpenRouterProvider, ProviderError, ProviderLimiter, VERTEX, limitsFromMap, type AIProvider, type LimitConfig } from '@prompttoppt/ai'
 import { env } from '../env.ts'
 import { recordUsage } from './ledger.ts'
 import { mockImage, mockRespond } from './mock-model.ts'
@@ -39,10 +39,21 @@ function buildMain(): Record<string, AIProvider> {
     return env.OLLAMA_API_KEY || local ? { ollama: new OllamaProvider({ apiKey: local ? '' : env.OLLAMA_API_KEY!, baseUrl: env.OLLAMA_BASE_URL, ...(env.OLLAMA_MODEL_OVERRIDE ? { modelOverride: env.OLLAMA_MODEL_OVERRIDE } : {}) }) } : {}
   }
   if (!env.GEMINI_API_KEY) return {} // API still boots; AI endpoints answer AI_NOT_CONFIGURED
-  if (env.AI_PROVIDER === 'vertex') return { vertex: new GeminiProvider(env.GEMINI_API_KEY, VERTEX) }
+  if (env.AI_PROVIDER === 'vertex') return { vertex: geminiKeys(VERTEX) }
   // AI Studio (a key made at aistudio.google.com): the catalogue's local-dev Gemini rows are filed under "vertex" (same model ids), so this backend serves them too
-  const studio = new GeminiProvider(env.GEMINI_API_KEY, AI_STUDIO)
+  const studio = geminiKeys(AI_STUDIO)
   return { gemini: studio, vertex: studio }
+}
+
+/**
+ * The Gemini key(s) IS_QA picked (env.ts aiKeyFor). One key: the provider itself. Several (local and QA: the free keys LOCAL → QA → QA2 → QA3 → QA4):
+ * a key ring (packages/ai/src/key-ring.ts) that moves a call to the next key when a key's quota for that model is used up. Logs name keys, never show them.
+ */
+function geminiKeys(backend: typeof AI_STUDIO): AIProvider {
+  const keys = env.GEMINI_KEYS.map((k) => ({ name: k.name, provider: new GeminiProvider(k.key, backend) }))
+  if (keys.length === 1) return keys[0]!.provider
+  console.info(`[ai] ${keys.length} Gemini keys, used in this order: ${keys.map((k) => k.name).join(' → ')}`)
+  return new KeyRingProvider(keys, { onRest: (key, model, ms, why, next) => console.warn(`[ai] key ${key}: ${why} for ${model} (resting ${Math.round(ms / 60_000)} min) → ${next ? `using ${next}` : 'no key left for this model'}`) })
 }
 
 const providers = buildProviders()
@@ -57,8 +68,10 @@ export const catalog = () => loadCatalog(configuredProviders, backupProvider)
  * wait their turn instead of being refused. AI_LIMITS overrides any of them. Paid keys start with no fixed caps (the limiter adapts to what the provider allows).
  */
 const FREE_TIER_LIMITS: Record<string, LimitConfig> = { 'vertex:gemini-3.1-flash-lite': { rpm: 10 }, 'vertex:gemini-3.6-flash': { rpm: 5 }, 'vertex:gemini-3.8-flash': { rpm: 5 } }
+const perKeys = (m: Record<string, LimitConfig>, n: number) => Object.fromEntries(Object.entries(m).map(([k, v]) => [k, { ...v, ...(v.rpm ? { rpm: v.rpm * Math.max(1, n) } : {}) }]))
 export const limiter = new ProviderLimiter({
-  limits: limitsFromMap({ ...(env.AI_KEY_TIER === 'free' ? FREE_TIER_LIMITS : {}), ...(JSON.parse(env.AI_LIMITS) as Record<string, LimitConfig>) }),
+  // the caps are per key (per Google project): with several free keys the pace is that many times faster
+  limits: limitsFromMap({ ...(env.AI_KEY_TIER === 'free' ? perKeys(FREE_TIER_LIMITS, env.GEMINI_KEYS.length) : {}), ...(JSON.parse(env.AI_LIMITS) as Record<string, LimitConfig>) }),
 })
 
 export const gateway = new AIGateway({

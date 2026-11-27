@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { describe, expect, it, vi } from 'vitest'
 import { pageReader } from '../ai/linked-pages.ts'
 import { db } from '../db/index.ts'
@@ -24,17 +24,17 @@ describe('POST /ai-assist (v2): understand → resolve → do → check', () => 
     const { body } = await ask(u.cookie, id, 'shorten slide 2', { activeSlideId: doc.slides[0]!.id })
     expect(body.data.edits).toHaveLength(1)
     expect(body.data.edits[0].slideId).toBe(doc.slides[1]!.id)
-    expect(body.data.creditsCharged).toBe(2)
-    expect(await balance(u.id)).toBe(start - 2)
+    expect(body.data.creditsCharged).toBe(4)
+    expect(await balance(u.id)).toBe(start - 4)
   })
 
-  it('"update layout of slides 2-3": both slides change layout, keep their titles, two units (more than one slide written)', async () => {
+  it('"update layout of slides 2-3": both slides change layout, keep their titles, the base edit + one more written slide', async () => {
     const { u, id, doc, start } = await setup('v2b')
     const { body } = await ask(u.cookie, id, 'update layout of slides 2-3, they look the same', { activeSlideId: doc.slides[0]!.id })
     expect(body.data.edits.map((e: any) => e.slideId)).toEqual([doc.slides[1]!.id, doc.slides[2]!.id])
     expect(body.data.edits.every((e: any) => e.content.layout !== 'title-body')).toBe(true)
     expect(body.data.edits[0].content.title).toBe('Point 1')
-    expect(await balance(u.id)).toBe(start - 4)
+    expect(await balance(u.id)).toBe(start - 7)
   })
 
   it('a first answer that misses (kept the layout) is checked and retried once, then applied', async () => {
@@ -94,7 +94,7 @@ describe('POST /ai-assist (v2): understand → resolve → do → check', () => 
     const denied = await ask(free.cookie, freeDeck, 'animate every slide')
     expect(denied.status).toBe(403)
     expect(denied.body.error.code).toBe('UPGRADE_REQUIRED')
-    expect(await balance(free.id)).toBe(100)
+    expect(await balance(free.id)).toBe(150)
     const { u, id } = await setup('v2i')
     const t = await ask(u.cookie, id, 'use a premium template')
     expect(t.body.data.theme).not.toBeNull()
@@ -110,7 +110,7 @@ describe('POST /ai-assist (v2): understand → resolve → do → check', () => 
     const body = { instruction: 'shorten slide 2', requestId: `req-${rid()}-${rid()}`, activeSlideId: doc.slides[0]!.id }
     await api(u.cookie, 'POST', `/presentations/${id}/ai-assist`, body)
     await api(u.cookie, 'POST', `/presentations/${id}/ai-assist`, body)
-    expect(await balance(u.id)).toBe(start - 2)
+    expect(await balance(u.id)).toBe(start - 4)
   })
 
   it('"This slide" mode: a deck-wide change is refused there and costs nothing', async () => {
@@ -123,14 +123,14 @@ describe('POST /ai-assist (v2): understand → resolve → do → check', () => 
 
   it('past the daily allowance of free checks, a reply that changes nothing is CHARGED and the reply says so (never a silent charge)', async () => {
     const { u, id, start } = await setup('v2cap')
-    const before = (await ask(u.cookie, id, 'hey')).body.data
+    const before = (await ask(u.cookie, id, 'how are you doing')).body.data
     expect(before).toMatchObject({ creditsCharged: 0 }) // inside the allowance: free
     const now = new Date()
     await db.insert(creditLedger).values(Array.from({ length: 25 }, (_, i) => ({ id: `cap-${rid()}-${i}`, userId: u.id, delta: 2, balanceAfter: start, reason: 'refund', refType: 'ai_assist', refId: `old-${i}`, idempotencyKey: `cap-key-${rid()}-${i}`, createdAt: now })))
-    const after = (await ask(u.cookie, id, 'hey')).body.data
-    expect(after.creditsCharged).toBe(2)
-    expect(after.notes.join(' ')).toMatch(/used today's 25 free checks and answers, so this reply used 2 credits/)
-    expect(await balance(u.id)).toBe(start - 2)
+    const after = (await ask(u.cookie, id, 'how are you doing')).body.data
+    expect(after.creditsCharged).toBe(4)
+    expect(after.notes.join(' ')).toMatch(/used today's 25 free checks and answers, so this reply used 4 credits/)
+    expect(await balance(u.id)).toBe(start - 4)
   })
 })
 
@@ -141,16 +141,65 @@ describe('a pasted link is charged only when its words are used', () => {
     const { u, id, doc, start } = await setup('v2link1')
     const { body } = await ask(u.cookie, id, 'shorten slide 2 using https://www.tata.com/newsroom/launch', { activeSlideId: doc.slides[0]!.id })
     read.mockRestore()
-    expect(body.data.creditsCharged).toBe(4)
-    expect(await balance(u.id)).toBe(start - 4)
+    expect(body.data.creditsCharged).toBe(8)
+    expect(await balance(u.id)).toBe(start - 8)
   })
   it('the page is read but nothing needed it: the page is not charged, and the answer says so', async () => {
     const read = vi.spyOn(pageReader, 'read').mockResolvedValue(PAGE as never)
     const { u, id, doc, start } = await setup('v2link2')
     const { body } = await ask(u.cookie, id, 'lock slide 2, my notes are at https://www.tata.com/newsroom/launch', { activeSlideId: doc.slides[0]!.id })
     read.mockRestore()
-    expect(body.data.creditsCharged).toBe(2)
+    expect(body.data.creditsCharged).toBe(4)
     expect(body.data.notes.join(' ')).toMatch(/did not need the page you linked/)
-    expect(await balance(u.id)).toBe(start - 2)
+    expect(await balance(u.id)).toBe(start - 4)
+  })
+})
+
+describe('small talk: one short line, at once, free, no model asked', () => {
+  it('"hii", "thanks" and "ok" each get one line (never the long list of what I can do)', async () => {
+    const { u, id, start } = await setup('small')
+    for (const [say, want] of [['hii', /^Hi! What would you like to change/], ['thanks!', /^You're welcome/], ['ok', /^Great\. Tell me what/]] as const) {
+      const d = (await ask(u.cookie, id, say)).body.data
+      expect(d.reply).toMatch(want)
+      expect(d.reply.split('\n')).toHaveLength(1)
+      expect(d.reply.length).toBeLessThan(80)
+      expect(d.creditsCharged).toBe(0)
+    }
+    expect(await balance(u.id)).toBe(start)
+  })
+})
+
+describe('quick edits (the editor\'s one-click menu): a fixed task on the slide on screen, no understanding step, the plan\'s prices', () => {
+  const understood = async (since: Date) => (await db.execute(sql`select count(*)::int as n from ai_usage_event where request_type in ('assist_understand','assist_read') and created_at >= ${since.toISOString()}`)).rows[0] as { n: number }
+  it('"Improve writing" rewrites only the current slide, never asks the model what was meant, and costs one AI edit', async () => {
+    const { u, id, doc, start } = await setup('quick1')
+    const t0 = new Date()
+    const { status, body } = await ask(u.cookie, id, 'Improve writing', { quick: 'improve', scope: 'slide', slideId: doc.slides[2]!.id, activeSlideId: doc.slides[2]!.id })
+    expect(status).toBe(200)
+    expect(body.data.edits.map((e: any) => e.slideId)).toEqual([doc.slides[2]!.id])
+    expect(body.data.creditsCharged).toBe(4)
+    expect(await balance(u.id)).toBe(start - 4)
+    expect((await understood(t0)).n).toBe(0)
+  })
+  it('every quick edit is one task the assistant accepts as it is (its family is ready, its values are valid for that family, it aims at the slide on screen)', async () => {
+    const { QUICK_EDITS } = await import('@prompttoppt/validation')
+    const { quickConfirm } = await import('./quick.ts')
+    const { CAPABILITIES } = await import('./capabilities/index.ts')
+    const { intentSchema } = await import('./understand.ts')
+    for (const q of QUICK_EDITS) {
+      const c = quickConfirm(q.id)
+      const parsed = intentSchema.safeParse({ kind: 'edit', clarity: 'act', tasks: c.tasks })
+      expect(parsed.success, `${q.id}: ${parsed.success ? '' : parsed.error.message}`).toBe(true)
+      const t = c.tasks[0]!
+      expect(CAPABILITIES[t.family as keyof typeof CAPABILITIES]?.values.safeParse(t.values).success, `${q.id} values`).toBe(true)
+      expect(t.targets).toEqual([{ by: 'current' }])
+    }
+  })
+  it('an unknown quick edit is refused before anything runs or is charged; Starter is sent to the upgrade', async () => {
+    const { u, id, doc, start } = await setup('quick3')
+    expect((await ask(u.cookie, id, 'Do it', { quick: 'make_it_pop', scope: 'slide', slideId: doc.slides[0]!.id })).status).toBe(400)
+    expect(await balance(u.id)).toBe(start)
+    const free = await signUp('quick3s'); const deck = await makeDeck(free.id, 3)
+    expect((await ask(free.cookie, deck.id, 'Make shorter', { quick: 'shorten', scope: 'slide', slideId: deck.doc.slides[0]!.id })).status).toBe(403)
   })
 })

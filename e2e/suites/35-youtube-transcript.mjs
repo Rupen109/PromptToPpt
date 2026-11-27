@@ -46,7 +46,7 @@ export default async function () {
 
     await s.check('A3 A YouTube link typed in the "Website link" tab is sent to the transcript tab (never fetched)', P.p, async () => {
       await P.p.goto(EDITOR + '/', { waitUntil: 'load' })
-      await P.p.getByRole('button', { name: /Upload files, or links/ }).click()
+      await P.p.getByRole('button', { name: /Add files or links/ }).click()
       const dlg = P.p.getByRole('dialog', { name: 'Add sources' }); await dlg.waitFor()
       await dlg.getByRole('tab', { name: 'Website link' }).click()
       await dlg.getByLabel('Page URL').fill('https://youtu.be/dQw4w9WgXcQ')
