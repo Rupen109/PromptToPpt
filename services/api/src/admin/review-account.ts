@@ -1,5 +1,6 @@
 import { and, eq } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
+import { hashPassword } from 'better-auth/crypto'
 import { auth } from '../auth.ts'
 import { db } from '../db/index.ts'
 import { account, user } from '../db/schema.ts'
@@ -10,16 +11,16 @@ import { canonicalEmail } from '../security/email.ts'
  *  · created already verified, so no confirmation e-mail is sent to a mailbox nobody may be reading;
  *  · past the invite-only sign-up gate (the owner is the one inviting), and still a plain Starter account like any visitor's;
  *  · the first-visit question already answered ("Something else"), so the reviewer lands straight in the product;
- *  · the password hashed by the sign-in system's own hasher, so it logs in exactly like any other account.
+ *  · the password hashed by the sign-in system's own (default, scrypt) hasher, so it logs in exactly like any other account. The standalone hasher
+ *    from `better-auth/crypto` is used, not `auth.$context`: in production the context version refuses to run outside a web request.
  * Running it again for the same address only resets the password (and keeps it verified): safe to repeat.
  */
 export async function upsertReviewAccount(emailRaw: string, password: string, name = 'Reviewer'): Promise<{ id: string; created: boolean }> {
   const email = emailRaw.trim().toLowerCase()
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error('That is not an e-mail address.')
-  const ctx = await auth.$context
-  const min = ctx.password.config.minPasswordLength
+  const min = auth.options.emailAndPassword?.minPasswordLength ?? 8
   if (password.length < min) throw new Error(`The password must be at least ${min} characters (the sign-in system refuses shorter ones).`)
-  const hash = await ctx.password.hash(password)
+  const hash = await hashPassword(password)
 
   return db.transaction(async (tx) => {
     const [found] = await tx.select({ id: user.id }).from(user).where(eq(user.email, email))
